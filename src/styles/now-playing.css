@@ -1,3 +1,9 @@
+@property --cover-tint {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgb(200, 80, 40);
+}
+
 .now-playing-stage {
   position: relative;
   height: 100%;
@@ -5,6 +11,7 @@
   overflow: hidden;
   background: #030504;
   isolation: isolate;
+  transition: --cover-tint 45s ease-in-out;
 }
 
 .now-gradient {
@@ -19,8 +26,8 @@
   background-size: 138% 138%, 130% 130%, 145% 145%, 100% 100%;
   mix-blend-mode: color;
   opacity: 0.66;
-  animation: now-gradient-drift 46s ease-in-out infinite alternate;
-  transition: background 2.5s ease, opacity 2.5s ease;
+  animation: now-gradient-drift 180s ease-in-out infinite alternate;
+  transition: background 45s ease-in-out, opacity 45s ease-in-out;
 }
 
 .now-gradient::after {
@@ -32,7 +39,7 @@
     radial-gradient(ellipse at 42% 48%, rgba(255, 255, 255, 0.05), transparent 42%);
   mix-blend-mode: screen;
   opacity: 0.24;
-  animation: now-gradient-sheen 72s ease-in-out infinite alternate;
+  animation: now-gradient-sheen 260s ease-in-out infinite alternate;
 }
 
 .now-playing-stage::after {
@@ -84,8 +91,12 @@
   contain: paint;
   isolation: isolate;
   background: rgba(255, 255, 255, 0.06);
-  aspect-ratio: 1;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   transform: translateZ(0);
+  transform-origin: center;
+  transform-style: preserve-3d;
   backface-visibility: hidden;
   outline: 1px solid rgba(0, 0, 0, 0.78);
   outline-offset: -1px;
@@ -111,7 +122,7 @@
 }
 
 .wall-tile.flipping {
-  animation: wall-tile-flip 6800ms cubic-bezier(0.18, 0.66, 0.24, 1);
+  animation: wall-tile-flip 6200ms cubic-bezier(0.18, 0.66, 0.24, 1);
   will-change: transform;
 }
 
@@ -123,96 +134,6 @@
   color: rgba(255, 255, 255, 0.52);
   font-size: 34px;
   font-weight: 200;
-}
-
-.wall-tile-0 {
-  grid-column: span 4;
-  grid-row: span 4;
-}
-
-.wall-tile-1 {
-  grid-column: span 2;
-  grid-row: span 1;
-}
-
-.wall-tile-2 {
-  grid-column: span 3;
-  grid-row: span 2;
-}
-
-.wall-tile-3 {
-  grid-column: span 2;
-  grid-row: span 3;
-}
-
-.wall-tile-4 {
-  grid-column: span 1;
-  grid-row: span 2;
-}
-
-.wall-tile-5 {
-  grid-column: span 5;
-  grid-row: span 3;
-}
-
-.wall-tile-6 {
-  grid-column: span 3;
-  grid-row: span 2;
-}
-
-.wall-tile-7 {
-  grid-column: span 1;
-  grid-row: span 1;
-}
-
-.wall-tile-8 {
-  grid-column: span 2;
-  grid-row: span 2;
-}
-
-.wall-tile-9 {
-  grid-column: span 3;
-  grid-row: span 1;
-}
-
-.wall-tile-10 {
-  grid-column: span 2;
-  grid-row: span 4;
-}
-
-.wall-tile-11 {
-  grid-column: span 4;
-  grid-row: span 3;
-}
-
-.wall-tile-12 {
-  grid-column: span 1;
-  grid-row: span 2;
-}
-
-.wall-tile-13 {
-  grid-column: span 2;
-  grid-row: span 1;
-}
-
-.wall-tile-14 {
-  grid-column: span 3;
-  grid-row: span 3;
-}
-
-.wall-tile-15 {
-  grid-column: span 1;
-  grid-row: span 1;
-}
-
-.wall-tile-16 {
-  grid-column: span 4;
-  grid-row: span 2;
-}
-
-.wall-tile-17 {
-  grid-column: span 2;
-  grid-row: span 2;
 }
 
 .now-type-ghost {
@@ -287,9 +208,9 @@
 }
 
 .chrome-idle .visualizer {
-  opacity: 0.18;
-  filter: blur(1.6px);
-  transform: translateY(4px) scaleY(0.96);
+  opacity: 0.62;
+  filter: blur(0.9px);
+  transform: translateY(2px) scaleY(0.98);
 }
 
 .chrome-idle .now-track-card {
@@ -467,11 +388,11 @@
   bottom: 0;
   z-index: 4;
   height: 64px;
-  opacity: calc(0.2 + var(--energy) * 0.18);
-  --energy: 0.06;
+  opacity: 1;
+  --energy: 0.12;
   --peak: 0.04;
   background: transparent;
-  filter: drop-shadow(0 -1px calc(2px + var(--energy) * 3px) rgba(230, 44, 86, 0.16));
+  filter: drop-shadow(0 -1px calc(3px + var(--energy) * 5px) rgba(230, 44, 86, 0.26));
   pointer-events: none;
   transform: scaleY(calc(0.98 + var(--peak) * 0.025));
   transform-origin: bottom center;
@@ -491,19 +412,19 @@
 .visualizer::before {
   height: calc(7px + var(--peak) * 18px);
   background:
-    radial-gradient(ellipse at 50% 100%, rgba(248, 70, 120, 0.2) 0%, rgba(166, 10, 50, 0.12) 44%, transparent 78%),
-    linear-gradient(0deg, rgba(190, 10, 44, calc(0.025 + var(--energy) * 0.045)), transparent);
+    radial-gradient(ellipse at 50% 100%, rgba(248, 70, 120, 0.34) 0%, rgba(166, 10, 50, 0.18) 44%, transparent 78%),
+    linear-gradient(0deg, rgba(190, 10, 44, calc(0.07 + var(--energy) * 0.08)), transparent);
   filter: blur(calc(5px + var(--peak) * 5px));
-  opacity: calc(0.16 + var(--energy) * 0.12);
+  opacity: calc(0.3 + var(--energy) * 0.18);
   transform: translateY(calc(var(--peak) * -2px));
   transition: height 90ms linear, opacity 90ms linear, filter 90ms linear, transform 90ms linear;
 }
 
 .visualizer::after {
   height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(223, 58, 105, 0.12) 18%, rgba(255, 171, 204, 0.34) 50%, rgba(223, 58, 105, 0.12) 82%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(223, 58, 105, 0.24) 18%, rgba(255, 171, 204, 0.56) 50%, rgba(223, 58, 105, 0.24) 82%, transparent 100%);
   bottom: calc(9px + var(--peak) * 5px);
-  opacity: calc(0.16 + var(--peak) * 0.18);
+  opacity: calc(0.34 + var(--peak) * 0.26);
   transition: bottom 90ms linear, opacity 90ms linear;
 }
 
@@ -520,7 +441,7 @@
 
 .visualizer-haze {
   fill: url("#visualizer-haze-fill");
-  opacity: calc(0.16 + var(--peak) * 0.12);
+  opacity: calc(0.32 + var(--peak) * 0.18);
   filter: blur(calc(5px + var(--peak) * 5px));
   transform: translateY(calc(var(--peak) * -2px));
   transition: opacity 90ms linear, filter 90ms linear, transform 90ms linear;
@@ -528,15 +449,15 @@
 
 .visualizer-body {
   fill: url("#visualizer-body-fill");
-  opacity: calc(0.18 + var(--energy) * 0.16);
-  filter: blur(calc(0.7px + var(--peak) * 1px)) drop-shadow(0 -1px calc(2px + var(--energy) * 3px) rgba(230, 55, 100, 0.18));
+  opacity: calc(0.34 + var(--energy) * 0.24);
+  filter: blur(calc(0.7px + var(--peak) * 1px)) drop-shadow(0 -1px calc(3px + var(--energy) * 4px) rgba(230, 55, 100, 0.28));
   transform: translateY(calc(var(--peak) * -1px));
   transition: opacity 90ms linear, filter 90ms linear, transform 90ms linear;
 }
 
 .visualizer-line {
   fill: none;
-  stroke: rgba(255, 176, 208, calc(0.2 + var(--peak) * 0.24));
+  stroke: rgba(255, 176, 208, calc(0.48 + var(--peak) * 0.26));
   stroke-width: calc(0.75px + var(--peak) * 0.45px);
   stroke-linejoin: round;
   stroke-linecap: round;

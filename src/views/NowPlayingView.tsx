@@ -3,8 +3,9 @@ import type { CSSProperties } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { AudioLines, Heart, Pause, Play, Repeat, Shuffle, SkipBack, SkipForward } from "lucide-react";
 import { Cover } from "../components/Cover";
-import { albumKey, formatTime, initials } from "../utils/music";
-import type { AlbumGroup, RepeatMode, Track } from "../types";
+import { formatTime, initials } from "../utils/music";
+import { buildNowPlayingWall, wallTilePatternForIndex } from "../utils/nowPlayingWall";
+import type { RepeatMode, Track } from "../types";
 
 export function NowPlayingView({
   track,
@@ -58,7 +59,7 @@ export function NowPlayingView({
   const isDraggingRef = useRef(false);
   const wallAlbums = useMemo(() => buildNowPlayingWall(tracks, track), [tracks, track]);
   const visualizerHorizon = useMemo(() => buildHorizonPaths(visualizerSamples), [visualizerSamples]);
-  const visualizerDisplayEnergy = Math.min(1, Math.max(0.04, visualizerEnergy * 0.95 + 0.035));
+  const visualizerDisplayEnergy = Math.min(1, Math.max(0.12, visualizerEnergy * 1.25 + 0.08));
   const visualizerPeak = useMemo(() => getVisualizerPeak(visualizerSamples), [visualizerSamples]);
   const [tintColor, setTintColor] = useState("rgb(200, 80, 40)");
   const [wallFading, setWallFading] = useState(false);
@@ -122,11 +123,11 @@ export function NowPlayingView({
 
     if (!isPlaying || wallAlbums.length === 0) return;
 
-    const flipDuration = 6800;
+    const flipDuration = 6200;
 
-    function scheduleNextFlip(delay = 12000 + Math.random() * 22000) {
+    function scheduleNextFlip(delay = 3500 + Math.random() * 3000) {
       flipTimer.current = window.setTimeout(() => {
-        const flipCount = Math.min(wallAlbums.length, Math.random() > 0.9 ? 2 : 1);
+        const flipCount = Math.min(wallAlbums.length, Math.random() > 0.88 ? 2 : 1);
         const next = new Set<number>();
         while (next.size < flipCount) next.add(Math.floor(Math.random() * wallAlbums.length));
         setFlippingTiles(next);
@@ -137,7 +138,7 @@ export function NowPlayingView({
             return updated;
           });
         }, flipDuration);
-        scheduleNextFlip(26000 + Math.random() * 32000);
+        scheduleNextFlip(10000 + Math.random() * 8000);
       }, delay);
     }
 
@@ -198,19 +199,26 @@ export function NowPlayingView({
         <span>{track?.title ?? "now playing"}</span>
       </div>
       <div className={`album-wall ${wallFading ? "wall-fading" : ""}`} aria-hidden="true">
-        {wallAlbums.map((item, index) => (
-          <div
-            key={`${item.album}-${index}`}
-            className={`wall-tile wall-tile-${index % 18} ${flippingTiles.has(index) ? "flipping" : ""}`}
-            style={{ "--drift": `${(index % 7) * 0.35}s` } as CSSProperties}
-          >
-            {item.coverPath ? (
-              <img src={convertFileSrc(item.coverPath)} alt="" draggable={false} />
-            ) : (
-              <span>{initials(item.album)}</span>
-            )}
-          </div>
-        ))}
+        {wallAlbums.map((item, index) => {
+          const pattern = wallTilePatternForIndex(index);
+          return (
+            <div
+              key={`${item.key}-${index}`}
+              className={`wall-tile ${flippingTiles.has(index) ? "flipping" : ""}`}
+              style={{
+                "--drift": `${(index % 7) * 0.35}s`,
+                gridColumn: `span ${pattern.columns}`,
+                gridRow: `span ${pattern.rows}`,
+              } as CSSProperties}
+            >
+              {item.coverPath ? (
+                <img src={convertFileSrc(item.coverPath)} alt="" draggable={false} />
+              ) : (
+                <span>{initials(item.album)}</span>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <button className="now-back" onClick={onBack} title="Back to collection">
@@ -363,62 +371,7 @@ function getVisualizerPeak(samples: number[]) {
   return Math.max(0.04, sorted[Math.floor(sorted.length * 0.88)] ?? 0.04);
 }
 
-function gaussian(value: number, center: number, width: number) {
-  const distance = (value - center) / width;
-  return Math.exp(-distance * distance);
-}
-
 function smoothstep(value: number) {
   const amount = Math.min(1, Math.max(0, value));
   return amount * amount * (3 - 2 * amount);
-}
-
-function buildNowPlayingWall(tracks: Track[], active: Track | null) {
-  const albumMap = new Map<string, AlbumGroup>();
-  for (const item of tracks) {
-    const key = albumKey(item.album);
-    if (!albumMap.has(key)) {
-      albumMap.set(key, {
-        key,
-        album: item.album,
-        artist: item.artist,
-        tracks: [item],
-        coverPath: item.cover_path,
-      });
-      continue;
-    }
-
-    const album = albumMap.get(key)!;
-    album.tracks.push(item);
-    if (!album.coverPath && item.cover_path) album.coverPath = item.cover_path;
-  }
-
-  const activeArtist = active?.artist.trim().toLocaleLowerCase();
-  const albums = Array.from(albumMap.values()).filter((album) => album.coverPath);
-  const artistAlbums = activeArtist
-    ? albums.filter((album) => album.artist.trim().toLocaleLowerCase() === activeArtist)
-    : [];
-  const otherAlbums = activeArtist
-    ? albums.filter((album) => album.artist.trim().toLocaleLowerCase() !== activeArtist)
-    : albums;
-
-  const weightedAlbums = [
-    ...artistAlbums,
-    ...artistAlbums,
-    ...otherAlbums,
-  ];
-
-  if (active) {
-    const activeAlbum = {
-      key: albumKey(active.album),
-      album: active.album,
-      artist: active.artist,
-      tracks: [active],
-      coverPath: active.cover_path,
-    };
-    weightedAlbums.unshift(activeAlbum, activeAlbum);
-  }
-
-  const source = weightedAlbums.length > 0 ? weightedAlbums : [{ key: "zone", album: "Zone", artist: "Zone", tracks: [], coverPath: null }];
-  return Array.from({ length: 96 }, (_, index) => source[(index * 7 + Math.floor(index / 5)) % source.length]);
 }

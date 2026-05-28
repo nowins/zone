@@ -38,6 +38,7 @@ test("low frequency content creates a broad restrained horizon", () => {
 
   assert.equal(frame.samples.length, SAMPLE_COUNT);
   assert.equal(frame.active, true);
+  assert.ok(maximum >= 0.08, `active low-frequency content should stay visible, got ${maximum}`);
   assert.ok(maximum <= 0.38, `horizon should remain restrained, got ${maximum}`);
   assert.ok(center > edge * 1.8, `center should carry the low-frequency body, center ${center}, edge ${edge}`);
   assert.ok(maxDelta < 0.045, `horizon should be smooth, max adjacent delta ${maxDelta}`);

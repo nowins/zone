@@ -9,5 +9,5 @@
     "isolatedModules": false,
     "types": []
   },
-  "include": ["src/utils/visualizer.ts"]
+  "include": ["src/utils/visualizer.ts", "src/utils/nowPlayingWall.ts"]
 }
