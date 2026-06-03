@@ -139,7 +139,7 @@
 
   .now-track-card {
     left: 34px;
-    grid-template-columns: 82px minmax(0, 260px) 40px;
+    grid-template-columns: 82px minmax(0, 260px);
     max-width: min(430px, calc(100vw - 68px));
   }
 

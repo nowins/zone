@@ -61,6 +61,7 @@ export function NowPlayingView({
   const visualizerHorizon = useMemo(() => buildHorizonPaths(visualizerSamples), [visualizerSamples]);
   const visualizerDisplayEnergy = Math.min(1, Math.max(0.12, visualizerEnergy * 1.25 + 0.08));
   const visualizerPeak = useMemo(() => getVisualizerPeak(visualizerSamples), [visualizerSamples]);
+  const activeQueueIndex = useMemo(() => queue.findIndex((item) => item.id === track?.id), [queue, track?.id]);
   const [tintColor, setTintColor] = useState("rgb(200, 80, 40)");
   const [wallFading, setWallFading] = useState(false);
   const [textFading, setTextFading] = useState(false);
@@ -226,8 +227,14 @@ export function NowPlayingView({
       </button>
 
       <aside className="floating-queue">
-        {queue.slice(0, 10).map((item) => (
-          <button key={item.id} className={item.id === track?.id ? "playing" : ""} onClick={() => onPlay(item, queue)}>
+        {queue.slice(0, 10).map((item, index) => (
+          <button
+            key={item.id}
+            className={`${item.id === track?.id ? "playing" : ""} ${
+              activeQueueIndex >= 0 && index === activeQueueIndex + 1 ? "queue-next" : ""
+            }`}
+            onClick={() => onPlay(item, queue)}
+          >
             <div className="queue-row">
               {item.id === track?.id && <AudioLines size={16} />}
               <strong>{item.title}</strong>
@@ -239,19 +246,19 @@ export function NowPlayingView({
 
       <section className={`now-track-card ${textFading ? "card-fading" : ""}`}>
         <Cover artPath={track?.cover_path} label={track?.album ?? "now"} size="mini" />
-        <div>
+        <div className="now-track-copy">
           <strong>{track?.artist ?? "Zone"}</strong>
-          <span>{track?.title ?? "nothing playing"}</span>
-          <em>{track?.album ?? "choose a song from collection"}</em>
+          <span>{track?.album ?? "choose a song from collection"}</span>
+          <em>{track?.title ?? "nothing playing"}</em>
+          <button
+            className={`now-favorite ${isFavorite ? "favorite-active" : ""}`}
+            title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+            onClick={onToggleFavorite}
+            disabled={!track}
+          >
+            <Heart size={21} fill={isFavorite ? "currentColor" : "none"} />
+          </button>
         </div>
-        <button
-          className={isFavorite ? "favorite-active" : ""}
-          title={isFavorite ? "Remove from favorites" : "Add to favorites"}
-          onClick={onToggleFavorite}
-          disabled={!track}
-        >
-          <Heart size={22} fill={isFavorite ? "currentColor" : "none"} />
-        </button>
       </section>
 
       <div

@@ -15,6 +15,18 @@ test("wall tile pattern stays bounded and repeatable", () => {
     assert.ok(pattern.columns >= 1 && pattern.columns <= 5, `unexpected column span ${pattern.columns}`);
     assert.ok(pattern.rows >= 1 && pattern.rows <= 4, `unexpected row span ${pattern.rows}`);
   }
+
+  const areas = WALL_TILE_PATTERN.map((pattern) => pattern.columns * pattern.rows);
+  const largeTiles = areas.filter((area) => area >= 9);
+  assert.ok(Math.max(...areas) <= 12, `wall tiles should not dominate the center, got max area ${Math.max(...areas)}`);
+  assert.ok(largeTiles.length <= 1, `only one large tile should appear per pattern cycle, got ${largeTiles.length}`);
+
+  for (let index = 1; index < areas.length; index += 1) {
+    assert.ok(
+      !(areas[index] >= 8 && areas[index - 1] >= 8),
+      `large tiles should not be adjacent at ${index - 1}/${index}`,
+    );
+  }
 });
 
 test("now playing wall keeps active artist and album weighted", () => {
