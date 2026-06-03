@@ -256,7 +256,7 @@ export function NowPlayingView({
             onClick={onToggleFavorite}
             disabled={!track}
           >
-            <Heart size={21} fill={isFavorite ? "currentColor" : "none"} />
+            <Heart size={18} fill={isFavorite ? "currentColor" : "none"} />
           </button>
         </div>
       </section>

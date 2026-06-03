@@ -134,7 +134,15 @@
   }
 
   .floating-queue {
-    width: min(360px, 42vw);
+    right: 34px;
+    bottom: 150px;
+    width: min(320px, 42vw);
+    max-height: min(20vh, 150px);
+  }
+
+  .now-buttons {
+    right: 34px;
+    bottom: 42px;
   }
 
   .now-track-card {

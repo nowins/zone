@@ -250,9 +250,9 @@
 
 .floating-queue {
   right: 58px;
-  bottom: 132px;
-  width: min(430px, 28vw);
-  max-height: min(32vh, 330px);
+  bottom: 158px;
+  width: min(360px, 24vw);
+  max-height: 176px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 15px 0;
@@ -263,9 +263,9 @@
 
 .floating-queue button {
   width: 100%;
-  min-height: 58px;
+  min-height: 46px;
   display: block;
-  padding: 8px 24px;
+  padding: 6px 20px;
   text-align: left;
 }
 
@@ -312,24 +312,24 @@
 }
 
 .floating-queue strong {
-  font-size: 23px;
+  font-size: 18px;
   font-weight: 300;
 }
 
 .floating-queue span {
   color: rgba(255, 255, 255, 0.56);
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .now-track-card {
   left: clamp(92px, 7.4vw, 150px);
   bottom: clamp(126px, 13vh, 190px);
   display: grid;
-  grid-template-columns: 150px minmax(0, 360px);
+  grid-template-columns: 150px minmax(0, 300px);
   align-items: center;
-  gap: 26px;
+  gap: 20px;
   width: fit-content;
-  max-width: min(560px, 54vw);
+  max-width: min(500px, 50vw);
   transition: opacity 0.9s ease;
 }
 
@@ -358,35 +358,36 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-style: normal;
+  line-height: 1.08;
 }
 
 .now-track-card strong {
-  font-size: 31px;
+  font-size: 26px;
   font-weight: 300;
   text-transform: none;
 }
 
 .now-track-card span {
   margin-top: 2px;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 300;
   color: rgba(255, 255, 255, 0.82);
 }
 
 .now-track-card em {
-  margin-top: 14px;
-  font-size: 30px;
+  margin-top: 12px;
+  font-size: 26px;
   font-weight: 300;
   color: rgba(255, 255, 255, 0.96);
 }
 
 .now-track-card button {
-  margin-top: 12px;
-  width: 42px;
-  height: 42px;
+  margin-top: 10px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
-  border: 2px solid rgba(255, 255, 255, 0.72);
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
   border-radius: 50%;
   color: rgba(255, 255, 255, 0.84);
   background: rgba(0, 0, 0, 0.18);
@@ -398,7 +399,7 @@
   color: color-mix(in srgb, var(--cover-tint, rgb(255, 105, 180)) 68%, #ff4fb5);
   border-color: rgba(255, 255, 255, 0.9);
   background: rgba(0, 0, 0, 0.34);
-  transform: scale(1.04);
+  transform: scale(1.02);
 }
 
 .now-track-card button:disabled {
@@ -583,8 +584,8 @@
 
 .now-buttons {
   position: absolute;
-  right: 48px;
-  bottom: 4px;
+  right: 58px;
+  bottom: 42px;
   display: flex;
   align-items: center;
   gap: 11px;
