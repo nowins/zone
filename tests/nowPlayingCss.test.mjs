@@ -4,81 +4,150 @@ import test from "node:test";
 
 const nowPlayingCss = readFileSync("src/styles/now-playing.css", "utf8");
 const animationCss = readFileSync("src/styles/animations-responsive.css", "utf8");
+const baseCss = readFileSync("src/styles/base.css", "utf8");
+const nowPlayingView = readFileSync("src/views/NowPlayingView.tsx", "utf8");
+const mosaicCanvasSource = readFileSync("src/components/NowPlayingMosaicCanvas.tsx", "utf8");
 
-test("wall tiles fill their grid area without aspect ratio overflow", () => {
-  const wallTileRule = cssRule(nowPlayingCss, ".wall-tile");
+test("now playing visual layers are canvas based", () => {
+  assert.ok(nowPlayingView.includes("<NowPlayingMosaicCanvas"));
+  assert.ok(nowPlayingView.includes("<AudioGlowCanvas"));
+  assert.ok(nowPlayingView.includes("beatPulse={beatPulse}"));
+  assert.ok(nowPlayingView.includes("onsetStrength={onsetStrength}"));
+  assert.ok(nowPlayingView.includes("beatConfidence={beatConfidence}"));
+  assert.ok(!nowPlayingView.includes("wallTilePatternForIndex"), "DOM wall tile mapping should be removed from the view");
+  assert.ok(!nowPlayingView.includes("visualizer-wave-svg"), "SVG visualizer should be removed from the view");
 
-  assert.ok(wallTileRule.includes("width: 100%"));
-  assert.ok(wallTileRule.includes("height: 100%"));
-  assert.ok(!wallTileRule.includes("aspect-ratio"), "wall tiles should not force square boxes over rectangular spans");
-  assert.ok(!nowPlayingCss.includes(".wall-tile-0"), "tile span classes should stay out of CSS");
+  const mosaicRule = cssRule(nowPlayingCss, ".now-mosaic-canvas");
+  const glowRule = cssRule(nowPlayingCss, ".audio-glow-canvas");
+
+  assert.ok(mosaicRule.includes("position: absolute"));
+  assert.ok(mosaicRule.includes("inset: 0"));
+  assert.ok(glowRule.includes("height: clamp(88px, 8vh, 122px)"));
+  assert.ok(!glowRule.includes("22vh"));
+  assert.ok(glowRule.includes("mix-blend-mode: screen"));
+  assert.ok(!nowPlayingCss.includes(".album-wall"), "old DOM album wall styles should stay out of now playing CSS");
+  assert.ok(!nowPlayingCss.includes(".visualizer-wave-svg"), "old SVG visualizer styles should stay out of now playing CSS");
 });
 
-test("visualizer remains visible when chrome is idle", () => {
-  const idleRule = cssRule(nowPlayingCss, ".chrome-idle .visualizer");
-  const visualizerRule = cssRule(nowPlayingCss, ".visualizer");
-  const lineRule = cssRule(nowPlayingCss, ".visualizer-line");
-  const opacity = Number(idleRule.match(/opacity:\s*([0-9.]+)/)?.[1]);
-  const height = Number(visualizerRule.match(/height:\s*([0-9.]+)px/)?.[1]);
+test("now playing artwork is full bleed without a recording-frame inset", () => {
+  const stageRule = cssRule(nowPlayingCss, ".now-playing-stage");
 
-  assert.ok(opacity >= 0.5, `idle visualizer opacity should remain visible, got ${opacity}`);
-  assert.ok(nowPlayingCss.includes("opacity: 1;"), "visualizer parent should not multiply child opacity down");
-  assert.ok(height <= 40, `visualizer should stay a low horizon, got ${height}px`);
-  assert.ok(lineRule.includes("0.24 + var(--peak) * 0.18"), "visualizer line should stay low brightness");
+  assert.ok(stageRule.includes("height: 100%"));
+  assert.ok(stageRule.includes("margin: 0"));
+  assert.ok(stageRule.includes("border: 0"));
+  assert.ok(stageRule.includes("box-shadow: none"));
 });
 
-test("now playing color wash and tile flip use slow Zune-like motion", () => {
-  assert.ok(nowPlayingCss.includes("@property --cover-tint"));
-  assert.ok(nowPlayingCss.includes("transition: --cover-tint 45s ease-in-out"));
-  assert.ok(nowPlayingCss.includes("now-gradient-drift 180s"));
-  assert.ok(nowPlayingCss.includes("now-gradient-sheen 260s"));
-  assert.ok(animationCss.includes("rotateY(84deg)"), "tile flip should use a visible Y-axis turn");
-  assert.ok(!cssKeyframes(animationCss, "wall-tile-flip").includes("scale("));
+test("chrome idle and immersive modes preserve the audio glow", () => {
+  const idleGlowRule = cssRule(nowPlayingCss, ".chrome-idle .audio-glow-canvas");
+  const immersiveGlowRule = cssRule(nowPlayingCss, ".chrome-immersive .audio-glow-canvas");
+  const immersivePanelRule = cssRule(nowPlayingCss, ".chrome-immersive .now-side-panel");
+
+  assert.ok(Number(idleGlowRule.match(/opacity:\s*([0-9.]+)/)?.[1]) >= 0.85);
+  assert.ok(immersiveGlowRule.includes("opacity: 1"));
+  assert.ok(immersivePanelRule.includes("pointer-events: none"));
+  assert.ok(nowPlayingCss.includes(".chrome-immersive"));
 });
 
-test("track info and queue match Zune-like static layout", () => {
-  const ghostRule = cssRule(nowPlayingCss, ".now-type-ghost");
+test("track info keeps Zune-like left anchor hierarchy", () => {
   const trackCardRule = cssRule(nowPlayingCss, ".now-track-card");
   const coverRule = cssRule(nowPlayingCss, ".now-track-card .mini-cover");
   const artistRule = cssRule(nowPlayingCss, ".now-track-card strong");
   const albumRule = cssRuleLast(nowPlayingCss, ".now-track-card span");
   const titleRule = cssRuleLast(nowPlayingCss, ".now-track-card em");
-  const favoriteRule = cssRule(nowPlayingCss, ".now-track-card button");
-  const queueRule = cssRuleLast(nowPlayingCss, ".floating-queue");
+  const copyRule = cssRule(nowPlayingCss, ".now-track-copy");
 
-  const ghostOpacity = Number(ghostRule.match(/opacity:\s*([0-9.]+)/)?.[1]);
-
-  assert.ok(ghostOpacity <= 0.02, `ghost text should not be a primary visual layer, got ${ghostOpacity}`);
-  assert.ok(trackCardRule.includes("grid-template-columns: 150px minmax(0, 300px)"));
-  assert.ok(!trackCardRule.includes("44px"), "track card should not keep a third favorite column");
-  assert.equal(px(coverRule, "width"), 150);
-  assert.equal(px(coverRule, "height"), 150);
-  assert.ok(px(artistRule, "font-size") <= 26, "artist text should stay visually below cover dominance");
-  assert.ok(px(albumRule, "font-size") <= 20, "album text should stay secondary");
-  assert.ok(px(titleRule, "font-size") <= 26, "title text should stay visually below cover dominance");
-  assert.ok(px(favoriteRule, "width") <= 34, "favorite button should not overpower cover art");
-  assert.ok(px(favoriteRule, "height") <= 34, "favorite button should not overpower cover art");
-  assert.ok(queueRule.includes("background: rgba(0, 0, 0, 0.78)"));
-  assert.ok(!queueRule.includes("linear-gradient"), "floating queue should be a dark panel, not a gradient list");
+  assert.ok(trackCardRule.includes("--now-cover-size: clamp(128px, 10.5vw, 220px)"));
+  assert.ok(trackCardRule.includes("grid-template-columns: var(--now-cover-size)"));
+  assert.ok(coverRule.includes("width: var(--now-cover-size)"));
+  assert.ok(coverRule.includes("height: var(--now-cover-size)"));
+  assert.ok(coverRule.includes("outline: clamp(3px, 0.24vw, 5px) solid"));
+  assert.ok(artistRule.includes("font-weight: 600"));
+  assert.ok(artistRule.includes("text-transform: uppercase"));
+  assert.ok(albumRule.includes("text-transform: uppercase"));
+  assert.ok(copyRule.includes("display: flex"));
+  assert.ok(copyRule.includes("flex-direction: column"));
+  assert.ok(px(titleRule, "margin-top") >= 14, "song title should have breathing room from album metadata");
 });
 
-test("right queue and transport controls stay separated", () => {
-  const queueRule = cssRuleLast(nowPlayingCss, ".floating-queue");
-  const queueButtonRule = cssRule(nowPlayingCss, ".floating-queue button");
-  const queueTitleRule = cssRule(nowPlayingCss, ".floating-queue strong");
-  const queueArtistRule = cssRuleLast(nowPlayingCss, ".floating-queue span");
-  const buttonsRule = cssRule(nowPlayingCss, ".now-buttons");
-  const playRule = cssRule(nowPlayingCss, ".now-buttons .now-play");
+test("right status card and bottom progress remain separated", () => {
+  const panelRule = cssRule(nowPlayingCss, ".now-side-panel");
+  const trackListRule = cssRule(nowPlayingCss, ".now-panel-tracks");
+  const controlsRule = cssRule(nowPlayingCss, ".now-panel-controls");
+  const transportRule = cssRuleLast(nowPlayingCss, ".now-transport");
+  const progressRule = cssRule(nowPlayingCss, ".now-progress");
+  const glowRule = cssRule(nowPlayingCss, ".audio-glow-canvas");
 
-  const queueBottom = px(queueRule, "bottom");
-  const buttonsBottom = px(buttonsRule, "bottom");
-  const playHeight = px(playRule, "height");
+  assert.ok(px(trackListRule, "max-height") <= 180, "right queue should stay compact by default");
+  assert.ok(panelRule.includes("bottom: 0"));
+  assert.ok(panelRule.includes("background: rgba(0, 0, 0, 0.58)"));
+  assert.ok(controlsRule.includes("display: flex"));
+  assert.ok(controlsRule.includes("justify-content: flex-end"));
+  assert.ok(controlsRule.includes("width: 100%"));
+  assert.ok(px(cssRule(nowPlayingCss, ".now-panel-controls button"), "width") >= 34);
+  assert.ok(px(cssRule(nowPlayingCss, ".now-panel-controls .now-play"), "width") >= 48);
+  assert.ok(transportRule.includes("bottom: 28px"));
+  assert.ok(progressRule.includes("bottom: 0"));
+  assert.ok(progressRule.includes("left: 50%"));
+  assert.ok(progressRule.includes("width: clamp(270px, 24vw, 520px)"));
+  assert.ok(px(glowRule, "max-height") <= 122, "glow should stay below the raised progress area");
+});
 
-  assert.ok(px(queueRule, "max-height") <= 180, "queue panel should stay short enough for controls below");
-  assert.ok(px(queueButtonRule, "min-height") <= 46, "queue rows should remain compact");
-  assert.ok(px(queueTitleRule, "font-size") <= 18, "queue title should remain compact");
-  assert.ok(px(queueArtistRule, "font-size") <= 13, "queue artist should remain compact");
-  assert.ok(queueBottom >= buttonsBottom + playHeight + 70, "queue panel should sit clearly above transport controls");
+test("mosaic canvas does not use audio energy for brightness", () => {
+  assert.ok(!mosaicCanvasSource.includes("energyRef"));
+  assert.ok(!mosaicCanvasSource.includes("createEnergyTint"));
+  assert.ok(!/globalAlpha\s*=\s*[^;\n]*(energy|beatPulse)/.test(mosaicCanvasSource));
+  assert.ok(!/brightness\([^)]*(energy|beatPulse)/.test(mosaicCanvasSource));
+  assert.ok(mosaicCanvasSource.includes("createSlowTint"));
+});
+
+test("mosaic waits for decoded covers and reveals without text placeholders", () => {
+  assert.ok(mosaicCanvasSource.includes("await preloadWallImages(wallAlbums)"));
+  assert.ok(mosaicCanvasSource.includes("image.decode()"));
+  assert.ok(mosaicCanvasSource.includes("wallRevealTargetRef.current = 1"));
+  assert.ok(!mosaicCanvasSource.includes("fillText("), "album initials should never flash before covers decode");
+  assert.ok(!mosaicCanvasSource.includes("initials("), "mosaic should not render text placeholders");
+});
+
+test("back button is restrained like the Zune chrome", () => {
+  const backRule = cssRule(nowPlayingCss, ".now-back");
+  const backRingRule = cssRule(nowPlayingCss, ".now-back::before");
+  const nowPlayingTitlebarRule = cssRule(baseCss, ".shell-now-playing .titlebar");
+
+  assert.ok(px(backRule, "width") >= 96, "back button needs a generous click target");
+  assert.ok(px(backRule, "height") >= 96, "back button needs a generous click target");
+  assert.ok(px(backRingRule, "width") <= 76, "visual ring should stay restrained inside the hit target");
+  assert.ok(px(backRingRule, "border") <= 3);
+  assert.ok(nowPlayingTitlebarRule.includes("pointer-events: none"), "titlebar must not intercept the back-button hit target");
+  assert.ok(nowPlayingView.includes("strokeWidth={2.55}"));
+});
+
+test("save playlist dialog remains density-aware", () => {
+  const dialogRule = cssRule(nowPlayingCss, ".save-playlist-dialog");
+  const labelRule = cssRule(nowPlayingCss, ".save-playlist-dialog label span");
+
+  assert.ok(px(dialogRule, "width") <= 440, "dialog should not balloon on scaled desktop displays");
+  assert.ok(px(dialogRule, "min-height") <= 180);
+  assert.ok(px(labelRule, "font-size") <= 34);
+});
+
+test("volume follows Zune's collapsed and hover-expanded pattern", () => {
+  const volumeRule = cssRule(nowPlayingCss, ".now-volume");
+  const inputRule = cssRule(nowPlayingCss, ".now-volume input");
+
+  assert.ok(px(volumeRule, "width") <= 116, "idle volume control should only reserve room for its value");
+  assert.ok(inputRule.includes("width: 0"));
+  assert.ok(inputRule.includes("opacity: 0"));
+  assert.ok(nowPlayingCss.includes(".now-volume:hover .now-volume-icon"));
+  assert.ok(nowPlayingCss.includes("width: clamp(96px, 7.6vw, 142px)"));
+  assert.ok(nowPlayingView.includes("<Volume2 className=\"now-volume-icon\""));
+});
+
+test("responsive rules no longer reference removed visualizer structures", () => {
+  assert.ok(animationCss.includes(".now-mosaic-canvas"));
+  assert.ok(animationCss.includes(".audio-glow-canvas"));
+  assert.ok(!animationCss.includes(".wall-tile"));
+  assert.ok(!animationCss.includes(".visualizer-wave-svg"));
 });
 
 function cssRule(source, selector) {
@@ -95,16 +164,9 @@ function cssRuleLast(source, selector) {
   return matches.at(-1)[1];
 }
 
-function cssKeyframes(source, name) {
-  const start = source.indexOf(`@keyframes ${name}`);
-  assert.notEqual(start, -1, `missing keyframes ${name}`);
-  const end = source.indexOf("@media", start);
-  return source.slice(start, end === -1 ? undefined : end);
-}
-
 function px(rule, property) {
   const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = rule.match(new RegExp(`${escaped}:\\s*(?:min\\()?([0-9.]+)px`));
+  const match = rule.match(new RegExp(`${escaped}:\\s*(?:clamp\\()?([0-9.]+)px`));
   assert.ok(match, `missing px value for ${property}`);
   return Number(match[1]);
 }

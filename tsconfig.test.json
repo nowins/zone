@@ -9,5 +9,11 @@
     "isolatedModules": false,
     "types": []
   },
-  "include": ["src/utils/visualizer.ts", "src/utils/nowPlayingWall.ts"]
+  "include": [
+    "src/utils/visualizer.ts",
+    "src/utils/nowPlayingWall.ts",
+    "src/utils/nowPlayingCanvas.ts",
+    "src/utils/beatAnalysis.ts",
+    "src/utils/audioGlow.ts"
+  ]
 }

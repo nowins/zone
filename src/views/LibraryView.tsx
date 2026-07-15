@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import type { MouseEvent } from "react";
-import { Play } from "lucide-react";
+import { Heart, Play } from "lucide-react";
 import { Cover } from "../components/Cover";
 import { ArtistBrowser } from "./ArtistBrowser";
 import { PlaylistBrowser } from "./PlaylistBrowser";
@@ -21,6 +22,8 @@ export function LibraryView({
   selectedPlaylistId,
   onSelectPlaylist,
   onCreatePlaylist,
+  favoriteTrackIds,
+  onToggleFavorite,
 }: {
   view: ViewMode;
   tracks: Track[];
@@ -37,7 +40,15 @@ export function LibraryView({
   selectedPlaylistId: string;
   onSelectPlaylist: (id: string) => void;
   onCreatePlaylist: (name: string) => void;
+  favoriteTrackIds: Set<string>;
+  onToggleFavorite: (track: Track) => void;
 }) {
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(activeTrackId);
+
+  useEffect(() => {
+    if (activeTrackId) setSelectedTrackId(activeTrackId);
+  }, [activeTrackId]);
+
   if (view === "albums") {
     const selectedAlbum = albums.find((album) => album.key === selectedAlbumKey) ?? albums[0] ?? null;
 
@@ -73,7 +84,7 @@ export function LibraryView({
               </div>
               <strong>{album.album}</strong>
               <span>{album.artist}</span>
-              <small>{album.tracks.length} songs</small>
+              <small>{album.tracks.length} 首歌曲</small>
             </div>
           ))}
         </div>
@@ -82,19 +93,19 @@ export function LibraryView({
           {selectedAlbum ? (
             <>
               <div className="album-detail-head">
-                <Cover artPath={selectedAlbum.coverPath} label={selectedAlbum.album} size="mini" />
                 <div>
                   <strong>{selectedAlbum.album}</strong>
-                  <span>{selectedAlbum.artist}</span>
+                  <span>{selectedAlbum.tracks.length} 首歌曲 · {selectedAlbum.artist}</span>
                 </div>
+                <button onClick={() => onPlayTracks(selectedAlbum.tracks)} title={`播放 ${selectedAlbum.album}`}>
+                  <Play size={20} fill="currentColor" />
+                </button>
               </div>
               <div className="album-track-list">
                 {selectedAlbum.tracks.map((track, index) => (
-                  <button
+                  <div
                     key={track.id}
-                    className={track.id === activeTrackId ? "playing" : ""}
-                    onDoubleClick={() => onPlay(track, selectedAlbum.tracks)}
-                    onClick={() => undefined}
+                    className={`album-track-row ${track.id === selectedTrackId ? "selected" : ""} ${track.id === activeTrackId ? "playing" : ""}`}
                     onContextMenu={(event) =>
                       onContextMenu(event, {
                         kind: "track",
@@ -104,10 +115,25 @@ export function LibraryView({
                       })
                     }
                   >
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong>{track.title}</strong>
-                    <em>{track.artist}</em>
-                  </button>
+                    <button
+                      className="album-track-main"
+                      onClick={() => setSelectedTrackId(track.id)}
+                      onDoubleClick={() => onPlay(track, selectedAlbum.tracks)}
+                    >
+                      <span>{String(index + 1).padStart(2, "0")}</span>
+                      <span className="track-copy">
+                        <strong>{track.title}</strong>
+                        <em>{track.artist} · {track.album}</em>
+                      </span>
+                    </button>
+                    <button
+                      className={`track-favorite ${favoriteTrackIds.has(track.id) ? "active" : ""}`}
+                      onClick={() => onToggleFavorite(track)}
+                      title={favoriteTrackIds.has(track.id) ? "取消收藏" : "收藏"}
+                    >
+                      <Heart size={16} fill={favoriteTrackIds.has(track.id) ? "currentColor" : "none"} />
+                    </button>
+                  </div>
                 ))}
               </div>
             </>
@@ -150,11 +176,9 @@ export function LibraryView({
   return (
     <div className="song-list">
       {tracks.map((track, index) => (
-        <button
+        <div
           key={track.id}
-          className={track.id === activeTrackId ? "playing" : ""}
-          onDoubleClick={() => onPlay(track, tracks)}
-          onClick={() => onPlay(track, tracks)}
+          className={`song-row ${track.id === activeTrackId ? "playing" : ""}`}
           onContextMenu={(event) =>
             onContextMenu(event, {
               kind: "track",
@@ -164,11 +188,20 @@ export function LibraryView({
             })
           }
         >
-          <span>{String(index + 1).padStart(2, "0")}</span>
-          <strong>{track.title}</strong>
-          <em>{track.artist}</em>
-          <small>{track.album}</small>
-        </button>
+          <button className="song-row-main" onDoubleClick={() => onPlay(track, tracks)} onClick={() => onPlay(track, tracks)}>
+            <span>{String(index + 1).padStart(2, "0")}</span>
+            <strong>{track.title}</strong>
+            <em>{track.artist}</em>
+            <small>{track.album}</small>
+          </button>
+          <button
+            className={`track-favorite ${favoriteTrackIds.has(track.id) ? "active" : ""}`}
+            onClick={() => onToggleFavorite(track)}
+            title={favoriteTrackIds.has(track.id) ? "取消收藏" : "收藏"}
+          >
+            <Heart size={16} fill={favoriteTrackIds.has(track.id) ? "currentColor" : "none"} />
+          </button>
+        </div>
       ))}
     </div>
   );

@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { AudioLines, Heart, Pause, Play, Repeat, Shuffle, SkipBack, SkipForward } from "lucide-react";
+import { ArrowLeft, AudioLines, Heart, ListMusic, Pause, Play, Repeat, Shuffle, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { AudioGlowCanvas } from "../components/AudioGlowCanvas";
 import { Cover } from "../components/Cover";
-import { formatTime, initials } from "../utils/music";
-import { buildNowPlayingWall, wallTilePatternForIndex } from "../utils/nowPlayingWall";
+import { NowPlayingMosaicCanvas } from "../components/NowPlayingMosaicCanvas";
+import { formatTime } from "../utils/music";
 import type { RepeatMode, Track } from "../types";
 
 export function NowPlayingView({
@@ -18,7 +17,12 @@ export function NowPlayingView({
   repeat,
   visualizerSamples,
   visualizerEnergy,
+  beatPulse,
+  beatPhase,
+  onsetStrength,
+  beatConfidence,
   isFavorite,
+  volume,
   onBack,
   onPlay,
   onPlayPause,
@@ -28,6 +32,8 @@ export function NowPlayingView({
   onSeek,
   onShuffle,
   onRepeat,
+  onVolume,
+  onSaveQueueAsPlaylist,
 }: {
   track: Track | null;
   tracks: Track[];
@@ -39,7 +45,12 @@ export function NowPlayingView({
   repeat: RepeatMode;
   visualizerSamples: number[];
   visualizerEnergy: number;
+  beatPulse: number;
+  beatPhase: number;
+  onsetStrength: number;
+  beatConfidence: number;
   isFavorite: boolean;
+  volume: number;
   onBack: () => void;
   onPlay: (track: Track, sourceTracks?: Track[]) => void;
   onPlayPause: () => void;
@@ -49,21 +60,24 @@ export function NowPlayingView({
   onSeek: (value: number) => void;
   onShuffle: () => void;
   onRepeat: () => void;
+  onVolume: (value: number) => void;
+  onSaveQueueAsPlaylist: (name: string) => void;
 }) {
-  const [chromeVisible, setChromeVisible] = useState(true);
-  const [flippingTiles, setFlippingTiles] = useState<Set<number>>(() => new Set());
-  const hideTimer = useRef<number | null>(null);
-  const flipTimer = useRef<number | null>(null);
-  const flipClearTimer = useRef<number | null>(null);
+  const [chromeMode, setChromeMode] = useState<"active" | "idle" | "immersive">("active");
+  const [queueExpanded, setQueueExpanded] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [playlistNameDraft, setPlaylistNameDraft] = useState("now playing");
+  const idleTimer = useRef<number | null>(null);
+  const immersiveTimer = useRef<number | null>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
-  const wallAlbums = useMemo(() => buildNowPlayingWall(tracks, track), [tracks, track]);
-  const visualizerHorizon = useMemo(() => buildHorizonPaths(visualizerSamples), [visualizerSamples]);
-  const visualizerDisplayEnergy = Math.min(1, Math.max(0.12, visualizerEnergy * 1.25 + 0.08));
-  const visualizerPeak = useMemo(() => getVisualizerPeak(visualizerSamples), [visualizerSamples]);
   const activeQueueIndex = useMemo(() => queue.findIndex((item) => item.id === track?.id), [queue, track?.id]);
-  const [tintColor, setTintColor] = useState("rgb(200, 80, 40)");
-  const [wallFading, setWallFading] = useState(false);
+  const upcomingQueue = useMemo(() => {
+    const limit = queueExpanded ? 8 : 0;
+    if (queue.length === 0) return [];
+    if (activeQueueIndex >= 0) return queue.slice(activeQueueIndex + 1, activeQueueIndex + 1 + limit);
+    return queue.filter((item) => item.id !== track?.id).slice(0, limit);
+  }, [activeQueueIndex, queue, queueExpanded, track?.id]);
   const [textFading, setTextFading] = useState(false);
 
   function handleProgressInteraction(clientX: number) {
@@ -93,155 +107,156 @@ export function NowPlayingView({
     window.addEventListener("mouseup", handleMouseUp);
   }
 
-  function scheduleChromeHide(delay = 5000) {
-    if (hideTimer.current) window.clearTimeout(hideTimer.current);
-    hideTimer.current = window.setTimeout(() => setChromeVisible(false), delay);
+  function scheduleChromeFade() {
+    if (idleTimer.current) window.clearTimeout(idleTimer.current);
+    if (immersiveTimer.current) window.clearTimeout(immersiveTimer.current);
+    idleTimer.current = window.setTimeout(() => setChromeMode("idle"), 15000);
+    immersiveTimer.current = window.setTimeout(() => setChromeMode("immersive"), 32000);
   }
 
   function wakeChrome() {
-    setChromeVisible(true);
-    scheduleChromeHide();
+    setChromeMode("active");
+    scheduleChromeFade();
+  }
+
+  function openSaveDialog() {
+    if (queue.length === 0) return;
+    setPlaylistNameDraft("now playing");
+    setSaveDialogOpen(true);
+    setChromeMode("active");
+  }
+
+  function closeSaveDialog() {
+    setSaveDialogOpen(false);
+  }
+
+  function submitSaveDialog(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const cleanName = playlistNameDraft.trim();
+    if (!cleanName) return;
+    onSaveQueueAsPlaylist(cleanName);
+    setSaveDialogOpen(false);
   }
 
   useEffect(() => {
     wakeChrome();
-    setWallFading(true);
     setTextFading(true);
     const fadeInTimer = window.setTimeout(() => {
-      setWallFading(false);
       setTextFading(false);
     }, 600);
     return () => {
-      if (hideTimer.current) window.clearTimeout(hideTimer.current);
+      if (idleTimer.current) window.clearTimeout(idleTimer.current);
+      if (immersiveTimer.current) window.clearTimeout(immersiveTimer.current);
       window.clearTimeout(fadeInTimer);
     };
   }, [track?.id]);
 
   useEffect(() => {
-    if (flipTimer.current) window.clearTimeout(flipTimer.current);
-    if (flipClearTimer.current) window.clearTimeout(flipClearTimer.current);
-    setFlippingTiles(new Set());
+    if (!saveDialogOpen) return;
 
-    if (!isPlaying || wallAlbums.length === 0) return;
-
-    const flipDuration = 6200;
-
-    function scheduleNextFlip(delay = 3500 + Math.random() * 3000) {
-      flipTimer.current = window.setTimeout(() => {
-        const flipCount = Math.min(wallAlbums.length, Math.random() > 0.88 ? 2 : 1);
-        const next = new Set<number>();
-        while (next.size < flipCount) next.add(Math.floor(Math.random() * wallAlbums.length));
-        setFlippingTiles(next);
-        flipClearTimer.current = window.setTimeout(() => {
-          setFlippingTiles((current) => {
-            const updated = new Set(current);
-            for (const index of next) updated.delete(index);
-            return updated;
-          });
-        }, flipDuration);
-        scheduleNextFlip(10000 + Math.random() * 8000);
-      }, delay);
-    }
-
-    scheduleNextFlip();
-
-    return () => {
-      if (flipTimer.current) window.clearTimeout(flipTimer.current);
-      if (flipClearTimer.current) window.clearTimeout(flipClearTimer.current);
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeSaveDialog();
     };
-  }, [isPlaying, wallAlbums.length]);
 
-  useEffect(() => {
-    if (!track?.cover_path) return;
-    const img = new Image();
-    img.src = convertFileSrc(track.cover_path);
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = 64;
-      canvas.height = 64;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      ctx.drawImage(img, 0, 0, 64, 64);
-      const data = ctx.getImageData(0, 0, 64, 64).data;
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      let count = 0;
-      for (let i = 0; i < data.length; i += 16) {
-        r += data[i];
-        g += data[i + 1];
-        b += data[i + 2];
-        count += 1;
-      }
-      r = Math.round(r / count);
-      g = Math.round(g / count);
-      b = Math.round(b / count);
-      const warmR = Math.min(255, Math.round(r * 1.15));
-      const warmG = Math.min(255, Math.round(g * 0.85));
-      const warmB = Math.min(255, Math.round(b * 0.55));
-      setTintColor(`rgb(${warmR}, ${warmG}, ${warmB})`);
-    };
-  }, [track?.cover_path]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [saveDialogOpen]);
 
   return (
     <section
-      className={`now-playing-stage ${chromeVisible ? "chrome-visible" : "chrome-idle"} ${
+      className={`now-playing-stage chrome-${chromeMode} ${
         isPlaying ? "wall-playing" : "wall-paused"
       }`}
-      style={{ "--cover-tint": tintColor } as CSSProperties}
       onMouseMove={wakeChrome}
       onMouseDown={wakeChrome}
       onMouseEnter={wakeChrome}
-      onMouseLeave={() => scheduleChromeHide()}
+      onKeyDown={wakeChrome}
     >
-      <div className="now-gradient" />
-      <div className={`now-type-ghost ${textFading ? "text-fading" : ""}`} aria-hidden="true">
-        <strong>{track?.artist ?? "zone"}</strong>
-        <span>{track?.title ?? "now playing"}</span>
-      </div>
-      <div className={`album-wall ${wallFading ? "wall-fading" : ""}`} aria-hidden="true">
-        {wallAlbums.map((item, index) => {
-          const pattern = wallTilePatternForIndex(index);
-          return (
-            <div
-              key={`${item.key}-${index}`}
-              className={`wall-tile ${flippingTiles.has(index) ? "flipping" : ""}`}
-              style={{
-                "--drift": `${(index % 7) * 0.35}s`,
-                gridColumn: `span ${pattern.columns}`,
-                gridRow: `span ${pattern.rows}`,
-              } as CSSProperties}
-            >
-              {item.coverPath ? (
-                <img src={convertFileSrc(item.coverPath)} alt="" draggable={false} />
-              ) : (
-                <span>{initials(item.album)}</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
+      <NowPlayingMosaicCanvas
+        tracks={tracks}
+        activeTrack={track}
+        energy={visualizerEnergy}
+        beatPulse={beatPulse}
+        beatPhase={beatPhase}
+        beatConfidence={beatConfidence}
+        isPlaying={isPlaying}
+      />
+      <div className="now-canvas-grade" />
       <button className="now-back" onClick={onBack} title="Back to collection">
-        <span>‹</span>
+        <ArrowLeft size={40} strokeWidth={2.55} />
       </button>
 
-      <aside className="floating-queue">
-        {queue.slice(0, 10).map((item, index) => (
-          <button
-            key={item.id}
-            className={`${item.id === track?.id ? "playing" : ""} ${
-              activeQueueIndex >= 0 && index === activeQueueIndex + 1 ? "queue-next" : ""
-            }`}
-            onClick={() => onPlay(item, queue)}
-          >
-            <div className="queue-row">
-              {item.id === track?.id && <AudioLines size={16} />}
-              <strong>{item.title}</strong>
+      <aside className={`now-side-panel ${queueExpanded ? "queue-expanded" : ""}`}>
+        <div className="now-panel-tracks">
+          {track ? (
+            <button className="now-panel-current" onClick={() => onPlay(track, queue)} disabled={!track}>
+              <div className="queue-row">
+                <AudioLines size={16} />
+                <strong>{track.title}</strong>
+              </div>
+              <span>{track.artist}</span>
+            </button>
+          ) : (
+            <div className="now-panel-empty">
+              <strong>nothing playing</strong>
+              <span>choose a song</span>
             </div>
-            <span>{item.artist}</span>
-          </button>
-        ))}
+          )}
+
+          <div className="now-panel-upcoming">
+            {upcomingQueue.map((item) => (
+              <button key={item.id} onClick={() => onPlay(item, queue)}>
+                <strong>{item.title}</strong>
+                <span>{item.artist}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button className="save-queue" onClick={openSaveDialog} disabled={queue.length === 0}>
+          save as playlist
+        </button>
+
+        <div className="now-panel-footer">
+          <div className="now-panel-controls">
+            <button
+              className={queueExpanded ? "active" : ""}
+              onClick={() => setQueueExpanded((value) => !value)}
+              title={queueExpanded ? "Collapse queue" : "Expand queue"}
+              disabled={queue.length <= 5}
+            >
+              <ListMusic size={17} />
+            </button>
+            <button className={repeat !== "off" ? "active" : ""} onClick={onRepeat} title={`Repeat ${repeat}`}>
+              <Repeat size={16} />
+            </button>
+            <button className={shuffle ? "active" : ""} onClick={onShuffle} title="Shuffle">
+              <Shuffle size={16} />
+            </button>
+            <button onClick={onPrevious} title="Previous" disabled={!track}>
+              <SkipBack size={18} />
+            </button>
+            <button className="now-play" onClick={onPlayPause} title={isPlaying ? "Pause" : "Play"} disabled={!track}>
+              {isPlaying ? <Pause size={24} /> : <Play size={24} />}
+            </button>
+            <button onClick={onNext} title="Next" disabled={!track}>
+              <SkipForward size={18} />
+            </button>
+          </div>
+
+          <label className="now-volume">
+            <Volume2 className="now-volume-icon" size={15} aria-hidden="true" />
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
+              onChange={(event) => onVolume(Number(event.target.value))}
+            />
+            <span>{`volume ${Math.round(volume * 100)}`}</span>
+          </label>
+        </div>
       </aside>
 
       <section className={`now-track-card ${textFading ? "card-fading" : ""}`}>
@@ -261,32 +276,16 @@ export function NowPlayingView({
         </div>
       </section>
 
-      <div
-        className="visualizer"
-        style={{
-          "--energy": visualizerDisplayEnergy.toFixed(3),
-          "--peak": Math.min(1, visualizerPeak).toFixed(3),
-        } as CSSProperties}
-        aria-hidden="true"
-      >
-        <svg className="visualizer-wave-svg" viewBox="0 0 1000 96" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="visualizer-haze-fill" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="rgba(255, 197, 214, 0.08)" />
-              <stop offset="58%" stopColor="rgba(218, 54, 88, 0.18)" />
-              <stop offset="100%" stopColor="rgba(112, 0, 30, 0.42)" />
-            </linearGradient>
-            <linearGradient id="visualizer-body-fill" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="rgba(255, 176, 204, 0.22)" />
-              <stop offset="46%" stopColor="rgba(234, 70, 102, 0.3)" />
-              <stop offset="100%" stopColor="rgba(154, 8, 42, 0.52)" />
-            </linearGradient>
-          </defs>
-          <path className="visualizer-haze" d={visualizerHorizon.haze} />
-          <path className="visualizer-body" d={visualizerHorizon.body} />
-          <path className="visualizer-line" d={visualizerHorizon.line} />
-        </svg>
-      </div>
+      <AudioGlowCanvas
+        samples={visualizerSamples}
+        energy={visualizerEnergy}
+        beatPulse={beatPulse}
+        beatPhase={beatPhase}
+        onsetStrength={onsetStrength}
+        beatConfidence={beatConfidence}
+        isPlaying={isPlaying}
+        volume={volume}
+      />
 
       <div className="now-transport">
         <div className="now-progress">
@@ -305,80 +304,37 @@ export function NowPlayingView({
           <span className="now-progress-time-end">{duration > 0 ? `-${formatTime(Math.max(duration - progress, 0))}` : "0:00"}</span>
         </div>
 
-        <div className="now-buttons">
-          <button className={repeat !== "off" ? "active" : ""} onClick={onRepeat} title={`Repeat ${repeat}`}>
-            <Repeat size={16} />
-          </button>
-          <button className={shuffle ? "active" : ""} onClick={onShuffle} title="Shuffle">
-            <Shuffle size={16} />
-          </button>
-          <button onClick={onPrevious} title="Previous" disabled={!track}>
-            <SkipBack size={18} />
-          </button>
-          <button className="now-play" onClick={onPlayPause} title={isPlaying ? "Pause" : "Play"} disabled={!track}>
-            {isPlaying ? <Pause size={24} /> : <Play size={24} />}
-          </button>
-          <button onClick={onNext} title="Next" disabled={!track}>
-            <SkipForward size={18} />
-          </button>
-        </div>
       </div>
+
+      {saveDialogOpen && (
+        <div className="save-playlist-overlay" role="presentation">
+          <form
+            className="save-playlist-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Save playlist"
+            onSubmit={submitSaveDialog}
+          >
+            <div className="dialog-accent" aria-hidden="true" />
+            <label>
+              <span>playlist</span>
+              <input
+                autoFocus
+                value={playlistNameDraft}
+                onChange={(event) => setPlaylistNameDraft(event.target.value)}
+              />
+            </label>
+            <div className="dialog-actions">
+              <button type="submit" disabled={!playlistNameDraft.trim()}>
+                OK
+              </button>
+              <button type="button" onClick={closeSaveDialog}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </section>
   );
-}
-
-function buildHorizonPaths(samples: number[]) {
-  const width = 1000;
-  const baseline = 92;
-  const sampled = samples.length > 0 ? samples : [0.025, 0.04, 0.035, 0.045, 0.03];
-  const bucketCount = 92;
-  const points = Array.from({ length: bucketCount }, (_, index) => {
-    const ratio = index / Math.max(bucketCount - 1, 1);
-    const sourceIndex = ratio * (sampled.length - 1);
-    const left = Math.floor(sourceIndex);
-    const right = Math.min(sampled.length - 1, left + 1);
-    const amount = sourceIndex - left;
-    const level = sampled[left] * (1 - amount) + sampled[right] * amount;
-    const previous = sampled[Math.max(0, left - 2)] ?? level;
-    const next = sampled[Math.min(sampled.length - 1, right + 2)] ?? level;
-    const smoothed = level * 0.5 + previous * 0.24 + next * 0.26;
-    const centerGain = 0.74 + Math.pow(Math.sin(Math.PI * ratio), 2.2) * 0.22;
-    const edgeFade = smoothstep(ratio / 0.08) * smoothstep((1 - ratio) / 0.08);
-    const softened = Math.pow(Math.max(0, smoothed - 0.008), 0.96) * centerGain * edgeFade;
-    return {
-      x: ratio * width,
-      bodyY: baseline - (softened * 44 + 2),
-      hazeY: baseline - (softened * 72 + 7),
-      lineY: baseline - (softened * 34 + 6),
-    };
-  });
-
-  const line = (key: "bodyY" | "hazeY" | "lineY") =>
-    points
-      .map((point, index) => {
-        if (index === 0) return `M ${point.x.toFixed(2)} ${point[key].toFixed(2)}`;
-        const previous = points[index - 1];
-        const cx = (previous.x + point.x) / 2;
-        return `Q ${cx.toFixed(2)} ${previous[key].toFixed(2)} ${point.x.toFixed(2)} ${point[key].toFixed(2)}`;
-      })
-      .join(" ");
-
-  const area = (key: "bodyY" | "hazeY") => `${line(key)} L ${width} ${baseline} L 0 ${baseline} Z`;
-
-  return {
-    haze: area("hazeY"),
-    body: area("bodyY"),
-    line: line("lineY"),
-  };
-}
-
-function getVisualizerPeak(samples: number[]) {
-  if (samples.length === 0) return 0.04;
-  const sorted = [...samples].sort((left, right) => left - right);
-  return Math.max(0.04, sorted[Math.floor(sorted.length * 0.88)] ?? 0.04);
-}
-
-function smoothstep(value: number) {
-  const amount = Math.min(1, Math.max(0, value));
-  return amount * amount * (3 - 2 * amount);
 }

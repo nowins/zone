@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { FolderPlus, Search } from "lucide-react";
 import { Titlebar } from "./components/Titlebar";
+import { AppHeader } from "./components/AppHeader";
 import { EmptyState } from "./components/EmptyState";
 import { PlayerBar } from "./components/PlayerBar";
 import { ContextMenu } from "./components/ContextMenu";
 import { InfoPanel } from "./components/InfoPanel";
 import { LibraryView } from "./views/LibraryView";
+import { QuickplayView } from "./views/QuickplayView";
 import { NowPlayingView } from "./views/NowPlayingView";
 import { SettingsView } from "./views/SettingsView";
 import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, STORAGE_KEY, VISUALIZER_SAMPLE_COUNT } from "./constants";
 import { albumKey, bestAlbumArtist, compareTracksForAlbum, defaultPlaylists, normalizePlaylists, uniqueIds } from "./utils/music";
+import { analyzePcmBeatGrid, createIdleBeatFrame, RealtimeBeatAnalyzer, type BeatFrame, type BeatGrid } from "./utils/beatAnalysis";
 import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/visualizer";
 import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, MusicFolder, Playlist, RepeatMode, ScanResult, Track, ViewMode } from "./types";
 
@@ -22,6 +24,7 @@ declare global {
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previousPageRef = useRef<"quickplay" | "collection" | "settings">("quickplay");
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
@@ -29,13 +32,18 @@ export default function App() {
   const visualizerFrameRef = useRef<number | null>(null);
   const visualizerSilenceFramesRef = useRef(0);
   const visualizerUnavailableRef = useRef(false);
+  const realtimeBeatRef = useRef<RealtimeBeatAnalyzer | null>(null);
+  const offlineBeatGridRef = useRef<BeatGrid | null>(null);
+  const beatGridCacheRef = useRef(new Map<string, BeatGrid | null>());
+  const beatAnalysisRequestRef = useRef(0);
   const [folders, setFolders] = useState<MusicFolder[]>([]);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("albums");
-  const [page, setPage] = useState<AppPage>("collection");
+  const [page, setPage] = useState<AppPage>("quickplay");
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [queue, setQueue] = useState<string[]>([]);
+  const [playHistory, setPlayHistory] = useState<string[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanNote, setScanNote] = useState("");
@@ -48,6 +56,7 @@ export default function App() {
     Array.from({ length: VISUALIZER_SAMPLE_COUNT }, () => 0.035),
   );
   const [visualizerEnergy, setVisualizerEnergy] = useState(0.055);
+  const [beatFrame, setBeatFrame] = useState<BeatFrame>(() => createIdleBeatFrame());
   const [restored, setRestored] = useState(false);
   const [needsMetadataRefresh, setNeedsMetadataRefresh] = useState(false);
   const [selectedAlbumKey, setSelectedAlbumKey] = useState<string | null>(null);
@@ -69,6 +78,7 @@ export default function App() {
       setTracks(state.tracks ?? []);
       setActiveTrackId(state.activeTrackId ?? null);
       setQueue(state.queue ?? []);
+      setPlayHistory(state.playHistory ?? []);
       setVolume(state.volume ?? 0.8);
       setShuffle(state.shuffle ?? false);
       setRepeat(state.repeat ?? "off");
@@ -100,6 +110,7 @@ export default function App() {
         tracks,
         activeTrackId,
         queue,
+        playHistory,
         volume,
         shuffle,
         repeat,
@@ -107,7 +118,12 @@ export default function App() {
         selectedPlaylistId,
       }),
     );
-  }, [restored, folders, tracks, activeTrackId, queue, volume, shuffle, repeat, playlists, selectedPlaylistId]);
+  }, [restored, folders, tracks, activeTrackId, queue, playHistory, volume, shuffle, repeat, playlists, selectedPlaylistId]);
+
+  useEffect(() => {
+    if (!activeTrackId) return;
+    setPlayHistory((current) => [activeTrackId, ...current.filter((id) => id !== activeTrackId)].slice(0, 24));
+  }, [activeTrackId]);
 
   const activeTrack = useMemo(
     () => tracks.find((track) => track.id === activeTrackId) ?? null,
@@ -179,6 +195,7 @@ export default function App() {
   useEffect(() => {
     if (!isPlaying) {
       if (visualizerFrameRef.current) cancelAnimationFrame(visualizerFrameRef.current);
+      setBeatFrame(createIdleBeatFrame());
       return;
     }
 
@@ -193,9 +210,13 @@ export default function App() {
 
     const sourceUrl = convertFileSrc(activeTrack.path, "zone-audio");
     visualizerUnavailableRef.current = false;
+    realtimeBeatRef.current = null;
+    offlineBeatGridRef.current = beatGridCacheRef.current.get(activeTrack.id) ?? null;
+    setBeatFrame(createIdleBeatFrame());
     audioRef.current.crossOrigin = "anonymous";
     audioRef.current.src = sourceUrl;
     audioRef.current.load();
+    void preAnalyzeBeatGrid(activeTrack);
 
     void audioRef.current
       .play()
@@ -277,11 +298,31 @@ export default function App() {
 
   function toggleFavorite() {
     if (!activeTrack) return;
-    if (favoriteTrackIds.has(activeTrack.id)) {
-      removeFromPlaylist(DEFAULT_PLAYLIST_ID, [activeTrack]);
+    toggleFavoriteTrack(activeTrack);
+  }
+
+  function toggleFavoriteTrack(track: Track) {
+    if (favoriteTrackIds.has(track.id)) {
+      removeFromPlaylist(DEFAULT_PLAYLIST_ID, [track]);
     } else {
-      addToPlaylist(DEFAULT_PLAYLIST_ID, [activeTrack]);
+      addToPlaylist(DEFAULT_PLAYLIST_ID, [track]);
     }
+  }
+
+  function navigatePage(nextPage: "quickplay" | "collection" | "settings") {
+    if (nextPage === "quickplay") setQuery("");
+    setPage(nextPage);
+  }
+
+  function navigateCollection(nextView: ViewMode) {
+    setView(nextView);
+    setPage("collection");
+  }
+
+  function openNowPlaying() {
+    if (!activeTrack) return;
+    if (page !== "nowPlaying") previousPageRef.current = page;
+    setPage("nowPlaying");
   }
 
   function createPlaylist(name: string) {
@@ -298,6 +339,21 @@ export default function App() {
     setPlaylists((items) => [...normalizePlaylists(items), playlist]);
     setSelectedPlaylistId(playlist.id);
     setView("playlists");
+  }
+
+  function saveQueueAsPlaylist(name: string) {
+    const cleanName = name.trim();
+    const trackIds = uniqueIds(queue);
+    if (!cleanName || trackIds.length === 0) return;
+
+    const playlist: Playlist = {
+      id: `playlist-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      name: cleanName,
+      description: `${trackIds.length} songs`,
+      trackIds,
+    };
+
+    setPlaylists((items) => [...normalizePlaylists(items), playlist]);
   }
 
   function showContextMenu(event: React.MouseEvent, payload: ContextPayload) {
@@ -380,6 +436,53 @@ export default function App() {
     }
   }
 
+  async function preAnalyzeBeatGrid(track: Track) {
+    if (beatGridCacheRef.current.has(track.id)) {
+      offlineBeatGridRef.current = beatGridCacheRef.current.get(track.id) ?? null;
+      return;
+    }
+
+    const requestId = beatAnalysisRequestRef.current + 1;
+    beatAnalysisRequestRef.current = requestId;
+
+    try {
+      const sourceUrl = convertFileSrc(track.path, "zone-audio");
+      const response = await fetch(sourceUrl);
+      if (!response.ok) throw new Error(`beat analysis fetch failed: ${response.status}`);
+      const bytes = await response.arrayBuffer();
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) throw new Error("AudioContext unavailable");
+      const context = audioContextRef.current ?? new AudioContextClass();
+      const shouldClose = !audioContextRef.current;
+      const buffer = await context.decodeAudioData(bytes.slice(0));
+      const mixed = mixAudioBuffer(buffer);
+      const grid = analyzePcmBeatGrid(mixed, buffer.sampleRate);
+      beatGridCacheRef.current.set(track.id, grid);
+      if (shouldClose) void context.close();
+      if (beatAnalysisRequestRef.current === requestId && activeTrackId === track.id) {
+        offlineBeatGridRef.current = grid;
+      }
+    } catch {
+      beatGridCacheRef.current.set(track.id, null);
+      if (beatAnalysisRequestRef.current === requestId && activeTrackId === track.id) {
+        offlineBeatGridRef.current = null;
+      }
+    }
+  }
+
+  function mixAudioBuffer(buffer: AudioBuffer) {
+    const length = buffer.length;
+    const channels = Math.min(2, buffer.numberOfChannels);
+    if (channels <= 1) return new Float32Array(buffer.getChannelData(0));
+
+    const mixed = new Float32Array(length);
+    for (let channel = 0; channel < channels; channel += 1) {
+      const data = buffer.getChannelData(channel);
+      for (let index = 0; index < length; index += 1) mixed[index] += data[index] / channels;
+    }
+    return mixed;
+  }
+
   function startVisualizer() {
     void resumeAudioGraph();
     const frequencyData = new Uint8Array(analyserRef.current?.frequencyBinCount ?? 512);
@@ -404,6 +507,17 @@ export default function App() {
         );
         visualizerSilenceFramesRef.current = audioFrame.active ? 0 : visualizerSilenceFramesRef.current + 1;
         if (visualizerSilenceFramesRef.current < 28) frame = audioFrame;
+
+        if (!realtimeBeatRef.current) realtimeBeatRef.current = new RealtimeBeatAnalyzer();
+        const beat = realtimeBeatRef.current.update(
+          frequencyData,
+          timeData,
+          audioRef.current?.currentTime ?? progress,
+          audioContextRef.current?.sampleRate,
+          analyser.fftSize,
+          offlineBeatGridRef.current,
+        );
+        setBeatFrame(beat);
       }
 
       setVisualizerEnergy((current) =>
@@ -476,63 +590,61 @@ export default function App() {
       <Titlebar />
 
       <main className="workspace">
-        {page !== "nowPlaying" && (
-          <section className="masthead">
-            <div>
-              <p className="brand">zone</p>
-              <div className="pivot">
-                <button className={page === "collection" ? "pivot-active" : ""} onClick={() => setPage("collection")}>
-                  collection
-                </button>
-                <button onClick={() => setPage("nowPlaying")}>
-                  now playing
-                </button>
-                <button className={page === "settings" ? "pivot-active" : ""} onClick={() => setPage("settings")}>
-                  settings
-                </button>
-              </div>
-            </div>
+        {page !== "nowPlaying" ? (
+          <AppHeader
+            page={page}
+            query={query}
+            onQuery={setQuery}
+            onNavigate={navigatePage}
+            onAddFolder={addFolder}
+          />
+        ) : null}
 
-            <div className={`library-actions ${page !== "collection" ? "library-actions-muted" : ""}`}>
-              <label className="search-box">
-                <Search size={18} />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="search music"
-                  disabled={page !== "collection"}
-                />
-              </label>
-              <button className="icon-text" onClick={addFolder} title="Add music folder">
-                <FolderPlus size={19} />
-                <span>folder</span>
-              </button>
-            </div>
-          </section>
-        )}
+        {page === "quickplay" ? (
+          <QuickplayView
+            tracks={tracks}
+            albums={albums}
+            activeTrack={activeTrack}
+            historyIds={playHistory}
+            onPlay={playTrack}
+            onPlayTracks={playTracks}
+            onOpenNowPlaying={openNowPlaying}
+            onOpenCollection={() => navigateCollection("albums")}
+            onContextMenu={showContextMenu}
+          />
+        ) : null}
 
         {page === "collection" && (
           <section className="content-band">
             <div className="collection-header">
-              <div>
-                <h1>music</h1>
+              <div className="collection-title">
+                <h1>collection</h1>
                 <p>
                   {tracks.length === 0
-                    ? "choose a folder to start"
-                    : `${filteredTracks.length} of ${tracks.length} songs`}
+                    ? "选择一个文件夹开始"
+                    : view === "albums"
+                      ? `${albums.length} 张专辑`
+                      : view === "artists"
+                        ? `${artists.length} 位艺术家`
+                        : view === "playlists"
+                          ? `${playlists.length} 个播放列表`
+                          : `${filteredTracks.length} 首歌曲`}
                   {scanNote ? ` · ${scanNote}` : ""}
                 </p>
               </div>
-              <div className="segmented">
-                {(["albums", "artists", "songs", "playlists"] as ViewMode[]).map((item) => (
+              <div className="collection-navigation">
+                <span>音乐</span>
+                <div className="segmented">
+                {(["artists", "albums", "songs", "playlists"] as ViewMode[]).map((item) => (
                   <button
                     key={item}
                     className={view === item ? "selected" : ""}
                     onClick={() => setView(item)}
                   >
-                    {item}
+                    {{ artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" }[item]}
                   </button>
                 ))}
+                </div>
               </div>
             </div>
 
@@ -556,6 +668,8 @@ export default function App() {
                 selectedPlaylistId={selectedPlaylistId}
                 onSelectPlaylist={setSelectedPlaylistId}
                 onCreatePlaylist={createPlaylist}
+                favoriteTrackIds={favoriteTrackIds}
+                onToggleFavorite={toggleFavoriteTrack}
               />
             )}
           </section>
@@ -573,8 +687,13 @@ export default function App() {
             repeat={repeat}
             visualizerSamples={visualizerSamples}
             visualizerEnergy={visualizerEnergy}
+            beatPulse={beatFrame.beatPulse}
+            beatPhase={beatFrame.beatPhase}
+            onsetStrength={beatFrame.onsetStrength}
+            beatConfidence={beatFrame.confidence}
             isFavorite={isActiveTrackFavorite}
-            onBack={() => setPage("collection")}
+            volume={volume}
+            onBack={() => setPage(previousPageRef.current)}
             onPlay={playTrack}
             onPlayPause={togglePlay}
             onToggleFavorite={toggleFavorite}
@@ -583,6 +702,8 @@ export default function App() {
             onSeek={seek}
             onShuffle={() => setShuffle((value) => !value)}
             onRepeat={() => setRepeat((value) => (value === "off" ? "all" : value === "all" ? "one" : "off"))}
+            onVolume={setVolume}
+            onSaveQueueAsPlaylist={saveQueueAsPlaylist}
           />
         )}
 
@@ -614,6 +735,7 @@ export default function App() {
           volume={volume}
           shuffle={shuffle}
           repeat={repeat}
+          isFavorite={isActiveTrackFavorite}
           onPlayPause={togglePlay}
           onPrevious={() => move(-1)}
           onNext={() => move(1)}
@@ -621,7 +743,9 @@ export default function App() {
           onVolume={setVolume}
           onShuffle={() => setShuffle((value) => !value)}
           onRepeat={() => setRepeat((value) => (value === "off" ? "all" : value === "all" ? "one" : "off"))}
-          onOpenNowPlaying={() => setPage("nowPlaying")}
+          onToggleFavorite={toggleFavorite}
+          onOpenNowPlaying={openNowPlaying}
+          onNavigateCollection={navigateCollection}
         />
       )}
 

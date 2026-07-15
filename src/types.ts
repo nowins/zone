@@ -54,5 +54,5 @@ export type ScanResult = {
 };
 
 export type ViewMode = "songs" | "albums" | "artists" | "playlists";
-export type AppPage = "collection" | "nowPlaying" | "settings";
+export type AppPage = "quickplay" | "collection" | "nowPlaying" | "settings";
 export type RepeatMode = "off" | "one" | "all";
