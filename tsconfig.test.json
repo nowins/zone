@@ -14,6 +14,8 @@
     "src/utils/nowPlayingWall.ts",
     "src/utils/nowPlayingCanvas.ts",
     "src/utils/beatAnalysis.ts",
-    "src/utils/audioGlow.ts"
+    "src/utils/audioGlow.ts",
+    "src/utils/playback.ts",
+    "src/utils/music.ts"
   ]
 }

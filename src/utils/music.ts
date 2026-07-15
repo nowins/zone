@@ -1,4 +1,4 @@
-import { DEFAULT_PLAYLIST_ID } from "../constants";
+import { DEFAULT_PLAYLIST_ID } from "../constants.js";
 import type { Playlist, Track } from "../types";
 
 export function defaultPlaylists(): Playlist[] {
@@ -23,13 +23,19 @@ export function uniqueIds(ids: string[]) {
   return Array.from(new Set(ids));
 }
 
-export function albumKey(album: string) {
-  return album.trim().toLocaleLowerCase() || "unknown album";
+export function albumKey(album: string, albumArtist?: string) {
+  const albumPart = album.trim().toLocaleLowerCase() || "unknown album";
+  const artistPart = albumArtist?.trim().toLocaleLowerCase();
+  return artistPart ? `${albumPart}\u0000${artistPart}` : albumPart;
 }
 
 export function compareTracksForAlbum(a: Track, b: Track) {
-  return leadingTrackNumber(a.file_name) - leadingTrackNumber(b.file_name)
+  return trackNumber(a) - trackNumber(b)
     || a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function trackNumber(track: Track) {
+  return track.track_number ?? leadingTrackNumber(track.file_name);
 }
 
 function leadingTrackNumber(value: string) {
@@ -40,7 +46,7 @@ function leadingTrackNumber(value: string) {
 export function bestAlbumArtist(tracks: Track[]) {
   const counts = new Map<string, number>();
   for (const track of tracks) {
-    const artist = track.artist.trim() || "Unknown artist";
+    const artist = track.album_artist?.trim() || track.artist.trim() || "Unknown artist";
     counts.set(artist, (counts.get(artist) ?? 0) + 1);
   }
 

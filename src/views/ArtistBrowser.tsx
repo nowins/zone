@@ -25,7 +25,7 @@ export function ArtistBrowser({
     if (!artist) return [];
     const map = new Map<string, Track[]>();
     for (const track of artist.tracks) {
-      const key = albumKey(track.album);
+      const key = albumKey(track.album, track.album_artist ?? track.artist);
       map.set(key, [...(map.get(key) ?? []), track]);
     }
 
@@ -135,6 +135,7 @@ export function ArtistBrowser({
                   title: track.title,
                   subtitle: `${track.artist} / ${track.album}`,
                   tracks: [track],
+                  playbackTracks: visibleSongs,
                 })
               }
             >

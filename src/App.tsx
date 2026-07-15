@@ -14,6 +14,7 @@ import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, STORAGE_KEY, VISUALIZER_SA
 import { albumKey, bestAlbumArtist, compareTracksForAlbum, defaultPlaylists, normalizePlaylists, uniqueIds } from "./utils/music";
 import { analyzePcmBeatGrid, createIdleBeatFrame, RealtimeBeatAnalyzer, type BeatFrame, type BeatGrid } from "./utils/beatAnalysis";
 import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/visualizer";
+import { createShuffleOrder, haveSameQueueItems, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
 import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, MusicFolder, Playlist, RepeatMode, ScanResult, Track, ViewMode } from "./types";
 
 declare global {
@@ -51,6 +52,7 @@ export default function App() {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.8);
   const [shuffle, setShuffle] = useState(false);
+  const [shuffleOrder, setShuffleOrder] = useState<string[]>([]);
   const [repeat, setRepeat] = useState<RepeatMode>("off");
   const [visualizerSamples, setVisualizerSamples] = useState<number[]>(() =>
     Array.from({ length: VISUALIZER_SAMPLE_COUNT }, () => 0.035),
@@ -130,6 +132,38 @@ export default function App() {
     [tracks, activeTrackId],
   );
 
+  const baseQueueIds = useMemo(
+    () => (queue.length > 0 ? queue : tracks.map((track) => track.id)),
+    [queue, tracks],
+  );
+
+  const playbackQueueIds = useMemo(
+    () => shuffle && haveSameQueueItems(shuffleOrder, baseQueueIds) ? shuffleOrder : baseQueueIds,
+    [baseQueueIds, shuffle, shuffleOrder],
+  );
+
+  useEffect(() => {
+    if (!restored) return;
+    const libraryIds = tracks.map((track) => track.id);
+
+    setQueue((current) => reconcileQueueWithLibrary(current, libraryIds));
+    setPlayHistory((current) => {
+      const validIds = new Set(libraryIds);
+      const next = current.filter((id) => validIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+    setActiveTrackId((current) => reconcileActiveTrack(current, queue, libraryIds));
+  }, [restored, tracks]);
+
+  useEffect(() => {
+    if (!shuffle) {
+      setShuffleOrder([]);
+      return;
+    }
+
+    setShuffleOrder(createShuffleOrder(baseQueueIds, activeTrackId));
+  }, [baseQueueIds, shuffle]);
+
   const favoriteTrackIds = useMemo(
     () => new Set(playlists.find((playlist) => playlist.id === DEFAULT_PLAYLIST_ID)?.trackIds ?? []),
     [playlists],
@@ -150,7 +184,7 @@ export default function App() {
   const albums = useMemo(() => {
     const map = new Map<string, Track[]>();
     for (const track of filteredTracks) {
-      const key = albumKey(track.album);
+      const key = albumKey(track.album, track.album_artist ?? track.artist);
       map.set(key, [...(map.get(key) ?? []), track]);
     }
     return Array.from(map.entries())
@@ -245,11 +279,11 @@ export default function App() {
       const result = await invoke<ScanResult>("scan_library", {
         folders: targetFolders.map((folder) => folder.path),
       });
+      const scannedIds = result.tracks.map((track) => track.id);
       setTracks(result.tracks);
-      setQueue(result.tracks.map((track) => track.id));
+      setQueue((current) => reconcileQueueWithLibrary(current, scannedIds));
       setScanNote(`${result.tracks.length} songs indexed`);
       setNeedsMetadataRefresh(false);
-      if (!activeTrackId && result.tracks.length > 0) setActiveTrackId(result.tracks[0].id);
     } finally {
       setIsScanning(false);
     }
@@ -257,13 +291,15 @@ export default function App() {
 
   function playTrack(track: Track, sourceTracks = filteredTracks) {
     setQueue(sourceTracks.map((item) => item.id));
-    setActiveTrackId(track.id);
+    if (track.id === activeTrackId) restartCurrentPlayback();
+    else setActiveTrackId(track.id);
   }
 
   function playTracks(targetTracks: Track[]) {
     if (targetTracks.length === 0) return;
     setQueue(targetTracks.map((track) => track.id));
-    setActiveTrackId(targetTracks[0].id);
+    if (targetTracks[0].id === activeTrackId) restartCurrentPlayback();
+    else setActiveTrackId(targetTracks[0].id);
   }
 
   function appendToQueue(targetTracks: Track[]) {
@@ -343,7 +379,7 @@ export default function App() {
 
   function saveQueueAsPlaylist(name: string) {
     const cleanName = name.trim();
-    const trackIds = uniqueIds(queue);
+    const trackIds = uniqueIds(playbackQueueIds);
     if (!cleanName || trackIds.length === 0) return;
 
     const playlist: Playlist = {
@@ -360,6 +396,15 @@ export default function App() {
     event.preventDefault();
     event.stopPropagation();
     setContextMenu({ x: event.clientX, y: event.clientY, payload });
+  }
+
+  function playContextPayload(payload: ContextPayload) {
+    const track = payload.kind === "track" ? payload.tracks[0] : null;
+    if (track) {
+      playTrack(track, payload.playbackTracks ?? payload.tracks);
+      return;
+    }
+    playTracks(payload.tracks);
   }
 
   function closeContextMenu() {
@@ -379,6 +424,20 @@ export default function App() {
       audio.pause();
       setIsPlaying(false);
     }
+  }
+
+  function restartCurrentPlayback() {
+    const audio = audioRef.current;
+    if (!audio || !activeTrack) return;
+    audio.currentTime = 0;
+    setProgress(0);
+    void audio
+      .play()
+      .then(() => {
+        setIsPlaying(true);
+        void resumeAudioGraph();
+      })
+      .catch(() => setIsPlaying(false));
   }
 
   function ensureAudioGraph() {
@@ -537,30 +596,36 @@ export default function App() {
     sample();
   }
 
-  function move(delta: 1 | -1) {
-    if (tracks.length === 0) return;
-    const baseQueue = queue.length > 0 ? queue : tracks.map((track) => track.id);
-    const currentIndex = Math.max(0, baseQueue.indexOf(activeTrackId ?? ""));
-    const nextIndex = shuffle
-      ? Math.floor(Math.random() * baseQueue.length)
-      : (currentIndex + delta + baseQueue.length) % baseQueue.length;
-    setActiveTrackId(baseQueue[nextIndex]);
+  function move(delta: 1 | -1): QueueMoveResult {
+    if (baseQueueIds.length === 0) return { kind: "empty" };
+
+    let playbackOrder = playbackQueueIds;
+    if (shuffle && !haveSameQueueItems(shuffleOrder, baseQueueIds)) {
+      playbackOrder = createShuffleOrder(baseQueueIds, activeTrackId);
+      setShuffleOrder(playbackOrder);
+    }
+    const activeIndex = playbackOrder.indexOf(activeTrackId ?? "");
+    if (shuffle && repeat === "all" && delta === 1 && activeIndex === playbackOrder.length - 1 && playbackOrder.length > 1) {
+      playbackOrder = createShuffleOrder(baseQueueIds, activeTrackId);
+      setShuffleOrder(playbackOrder);
+    }
+
+    const result = resolveQueueMove(playbackOrder, activeTrackId, delta, repeat);
+    if (result.kind === "restart") restartCurrentPlayback();
+    if (result.kind === "move") setActiveTrackId(result.trackId);
+    return result;
   }
 
   function onEnded() {
     if (repeat === "one" && audioRef.current) {
-      audioRef.current.currentTime = 0;
-      void audioRef.current.play();
+      restartCurrentPlayback();
       return;
     }
 
-    const currentIndex = queue.indexOf(activeTrackId ?? "");
-    if (repeat === "off" && currentIndex === queue.length - 1) {
+    const result = move(1);
+    if (result.kind === "boundary" || result.kind === "empty") {
       setIsPlaying(false);
-      return;
     }
-
-    move(1);
   }
 
   function seek(value: number) {
@@ -655,9 +720,10 @@ export default function App() {
                 key={view}
                 view={view}
                 tracks={filteredTracks}
+                libraryTracks={tracks}
                 albums={albums}
                 artists={artists}
-                queueIds={queue}
+                queueIds={playbackQueueIds}
                 activeTrackId={activeTrackId}
                 selectedAlbumKey={selectedAlbumKey}
                 onSelectAlbum={setSelectedAlbumKey}
@@ -679,7 +745,7 @@ export default function App() {
           <NowPlayingView
             track={activeTrack}
             tracks={tracks}
-            queue={queue.map((id) => tracks.find((track) => track.id === id)).filter(Boolean) as Track[]}
+            queue={playbackQueueIds.map((id) => tracks.find((track) => track.id === id)).filter(Boolean) as Track[]}
             isPlaying={isPlaying}
             progress={progress}
             duration={duration}
@@ -754,7 +820,7 @@ export default function App() {
           menu={contextMenu}
           playlists={playlists}
           onClose={closeContextMenu}
-          onPlay={() => playTracks(contextMenu.payload.tracks)}
+          onPlay={() => playContextPayload(contextMenu.payload)}
           onAddToQueue={() => appendToQueue(contextMenu.payload.tracks)}
           onAddToPlaylist={(playlistId) => addToPlaylist(playlistId, contextMenu.payload.tracks)}
           onInfo={() => setInfoTarget(contextMenu.payload)}

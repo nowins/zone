@@ -91,6 +91,9 @@ test("right status card and bottom progress remain separated", () => {
   assert.ok(progressRule.includes("left: 50%"));
   assert.ok(progressRule.includes("width: clamp(270px, 24vw, 520px)"));
   assert.ok(px(glowRule, "max-height") <= 122, "glow should stay below the raised progress area");
+  assert.ok(nowPlayingView.includes("queueAfterCurrent(queue"), "queue should keep every item around the active track");
+  assert.ok(nowPlayingView.includes("orderedQueue.slice(0, COLLAPSED_UPCOMING_COUNT)"));
+  assert.ok(!nowPlayingView.includes("queueExpanded ? 8 : 0"), "collapsed queue must not hide every upcoming track");
 });
 
 test("mosaic canvas does not use audio energy for brightness", () => {

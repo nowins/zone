@@ -1,0 +1,414 @@
+:root {
+  --motion-instant: 83ms;
+  --motion-press: 110ms;
+  --motion-micro: 167ms;
+  --motion-content: 220ms;
+  --motion-page: 250ms;
+  --motion-chrome: 420ms;
+  --motion-ease-direct: cubic-bezier(0.23, 1, 0.32, 1);
+  --motion-ease-point: cubic-bezier(0.55, 0.55, 0, 1);
+  --motion-ease-linear: linear;
+}
+
+/* Page hierarchy: Turnstile for peers, Continuum for now-playing depth. */
+.motion-page {
+  transform-origin: 10% 50%;
+  backface-visibility: hidden;
+  animation: wp7-page-settle var(--motion-content) var(--motion-ease-direct) both;
+}
+
+.shell[data-motion-direction="forward"] .motion-page {
+  animation-name: wp7-turnstile-forward-in;
+  animation-duration: var(--motion-page);
+}
+
+.shell[data-motion-direction="backward"] .motion-page {
+  animation-name: wp7-turnstile-backward-in;
+  animation-duration: var(--motion-page);
+}
+
+.shell[data-motion-direction="depth-in"] .motion-page {
+  animation-name: wp7-continuum-depth-in;
+  animation-duration: var(--motion-page);
+}
+
+.shell[data-motion-direction="depth-out"] .motion-page {
+  animation-name: wp7-continuum-depth-out;
+  animation-duration: var(--motion-page);
+}
+
+.shell[data-motion-input="keyboard"] .motion-page,
+.shell[data-motion-input="keyboard"] .library-motion-stage {
+  animation: none;
+}
+
+/* Pivot content moves in the same direction as its label order. */
+.library-motion-stage {
+  backface-visibility: hidden;
+  animation: wp7-pivot-forward-in var(--motion-content) var(--motion-ease-direct) both;
+}
+
+.shell[data-collection-direction="backward"] .library-motion-stage {
+  animation-name: wp7-pivot-backward-in;
+}
+
+/* Feather: short, capped cascades. Content remains interactive throughout. */
+.quick-group,
+.quick-album,
+.history-feature,
+.history-stack > button,
+.album-tile,
+.artist-picker button,
+.artist-album-tile,
+.artist-song-list button,
+.playlist-list > button,
+.playlist-rows button,
+.song-list .song-row,
+.album-detail-motion .album-track-row,
+.folder-list > div,
+.settings-actions > button {
+  animation: wp7-feather-in var(--motion-content) var(--motion-ease-direct) both;
+  animation-delay: var(--stagger, 0ms);
+}
+
+.quick-group:nth-child(1) { --stagger: 0ms; }
+.quick-group:nth-child(2) { --stagger: 36ms; }
+.quick-group:nth-child(3) { --stagger: 72ms; }
+.quick-album:nth-child(1),
+.history-stack > button:nth-child(1),
+.album-detail-motion .album-track-row:nth-child(1),
+.folder-list > div:nth-child(1),
+.settings-actions > button:nth-child(1) { --stagger: 0ms; }
+.quick-album:nth-child(2),
+.history-stack > button:nth-child(2),
+.album-detail-motion .album-track-row:nth-child(2),
+.folder-list > div:nth-child(2),
+.settings-actions > button:nth-child(2) { --stagger: 24ms; }
+.quick-album:nth-child(3),
+.history-stack > button:nth-child(3),
+.album-detail-motion .album-track-row:nth-child(3),
+.folder-list > div:nth-child(3),
+.settings-actions > button:nth-child(3) { --stagger: 48ms; }
+.quick-album:nth-child(4),
+.album-detail-motion .album-track-row:nth-child(4),
+.folder-list > div:nth-child(4),
+.settings-actions > button:nth-child(4) { --stagger: 72ms; }
+.quick-album:nth-child(5),
+.album-detail-motion .album-track-row:nth-child(5),
+.folder-list > div:nth-child(5) { --stagger: 96ms; }
+.quick-album:nth-child(6),
+.album-detail-motion .album-track-row:nth-child(6),
+.folder-list > div:nth-child(6) { --stagger: 120ms; }
+
+.album-tile:nth-child(1),
+.artist-album-tile:nth-child(1),
+.artist-picker button:nth-child(1),
+.artist-song-list button:nth-child(1),
+.playlist-list > button:nth-of-type(1),
+.playlist-rows button:nth-child(1),
+.song-list .song-row:nth-child(1) { --stagger: 0ms; }
+.album-tile:nth-child(2),
+.artist-album-tile:nth-child(2),
+.artist-picker button:nth-child(2),
+.artist-song-list button:nth-child(2),
+.playlist-list > button:nth-of-type(2),
+.playlist-rows button:nth-child(2),
+.song-list .song-row:nth-child(2) { --stagger: 24ms; }
+.album-tile:nth-child(3),
+.artist-album-tile:nth-child(3),
+.artist-picker button:nth-child(3),
+.artist-song-list button:nth-child(3),
+.playlist-list > button:nth-of-type(3),
+.playlist-rows button:nth-child(3),
+.song-list .song-row:nth-child(3) { --stagger: 48ms; }
+.album-tile:nth-child(4),
+.artist-album-tile:nth-child(4),
+.artist-picker button:nth-child(4),
+.artist-song-list button:nth-child(4),
+.playlist-list > button:nth-of-type(4),
+.playlist-rows button:nth-child(4),
+.song-list .song-row:nth-child(4) { --stagger: 72ms; }
+.album-tile:nth-child(5),
+.artist-album-tile:nth-child(5),
+.artist-picker button:nth-child(5),
+.artist-song-list button:nth-child(5),
+.playlist-list > button:nth-of-type(5),
+.playlist-rows button:nth-child(5),
+.song-list .song-row:nth-child(5) { --stagger: 96ms; }
+.album-tile:nth-child(6),
+.artist-album-tile:nth-child(6),
+.artist-picker button:nth-child(6),
+.artist-song-list button:nth-child(6),
+.playlist-list > button:nth-of-type(6),
+.playlist-rows button:nth-child(6),
+.song-list .song-row:nth-child(6) { --stagger: 120ms; }
+.album-tile:nth-child(n + 7),
+.artist-album-tile:nth-child(n + 7),
+.artist-picker button:nth-child(n + 7),
+.artist-song-list button:nth-child(n + 7),
+.playlist-list > button:nth-of-type(n + 7),
+.playlist-rows button:nth-child(n + 7),
+.song-list .song-row:nth-child(n + 7) { --stagger: 144ms; }
+
+.song-list button {
+  animation: none;
+}
+
+/* Continuum: a selection appears to carry its context into the detail pane. */
+.album-detail-motion,
+.motion-continuum {
+  min-height: 0;
+  animation: wp7-continuum-in var(--motion-content) var(--motion-ease-direct) both;
+}
+
+.album-detail-motion {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.now-copy,
+.now-track-card {
+  animation: wp7-track-continuum-in var(--motion-content) var(--motion-ease-direct) both;
+}
+
+/* Transient surfaces: Swivel from the trigger or owning edge. */
+.context-menu {
+  opacity: 1;
+  transform: perspective(900px) rotateY(0deg) translate3d(0, 0, 0);
+  transform-origin: 12px 12px;
+  transition:
+    opacity var(--motion-micro) var(--motion-ease-direct),
+    transform var(--motion-micro) var(--motion-ease-direct);
+
+  @starting-style {
+    opacity: 0;
+    transform: perspective(900px) rotateY(-7deg) translate3d(10px, 3px, 0);
+  }
+}
+
+.info-panel {
+  opacity: 1;
+  transition: opacity var(--motion-micro) var(--motion-ease-direct);
+
+  @starting-style { opacity: 0; }
+}
+
+.info-panel section {
+  transform: perspective(1200px) rotateY(0deg) translate3d(0, 0, 0);
+  transform-origin: right center;
+  transition: transform var(--motion-content) var(--motion-ease-direct);
+
+  @starting-style {
+    transform: perspective(1200px) rotateY(-4deg) translate3d(36px, 0, 0);
+  }
+}
+
+.save-playlist-overlay,
+.save-playlist-dialog {
+  animation: none;
+}
+
+.save-playlist-overlay {
+  opacity: 1;
+  transition: opacity var(--motion-micro) var(--motion-ease-direct);
+
+  @starting-style { opacity: 0; }
+}
+
+.save-playlist-dialog {
+  opacity: 1;
+  transform: perspective(1000px) translate3d(0, -4vh, 0) rotateX(0deg) scale(1);
+  transform-origin: center 42%;
+  transition:
+    opacity var(--motion-content) var(--motion-ease-direct),
+    transform var(--motion-content) var(--motion-ease-direct);
+
+  @starting-style {
+    opacity: 0;
+    transform: perspective(1000px) translate3d(0, calc(-4vh + 14px), 0) rotateX(-4deg) scale(0.985);
+  }
+}
+
+.search-box,
+.playlist-create form {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition:
+    opacity var(--motion-micro) var(--motion-ease-direct),
+    transform var(--motion-micro) var(--motion-ease-direct);
+
+  @starting-style {
+    opacity: 0;
+    transform: translate3d(14px, 0, 0);
+  }
+}
+
+/* Press and state feedback. Tilt surfaces are driven directly by pointer position. */
+[data-motion-tilt] {
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.player-shortcuts button,
+.buttons button,
+.player-favorite,
+.track-favorite,
+.header-icon,
+.primary-action,
+.now-panel-controls button,
+.now-track-card button,
+.dialog-actions button,
+.info-close,
+.save-queue {
+  transition:
+    color var(--motion-micro) var(--motion-ease-direct),
+    background-color var(--motion-micro) var(--motion-ease-direct),
+    border-color var(--motion-micro) var(--motion-ease-direct),
+    opacity var(--motion-micro) var(--motion-ease-direct),
+    transform var(--motion-press) var(--motion-ease-direct);
+}
+
+.player-shortcuts button:active:not(:disabled),
+.buttons button:active:not(:disabled),
+.player-favorite:active:not(:disabled),
+.track-favorite:active:not(:disabled),
+.header-icon:active:not(:disabled),
+.primary-action:active:not(:disabled),
+.now-panel-controls button:active:not(:disabled),
+.now-track-card button:active:not(:disabled),
+.dialog-actions button:active:not(:disabled),
+.info-close:active:not(:disabled),
+.save-queue:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.player-favorite.active svg,
+.track-favorite.active svg,
+.favorite-active svg {
+  animation: wp7-state-confirm var(--motion-micro) var(--motion-ease-direct) both;
+}
+
+.play-button svg,
+.now-play svg {
+  animation: wp7-icon-swap var(--motion-press) var(--motion-ease-direct) both;
+}
+
+@keyframes wp7-page-settle {
+  from { opacity: 0; transform: translate3d(18px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes wp7-turnstile-forward-in {
+  from { opacity: 0; transform: perspective(1400px) translate3d(56px, 0, 0) rotateY(-4.5deg); }
+  to { opacity: 1; transform: perspective(1400px) translate3d(0, 0, 0) rotateY(0deg); }
+}
+
+@keyframes wp7-turnstile-backward-in {
+  from { opacity: 0; transform: perspective(1400px) translate3d(-42px, 0, 0) rotateY(3.5deg); }
+  to { opacity: 1; transform: perspective(1400px) translate3d(0, 0, 0) rotateY(0deg); }
+}
+
+@keyframes wp7-continuum-depth-in {
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.985); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes wp7-continuum-depth-out {
+  from { opacity: 0; transform: translate3d(0, -8px, 0) scale(1.018); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes wp7-pivot-forward-in {
+  from { opacity: 0; transform: translate3d(34px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes wp7-pivot-backward-in {
+  from { opacity: 0; transform: translate3d(-28px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes wp7-feather-in {
+  from { opacity: 0; transform: translate3d(22px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes wp7-continuum-in {
+  from { opacity: 0; transform: translate3d(26px, 0, 0) scale(0.99); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes wp7-track-continuum-in {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes wp7-state-confirm {
+  0% { transform: scale(0.9); opacity: 0.62; }
+  72% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes wp7-icon-swap {
+  from { opacity: 0; transform: translate3d(0, 3px, 0) scale(0.94); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .quick-cover-button:hover .cover,
+  .quick-album > button:hover .cover,
+  .history-feature > button:hover .cover,
+  .history-stack > button:hover .cover,
+  .album-cover-wrap:hover .cover {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-page,
+  .library-motion-stage,
+  .quick-group,
+  .quick-album,
+  .history-feature,
+  .history-stack > button,
+  .album-tile,
+  .artist-picker button,
+  .artist-album-tile,
+  .artist-song-list button,
+  .playlist-list > button,
+  .playlist-rows button,
+  .song-list .song-row,
+  .album-detail-motion,
+  .album-detail-motion .album-track-row,
+  .motion-continuum,
+  .now-copy,
+  .now-track-card,
+  .player-favorite.active svg,
+  .track-favorite.active svg,
+  .favorite-active svg,
+  .play-button svg,
+  .now-play svg {
+    animation: none;
+    transform: none;
+  }
+
+  [data-motion-tilt],
+  .context-menu,
+  .info-panel section,
+  .save-playlist-dialog,
+  .search-box,
+  .playlist-create form {
+    transform: none;
+  }
+
+  .context-menu,
+  .info-panel,
+  .info-panel section,
+  .save-playlist-overlay,
+  .save-playlist-dialog,
+  .search-box,
+  .playlist-create form {
+    transition-duration: var(--motion-instant);
+  }
+}

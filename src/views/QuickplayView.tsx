@@ -140,6 +140,7 @@ export function QuickplayView({
                   title: featuredHistory.title,
                   subtitle: `${featuredHistory.artist} / ${featuredHistory.album}`,
                   tracks: [featuredHistory],
+                  playbackTracks: tracks,
                 })
               }
             >
@@ -161,6 +162,7 @@ export function QuickplayView({
                     title: track.title,
                     subtitle: `${track.artist} / ${track.album}`,
                     tracks: [track],
+                    playbackTracks: tracks,
                   })
                 }
               >

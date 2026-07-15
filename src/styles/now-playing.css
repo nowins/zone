@@ -198,7 +198,7 @@
 
 .now-panel-tracks {
   min-width: 0;
-  max-height: clamp(52px, 3.7vw, 76px);
+  max-height: clamp(150px, 11.5vw, 176px);
   overflow-y: hidden;
   overflow-x: hidden;
   padding: 0;

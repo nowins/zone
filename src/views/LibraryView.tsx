@@ -9,6 +9,7 @@ import type { AlbumGroup, ArtistGroup, ContextPayload, Playlist, Track, ViewMode
 export function LibraryView({
   view,
   tracks,
+  libraryTracks,
   albums,
   artists,
   queueIds,
@@ -27,6 +28,7 @@ export function LibraryView({
 }: {
   view: ViewMode;
   tracks: Track[];
+  libraryTracks: Track[];
   albums: AlbumGroup[];
   artists: ArtistGroup[];
   queueIds: string[];
@@ -112,6 +114,7 @@ export function LibraryView({
                         title: track.title,
                         subtitle: `${track.artist} / ${track.album}`,
                         tracks: [track],
+                        playbackTracks: selectedAlbum.tracks,
                       })
                     }
                   >
@@ -162,7 +165,7 @@ export function LibraryView({
       <PlaylistBrowser
         playlists={playlists}
         selectedPlaylistId={selectedPlaylistId}
-        tracks={tracks}
+        tracks={libraryTracks}
         queueIds={queueIds}
         activeTrackId={activeTrackId}
         onSelectPlaylist={onSelectPlaylist}
@@ -185,6 +188,7 @@ export function LibraryView({
               title: track.title,
               subtitle: `${track.artist} / ${track.album}`,
               tracks: [track],
+              playbackTracks: tracks,
             })
           }
         >

@@ -10,6 +10,8 @@ export type Track = {
   title: string;
   artist: string;
   album: string;
+  album_artist?: string;
+  track_number?: number | null;
   extension: string;
   cover_path?: string | null;
 };
@@ -35,10 +37,11 @@ export type Playlist = {
 };
 
 export type ContextPayload = {
-  kind: "track" | "album" | "artist";
+  kind: "track" | "album" | "artist" | "playlist";
   title: string;
   subtitle: string;
   tracks: Track[];
+  playbackTracks?: Track[];
 };
 
 export type ContextMenuState = {

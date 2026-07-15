@@ -1,6 +1,6 @@
 use encoding_rs::GBK;
 use lofty::file::TaggedFileExt;
-use lofty::prelude::Accessor;
+use lofty::prelude::{Accessor, ItemKey};
 use lofty::read_from_path;
 use serde::Serialize;
 use std::fs;
@@ -25,6 +25,8 @@ struct Track {
   title: String,
   artist: String,
   album: String,
+  album_artist: String,
+  track_number: Option<u32>,
   extension: String,
   cover_path: Option<String>,
 }
@@ -83,6 +85,7 @@ fn scan_library(folders: Vec<String>) -> ScanResult {
       .to_lowercase()
       .cmp(&b.artist.to_lowercase())
       .then(a.album.to_lowercase().cmp(&b.album.to_lowercase()))
+      .then(a.track_number.unwrap_or(u32::MAX).cmp(&b.track_number.unwrap_or(u32::MAX)))
       .then(a.title.to_lowercase().cmp(&b.title.to_lowercase()))
   });
 
@@ -142,6 +145,11 @@ fn track_from_path(path: &Path) -> Track {
         .unwrap_or("Unknown album")
         .to_string()
     });
+  let album_artist = primary_tag
+    .and_then(|tag| tag.get_string(&ItemKey::AlbumArtist))
+    .map(|value| fallback_text(value, &artist))
+    .unwrap_or_else(|| artist.clone());
+  let track_number = primary_tag.and_then(|tag| tag.track());
   let cover_path = embedded_cover_path(path, primary_tag).or_else(|| folder_cover_path(path));
 
   Track {
@@ -151,6 +159,8 @@ fn track_from_path(path: &Path) -> Track {
     title,
     artist,
     album,
+    album_artist,
+    track_number,
     extension,
     cover_path,
   }

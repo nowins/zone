@@ -4,7 +4,10 @@ import { AudioGlowCanvas } from "../components/AudioGlowCanvas";
 import { Cover } from "../components/Cover";
 import { NowPlayingMosaicCanvas } from "../components/NowPlayingMosaicCanvas";
 import { formatTime } from "../utils/music";
+import { queueAfterCurrent } from "../utils/playback";
 import type { RepeatMode, Track } from "../types";
+
+const COLLAPSED_UPCOMING_COUNT = 2;
 
 export function NowPlayingView({
   track,
@@ -71,13 +74,10 @@ export function NowPlayingView({
   const immersiveTimer = useRef<number | null>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
-  const activeQueueIndex = useMemo(() => queue.findIndex((item) => item.id === track?.id), [queue, track?.id]);
+  const orderedQueue = useMemo(() => queueAfterCurrent(queue, track?.id ?? null), [queue, track?.id]);
   const upcomingQueue = useMemo(() => {
-    const limit = queueExpanded ? 8 : 0;
-    if (queue.length === 0) return [];
-    if (activeQueueIndex >= 0) return queue.slice(activeQueueIndex + 1, activeQueueIndex + 1 + limit);
-    return queue.filter((item) => item.id !== track?.id).slice(0, limit);
-  }, [activeQueueIndex, queue, queueExpanded, track?.id]);
+    return queueExpanded ? orderedQueue : orderedQueue.slice(0, COLLAPSED_UPCOMING_COUNT);
+  }, [orderedQueue, queueExpanded]);
   const [textFading, setTextFading] = useState(false);
 
   function handleProgressInteraction(clientX: number) {
@@ -204,8 +204,8 @@ export function NowPlayingView({
           )}
 
           <div className="now-panel-upcoming">
-            {upcomingQueue.map((item) => (
-              <button key={item.id} onClick={() => onPlay(item, queue)}>
+            {upcomingQueue.map((item, index) => (
+              <button key={`${item.id}-${index}`} onClick={() => onPlay(item, queue)}>
                 <strong>{item.title}</strong>
                 <span>{item.artist}</span>
               </button>
@@ -223,7 +223,7 @@ export function NowPlayingView({
               className={queueExpanded ? "active" : ""}
               onClick={() => setQueueExpanded((value) => !value)}
               title={queueExpanded ? "Collapse queue" : "Expand queue"}
-              disabled={queue.length <= 5}
+              disabled={orderedQueue.length <= COLLAPSED_UPCOMING_COUNT}
             >
               <ListMusic size={17} />
             </button>

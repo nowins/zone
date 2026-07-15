@@ -91,7 +91,7 @@ export function PlaylistBrowser({
             onClick={() => onSelectPlaylist(playlist.id)}
             onContextMenu={(event) =>
               onContextMenu(event, {
-                kind: "album",
+                kind: "playlist",
                 title: playlist.name,
                 subtitle: playlist.description,
                 tracks: playlist.tracks,
@@ -126,6 +126,7 @@ export function PlaylistBrowser({
                     title: track.title,
                     subtitle: `${track.artist} / ${track.album}`,
                     tracks: [track],
+                    playbackTracks: selected.tracks,
                   })
                 }
               >

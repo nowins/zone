@@ -1,4 +1,5 @@
 import type { AlbumGroup, Track } from "../types";
+import { albumKey } from "./music.js";
 
 export type WallTilePattern = {
   columns: number;
@@ -35,12 +36,12 @@ export function wallTilePatternForIndex(index: number) {
 export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
   const albumMap = new Map<string, AlbumGroup>();
   for (const item of tracks) {
-    const key = albumKey(item.album);
+    const key = albumKey(item.album, item.album_artist ?? item.artist);
     if (!albumMap.has(key)) {
       albumMap.set(key, {
         key,
         album: item.album,
-        artist: item.artist,
+        artist: item.album_artist ?? item.artist,
         tracks: [item],
         coverPath: item.cover_path,
       });
@@ -52,7 +53,7 @@ export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
     if (!album.coverPath && item.cover_path) album.coverPath = item.cover_path;
   }
 
-  const activeArtist = active?.artist.trim().toLocaleLowerCase();
+  const activeArtist = (active?.album_artist ?? active?.artist)?.trim().toLocaleLowerCase();
   const albums = Array.from(albumMap.values()).filter((album) => album.coverPath);
   const artistAlbums = activeArtist
     ? albums.filter((album) => album.artist.trim().toLocaleLowerCase() === activeArtist)
@@ -69,9 +70,9 @@ export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
 
   if (active) {
     const activeAlbum = {
-      key: albumKey(active.album),
+      key: albumKey(active.album, active.album_artist ?? active.artist),
       album: active.album,
-      artist: active.artist,
+      artist: active.album_artist ?? active.artist,
       tracks: [active],
       coverPath: active.cover_path,
     };
@@ -85,8 +86,4 @@ export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
     { length: NOW_PLAYING_WALL_TILE_COUNT },
     (_, index) => source[(index * 7 + Math.floor(index / 5)) % source.length],
   );
-}
-
-function albumKey(album: string) {
-  return album.trim().toLocaleLowerCase() || "unknown album";
 }
