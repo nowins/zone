@@ -20,6 +20,13 @@ The app should emphasize:
   - `cargo check` from `src-tauri`
   - `npx tauri build --no-bundle`
 
+## Git Workflow
+
+- Keep each accepted feature or focused fix in its own commit with a concise, descriptive message.
+- Do not commit a feature before the user explicitly confirms that it has passed acceptance.
+- After acceptance, stage only the files that belong to that feature and commit automatically without asking for a second confirmation.
+- Never fold unrelated working-tree changes into the feature commit.
+
 ## Tech Stack
 
 - Frontend: React 18, TypeScript, Vite.
