@@ -4,7 +4,7 @@ import { Heart, Play } from "lucide-react";
 import { Cover } from "../components/Cover";
 import { ArtistBrowser } from "./ArtistBrowser";
 import { PlaylistBrowser } from "./PlaylistBrowser";
-import type { AlbumGroup, ArtistGroup, ContextPayload, Playlist, Track, ViewMode } from "../types";
+import type { AlbumGroup, ArtistGroup, ContextPayload, Playlist, Track, TrackActivityMap, ViewMode } from "../types";
 
 export function LibraryView({
   view,
@@ -23,6 +23,9 @@ export function LibraryView({
   selectedPlaylistId,
   onSelectPlaylist,
   onCreatePlaylist,
+  onEditSmartPlaylist,
+  onRefreshSmartPlaylist,
+  trackActivity,
   favoriteTrackIds,
   onToggleFavorite,
 }: {
@@ -41,7 +44,10 @@ export function LibraryView({
   playlists: Playlist[];
   selectedPlaylistId: string;
   onSelectPlaylist: (id: string) => void;
-  onCreatePlaylist: (name: string) => void;
+  onCreatePlaylist: () => void;
+  onEditSmartPlaylist: (playlistId: string) => void;
+  onRefreshSmartPlaylist: (playlistId: string) => void;
+  trackActivity: TrackActivityMap;
   favoriteTrackIds: Set<string>;
   onToggleFavorite: (track: Track) => void;
 }) {
@@ -79,7 +85,7 @@ export function LibraryView({
                     event.stopPropagation();
                     onPlayTracks(album.tracks);
                   }}
-                  title={`Play ${album.album}`}
+                  title={`播放 ${album.album}`}
                 >
                   <Play size={20} />
                 </button>
@@ -141,7 +147,7 @@ export function LibraryView({
               </div>
             </>
           ) : (
-            <p className="quiet">no album selected</p>
+            <p className="quiet">尚未选择专辑</p>
           )}
         </aside>
       </div>
@@ -171,7 +177,12 @@ export function LibraryView({
         onSelectPlaylist={onSelectPlaylist}
         onCreatePlaylist={onCreatePlaylist}
         onPlay={onPlay}
+        onPlayTracks={onPlayTracks}
+        onEditSmartPlaylist={onEditSmartPlaylist}
+        onRefreshSmartPlaylist={onRefreshSmartPlaylist}
         onContextMenu={onContextMenu}
+        favoriteTrackIds={favoriteTrackIds}
+        activity={trackActivity}
       />
     );
   }

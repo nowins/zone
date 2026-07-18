@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
-import type { FormEvent, MouseEvent } from "react";
-import { Check, Plus, X } from "lucide-react";
+import { useMemo } from "react";
+import type { MouseEvent } from "react";
+import { Play, Plus, RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
+import { DEFAULT_PLAYLIST_ID } from "../constants";
 import { initials } from "../utils/music";
-import type { ContextPayload, Playlist, Track } from "../types";
+import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
+import type { ContextPayload, Playlist, Track, TrackActivityMap } from "../types";
 
 export function PlaylistBrowser({
   playlists,
@@ -13,7 +15,12 @@ export function PlaylistBrowser({
   onSelectPlaylist,
   onCreatePlaylist,
   onPlay,
+  onPlayTracks,
+  onEditSmartPlaylist,
+  onRefreshSmartPlaylist,
   onContextMenu,
+  favoriteTrackIds,
+  activity,
 }: {
   playlists: Playlist[];
   selectedPlaylistId: string;
@@ -21,68 +28,46 @@ export function PlaylistBrowser({
   queueIds: string[];
   activeTrackId: string | null;
   onSelectPlaylist: (id: string) => void;
-  onCreatePlaylist: (name: string) => void;
+  onCreatePlaylist: () => void;
   onPlay: (track: Track, sourceTracks?: Track[]) => void;
+  onPlayTracks: (tracks: Track[]) => void;
+  onEditSmartPlaylist: (playlistId: string) => void;
+  onRefreshSmartPlaylist: (playlistId: string) => void;
   onContextMenu: (event: MouseEvent, payload: ContextPayload) => void;
+  favoriteTrackIds: ReadonlySet<string>;
+  activity: TrackActivityMap;
 }) {
-  const [isCreating, setIsCreating] = useState(false);
-  const [draftName, setDraftName] = useState("");
   const trackMap = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
-  const nowPlayingTracks = queueIds.map((id) => trackMap.get(id)).filter(Boolean) as Track[];
-  const entries = [
-    { id: "now", name: "now playing", description: "current queue", tracks: nowPlayingTracks },
-    ...playlists.map((playlist) => ({
-      id: playlist.id,
-      name: playlist.name,
-      description: playlist.description,
-      tracks: playlist.trackIds.map((id) => trackMap.get(id)).filter(Boolean) as Track[],
-    })),
-  ];
+  const entries = useMemo(() => {
+    const nowPlayingTracks = queueIds.map((id) => trackMap.get(id)).filter(Boolean) as Track[];
+    return [
+      { id: "now", name: "正在播放", description: "当前队列", tracks: nowPlayingTracks, kind: "manual" as const, source: null, matchedCount: nowPlayingTracks.length },
+      ...playlists.map((playlist) => {
+        const result = resolvePlaylistTracks(playlist, tracks, { favoriteTrackIds, activity });
+        return {
+          id: playlist.id,
+          name: playlist.name,
+          description: playlist.id === DEFAULT_PLAYLIST_ID
+            ? "收藏的歌曲"
+            : playlist.description || (isSmartPlaylist(playlist) ? "自动更新的智能播放列表" : "自定义播放列表"),
+          tracks: result.tracks,
+          kind: isSmartPlaylist(playlist) ? "smart" as const : "manual" as const,
+          source: playlist,
+          matchedCount: result.matchedCount,
+        };
+      }),
+    ];
+  }, [activity, favoriteTrackIds, playlists, queueIds, trackMap, tracks]);
   const selected = entries.find((item) => item.id === selectedPlaylistId) ?? entries[0];
-
-  function submitPlaylist(event: FormEvent) {
-    event.preventDefault();
-    const cleanName = draftName.trim();
-    if (!cleanName) return;
-
-    onCreatePlaylist(cleanName);
-    setDraftName("");
-    setIsCreating(false);
-  }
 
   return (
     <div className="playlist-browser">
       <section className="playlist-list">
-        <p>{playlists.length} playlists</p>
         <div className="playlist-create">
-          {isCreating ? (
-            <form onSubmit={submitPlaylist}>
-              <input
-                autoFocus
-                value={draftName}
-                onChange={(event) => setDraftName(event.target.value)}
-                placeholder="playlist name"
-              />
-              <button type="submit" title="Create playlist" disabled={!draftName.trim()}>
-                <Check size={17} />
-              </button>
-              <button
-                type="button"
-                title="Cancel"
-                onClick={() => {
-                  setDraftName("");
-                  setIsCreating(false);
-                }}
-              >
-                <X size={17} />
-              </button>
-            </form>
-          ) : (
-            <button className="playlist-create-button" onClick={() => setIsCreating(true)}>
-              <Plus size={18} />
-              <span>new playlist</span>
-            </button>
-          )}
+          <button className="playlist-create-button" onClick={onCreatePlaylist}>
+            <Plus size={18} />
+            <span>新建播放列表</span>
+          </button>
         </div>
         {entries.map((playlist) => (
           <button
@@ -95,11 +80,16 @@ export function PlaylistBrowser({
                 title: playlist.name,
                 subtitle: playlist.description,
                 tracks: playlist.tracks,
+                playlistId: playlist.id,
+                playlistKind: playlist.kind,
               })
             }
           >
             <strong>{playlist.name}</strong>
-            <span>{playlist.description}</span>
+            <span className="playlist-list-description">
+              {playlist.kind === "smart" && <Sparkles size={12} />}
+              {playlist.description}
+            </span>
           </button>
         ))}
       </section>
@@ -107,13 +97,15 @@ export function PlaylistBrowser({
       <section className="playlist-table">
         <div className="playlist-head">
           <span>#</span>
-          <span>song</span>
-          <span>artist</span>
-          <span>album</span>
+          <span>歌曲</span>
+          <span>艺术家</span>
+          <span>专辑</span>
         </div>
         <div className="playlist-rows">
           {selected.tracks.length === 0 ? (
-            <p className="quiet">right-click music and add it to this playlist</p>
+            <p className="quiet">
+              {selected.kind === "smart" ? "当前规则没有匹配歌曲，可以编辑条件放宽范围" : "在音乐上点击右键，即可添加到这个播放列表"}
+            </p>
           ) : (
             selected.tracks.map((track, index) => (
               <button
@@ -127,6 +119,8 @@ export function PlaylistBrowser({
                     subtitle: `${track.artist} / ${track.album}`,
                     tracks: [track],
                     playbackTracks: selected.tracks,
+                    playlistId: selected.id,
+                    playlistKind: selected.kind,
                   })
                 }
               >
@@ -141,10 +135,24 @@ export function PlaylistBrowser({
       </section>
 
       <aside className="playlist-detail">
-        <div className="playlist-art">{initials(selected.name)}</div>
+        <div className={`playlist-art ${selected.kind === "smart" ? "smart" : ""}`}>
+          {selected.kind === "smart" ? <Sparkles size={42} /> : initials(selected.name)}
+        </div>
         <strong>{selected.name}</strong>
         <span>{selected.description}</span>
-        <p>{selected.tracks.length} songs</p>
+        <p>{selected.tracks.length} 首歌曲</p>
+        {selected.kind === "smart" && <small>从 {selected.matchedCount} 首匹配歌曲中智能编排</small>}
+        {selected.tracks.length > 0 && (
+          <button className="playlist-detail-play" onClick={() => onPlayTracks(selected.tracks)}>
+            <Play size={15} fill="currentColor" /> 播放全部
+          </button>
+        )}
+        {selected.kind === "smart" && selected.source && (
+          <div className="playlist-smart-actions">
+            <button onClick={() => onEditSmartPlaylist(selected.id)}><SlidersHorizontal size={15} /> 编辑规则</button>
+            <button onClick={() => onRefreshSmartPlaylist(selected.id)}><RefreshCw size={15} /> 换一批</button>
+          </div>
+        )}
       </aside>
     </div>
   );

@@ -1,11 +1,12 @@
 use encoding_rs::GBK;
-use lofty::file::TaggedFileExt;
+use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::prelude::{Accessor, ItemKey};
 use lofty::read_from_path;
 use serde::Serialize;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 use tauri::http::{header, Method, Request, Response, StatusCode};
 use walkdir::WalkDir;
 
@@ -27,6 +28,11 @@ struct Track {
   album: String,
   album_artist: String,
   track_number: Option<u32>,
+  disc_number: Option<u32>,
+  year: Option<u32>,
+  genres: Vec<String>,
+  duration_seconds: Option<u64>,
+  added_at: Option<u64>,
   extension: String,
   cover_path: Option<String>,
 }
@@ -150,6 +156,21 @@ fn track_from_path(path: &Path) -> Track {
     .map(|value| fallback_text(value, &artist))
     .unwrap_or_else(|| artist.clone());
   let track_number = primary_tag.and_then(|tag| tag.track());
+  let disc_number = primary_tag.and_then(|tag| tag.disk());
+  let year = primary_tag.and_then(|tag| tag.year());
+  let genres = primary_tag
+    .and_then(|tag| tag.genre())
+    .map(|value| split_genres(&fallback_text(&value, "")))
+    .unwrap_or_default();
+  let duration_seconds = tagged_file
+    .as_ref()
+    .map(|file| file.properties().duration().as_secs())
+    .filter(|duration| *duration > 0);
+  let added_at = fs::metadata(path)
+    .ok()
+    .and_then(|metadata| metadata.created().or_else(|_| metadata.modified()).ok())
+    .and_then(|timestamp| timestamp.duration_since(UNIX_EPOCH).ok())
+    .and_then(|duration| u64::try_from(duration.as_millis()).ok());
   let cover_path = embedded_cover_path(path, primary_tag).or_else(|| folder_cover_path(path));
 
   Track {
@@ -161,9 +182,26 @@ fn track_from_path(path: &Path) -> Track {
     album,
     album_artist,
     track_number,
+    disc_number,
+    year,
+    genres,
+    duration_seconds,
+    added_at,
     extension,
     cover_path,
   }
+}
+
+fn split_genres(value: &str) -> Vec<String> {
+  let mut genres = Vec::new();
+  for part in value.split([';', ',', '|', '\0']) {
+    let genre = part.trim();
+    if genre.is_empty() || genres.iter().any(|item: &String| item.eq_ignore_ascii_case(genre)) {
+      continue;
+    }
+    genres.push(genre.to_string());
+  }
+  genres
 }
 
 fn folder_cover_path(path: &Path) -> Option<String> {

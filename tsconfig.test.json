@@ -16,6 +16,7 @@
     "src/utils/beatAnalysis.ts",
     "src/utils/audioGlow.ts",
     "src/utils/playback.ts",
-    "src/utils/music.ts"
+    "src/utils/music.ts",
+    "src/utils/smartPlaylist.ts"
   ]
 }

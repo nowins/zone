@@ -6,6 +6,8 @@ import { EmptyState } from "./components/EmptyState";
 import { PlayerBar } from "./components/PlayerBar";
 import { ContextMenu } from "./components/ContextMenu";
 import { InfoPanel } from "./components/InfoPanel";
+import { PlaylistDialog, type PlaylistDialogState } from "./components/PlaylistDialog";
+import { SmartPlaylistDialog, type SmartPlaylistDraft } from "./components/SmartPlaylistDialog";
 import { LibraryView } from "./views/LibraryView";
 import { QuickplayView } from "./views/QuickplayView";
 import { NowPlayingView } from "./views/NowPlayingView";
@@ -15,7 +17,15 @@ import { albumKey, bestAlbumArtist, compareTracksForAlbum, defaultPlaylists, nor
 import { analyzePcmBeatGrid, createIdleBeatFrame, RealtimeBeatAnalyzer, type BeatFrame, type BeatGrid } from "./utils/beatAnalysis";
 import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/visualizer";
 import { createShuffleOrder, haveSameQueueItems, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
-import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, MusicFolder, Playlist, RepeatMode, ScanResult, Track, ViewMode } from "./types";
+import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
+import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, MusicFolder, Playlist, RepeatMode, ScanResult, SmartPlaylist, Track, TrackActivityMap, ViewMode } from "./types";
+
+type PlaybackSession = {
+  trackId: string;
+  maxProgress: number;
+  countedPlay: boolean;
+  countedComplete: boolean;
+};
 
 declare global {
   interface Window {
@@ -37,6 +47,9 @@ export default function App() {
   const offlineBeatGridRef = useRef<BeatGrid | null>(null);
   const beatGridCacheRef = useRef(new Map<string, BeatGrid | null>());
   const beatAnalysisRequestRef = useRef(0);
+  const actionNoticeTimerRef = useRef<number | null>(null);
+  const playbackSessionRef = useRef<PlaybackSession | null>(null);
+  const activityMigrationRef = useRef(false);
   const [folders, setFolders] = useState<MusicFolder[]>([]);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [query, setQuery] = useState("");
@@ -45,6 +58,7 @@ export default function App() {
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [queue, setQueue] = useState<string[]>([]);
   const [playHistory, setPlayHistory] = useState<string[]>([]);
+  const [trackActivity, setTrackActivity] = useState<TrackActivityMap>({});
   const [isPlaying, setIsPlaying] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanNote, setScanNote] = useState("");
@@ -66,6 +80,13 @@ export default function App() {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(DEFAULT_PLAYLIST_ID);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [infoTarget, setInfoTarget] = useState<ContextPayload | null>(null);
+  const [playlistDialog, setPlaylistDialog] = useState<PlaylistDialogState | null>(null);
+  const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  useEffect(() => () => {
+    if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -81,6 +102,12 @@ export default function App() {
       setActiveTrackId(state.activeTrackId ?? null);
       setQueue(state.queue ?? []);
       setPlayHistory(state.playHistory ?? []);
+      activityMigrationRef.current = !state.trackActivity || (
+        state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION
+        && Object.keys(state.trackActivity ?? {}).length === 0
+        && (state.tracks?.length ?? 0) > 0
+      );
+      setTrackActivity(state.trackActivity ?? {});
       setVolume(state.volume ?? 0.8);
       setShuffle(state.shuffle ?? false);
       setRepeat(state.repeat ?? "off");
@@ -107,12 +134,13 @@ export default function App() {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        librarySchemaVersion: LIBRARY_SCHEMA_VERSION,
+        librarySchemaVersion: needsMetadataRefresh ? LIBRARY_SCHEMA_VERSION - 1 : LIBRARY_SCHEMA_VERSION,
         folders,
         tracks,
         activeTrackId,
         queue,
         playHistory,
+        trackActivity,
         volume,
         shuffle,
         repeat,
@@ -120,11 +148,33 @@ export default function App() {
         selectedPlaylistId,
       }),
     );
-  }, [restored, folders, tracks, activeTrackId, queue, playHistory, volume, shuffle, repeat, playlists, selectedPlaylistId]);
+  }, [restored, needsMetadataRefresh, folders, tracks, activeTrackId, queue, playHistory, trackActivity, volume, shuffle, repeat, playlists, selectedPlaylistId]);
 
   useEffect(() => {
     if (!activeTrackId) return;
     setPlayHistory((current) => [activeTrackId, ...current.filter((id) => id !== activeTrackId)].slice(0, 24));
+  }, [activeTrackId]);
+
+  useEffect(() => {
+    if (!restored) return;
+    if (activityMigrationRef.current && needsMetadataRefresh) return;
+    const now = Date.now();
+    const isMigrating = activityMigrationRef.current;
+    setTrackActivity((current) => {
+      const next: TrackActivityMap = {};
+      for (const track of tracks) {
+        const migrationBaseline = isMigrating ? track.added_at ?? now : now;
+        next[track.id] = createTrackActivity(current[track.id], migrationBaseline);
+      }
+      return next;
+    });
+    activityMigrationRef.current = false;
+  }, [needsMetadataRefresh, restored, tracks]);
+
+  useEffect(() => {
+    playbackSessionRef.current = activeTrackId
+      ? { trackId: activeTrackId, maxProgress: 0, countedPlay: false, countedComplete: false }
+      : null;
   }, [activeTrackId]);
 
   const activeTrack = useMemo(
@@ -164,10 +214,10 @@ export default function App() {
     setShuffleOrder(createShuffleOrder(baseQueueIds, activeTrackId));
   }, [baseQueueIds, shuffle]);
 
-  const favoriteTrackIds = useMemo(
-    () => new Set(playlists.find((playlist) => playlist.id === DEFAULT_PLAYLIST_ID)?.trackIds ?? []),
-    [playlists],
-  );
+  const favoriteTrackIds = useMemo<Set<string>>(() => {
+    const favorites = playlists.find((playlist) => playlist.id === DEFAULT_PLAYLIST_ID);
+    return new Set(favorites && !isSmartPlaylist(favorites) ? favorites.trackIds : []);
+  }, [playlists]);
 
   const isActiveTrackFavorite = activeTrack ? favoriteTrackIds.has(activeTrack.id) : false;
 
@@ -193,7 +243,7 @@ export default function App() {
         return {
           key,
           artist: bestAlbumArtist(sortedTracks),
-          album: sortedTracks[0]?.album ?? "Unknown album",
+          album: sortedTracks[0]?.album ?? "未知专辑",
           tracks: sortedTracks,
           coverPath: sortedTracks.find((track) => track.cover_path)?.cover_path,
         };
@@ -273,7 +323,7 @@ export default function App() {
   async function rescan(targetFolders = folders) {
     if (targetFolders.length === 0) return;
     setIsScanning(true);
-    setScanNote("scanning");
+    setScanNote("正在扫描");
 
     try {
       const result = await invoke<ScanResult>("scan_library", {
@@ -282,7 +332,7 @@ export default function App() {
       const scannedIds = result.tracks.map((track) => track.id);
       setTracks(result.tracks);
       setQueue((current) => reconcileQueueWithLibrary(current, scannedIds));
-      setScanNote(`${result.tracks.length} songs indexed`);
+      setScanNote(`已索引 ${result.tracks.length} 首歌曲`);
       setNeedsMetadataRefresh(false);
     } finally {
       setIsScanning(false);
@@ -291,31 +341,53 @@ export default function App() {
 
   function playTrack(track: Track, sourceTracks = filteredTracks) {
     setQueue(sourceTracks.map((item) => item.id));
-    if (track.id === activeTrackId) restartCurrentPlayback();
-    else setActiveTrackId(track.id);
+    if (track.id === activeTrackId) {
+      recordSkipIfEligible();
+      restartCurrentPlayback();
+    }
+    else {
+      recordSkipIfEligible();
+      setActiveTrackId(track.id);
+    }
   }
 
   function playTracks(targetTracks: Track[]) {
     if (targetTracks.length === 0) return;
     setQueue(targetTracks.map((track) => track.id));
-    if (targetTracks[0].id === activeTrackId) restartCurrentPlayback();
-    else setActiveTrackId(targetTracks[0].id);
+    if (targetTracks[0].id === activeTrackId) {
+      recordSkipIfEligible();
+      restartCurrentPlayback();
+    }
+    else {
+      recordSkipIfEligible();
+      setActiveTrackId(targetTracks[0].id);
+    }
   }
 
   function appendToQueue(targetTracks: Track[]) {
+    if (targetTracks.length === 0) return;
     setQueue((current) => uniqueIds([...current, ...targetTracks.map((track) => track.id)]));
+    showActionNotice(`已添加 ${targetTracks.length} 首歌曲到正在播放`);
   }
 
   function addToPlaylist(playlistId: string, targetTracks: Track[]) {
     const ids = targetTracks.map((track) => track.id);
     if (ids.length === 0) return;
+    const targetPlaylist = playlists.find((playlist) => playlist.id === playlistId);
+    if (!targetPlaylist || isSmartPlaylist(targetPlaylist)) return;
+    const addedCount = ids.filter((id) => !targetPlaylist.trackIds.includes(id)).length;
 
     setPlaylists((items) =>
       normalizePlaylists(items).map((playlist) =>
-        playlist.id === playlistId
+        playlist.id === playlistId && !isSmartPlaylist(playlist)
           ? { ...playlist, trackIds: uniqueIds([...playlist.trackIds, ...ids]) }
           : playlist,
       ),
+    );
+    showActionNotice(
+      addedCount > 0
+        ? `已添加 ${addedCount} 首歌曲到“${targetPlaylist.name}”`
+        : `所选歌曲已在“${targetPlaylist.name}”中`,
     );
   }
 
@@ -325,7 +397,7 @@ export default function App() {
 
     setPlaylists((items) =>
       normalizePlaylists(items).map((playlist) =>
-        playlist.id === playlistId
+        playlist.id === playlistId && !isSmartPlaylist(playlist)
           ? { ...playlist, trackIds: playlist.trackIds.filter((id) => !ids.has(id)) }
           : playlist,
       ),
@@ -368,13 +440,126 @@ export default function App() {
     const playlist: Playlist = {
       id: `playlist-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       name: cleanName,
-      description: "custom playlist",
+      description: "自定义播放列表",
+      kind: "manual",
       trackIds: [],
     };
 
     setPlaylists((items) => [...normalizePlaylists(items), playlist]);
     setSelectedPlaylistId(playlist.id);
     setView("playlists");
+    showActionNotice(`已创建播放列表“${playlist.name}”`);
+  }
+
+  function renamePlaylist(playlistId: string, name: string) {
+    const cleanName = name.trim();
+    if (!cleanName || playlistId === DEFAULT_PLAYLIST_ID) return;
+
+    setPlaylists((items) =>
+      normalizePlaylists(items).map((playlist) =>
+        playlist.id === playlistId && !isSmartPlaylist(playlist) ? { ...playlist, name: cleanName } : playlist,
+      ),
+    );
+    showActionNotice(`播放列表已重命名为“${cleanName}”`);
+  }
+
+  function deletePlaylist(playlistId: string) {
+    if (playlistId === DEFAULT_PLAYLIST_ID) return;
+    const playlist = playlists.find((item) => item.id === playlistId);
+    if (!playlist) return;
+
+    setPlaylists((items) => normalizePlaylists(items).filter((item) => item.id !== playlistId));
+    setSelectedPlaylistId((current) => current === playlistId ? DEFAULT_PLAYLIST_ID : current);
+    showActionNotice(`已删除播放列表“${playlist.name}”`);
+  }
+
+  function showActionNotice(message: string) {
+    setActionNotice(message);
+    if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
+    actionNoticeTimerRef.current = window.setTimeout(() => {
+      setActionNotice(null);
+      actionNoticeTimerRef.current = null;
+    }, 2_400);
+  }
+
+  function openCreatePlaylistDialog() {
+    setPlaylistDialog({ mode: "create", playlistName: "" });
+  }
+
+  function openCreateSmartPlaylist() {
+    setPlaylistDialog(null);
+    setSmartPlaylistDialog("create");
+  }
+
+  function openSmartPlaylistEditor(playlistId: string) {
+    const playlist = playlists.find((item) => item.id === playlistId);
+    if (!playlist || !isSmartPlaylist(playlist)) return;
+    setPlaylistDialog(null);
+    setSmartPlaylistDialog(playlist);
+  }
+
+  function saveSmartPlaylist(draft: SmartPlaylistDraft) {
+    if (smartPlaylistDialog === "create") {
+      const playlist: SmartPlaylist = {
+        id: `smart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        kind: "smart",
+        ...draft,
+      };
+      setPlaylists((items) => [...normalizePlaylists(items), playlist]);
+      setSelectedPlaylistId(playlist.id);
+      setView("playlists");
+      showActionNotice(`已创建智能播放列表“${playlist.name}”`);
+    } else if (smartPlaylistDialog) {
+      setPlaylists((items) => normalizePlaylists(items).map((playlist) =>
+        playlist.id === smartPlaylistDialog.id && isSmartPlaylist(playlist)
+          ? { ...playlist, ...draft }
+          : playlist,
+      ));
+      showActionNotice(`已更新智能播放列表“${draft.name}”`);
+    }
+    setSmartPlaylistDialog(null);
+  }
+
+  function refreshSmartPlaylist(playlistId: string) {
+    setPlaylists((items) => normalizePlaylists(items).map((playlist) =>
+      playlist.id === playlistId && isSmartPlaylist(playlist)
+        ? { ...playlist, smart: { ...playlist.smart, rotationSeed: playlist.smart.rotationSeed + 1 } }
+        : playlist,
+    ));
+    showActionNotice("已换一批歌曲");
+  }
+
+  function excludeFromSmartPlaylist(playlistId: string, targetTracks: Track[]) {
+    const ids = targetTracks.map((track) => track.id);
+    if (ids.length === 0) return;
+    setPlaylists((items) => normalizePlaylists(items).map((playlist) =>
+      playlist.id === playlistId && isSmartPlaylist(playlist)
+        ? { ...playlist, excludedTrackIds: uniqueIds([...playlist.excludedTrackIds, ...ids]) }
+        : playlist,
+    ));
+    showActionNotice(`已从智能列表中排除 ${ids.length} 首歌曲`);
+  }
+
+  function openPlaylistDialog(mode: "rename" | "delete", playlistId: string) {
+    const playlist = playlists.find((item) => item.id === playlistId);
+    if (!playlist || playlist.id === DEFAULT_PLAYLIST_ID) return;
+    if (mode === "rename" && isSmartPlaylist(playlist)) {
+      openSmartPlaylistEditor(playlistId);
+      return;
+    }
+    setPlaylistDialog({ mode, playlistId, playlistName: playlist.name });
+  }
+
+  function submitPlaylistDialog(name: string) {
+    if (!playlistDialog) return;
+    if (playlistDialog.mode === "create") createPlaylist(name);
+    if (playlistDialog.mode === "rename" && playlistDialog.playlistId) {
+      renamePlaylist(playlistDialog.playlistId, name);
+    }
+    if (playlistDialog.mode === "delete" && playlistDialog.playlistId) {
+      deletePlaylist(playlistDialog.playlistId);
+    }
+    setPlaylistDialog(null);
   }
 
   function saveQueueAsPlaylist(name: string) {
@@ -385,7 +570,8 @@ export default function App() {
     const playlist: Playlist = {
       id: `playlist-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       name: cleanName,
-      description: `${trackIds.length} songs`,
+      description: `${trackIds.length} 首歌曲`,
+      kind: "manual",
       trackIds,
     };
 
@@ -431,6 +617,12 @@ export default function App() {
     if (!audio || !activeTrack) return;
     audio.currentTime = 0;
     setProgress(0);
+    playbackSessionRef.current = {
+      trackId: activeTrack.id,
+      maxProgress: 0,
+      countedPlay: false,
+      countedComplete: false,
+    };
     void audio
       .play()
       .then(() => {
@@ -596,8 +788,63 @@ export default function App() {
     sample();
   }
 
-  function move(delta: 1 | -1): QueueMoveResult {
+  function updateTrackActivity(trackId: string, update: (current: ReturnType<typeof createTrackActivity>) => ReturnType<typeof createTrackActivity>) {
+    setTrackActivity((current) => ({
+      ...current,
+      [trackId]: update(createTrackActivity(current[trackId])),
+    }));
+  }
+
+  function markEffectivePlay() {
+    const session = playbackSessionRef.current;
+    if (!session || session.countedPlay) return;
+    session.countedPlay = true;
+    updateTrackActivity(session.trackId, (current) => ({
+      ...current,
+      playCount: current.playCount + 1,
+      lastPlayedAt: Date.now(),
+    }));
+  }
+
+  function markCompletedPlayback() {
+    const session = playbackSessionRef.current;
+    if (!session || session.countedComplete) return;
+    if (!session.countedPlay) markEffectivePlay();
+    session.countedComplete = true;
+    updateTrackActivity(session.trackId, (current) => ({
+      ...current,
+      completedCount: current.completedCount + 1,
+      lastPlayedAt: Date.now(),
+    }));
+  }
+
+  function recordSkipIfEligible() {
+    const session = playbackSessionRef.current;
+    if (!session || session.countedPlay || session.maxProgress < 3) return;
+    const trackDuration = audioRef.current?.duration || duration;
+    if (trackDuration > 0 && session.maxProgress / trackDuration >= 0.5) return;
+    session.countedPlay = true;
+    updateTrackActivity(session.trackId, (current) => ({
+      ...current,
+      skipCount: current.skipCount + 1,
+      lastSkippedAt: Date.now(),
+    }));
+  }
+
+  function handleTimeUpdate(currentTime: number, trackDuration: number) {
+    setProgress(currentTime);
+    const session = playbackSessionRef.current;
+    if (!session || session.trackId !== activeTrackId) return;
+    session.maxProgress = Math.max(session.maxProgress, currentTime);
+    const threshold = trackDuration > 0
+      ? Math.min(240, Math.max(30, trackDuration * 0.5))
+      : 30;
+    if (currentTime >= threshold) markEffectivePlay();
+  }
+
+  function move(delta: 1 | -1, reason: "user" | "ended" = "user"): QueueMoveResult {
     if (baseQueueIds.length === 0) return { kind: "empty" };
+    if (delta === 1 && reason === "user") recordSkipIfEligible();
 
     let playbackOrder = playbackQueueIds;
     if (shuffle && !haveSameQueueItems(shuffleOrder, baseQueueIds)) {
@@ -617,12 +864,13 @@ export default function App() {
   }
 
   function onEnded() {
+    markCompletedPlayback();
     if (repeat === "one" && audioRef.current) {
       restartCurrentPlayback();
       return;
     }
 
-    const result = move(1);
+    const result = move(1, "ended");
     if (result.kind === "boundary" || result.kind === "empty") {
       setIsPlaying(false);
     }
@@ -646,7 +894,7 @@ export default function App() {
       <audio
         ref={audioRef}
         crossOrigin="anonymous"
-        onTimeUpdate={(event) => setProgress(event.currentTarget.currentTime)}
+        onTimeUpdate={(event) => handleTimeUpdate(event.currentTarget.currentTime, event.currentTarget.duration || duration)}
         onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || 0)}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
@@ -733,7 +981,10 @@ export default function App() {
                 playlists={playlists}
                 selectedPlaylistId={selectedPlaylistId}
                 onSelectPlaylist={setSelectedPlaylistId}
-                onCreatePlaylist={createPlaylist}
+                onCreatePlaylist={openCreatePlaylistDialog}
+                onEditSmartPlaylist={openSmartPlaylistEditor}
+                onRefreshSmartPlaylist={refreshSmartPlaylist}
+                trackActivity={trackActivity}
                 favoriteTrackIds={favoriteTrackIds}
                 onToggleFavorite={toggleFavoriteTrack}
               />
@@ -784,6 +1035,7 @@ export default function App() {
               setFolders([]);
               setTracks([]);
               setQueue([]);
+              setTrackActivity({});
               setActiveTrackId(null);
               setScanNote("");
               localStorage.removeItem(STORAGE_KEY);
@@ -823,11 +1075,35 @@ export default function App() {
           onPlay={() => playContextPayload(contextMenu.payload)}
           onAddToQueue={() => appendToQueue(contextMenu.payload.tracks)}
           onAddToPlaylist={(playlistId) => addToPlaylist(playlistId, contextMenu.payload.tracks)}
+          onRenamePlaylist={(playlistId) => openPlaylistDialog("rename", playlistId)}
+          onDeletePlaylist={(playlistId) => openPlaylistDialog("delete", playlistId)}
+          onExcludeFromSmartPlaylist={(playlistId) => excludeFromSmartPlaylist(playlistId, contextMenu.payload.tracks)}
           onInfo={() => setInfoTarget(contextMenu.payload)}
         />
       )}
 
       {infoTarget && <InfoPanel payload={infoTarget} onClose={() => setInfoTarget(null)} />}
+      {playlistDialog && (
+        <PlaylistDialog
+          key={`${playlistDialog.mode}-${playlistDialog.playlistId ?? "new"}`}
+          dialog={playlistDialog}
+          onCancel={() => setPlaylistDialog(null)}
+          onSubmit={submitPlaylistDialog}
+          onCreateSmart={openCreateSmartPlaylist}
+        />
+      )}
+      {smartPlaylistDialog && (
+        <SmartPlaylistDialog
+          key={smartPlaylistDialog === "create" ? "create-smart" : smartPlaylistDialog.id}
+          playlist={smartPlaylistDialog === "create" ? undefined : smartPlaylistDialog}
+          tracks={tracks}
+          favoriteTrackIds={favoriteTrackIds}
+          activity={trackActivity}
+          onCancel={() => setSmartPlaylistDialog(null)}
+          onSave={saveSmartPlaylist}
+        />
+      )}
+      {actionNotice && <div className="action-toast" role="status">{actionNotice}</div>}
     </div>
   );
 }

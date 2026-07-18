@@ -1,0 +1,1015 @@
+.context-menu {
+  position: fixed;
+  z-index: 40;
+  width: 282px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  padding: 6px 0 8px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(18, 13, 19, 0.985);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-top: 2px solid var(--accent);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.66), 0 4px 14px rgba(0, 0, 0, 0.46);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+.context-title {
+  padding: 10px 16px 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.context-title strong,
+.context-title span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-title strong {
+  margin-top: 5px;
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.context-title span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.context-title .context-title-kicker {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.12em;
+}
+
+.context-actions {
+  padding: 5px 0;
+}
+
+.context-actions-secondary {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.context-menu button {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 17px;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.82);
+  border-left: 3px solid transparent;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.context-menu button svg {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.context-menu button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-menu button:hover:not(:disabled),
+.context-menu button:focus-visible {
+  background: rgba(241, 36, 134, 0.18);
+  border-left-color: var(--accent);
+  color: #fff;
+}
+
+.context-menu button:hover:not(:disabled) svg,
+.context-menu button:focus-visible svg {
+  color: var(--accent);
+}
+
+.context-menu button:focus-visible {
+  outline: 0;
+}
+
+.context-menu button:disabled {
+  opacity: 0.34;
+}
+
+.context-menu .context-danger:hover:not(:disabled),
+.context-menu .context-danger:focus-visible {
+  background: rgba(184, 48, 63, 0.2);
+  border-left-color: #e15a67;
+}
+
+.context-menu .context-danger:hover:not(:disabled) svg,
+.context-menu .context-danger:focus-visible svg {
+  color: #ef7b86;
+}
+
+.context-section {
+  padding: 7px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.context-section > span {
+  display: block;
+  padding: 3px 17px 7px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.playlist-dialog-overlay {
+  position: fixed;
+  z-index: 48;
+  inset: 28px 0 74px;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(7, 4, 8, 0.72);
+}
+
+.playlist-dialog {
+  width: min(480px, calc(100vw - 48px));
+  min-height: 250px;
+  padding: 30px 34px 28px;
+  color: rgba(255, 255, 255, 0.92);
+  background: #171118;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-top: 3px solid var(--accent);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72);
+}
+
+.playlist-dialog-kicker {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.13em;
+}
+
+.playlist-dialog h2 {
+  margin: 10px 0 26px;
+  color: #fff;
+  font-size: 36px;
+  font-weight: 300;
+  line-height: 1.05;
+}
+
+.playlist-dialog label,
+.playlist-dialog label > span,
+.playlist-dialog input,
+.playlist-dialog label small {
+  display: block;
+  width: 100%;
+}
+
+.playlist-dialog label > span {
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 13px;
+}
+
+.playlist-dialog input {
+  height: 42px;
+  padding: 0 10px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.27);
+  border-bottom-color: var(--accent);
+  border-radius: 0;
+  outline: 0;
+  font-size: 17px;
+  font-weight: 300;
+}
+
+.playlist-dialog input:focus {
+  background: rgba(255, 255, 255, 0.065);
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.playlist-dialog input::placeholder {
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.playlist-dialog label small {
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  font-weight: 300;
+}
+
+.playlist-dialog-message {
+  max-width: 390px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 1.65;
+}
+
+.playlist-kind-options {
+  display: grid;
+  gap: 8px;
+}
+
+.playlist-kind-options > button {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-left: 2px solid transparent;
+  transition:
+    color var(--motion-micro) var(--motion-ease-direct),
+    background var(--motion-micro) var(--motion-ease-direct),
+    border-color var(--motion-micro) var(--motion-ease-direct),
+    transform var(--motion-press) var(--motion-ease-direct);
+}
+
+.playlist-kind-options > button:hover,
+.playlist-kind-options > button:focus-visible {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.065);
+  border-left-color: var(--accent);
+}
+
+.playlist-kind-options > button:active {
+  transform: scale(0.98);
+}
+
+.playlist-kind-options svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.playlist-kind-options span,
+.playlist-kind-options strong,
+.playlist-kind-options small {
+  display: block;
+}
+
+.playlist-kind-options strong {
+  font-size: 17px;
+  font-weight: 400;
+}
+
+.playlist-kind-options small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 300;
+}
+
+.smart-playlist-overlay {
+  position: fixed;
+  z-index: 49;
+  inset: 28px 0 74px;
+  display: grid;
+  place-items: center;
+  padding: 20px 24px;
+  background: rgba(7, 4, 8, 0.78);
+}
+
+.smart-playlist-dialog {
+  width: min(1180px, calc(100vw - 48px));
+  height: min(760px, calc(100vh - 130px));
+  min-height: min(560px, calc(100vh - 130px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.9);
+  background: #130d14;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-top: 3px solid var(--accent);
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.76);
+}
+
+.smart-editor-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  align-items: end;
+  gap: 36px;
+  padding: 24px 28px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.smart-editor-header h2 {
+  margin: 7px 0 5px;
+  color: #fff;
+  font-size: 34px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.smart-editor-header p {
+  max-width: 650px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-name-field,
+.smart-name-field > span {
+  display: block;
+}
+
+.smart-name-field > span,
+.smart-presets > span,
+.smart-section-heading span,
+.smart-preview-heading span,
+.smart-mix-settings label > span {
+  color: rgba(255, 255, 255, 0.47);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.smart-name-field input {
+  width: 100%;
+  height: 38px;
+  margin-top: 7px;
+  padding: 0 9px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-bottom-color: var(--accent);
+  outline: 0;
+}
+
+.smart-name-field input:focus {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.smart-editor-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 178px minmax(420px, 1fr) minmax(210px, 260px);
+  gap: 24px;
+  padding: 22px 28px 20px;
+  overflow: hidden;
+}
+
+.smart-presets,
+.smart-rules-panel,
+.smart-preview {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+
+.smart-presets {
+  padding-right: 16px;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.smart-presets > span {
+  display: block;
+  margin: 2px 0 10px;
+}
+
+.smart-presets button {
+  width: 100%;
+  min-height: 58px;
+  display: block;
+  padding: 7px 9px;
+  text-align: left;
+  border-left: 2px solid transparent;
+  transition:
+    color var(--motion-micro) var(--motion-ease-direct),
+    background var(--motion-micro) var(--motion-ease-direct),
+    border-color var(--motion-micro) var(--motion-ease-direct),
+    transform var(--motion-press) var(--motion-ease-direct);
+}
+
+.smart-presets button:hover,
+.smart-presets button.selected {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.065);
+  border-left-color: var(--accent);
+}
+
+.smart-presets button:active,
+.smart-rule-remove:active,
+.smart-add-rule:active,
+.smart-preview-heading button:active,
+.smart-editor-footer button:active {
+  transform: scale(0.97);
+}
+
+.smart-presets strong,
+.smart-presets small {
+  display: block;
+}
+
+.smart-presets strong {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.smart-presets small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 300;
+  line-height: 1.35;
+}
+
+.smart-rules-panel {
+  padding-right: 4px;
+}
+
+.smart-section-heading,
+.smart-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.smart-section-heading strong,
+.smart-preview-heading strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 16px;
+  font-weight: 350;
+}
+
+.smart-segmented {
+  display: flex;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.smart-segmented button {
+  min-width: 52px;
+  height: 27px;
+  color: var(--muted);
+  font-size: 11px;
+  transition: color var(--motion-micro) ease, background var(--motion-micro) ease;
+}
+
+.smart-segmented button.selected {
+  color: #fff;
+  background: rgba(241, 36, 134, 0.7);
+}
+
+.smart-rule-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.smart-rule-empty {
+  margin: 0;
+  padding: 16px 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.025);
+  border-left: 2px solid rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+}
+
+.smart-rule-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 104px 100px minmax(130px, 1fr) 30px;
+  align-items: center;
+  gap: 6px;
+}
+
+.smart-playlist-dialog select,
+.smart-playlist-dialog input[type="number"],
+.smart-rule-value input {
+  height: 34px;
+  min-width: 0;
+  padding: 0 7px;
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0;
+  outline: 0;
+}
+
+.smart-playlist-dialog select:focus,
+.smart-playlist-dialog input:focus {
+  border-color: var(--accent);
+}
+
+.smart-playlist-dialog option {
+  color: #fff;
+  background: #211721;
+}
+
+.smart-rule-value,
+.smart-rule-value input {
+  width: 100%;
+  min-width: 0;
+}
+
+.smart-rule-number,
+.smart-range-value,
+.smart-inline-fields {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.smart-rule-number input {
+  width: 100%;
+}
+
+.smart-rule-number span,
+.smart-range-value span,
+.smart-rule-static,
+.smart-inline-fields small {
+  flex: none;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.smart-range-value input {
+  width: calc(50% - 14px);
+}
+
+.smart-rule-remove {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--quiet);
+  transition: color var(--motion-micro) ease, background var(--motion-micro) ease, transform var(--motion-press) var(--motion-ease-direct);
+}
+
+.smart-rule-remove:hover {
+  color: #f29aa2;
+  background: rgba(225, 90, 103, 0.09);
+}
+
+.smart-add-rule {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 0 8px;
+  color: rgba(255, 255, 255, 0.64);
+  border-left: 2px solid var(--accent);
+  transition: color var(--motion-micro) ease, background var(--motion-micro) ease, transform var(--motion-press) var(--motion-ease-direct);
+}
+
+.smart-add-rule:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.smart-mix-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.11);
+}
+
+.smart-mix-settings label > span {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.smart-mix-settings label > select,
+.smart-mix-settings .smart-inline-fields {
+  width: 100%;
+}
+
+.smart-inline-fields input {
+  width: 74px;
+}
+
+.smart-inline-fields select {
+  flex: 1;
+}
+
+.smart-switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  margin-top: 18px;
+}
+
+.smart-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.smart-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.smart-toggle > span {
+  position: relative;
+  width: 28px;
+  height: 15px;
+  flex: none;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.19);
+  transition: background var(--motion-micro) ease, border-color var(--motion-micro) ease;
+}
+
+.smart-toggle > span::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 9px;
+  height: 9px;
+  content: "";
+  background: rgba(255, 255, 255, 0.65);
+  transition: transform var(--motion-micro) var(--motion-ease-direct), background var(--motion-micro) ease;
+}
+
+.smart-toggle input:checked + span {
+  background: rgba(241, 36, 134, 0.48);
+  border-color: var(--accent);
+}
+
+.smart-toggle input:checked + span::after {
+  background: #fff;
+  transform: translateX(13px);
+}
+
+.smart-toggle input:focus-visible + span {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.smart-toggle strong {
+  font-size: 11px;
+  font-weight: 350;
+}
+
+.smart-preview {
+  padding-left: 20px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.smart-preview-heading button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: color var(--motion-micro) ease, background var(--motion-micro) ease, transform var(--motion-press) var(--motion-ease-direct);
+}
+
+.smart-preview-heading button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.smart-preview > p,
+.smart-preview > small {
+  display: block;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.smart-restore-exclusions {
+  margin-top: 12px;
+  padding: 6px 0;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 10px;
+  border-bottom: 1px solid rgba(241, 36, 134, 0.42);
+  transition: color var(--motion-micro) ease, border-color var(--motion-micro) ease;
+}
+
+.smart-restore-exclusions:hover {
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.smart-preview-tracks {
+  display: grid;
+  gap: 1px;
+  margin-top: 14px;
+}
+
+.smart-preview-tracks > div:not(.smart-preview-empty) {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.smart-preview-tracks > div > span {
+  color: var(--quiet);
+  font-size: 9px;
+}
+
+.smart-preview-tracks p,
+.smart-preview-tracks strong,
+.smart-preview-tracks small {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-preview-tracks strong {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.smart-preview-tracks small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.smart-preview-empty {
+  min-height: 180px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  padding: 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.smart-preview-empty svg {
+  color: var(--accent);
+}
+
+.smart-preview-empty strong {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.smart-preview-empty span {
+  max-width: 170px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.smart-editor-footer {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 28px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.smart-editor-footer > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.smart-editor-footer > div {
+  display: flex;
+  gap: 9px;
+}
+
+.smart-editor-footer button {
+  min-width: 88px;
+  height: 35px;
+  padding: 0 14px;
+  color: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: color var(--motion-micro) ease, background var(--motion-micro) ease, border-color var(--motion-micro) ease, transform var(--motion-press) var(--motion-ease-direct);
+}
+
+.smart-editor-footer button:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.46);
+}
+
+.smart-editor-footer button.primary {
+  min-width: 134px;
+  border-color: var(--accent);
+}
+
+.smart-editor-footer button.primary:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.playlist-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 30px;
+}
+
+.playlist-dialog-actions button {
+  min-width: 92px;
+  height: 36px;
+  padding: 0 16px;
+  color: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease, transform 120ms ease;
+}
+
+.playlist-dialog-actions button:hover:not(:disabled),
+.playlist-dialog-actions button:focus-visible {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.playlist-dialog-actions .primary {
+  border-color: var(--accent);
+}
+
+.playlist-dialog-actions .primary:hover:not(:disabled),
+.playlist-dialog-actions .primary:focus-visible {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.playlist-dialog-actions .danger {
+  border-color: rgba(225, 90, 103, 0.7);
+  color: #f29aa2;
+}
+
+.playlist-dialog-actions .danger:hover,
+.playlist-dialog-actions .danger:focus-visible {
+  color: #fff;
+  background: #a8313f;
+  border-color: #a8313f;
+}
+
+.action-toast {
+  position: fixed;
+  z-index: 55;
+  left: 50%;
+  bottom: 92px;
+  max-width: min(520px, calc(100vw - 48px));
+  padding: 10px 16px 11px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(22, 16, 23, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 3px solid var(--accent);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.48);
+  font-size: 13px;
+  font-weight: 300;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.playlist-dialog-overlay,
+.smart-playlist-overlay {
+  opacity: 1;
+  transition: opacity var(--motion-micro) var(--motion-ease-direct);
+
+  @starting-style { opacity: 0; }
+}
+
+.playlist-dialog,
+.smart-playlist-dialog {
+  opacity: 1;
+  transform: perspective(1000px) translate3d(0, -4vh, 0) rotateX(0deg) scale(1);
+  transform-origin: center 42%;
+  transition:
+    opacity var(--motion-content) var(--motion-ease-direct),
+    transform var(--motion-content) var(--motion-ease-direct);
+
+  @starting-style {
+    opacity: 0;
+    transform: perspective(1000px) translate3d(0, calc(-4vh + 14px), 0) rotateX(-4deg) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playlist-dialog-overlay,
+  .playlist-dialog,
+  .smart-playlist-overlay,
+  .smart-playlist-dialog {
+    animation: none;
+    transform: none;
+    transition-duration: var(--motion-instant);
+  }
+}
+
+@media (max-width: 760px) {
+  .playlist-dialog {
+    width: min(420px, calc(100vw - 48px));
+    padding-inline: 24px;
+  }
+
+  .smart-editor-header {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .smart-editor-layout {
+    grid-template-columns: 150px minmax(390px, 1fr);
+  }
+
+  .smart-preview {
+    display: none;
+  }
+}
+
+.playlist-list .playlist-list-description {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.playlist-list-description svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.playlist-detail > small {
+  display: block;
+  margin-top: -8px;
+  color: var(--quiet);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.playlist-art.smart {
+  color: #fff;
+  background: rgba(241, 36, 134, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(241, 36, 134, 0.38);
+}
+
+.playlist-detail-play,
+.playlist-smart-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  color: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition:
+    color var(--motion-micro) var(--motion-ease-direct),
+    background var(--motion-micro) var(--motion-ease-direct),
+    border-color var(--motion-micro) var(--motion-ease-direct),
+    transform var(--motion-press) var(--motion-ease-direct);
+}
+
+.playlist-detail-play {
+  width: 150px;
+  margin-top: 24px;
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.playlist-smart-actions {
+  width: 150px;
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.playlist-smart-actions button {
+  justify-content: flex-start;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.playlist-detail-play:hover,
+.playlist-smart-actions button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.48);
+}
+
+.playlist-detail-play:active,
+.playlist-smart-actions button:active {
+  transform: scale(0.97);
+}

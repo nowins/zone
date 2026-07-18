@@ -1,12 +1,13 @@
 import { DEFAULT_PLAYLIST_ID } from "../constants.js";
 import type { Playlist, Track } from "../types";
+import { isSmartPlaylist, normalizeSmartPlaylistConfig } from "./smartPlaylist.js";
 
 export function defaultPlaylists(): Playlist[] {
   return [
     {
       id: DEFAULT_PLAYLIST_ID,
-      name: "favorites",
-      description: "saved playlist",
+      name: "收藏",
+      description: "收藏的歌曲",
       trackIds: [],
     },
   ];
@@ -14,7 +15,24 @@ export function defaultPlaylists(): Playlist[] {
 
 export function normalizePlaylists(playlists: Playlist[] | undefined | null): Playlist[] {
   const defaults = defaultPlaylists();
-  const items = playlists?.length ? playlists : [];
+  const items = (playlists?.length ? playlists : []).map((playlist) => {
+    if (isSmartPlaylist(playlist)) {
+      return {
+        ...playlist,
+        description: playlist.description || "自动更新的智能播放列表",
+        smart: normalizeSmartPlaylistConfig(playlist.smart),
+        excludedTrackIds: Array.isArray(playlist.excludedTrackIds) ? playlist.excludedTrackIds : [],
+      };
+    }
+
+    return {
+      ...playlist,
+      kind: "manual" as const,
+      name: playlist.id === DEFAULT_PLAYLIST_ID ? "收藏" : playlist.name,
+      description: playlist.id === DEFAULT_PLAYLIST_ID ? "收藏的歌曲" : playlist.description,
+      trackIds: Array.isArray(playlist.trackIds) ? playlist.trackIds : [],
+    };
+  });
   const hasDefault = items.some((playlist) => playlist.id === DEFAULT_PLAYLIST_ID);
   return hasDefault ? items : [...defaults, ...items];
 }
@@ -30,7 +48,8 @@ export function albumKey(album: string, albumArtist?: string) {
 }
 
 export function compareTracksForAlbum(a: Track, b: Track) {
-  return trackNumber(a) - trackNumber(b)
+  return (a.disc_number ?? 1) - (b.disc_number ?? 1)
+    || trackNumber(a) - trackNumber(b)
     || a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
 }
 
@@ -46,12 +65,12 @@ function leadingTrackNumber(value: string) {
 export function bestAlbumArtist(tracks: Track[]) {
   const counts = new Map<string, number>();
   for (const track of tracks) {
-    const artist = track.album_artist?.trim() || track.artist.trim() || "Unknown artist";
+    const artist = track.album_artist?.trim() || track.artist.trim() || "未知艺术家";
     counts.set(artist, (counts.get(artist) ?? 0) + 1);
   }
 
   return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1] || qualityScore(b[0]) - qualityScore(a[0]))[0]?.[0] ?? "Unknown artist";
+    .sort((a, b) => b[1] - a[1] || qualityScore(b[0]) - qualityScore(a[0]))[0]?.[0] ?? "未知艺术家";
 }
 
 function qualityScore(value: string) {
