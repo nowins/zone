@@ -12,13 +12,14 @@ import { LibraryView } from "./views/LibraryView";
 import { QuickplayView } from "./views/QuickplayView";
 import { NowPlayingView } from "./views/NowPlayingView";
 import { SettingsView } from "./views/SettingsView";
-import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, STORAGE_KEY, VISUALIZER_SAMPLE_COUNT } from "./constants";
+import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, MAX_HOME_PINS, STORAGE_KEY, VISUALIZER_SAMPLE_COUNT } from "./constants";
 import { albumKey, bestAlbumArtist, compareTracksForAlbum, defaultPlaylists, normalizePlaylists, uniqueIds } from "./utils/music";
+import { homePinForPayload, homePinStateForPayload, moveHomePin, normalizeHomePins, reconcileHomePins, shiftHomePin } from "./utils/homePins";
 import { analyzePcmBeatGrid, createIdleBeatFrame, RealtimeBeatAnalyzer, type BeatFrame, type BeatGrid } from "./utils/beatAnalysis";
 import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/visualizer";
 import { createShuffleOrder, haveSameQueueItems, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
 import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
-import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, MusicFolder, Playlist, RepeatMode, ScanResult, SmartPlaylist, Track, TrackActivityMap, ViewMode } from "./types";
+import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, HomePin, MusicFolder, Playlist, RepeatMode, ScanResult, SmartPlaylist, Track, TrackActivityMap, ViewMode } from "./types";
 
 type PlaybackSession = {
   trackId: string;
@@ -76,8 +77,10 @@ export default function App() {
   const [restored, setRestored] = useState(false);
   const [needsMetadataRefresh, setNeedsMetadataRefresh] = useState(false);
   const [selectedAlbumKey, setSelectedAlbumKey] = useState<string | null>(null);
+  const [selectedArtistName, setSelectedArtistName] = useState<string | null>(null);
   const [playlists, setPlaylists] = useState<Playlist[]>(defaultPlaylists());
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(DEFAULT_PLAYLIST_ID);
+  const [homePins, setHomePins] = useState<HomePin[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [infoTarget, setInfoTarget] = useState<ContextPayload | null>(null);
   const [playlistDialog, setPlaylistDialog] = useState<PlaylistDialogState | null>(null);
@@ -113,6 +116,7 @@ export default function App() {
       setRepeat(state.repeat ?? "off");
       setPlaylists(normalizePlaylists(state.playlists));
       setSelectedPlaylistId(state.selectedPlaylistId ?? DEFAULT_PLAYLIST_ID);
+      setHomePins(normalizeHomePins(state.homePins));
       setNeedsMetadataRefresh(state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION);
     } catch {
       localStorage.removeItem(STORAGE_KEY);
@@ -146,9 +150,10 @@ export default function App() {
         repeat,
         playlists,
         selectedPlaylistId,
+        homePins,
       }),
     );
-  }, [restored, needsMetadataRefresh, folders, tracks, activeTrackId, queue, playHistory, trackActivity, volume, shuffle, repeat, playlists, selectedPlaylistId]);
+  }, [restored, needsMetadataRefresh, folders, tracks, activeTrackId, queue, playHistory, trackActivity, volume, shuffle, repeat, playlists, selectedPlaylistId, homePins]);
 
   useEffect(() => {
     if (!activeTrackId) return;
@@ -204,6 +209,16 @@ export default function App() {
     });
     setActiveTrackId((current) => reconcileActiveTrack(current, queue, libraryIds));
   }, [restored, tracks]);
+
+  useEffect(() => {
+    if (!restored) return;
+    setHomePins((current) => {
+      const next = reconcileHomePins(current, tracks, playlists);
+      return next.length === current.length && next.every((pin, index) => pin.id === current[index]?.id)
+        ? current
+        : next;
+    });
+  }, [playlists, restored, tracks]);
 
   useEffect(() => {
     if (!shuffle) {
@@ -425,6 +440,41 @@ export default function App() {
   function navigateCollection(nextView: ViewMode) {
     setView(nextView);
     setPage("collection");
+  }
+
+  function toggleHomePin(payload: ContextPayload) {
+    const pin = homePinForPayload(payload);
+    if (!pin) return;
+    const isPinned = homePins.some((item) => item.id === pin.id);
+    if (!isPinned && homePins.length >= MAX_HOME_PINS) {
+      showActionNotice(`quickplay 最多固定 ${MAX_HOME_PINS} 项内容`);
+      return;
+    }
+
+    setHomePins((current) => isPinned
+      ? current.filter((item) => item.id !== pin.id)
+      : [...current, pin]);
+    showActionNotice(isPinned ? `已从 quickplay 取消固定“${payload.title}”` : `已固定“${payload.title}”到 quickplay`);
+  }
+
+  function openHomePin(pin: HomePin) {
+    if (pin.kind === "track") {
+      const track = tracks.find((item) => item.id === pin.targetId);
+      if (track) playTrack(track, tracks);
+      return;
+    }
+    if (pin.kind === "album") {
+      setSelectedAlbumKey(pin.targetId);
+      navigateCollection("albums");
+      return;
+    }
+    if (pin.kind === "artist") {
+      setSelectedArtistName(pin.targetId);
+      navigateCollection("artists");
+      return;
+    }
+    setSelectedPlaylistId(pin.targetId);
+    navigateCollection("playlists");
   }
 
   function openNowPlaying() {
@@ -916,13 +966,22 @@ export default function App() {
         {page === "quickplay" ? (
           <QuickplayView
             tracks={tracks}
+            artists={artists}
+            playlists={playlists}
             albums={albums}
             activeTrack={activeTrack}
+            activity={trackActivity}
+            favoriteTrackIds={favoriteTrackIds}
+            homePins={homePins}
             historyIds={playHistory}
             onPlay={playTrack}
             onPlayTracks={playTracks}
             onOpenNowPlaying={openNowPlaying}
-            onOpenCollection={() => navigateCollection("albums")}
+            onOpenCollection={navigateCollection}
+            onOpenPin={openHomePin}
+            onMovePin={(sourceId, targetId) => setHomePins((current) => moveHomePin(current, sourceId, targetId))}
+            onShiftPin={(pinId, direction) => setHomePins((current) => shiftHomePin(current, pinId, direction))}
+            onTogglePin={toggleHomePin}
             onContextMenu={showContextMenu}
           />
         ) : null}
@@ -974,6 +1033,7 @@ export default function App() {
                 queueIds={playbackQueueIds}
                 activeTrackId={activeTrackId}
                 selectedAlbumKey={selectedAlbumKey}
+                selectedArtistName={selectedArtistName}
                 onSelectAlbum={setSelectedAlbumKey}
                 onPlay={playTrack}
                 onPlayTracks={playTracks}
@@ -1077,6 +1137,8 @@ export default function App() {
           onAddToPlaylist={(playlistId) => addToPlaylist(playlistId, contextMenu.payload.tracks)}
           onRenamePlaylist={(playlistId) => openPlaylistDialog("rename", playlistId)}
           onDeletePlaylist={(playlistId) => openPlaylistDialog("delete", playlistId)}
+          homePinState={homePinStateForPayload(homePins, contextMenu.payload)}
+          onToggleHomePin={() => toggleHomePin(contextMenu.payload)}
           onExcludeFromSmartPlaylist={(playlistId) => excludeFromSmartPlaylist(playlistId, contextMenu.payload.tracks)}
           onInfo={() => setInfoTarget(contextMenu.payload)}
         />

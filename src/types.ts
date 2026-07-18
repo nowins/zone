@@ -109,6 +109,15 @@ export type TrackActivity = {
 
 export type TrackActivityMap = Record<string, TrackActivity>;
 
+export type HomePinKind = "track" | "album" | "artist" | "playlist";
+
+export type HomePin = {
+  id: string;
+  kind: HomePinKind;
+  targetId: string;
+  createdAt: number;
+};
+
 export type ContextPayload = {
   kind: "track" | "album" | "artist" | "playlist";
   title: string;

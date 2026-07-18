@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { Ban, Heart, Info, ListMusic, ListPlus, Pencil, Play, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Ban, Heart, Info, ListMusic, ListPlus, Pencil, Pin, PinOff, Play, SlidersHorizontal, Trash2 } from "lucide-react";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import type { ContextMenuState, Playlist } from "../types";
 
@@ -13,6 +13,8 @@ export function ContextMenu({
   onRenamePlaylist,
   onDeletePlaylist,
   onExcludeFromSmartPlaylist,
+  homePinState,
+  onToggleHomePin,
   onInfo,
 }: {
   menu: ContextMenuState;
@@ -24,6 +26,8 @@ export function ContextMenu({
   onRenamePlaylist: (playlistId: string) => void;
   onDeletePlaylist: (playlistId: string) => void;
   onExcludeFromSmartPlaylist: (playlistId: string) => void;
+  homePinState: "pinned" | "unpinned" | null;
+  onToggleHomePin: () => void;
   onInfo: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -92,6 +96,12 @@ export function ContextMenu({
           <ListPlus size={17} />
           <span>添加到正在播放</span>
         </button>
+        {homePinState && (
+          <button role="menuitem" onClick={() => run(onToggleHomePin)}>
+            {homePinState === "pinned" ? <PinOff size={17} /> : <Pin size={17} />}
+            <span>{homePinState === "pinned" ? "从 quickplay 取消固定" : "固定到 quickplay"}</span>
+          </button>
+        )}
         {!isPlaylist && (
           <button role="menuitem" onClick={() => run(() => onAddToPlaylist(DEFAULT_PLAYLIST_ID))}>
             <Heart size={17} />

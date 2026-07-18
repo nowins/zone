@@ -7,18 +7,20 @@ import type { ArtistGroup, ContextPayload, Track } from "../types";
 
 export function ArtistBrowser({
   artists,
+  initialArtist,
   activeTrackId,
   onPlay,
   onPlayTracks,
   onContextMenu,
 }: {
   artists: ArtistGroup[];
+  initialArtist: string | null;
   activeTrackId: string | null;
   onPlay: (track: Track, sourceTracks?: Track[]) => void;
   onPlayTracks: (tracks: Track[]) => void;
   onContextMenu: (event: MouseEvent, payload: ContextPayload) => void;
 }) {
-  const [selectedArtist, setSelectedArtist] = useState<string | null>(artists[0]?.artist ?? null);
+  const [selectedArtist, setSelectedArtist] = useState<string | null>(initialArtist ?? artists[0]?.artist ?? null);
   const [selectedAlbumKey, setSelectedAlbumKey] = useState<string | null>(null);
   const artist = artists.find((item) => item.artist === selectedArtist) ?? artists[0] ?? null;
   const artistAlbums = useMemo(() => {
@@ -44,6 +46,12 @@ export function ArtistBrowser({
   }, [artist]);
   const selectedAlbum = artistAlbums.find((album) => album.key === selectedAlbumKey) ?? artistAlbums[0] ?? null;
   const visibleSongs = selectedAlbum?.tracks ?? artist?.tracks ?? [];
+
+  useEffect(() => {
+    if (initialArtist && artists.some((item) => item.artist === initialArtist)) {
+      setSelectedArtist(initialArtist);
+    }
+  }, [artists, initialArtist]);
 
   useEffect(() => {
     if (!artists.length) {
@@ -76,6 +84,14 @@ export function ArtistBrowser({
             <button
               key={item.artist}
               className={item.artist === artist?.artist ? "selected" : ""}
+              onContextMenu={(event) =>
+                onContextMenu(event, {
+                  kind: "artist",
+                  title: item.artist,
+                  subtitle: `${item.tracks.length} 首歌曲`,
+                  tracks: item.tracks,
+                })
+              }
               onClick={() => setSelectedArtist(item.artist)}
             >
               {item.artist}

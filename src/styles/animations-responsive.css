@@ -184,17 +184,17 @@
   }
 
   .quickplay {
-    grid-template-columns: minmax(215px, 0.78fr) minmax(350px, 1.12fr) minmax(310px, 0.94fr);
-    gap: 30px;
-    padding-inline: 0;
+    --quick-pin-art: clamp(104px, 14.5vh, 126px);
+    --quick-feature-size: clamp(270px, 27vw, 350px);
   }
 
-  .quick-feature {
-    width: min(100%, 270px);
+  .quickplay-track {
+    gap: 44px;
+    padding-right: 160px;
   }
 
-  .quick-recent {
-    max-width: 380px;
+  .quick-pins {
+    min-width: 560px;
   }
 
   .player {
@@ -236,16 +236,23 @@
   }
 
   .quickplay {
-    grid-template-columns: minmax(205px, 0.78fr) minmax(320px, 1.08fr) minmax(280px, 0.9fr);
-    gap: 22px;
+    --quick-pin-art: clamp(100px, 14vh, 116px);
+    --quick-feature-size: clamp(258px, 28vw, 310px);
   }
 
-  .quick-feature {
-    width: min(100%, 244px);
+  .quickplay-track {
+    gap: 36px;
+    padding-top: 48px;
+    padding-right: 132px;
   }
 
-  .quick-recent {
-    max-width: 342px;
+  .quick-pins {
+    min-width: 510px;
+  }
+
+  .quick-recent,
+  .quick-history {
+    width: 326px;
   }
 
   .history-layout {

@@ -16,6 +16,7 @@ export function LibraryView({
   activeTrackId,
   selectedAlbumKey,
   onSelectAlbum,
+  selectedArtistName,
   onPlay,
   onPlayTracks,
   onContextMenu,
@@ -38,6 +39,7 @@ export function LibraryView({
   activeTrackId: string | null;
   selectedAlbumKey: string | null;
   onSelectAlbum: (key: string) => void;
+  selectedArtistName: string | null;
   onPlay: (track: Track, sourceTracks?: Track[]) => void;
   onPlayTracks: (tracks: Track[]) => void;
   onContextMenu: (event: MouseEvent, payload: ContextPayload) => void;
@@ -158,6 +160,7 @@ export function LibraryView({
     return (
       <ArtistBrowser
         artists={artists}
+        initialArtist={selectedArtistName}
         activeTrackId={activeTrackId}
         onPlay={onPlay}
         onPlayTracks={onPlayTracks}
