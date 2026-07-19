@@ -10,8 +10,11 @@
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  scroll-snap-type: x proximity;
+  scroll-snap-type: none;
   scroll-padding-inline: 16px;
+  background:
+    radial-gradient(ellipse 36% 76% at 55% 60%, rgba(112, 14, 61, 0.3) 0%, rgba(74, 8, 43, 0.17) 47%, rgba(11, 7, 12, 0) 82%),
+    radial-gradient(ellipse 30% 60% at 78% 64%, rgba(92, 10, 52, 0.14) 0%, rgba(11, 7, 12, 0) 78%);
   animation: page-arrive 380ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
 }
 
@@ -35,7 +38,7 @@
   z-index: 0;
   top: clamp(6px, 1vh, 14px);
   left: 70px;
-  color: rgba(111, 36, 72, 0.25);
+  color: rgba(128, 35, 76, 0.36);
   font-size: clamp(150px, 18vw, 258px);
   line-height: 0.8;
   font-weight: 200;
@@ -154,6 +157,7 @@
   aspect-ratio: auto;
   margin: 0;
   outline: 0;
+  -webkit-user-drag: none;
 }
 
 .quick-pin-collage {
@@ -204,17 +208,19 @@
 
 .quick-pin-play {
   position: absolute;
-  right: 9px;
-  top: calc(var(--quick-pin-art) - 39px);
-  width: 31px;
-  height: 31px;
+  right: 10px;
+  top: calc(var(--quick-pin-art) - 46px);
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
   color: #fff;
   background: var(--accent);
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 50%;
   opacity: 0;
   transform: translateY(4px);
-  transition: opacity 140ms ease, transform 180ms cubic-bezier(0.18, 0.88, 0.24, 1);
+  transition: opacity 140ms ease, transform 180ms cubic-bezier(0.18, 0.88, 0.24, 1), background 150ms ease;
 }
 
 .quick-pin:hover .quick-pin-play,
@@ -225,6 +231,14 @@
 
 .quick-pin-play svg {
   margin-left: 1px;
+}
+
+.quick-pin-play:hover {
+  background: #ff2d92;
+}
+
+.quick-pin-play:active {
+  transform: scale(0.96);
 }
 
 .quick-pin-smart {

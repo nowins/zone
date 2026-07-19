@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent, KeyboardEvent, MouseEvent, WheelEvent } from "react";
+import type { DragEvent, KeyboardEvent, MouseEvent } from "react";
 import { GripVertical, Pin, PinOff, Play, Sparkles } from "lucide-react";
 import { Cover } from "../components/Cover";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
@@ -223,18 +223,46 @@ export function QuickplayView({
     if (!viewport) return;
     viewport.scrollLeft = quickplayScrollPosition;
     handleScroll();
-  }, []);
+  }, [tracks.length]);
 
   useEffect(() => {
     if (resolvedPins.length === 0) setEditingPins(false);
   }, [resolvedPins.length]);
 
-  function handleWheel(event: WheelEvent<HTMLElement>) {
-    const viewport = event.currentTarget;
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    viewport.scrollLeft += event.deltaY;
-    event.preventDefault();
-  }
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      const eventTarget = event.target;
+      const viewportBounds = viewport.getBoundingClientRect();
+      const isWithinViewport = event.clientX >= viewportBounds.left
+        && event.clientX <= viewportBounds.right
+        && event.clientY >= viewportBounds.top
+        && event.clientY <= viewportBounds.bottom;
+      const comesFromViewport = eventTarget instanceof Node && viewport.contains(eventTarget);
+      if (!comesFromViewport && !isWithinViewport) return;
+      const maxScrollLeft = viewport.scrollWidth - viewport.clientWidth;
+      if (maxScrollLeft <= 1) return;
+
+      const unit = event.deltaMode === 1 ? 32 : event.deltaMode === 2 ? viewport.clientWidth : 1;
+      const deltaX = event.deltaX * unit;
+      const legacyWheelDelta = (event as WheelEvent & { wheelDelta?: number }).wheelDelta ?? 0;
+      const deltaY = (event.deltaY || -legacyWheelDelta) * unit;
+      const delta = Math.abs(deltaY) >= Math.abs(deltaX) ? deltaY : deltaX;
+      if (!delta) return;
+
+      const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, viewport.scrollLeft + delta));
+      if (nextScrollLeft === viewport.scrollLeft) return;
+      viewport.scrollLeft = nextScrollLeft;
+      event.preventDefault();
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+    return () => {
+      window.removeEventListener("wheel", handleWheel, true);
+    };
+  }, [tracks.length]);
 
   function handleScroll() {
     const viewport = viewportRef.current;
@@ -300,7 +328,6 @@ export function QuickplayView({
       className="quickplay"
       aria-label="快速播放全景"
       tabIndex={0}
-      onWheel={handleWheel}
       onScroll={handleScroll}
       onKeyDown={handlePanoramaKey}
     >

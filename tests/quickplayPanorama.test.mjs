@@ -7,13 +7,26 @@ const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
 const menuSource = readFileSync("src/components/ContextMenu.tsx", "utf8");
 const quickplayCss = readFileSync("src/styles/quickplay.css", "utf8");
 
-test("quickplay is a keyboard and wheel accessible horizontal panorama", () => {
+test("quickplay is a keyboard and mouse-wheel accessible horizontal panorama", () => {
   const quickplayRule = cssRule(quickplayCss, ".quickplay");
   assert.ok(quickplayRule.includes("overflow-x: auto"));
-  assert.ok(quickplayRule.includes("scroll-snap-type: x proximity"));
-  assert.ok(quickplaySource.includes("onWheel={handleWheel}"));
+  assert.ok(quickplayRule.includes("scroll-snap-type: none"));
+  assert.ok(quickplaySource.includes('window.addEventListener("wheel", handleWheel, { passive: false, capture: true })'));
+  assert.ok(quickplaySource.includes("viewport.scrollLeft = nextScrollLeft"));
+  assert.ok(quickplaySource.includes('window.removeEventListener("wheel", handleWheel, true);\n    };\n  }, [tracks.length]);'));
+  assert.ok(!quickplaySource.includes("handlePanoramaPointerDown"));
+  assert.ok(!quickplaySource.includes("handlePanoramaPointerMove"));
   assert.ok(quickplaySource.includes("onKeyDown={handlePanoramaKey}"));
   assert.ok(quickplaySource.includes("quickplay-ghost"));
+});
+
+test("quickplay pin play affordances are circular and the panorama keeps its pink wash", () => {
+  const pinPlayRule = cssRule(quickplayCss, ".quick-pin-play");
+  const quickplayRule = cssRule(quickplayCss, ".quickplay");
+  assert.ok(pinPlayRule.includes("border-radius: 50%"));
+  assert.ok(pinPlayRule.includes("border: 1px solid"));
+  assert.ok(quickplayRule.includes("radial-gradient"));
+  assert.ok(quickplayCss.includes("rgba(128, 35, 76, 0.36)"));
 });
 
 test("home pins persist and support all durable collection entity types", () => {
