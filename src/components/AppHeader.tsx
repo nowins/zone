@@ -1,4 +1,4 @@
-import { FolderPlus, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import type { AppPage } from "../types";
 
 export function AppHeader({
@@ -6,19 +6,17 @@ export function AppHeader({
   query,
   onQuery,
   onNavigate,
-  onAddFolder,
 }: {
   page: Exclude<AppPage, "nowPlaying">;
   query: string;
   onQuery: (value: string) => void;
   onNavigate: (page: "quickplay" | "collection" | "settings") => void;
-  onAddFolder: () => void;
 }) {
   return (
     <header className="app-header">
       <div className="app-identity">
         <strong className="brand">ZONE</strong>
-        <nav className="primary-pivot" aria-label="Primary navigation">
+        <nav className="primary-pivot" aria-label="主要导航">
           <button
             className={page === "quickplay" ? "active" : ""}
             onClick={() => onNavigate("quickplay")}
@@ -45,11 +43,6 @@ export function AppHeader({
             />
             <Search size={17} aria-hidden="true" />
           </label>
-        ) : null}
-        {page === "collection" ? (
-          <button className="header-icon" onClick={onAddFolder} title="添加音乐文件夹">
-            <FolderPlus size={18} />
-          </button>
         ) : null}
         <button
           className={page === "settings" ? "utility-active" : ""}

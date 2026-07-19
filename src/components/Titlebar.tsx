@@ -8,13 +8,13 @@ export function Titlebar() {
     <header className="titlebar" data-tauri-drag-region>
       <div data-tauri-drag-region />
       <div className="window-controls">
-        <button onClick={() => appWindow.minimize()} title="Minimize">
+        <button onClick={() => appWindow.minimize()} title="最小化">
           <Minus size={15} />
         </button>
-        <button onClick={() => appWindow.toggleMaximize()} title="Maximize">
+        <button onClick={() => appWindow.toggleMaximize()} title="最大化">
           <Square size={12} />
         </button>
-        <button onClick={() => appWindow.close()} title="Close">
+        <button onClick={() => appWindow.close()} title="关闭">
           <X size={15} />
         </button>
       </div>

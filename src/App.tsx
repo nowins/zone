@@ -959,21 +959,20 @@ export default function App() {
             query={query}
             onQuery={setQuery}
             onNavigate={navigatePage}
-            onAddFolder={addFolder}
           />
         ) : null}
 
         {page === "quickplay" ? (
           <QuickplayView
             tracks={tracks}
+            albums={albums}
             artists={artists}
             playlists={playlists}
-            albums={albums}
             activeTrack={activeTrack}
+            historyIds={playHistory}
             activity={trackActivity}
             favoriteTrackIds={favoriteTrackIds}
             homePins={homePins}
-            historyIds={playHistory}
             onPlay={playTrack}
             onPlayTracks={playTracks}
             onOpenNowPlaying={openNowPlaying}
@@ -1033,8 +1032,8 @@ export default function App() {
                 queueIds={playbackQueueIds}
                 activeTrackId={activeTrackId}
                 selectedAlbumKey={selectedAlbumKey}
-                selectedArtistName={selectedArtistName}
                 onSelectAlbum={setSelectedAlbumKey}
+                selectedArtistName={selectedArtistName}
                 onPlay={playTrack}
                 onPlayTracks={playTracks}
                 onContextMenu={showContextMenu}
@@ -1137,9 +1136,9 @@ export default function App() {
           onAddToPlaylist={(playlistId) => addToPlaylist(playlistId, contextMenu.payload.tracks)}
           onRenamePlaylist={(playlistId) => openPlaylistDialog("rename", playlistId)}
           onDeletePlaylist={(playlistId) => openPlaylistDialog("delete", playlistId)}
+          onExcludeFromSmartPlaylist={(playlistId) => excludeFromSmartPlaylist(playlistId, contextMenu.payload.tracks)}
           homePinState={homePinStateForPayload(homePins, contextMenu.payload)}
           onToggleHomePin={() => toggleHomePin(contextMenu.payload)}
-          onExcludeFromSmartPlaylist={(playlistId) => excludeFromSmartPlaylist(playlistId, contextMenu.payload.tracks)}
           onInfo={() => setInfoTarget(contextMenu.payload)}
         />
       )}

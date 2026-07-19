@@ -37,7 +37,7 @@ export function ArtistBrowser({
         return {
           key,
           artist: bestAlbumArtist(sortedTracks),
-          album: sortedTracks[0]?.album ?? "Unknown album",
+          album: sortedTracks[0]?.album ?? "未知专辑",
           tracks: sortedTracks,
           coverPath: sortedTracks.find((track) => track.cover_path)?.cover_path,
         };
@@ -78,12 +78,12 @@ export function ArtistBrowser({
   return (
     <div className="artist-browser">
       <section className="artist-column">
-        <p>{artists.length} artists</p>
         <div className="artist-picker">
           {artists.map((item) => (
             <button
               key={item.artist}
               className={item.artist === artist?.artist ? "selected" : ""}
+              onClick={() => setSelectedArtist(item.artist)}
               onContextMenu={(event) =>
                 onContextMenu(event, {
                   kind: "artist",
@@ -92,7 +92,6 @@ export function ArtistBrowser({
                   tracks: item.tracks,
                 })
               }
-              onClick={() => setSelectedArtist(item.artist)}
             >
               {item.artist}
             </button>
@@ -101,7 +100,7 @@ export function ArtistBrowser({
       </section>
 
       <section className="artist-albums">
-        <p>{artistAlbums.length} albums</p>
+        <p>{artistAlbums.length} 张专辑</p>
         <div className="artist-album-grid">
           {artistAlbums.map((album, index) => (
             <div
@@ -125,7 +124,7 @@ export function ArtistBrowser({
                     event.stopPropagation();
                     onPlayTracks(album.tracks);
                   }}
-                  title={`Play ${album.album}`}
+                  title={`播放 ${album.album}`}
                 >
                   <Play size={20} />
                 </button>
@@ -138,7 +137,7 @@ export function ArtistBrowser({
       </section>
 
       <section className="artist-songs">
-        <p>{visibleSongs.length} songs</p>
+        <p>{visibleSongs.length} 首歌曲</p>
         <div className="artist-song-list">
           {visibleSongs.map((track, index) => (
             <button

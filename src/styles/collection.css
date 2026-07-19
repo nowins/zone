@@ -310,7 +310,6 @@
   overflow: hidden;
 }
 
-.artist-column p,
 .artist-albums p,
 .artist-songs p {
   margin: 0 0 14px;
@@ -334,6 +333,7 @@
 }
 
 .artist-picker {
+  max-height: 100%;
   padding-right: 8px;
 }
 
@@ -460,70 +460,27 @@
   overflow: hidden;
 }
 
-.playlist-list p {
-  margin: 0 0 14px;
-  color: var(--muted);
-}
-
 .playlist-create {
-  margin: 0 0 16px;
+  margin: 0 0 18px;
 }
 
-.playlist-create-button,
-.playlist-create form {
+.playlist-create-button {
   width: 100%;
   min-height: 42px;
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.playlist-create-button {
   padding: 0 12px;
   color: rgba(255, 255, 255, 0.78);
   text-align: left;
+  border-left: 2px solid transparent;
+  transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
 }
 
 .playlist-create-button:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.07);
+  border-left-color: var(--accent);
   color: #fff;
-}
-
-.playlist-create form {
-  padding: 0 4px 0 12px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.playlist-create input {
-  min-width: 0;
-  flex: 1;
-  height: 36px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: #fff;
-  font: inherit;
-}
-
-.playlist-create input::placeholder {
-  color: rgba(255, 255, 255, 0.42);
-}
-
-.playlist-create form button {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.playlist-create form button:hover:not(:disabled) {
-  background: var(--accent);
-  color: #fff;
-}
-
-.playlist-create form button:disabled {
-  opacity: 0.32;
 }
 
 .playlist-list > button {

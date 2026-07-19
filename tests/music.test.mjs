@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { albumKey, bestAlbumArtist, compareTracksForAlbum } from "../.tmp/visualizer-tests/utils/music.js";
+import { albumKey, bestAlbumArtist, compareTracksForAlbum, normalizePlaylists } from "../.tmp/visualizer-tests/utils/music.js";
 
 function track(overrides) {
   return {
@@ -32,4 +32,14 @@ test("album artist metadata controls the displayed album artist", () => {
     track({ title: "Two", artist: "Guest B", album_artist: "Compilation Artist" }),
   ];
   assert.equal(bestAlbumArtist(tracks), "Compilation Artist");
+});
+
+test("legacy favorites playlist is localized when restored", () => {
+  const playlists = normalizePlaylists([
+    { id: "favorites", name: "favorites", description: "saved playlist", trackIds: ["one"] },
+  ]);
+
+  assert.equal(playlists[0].name, "收藏");
+  assert.equal(playlists[0].description, "收藏的歌曲");
+  assert.deepEqual(playlists[0].trackIds, ["one"]);
 });
