@@ -109,6 +109,13 @@ export function createMosaicMotion(timeSeconds: number): MosaicMotion {
   };
 }
 
+export function mosaicTileRevealAmount(seed: number, elapsedMs: number, motionEnabled = true) {
+  if (!motionEnabled) return 1;
+  const delay = 70 + clamp(seed, 0, 1) * 500;
+  const progress = clamp((elapsedMs - delay) / 180, 0, 1);
+  return 1 - (1 - progress) ** 3;
+}
+
 export function lerpColor(from: RgbColor, to: RgbColor, amount: number): RgbColor {
   const alpha = clamp(amount, 0, 1);
   return {

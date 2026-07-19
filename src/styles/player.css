@@ -2,27 +2,28 @@
   z-index: 18;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(118px, 0.45fr) minmax(360px, 1.35fr) minmax(300px, 0.82fr);
+  grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
   align-items: center;
-  gap: clamp(14px, 1.8vw, 28px);
-  padding: 7px 48px 8px;
-  background: rgba(9, 5, 10, 0.97);
-  border-top: 1px solid rgba(247, 242, 246, 0.13);
+  gap: clamp(14px, 1.8vw, 30px);
+  padding: 4px 48px 5px;
+  background: rgba(7, 4, 8, 0.96);
+  border-top: 1px solid rgba(247, 242, 246, 0.12);
 }
 
 .player-shortcuts {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-self: start;
+  gap: 10px;
 }
 
 .player-shortcuts button {
   position: relative;
-  width: 32px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
-  color: rgba(247, 242, 246, 0.58);
+  color: rgba(247, 242, 246, 0.5);
 }
 
 .player-shortcuts button:hover {
@@ -47,121 +48,136 @@
   transform: scaleX(1);
 }
 
-.player-track {
+.player-primary {
   min-width: 0;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 26px;
-  grid-template-rows: 36px 14px;
-  column-gap: 10px;
+  grid-template-columns: 44px clamp(310px, 24vw, 520px);
   align-items: center;
+  justify-self: center;
+  justify-content: center;
+  gap: 14px;
 }
 
-.now {
-  grid-column: 1 / 3;
-  grid-row: 1;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  padding: 0;
-  text-align: left;
-}
-
-.now:disabled {
-  opacity: 1;
-}
-
-.now:hover strong {
-  color: #fff;
-}
-
-.mini-cover {
+.player-cover {
   width: 44px;
   height: 44px;
-  flex: none;
-  display: grid;
-  place-items: center;
+  padding: 0;
+  overflow: hidden;
+  transition: opacity 150ms ease, transform 180ms cubic-bezier(0.18, 0.88, 0.24, 1);
+}
+
+.player-cover:hover:not(:disabled) {
+  transform: scale(1.035);
+}
+
+.player-cover:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.player-cover .mini-cover {
+  width: 44px;
+  height: 44px;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.82);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 75%, #111), #272727);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 200;
 }
 
-.mini-cover img {
+.player-primary > .zune-progress {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
-.now-copy,
-.now-copy strong,
-.now-copy > span {
+.zune-progress {
   min-width: 0;
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 18px 10px 13px;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.zune-progress-heading {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.zune-progress-heading > span,
+.zune-progress-heading > button:first-child {
+  min-width: 0;
+  width: 100%;
   overflow: hidden;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 1;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color 160ms ease;
 }
 
-.now-copy strong {
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 13px;
-  line-height: 1.25;
-  font-weight: 400;
+.zune-progress-heading > button:first-child:hover {
+  color: #fff;
 }
 
-.now-copy > span {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.player-favorite {
-  grid-column: 3;
-  grid-row: 1;
-  width: 26px;
-  height: 28px;
+.zune-progress-favorite {
+  grid-column: 2;
+  justify-self: end;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
   display: grid;
   place-items: center;
-  color: var(--quiet);
+  color: rgba(247, 242, 246, 0.38);
 }
 
-.player-favorite:hover,
-.player-favorite.active {
+.zune-progress-favorite:hover,
+.zune-progress-favorite.active {
   color: var(--accent);
 }
 
-.scrub {
-  grid-column: 2 / -1;
-  grid-row: 2;
-  display: grid;
-  grid-template-columns: 31px minmax(0, 1fr) 36px;
-  align-items: center;
-  gap: 6px;
-}
-
-.scrub span {
-  color: var(--muted);
+.zune-progress-time {
+  grid-row: 3;
+  color: rgba(247, 242, 246, 0.56);
   font-size: 9px;
+  font-weight: 300;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
-.scrub span:last-child {
-  text-align: right;
+.zune-progress-time-start {
+  grid-column: 1;
+  justify-self: start;
 }
 
-.player input[type="range"] {
-  width: 100%;
-  height: 10px;
+.zune-progress-time-end {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.zune-progress input,
+.zune-volume input {
   margin: 0;
   appearance: none;
   background: transparent;
 }
 
-.player input[type="range"]::-webkit-slider-runnable-track {
-  height: 1px;
+.zune-progress input {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+  height: 10px;
+  cursor: pointer;
+}
+
+.zune-progress input::-webkit-slider-runnable-track,
+.zune-volume input::-webkit-slider-runnable-track {
+  height: 2px;
   background: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0.92) 0 var(--range-progress, 0%),
@@ -169,10 +185,11 @@
   );
 }
 
-.player input[type="range"]::-webkit-slider-thumb {
+.zune-progress input::-webkit-slider-thumb,
+.zune-volume input::-webkit-slider-thumb {
   width: 5px;
   height: 5px;
-  margin-top: -2px;
+  margin-top: -1.5px;
   appearance: none;
   background: #fff;
   border: 0;
@@ -181,67 +198,112 @@
   transition: opacity 120ms ease;
 }
 
-.player input[type="range"]:hover::-webkit-slider-thumb,
-.player input[type="range"]:focus-visible::-webkit-slider-thumb {
+.zune-progress input:hover::-webkit-slider-thumb,
+.zune-progress input:focus-visible::-webkit-slider-thumb,
+.zune-volume input:hover::-webkit-slider-thumb,
+.zune-volume input:focus-visible::-webkit-slider-thumb {
   opacity: 1;
 }
 
-.transport {
+.player-transport {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(188px, auto) minmax(68px, 100px);
-  align-items: center;
-  justify-content: end;
-  gap: 9px;
+  justify-self: end;
+  justify-items: end;
+  align-content: center;
+  gap: 0;
 }
 
-.buttons {
+.zune-controls {
   display: flex;
-  justify-content: flex-end;
   align-items: center;
-  gap: 2px;
+  justify-content: flex-end;
+  gap: 1px;
 }
 
-.buttons button {
-  width: 27px;
+.zune-controls button {
+  width: 28px;
   height: 30px;
   display: grid;
   place-items: center;
-  color: rgba(247, 242, 246, 0.62);
-}
-
-.buttons button:hover,
-.buttons button.active {
-  color: #fff;
-}
-
-.buttons button.active:not(.play-button) {
-  color: var(--accent);
-}
-
-.buttons .play-button {
-  width: 38px;
-  height: 38px;
-  margin: 0 2px;
-  color: #fff;
-  border: 1.5px solid rgba(255, 255, 255, 0.78);
+  color: rgba(247, 242, 246, 0.56);
   transition: color 150ms ease, border-color 150ms ease, transform 180ms cubic-bezier(0.18, 0.88, 0.24, 1);
 }
 
-.buttons .play-button:hover:not(:disabled) {
+.zune-controls button:hover:not(:disabled) {
+  color: #fff;
+}
+
+.zune-controls button.active {
+  color: var(--accent);
+}
+
+.zune-controls .zune-play {
+  width: 40px;
+  height: 40px;
+  margin: 0 2px;
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+}
+
+.zune-controls .zune-play:hover:not(:disabled) {
   color: var(--accent);
   border-color: #fff;
-  transform: scale(1.04);
+  transform: scale(1.035);
 }
 
-.volume {
-  min-width: 0;
+.zune-volume {
+  width: 74px;
+  height: 13px;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
-  color: var(--muted);
+  color: rgba(247, 242, 246, 0.48);
+  font-size: 9px;
+  font-weight: 300;
+  line-height: 1;
+  white-space: nowrap;
+  transition: width 220ms ease, color 160ms ease;
 }
 
-.volume input {
+.zune-volume span {
+  flex: 0 0 auto;
+}
+
+.zune-volume-icon {
+  width: 0;
   min-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: width 180ms ease, opacity 140ms ease;
+}
+
+.zune-volume input {
+  width: 0;
+  min-width: 0;
+  height: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: width 220ms ease, opacity 160ms ease;
+}
+
+.zune-volume:hover,
+.zune-volume:focus-within {
+  width: 190px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.zune-volume:hover .zune-volume-icon,
+.zune-volume:focus-within .zune-volume-icon {
+  width: 13px;
+  opacity: 0.72;
+}
+
+.zune-volume:hover input,
+.zune-volume:focus-within input {
+  width: 96px;
+  opacity: 0.76;
+  pointer-events: auto;
 }

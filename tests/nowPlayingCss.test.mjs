@@ -3,9 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const nowPlayingCss = readFileSync("src/styles/now-playing.css", "utf8");
+const playerCss = readFileSync("src/styles/player.css", "utf8");
 const animationCss = readFileSync("src/styles/animations-responsive.css", "utf8");
 const baseCss = readFileSync("src/styles/base.css", "utf8");
 const nowPlayingView = readFileSync("src/views/NowPlayingView.tsx", "utf8");
+const playerBarView = readFileSync("src/components/PlayerBar.tsx", "utf8");
+const playbackProgressView = readFileSync("src/components/PlaybackProgress.tsx", "utf8");
 const mosaicCanvasSource = readFileSync("src/components/NowPlayingMosaicCanvas.tsx", "utf8");
 
 test("now playing visual layers are canvas based", () => {
@@ -42,10 +45,14 @@ test("chrome idle and immersive modes preserve the audio glow", () => {
   const idleGlowRule = cssRule(nowPlayingCss, ".chrome-idle .audio-glow-canvas");
   const immersiveGlowRule = cssRule(nowPlayingCss, ".chrome-immersive .audio-glow-canvas");
   const immersivePanelRule = cssRule(nowPlayingCss, ".chrome-immersive .now-side-panel");
+  const immersiveTransportRule = cssRule(nowPlayingCss, ".chrome-immersive .now-back,\n.chrome-immersive .now-transport");
 
   assert.ok(Number(idleGlowRule.match(/opacity:\s*([0-9.]+)/)?.[1]) >= 0.85);
   assert.ok(immersiveGlowRule.includes("opacity: 1"));
+  assert.ok(immersivePanelRule.includes("opacity: 0"));
   assert.ok(immersivePanelRule.includes("pointer-events: none"));
+  assert.ok(immersiveTransportRule.includes("opacity: 0"));
+  assert.ok(nowPlayingView.includes("const FOCUS_MODE_DELAY = 8_000"));
   assert.ok(nowPlayingCss.includes(".chrome-immersive"));
 });
 
@@ -59,6 +66,7 @@ test("track info keeps Zune-like left anchor hierarchy", () => {
 
   assert.ok(trackCardRule.includes("--now-cover-size: clamp(128px, 10.5vw, 220px)"));
   assert.ok(trackCardRule.includes("grid-template-columns: var(--now-cover-size)"));
+  assert.ok(trackCardRule.includes("width: min(600px, 58vw)"));
   assert.ok(coverRule.includes("width: var(--now-cover-size)"));
   assert.ok(coverRule.includes("height: var(--now-cover-size)"));
   assert.ok(coverRule.includes("outline: clamp(3px, 0.24vw, 5px) solid"));
@@ -67,33 +75,77 @@ test("track info keeps Zune-like left anchor hierarchy", () => {
   assert.ok(albumRule.includes("text-transform: uppercase"));
   assert.ok(copyRule.includes("display: flex"));
   assert.ok(copyRule.includes("flex-direction: column"));
+  assert.ok(copyRule.includes("overflow: hidden"));
+  assert.ok(titleRule.includes("width: 100%"));
+  assert.ok(titleRule.includes("text-overflow: ellipsis"));
   assert.ok(px(titleRule, "margin-top") >= 14, "song title should have breathing room from album metadata");
 });
 
-test("right status card and bottom progress remain separated", () => {
+test("queue and shared bottom controls follow the compact Zune layout", () => {
   const panelRule = cssRule(nowPlayingCss, ".now-side-panel");
   const trackListRule = cssRule(nowPlayingCss, ".now-panel-tracks");
-  const controlsRule = cssRule(nowPlayingCss, ".now-panel-controls");
+  const expandedPanelRule = cssRule(nowPlayingCss, ".now-side-panel.queue-expanded");
+  const expandedTrackListRule = cssRule(nowPlayingCss, ".now-side-panel.queue-expanded .now-panel-tracks");
   const transportRule = cssRuleLast(nowPlayingCss, ".now-transport");
-  const progressRule = cssRule(nowPlayingCss, ".now-progress");
+  const transportControlsRule = cssRule(nowPlayingCss, ".now-transport-controls");
+  const progressRule = cssRule(nowPlayingCss, ".now-transport .zune-progress");
+  const controlsRule = cssRule(playerCss, ".zune-controls button");
+  const playRule = cssRule(playerCss, ".zune-controls .zune-play");
+  const playerProgressRule = cssRule(playerCss, ".player-primary > .zune-progress");
+  const playerRule = cssRule(playerCss, ".player");
+  const progressLayoutRule = cssRule(playerCss, ".zune-progress");
+  const progressHeadingRule = cssRule(playerCss, ".zune-progress-heading");
+  const progressInputRule = cssRule(playerCss, ".zune-progress input");
   const glowRule = cssRule(nowPlayingCss, ".audio-glow-canvas");
 
   assert.ok(px(trackListRule, "max-height") <= 180, "right queue should stay compact by default");
-  assert.ok(panelRule.includes("bottom: 0"));
+  assert.ok(panelRule.includes("bottom: calc(var(--now-transport-height) + var(--now-panel-gap))"));
   assert.ok(panelRule.includes("background: rgba(0, 0, 0, 0.58)"));
-  assert.ok(controlsRule.includes("display: flex"));
-  assert.ok(controlsRule.includes("justify-content: flex-end"));
-  assert.ok(controlsRule.includes("width: 100%"));
-  assert.ok(px(cssRule(nowPlayingCss, ".now-panel-controls button"), "width") >= 34);
-  assert.ok(px(cssRule(nowPlayingCss, ".now-panel-controls .now-play"), "width") >= 48);
-  assert.ok(transportRule.includes("bottom: 28px"));
-  assert.ok(progressRule.includes("bottom: 0"));
+  assert.ok(expandedPanelRule.includes("top: clamp(118px, 25vh, 300px)"));
+  assert.ok(expandedTrackListRule.includes("height: 100%"));
+  assert.ok(expandedTrackListRule.includes("max-height: none"));
+  assert.ok(expandedTrackListRule.includes("overflow-y: auto"));
+  assert.ok(px(controlsRule, "width") <= 30, "secondary controls should remain visually light");
+  assert.ok(px(playRule, "width") <= 42, "play control should not dominate the bottom bar");
+  assert.ok(transportRule.includes("bottom: 0"));
+  assert.ok(transportRule.includes("height: var(--now-transport-height)"));
+  assert.ok(transportControlsRule.includes("height: var(--now-transport-height)"));
+  assert.ok(transportControlsRule.includes("background: transparent"));
+  assert.ok(progressRule.includes("bottom: 16px"));
   assert.ok(progressRule.includes("left: 50%"));
-  assert.ok(progressRule.includes("width: clamp(270px, 24vw, 520px)"));
+  assert.ok(progressRule.includes("width: clamp(310px, 24vw, 520px)"));
   assert.ok(px(glowRule, "max-height") <= 122, "glow should stay below the raised progress area");
+  assert.ok(nowPlayingView.includes("<PlaybackProgress"));
+  assert.ok(nowPlayingView.includes("<TransportControls"));
+  assert.ok(playerBarView.includes("<PlaybackProgress"));
+  assert.ok(playerBarView.includes("<TransportControls"));
+  assert.ok(playerBarView.includes("className=\"player-cover\""));
+  assert.ok(playerBarView.includes("<Cover artPath={track?.cover_path}"));
+  assert.ok(playerProgressRule.includes("width: 100%"));
+  assert.ok(playerRule.includes("grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr)"));
+  assert.ok(progressLayoutRule.includes("grid-template-rows: 18px 10px 13px"));
+  assert.ok(progressHeadingRule.includes("grid-column: 1 / -1"));
+  assert.ok(progressInputRule.includes("grid-column: 1 / -1"));
+  assert.ok(playbackProgressView.includes("zune-progress-time-start"));
+  assert.ok(playbackProgressView.includes("zune-progress-time-end"));
   assert.ok(nowPlayingView.includes("queueAfterCurrent(queue"), "queue should keep every item around the active track");
+  assert.ok(nowPlayingView.includes("useState(true)"), "queue should be expanded on first entry");
   assert.ok(nowPlayingView.includes("orderedQueue.slice(0, COLLAPSED_UPCOMING_COUNT)"));
+  assert.ok(nowPlayingView.includes("className=\"queue-disclosure\""));
+  assert.ok(nowPlayingView.includes("展开其余 ${hiddenQueueCount} 首"));
   assert.ok(!nowPlayingView.includes("queueExpanded ? 8 : 0"), "collapsed queue must not hide every upcoming track");
+});
+
+test("now playing enters in layered Zune order without delaying transport", () => {
+  assert.ok(nowPlayingView.includes('isEntering ? "stage-entering"'));
+  assert.ok(nowPlayingView.includes('wallRevealStarted ? "wall-reveal-started"'));
+  assert.ok(nowPlayingView.includes("onInitialRevealStart={handleInitialWallRevealStart}"));
+  assert.ok(animationCss.includes(".stage-entering .now-side-panel"));
+  assert.ok(cssRule(animationCss, ".stage-entering .now-track-card").includes("opacity: 0"));
+  assert.ok(animationCss.includes(".stage-entering.wall-reveal-started .now-track-card"));
+  assert.ok(animationCss.includes(".stage-entering .now-transport"));
+  assert.ok(animationCss.includes("animation: now-queue-enter 240ms 55ms"));
+  assert.ok(animationCss.includes("animation: now-track-info-enter 300ms 690ms"));
 });
 
 test("mosaic canvas does not use audio energy for brightness", () => {
@@ -107,7 +159,8 @@ test("mosaic canvas does not use audio energy for brightness", () => {
 test("mosaic waits for decoded covers and reveals without text placeholders", () => {
   assert.ok(mosaicCanvasSource.includes("await preloadWallImages(wallAlbums)"));
   assert.ok(mosaicCanvasSource.includes("image.decode()"));
-  assert.ok(mosaicCanvasSource.includes("wallRevealTargetRef.current = 1"));
+  assert.ok(mosaicCanvasSource.includes("mosaicTileRevealAmount(tile.seed"));
+  assert.ok(mosaicCanvasSource.includes("wallRevealStartedAtRef.current"));
   assert.ok(!mosaicCanvasSource.includes("fillText("), "album initials should never flash before covers decode");
   assert.ok(!mosaicCanvasSource.includes("initials("), "mosaic should not render text placeholders");
 });
@@ -134,16 +187,17 @@ test("save playlist dialog remains density-aware", () => {
   assert.ok(px(labelRule, "font-size") <= 34);
 });
 
-test("volume follows Zune's collapsed and hover-expanded pattern", () => {
-  const volumeRule = cssRule(nowPlayingCss, ".now-volume");
-  const inputRule = cssRule(nowPlayingCss, ".now-volume input");
+test("both pages share Zune's collapsed and hover-expanded volume pattern", () => {
+  const volumeRule = cssRule(playerCss, ".zune-volume");
+  const inputRule = cssRuleLast(playerCss, ".zune-volume input");
 
-  assert.ok(px(volumeRule, "width") <= 116, "idle volume control should only reserve room for its value");
+  assert.ok(px(volumeRule, "width") <= 74, "idle volume control should only reserve room for its value");
   assert.ok(inputRule.includes("width: 0"));
   assert.ok(inputRule.includes("opacity: 0"));
-  assert.ok(nowPlayingCss.includes(".now-volume:hover .now-volume-icon"));
-  assert.ok(nowPlayingCss.includes("width: clamp(96px, 7.6vw, 142px)"));
-  assert.ok(nowPlayingView.includes("<Volume2 className=\"now-volume-icon\""));
+  assert.ok(playerCss.includes(".zune-volume:hover .zune-volume-icon"));
+  assert.ok(playerCss.includes("width: 96px"));
+  assert.ok(nowPlayingView.includes("<VolumeControl"));
+  assert.ok(playerBarView.includes("<VolumeControl"));
 });
 
 test("responsive rules no longer reference removed visualizer structures", () => {

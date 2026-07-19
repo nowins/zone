@@ -66,7 +66,8 @@
 .song-list .song-row,
 .album-detail-motion .album-track-row,
 .folder-list > div,
-.settings-actions > button {
+.settings-section-heading,
+.settings-sidebar > section {
   animation: wp7-feather-in var(--motion-content) var(--motion-ease-direct) both;
   animation-delay: var(--stagger, 0ms);
 }
@@ -78,21 +79,20 @@
 .history-stack > button:nth-child(1),
 .album-detail-motion .album-track-row:nth-child(1),
 .folder-list > div:nth-child(1),
-.settings-actions > button:nth-child(1) { --stagger: 0ms; }
+.settings-section-heading { --stagger: 0ms; }
 .quick-album:nth-child(2),
 .history-stack > button:nth-child(2),
 .album-detail-motion .album-track-row:nth-child(2),
 .folder-list > div:nth-child(2),
-.settings-actions > button:nth-child(2) { --stagger: 24ms; }
+.settings-sidebar > section:nth-child(1) { --stagger: 24ms; }
 .quick-album:nth-child(3),
 .history-stack > button:nth-child(3),
 .album-detail-motion .album-track-row:nth-child(3),
 .folder-list > div:nth-child(3),
-.settings-actions > button:nth-child(3) { --stagger: 48ms; }
+.settings-sidebar > section:nth-child(2) { --stagger: 48ms; }
 .quick-album:nth-child(4),
 .album-detail-motion .album-track-row:nth-child(4),
-.folder-list > div:nth-child(4),
-.settings-actions > button:nth-child(4) { --stagger: 72ms; }
+.folder-list > div:nth-child(4) { --stagger: 72ms; }
 .quick-album:nth-child(5),
 .album-detail-motion .album-track-row:nth-child(5),
 .folder-list > div:nth-child(5) { --stagger: 96ms; }
@@ -205,18 +205,22 @@
 }
 
 .save-playlist-overlay,
-.save-playlist-dialog {
+.save-playlist-dialog,
+.playlist-dialog-overlay,
+.playlist-dialog {
   animation: none;
 }
 
-.save-playlist-overlay {
+.save-playlist-overlay,
+.playlist-dialog-overlay {
   opacity: 1;
   transition: opacity var(--motion-micro) var(--motion-ease-direct);
 
   @starting-style { opacity: 0; }
 }
 
-.save-playlist-dialog {
+.save-playlist-dialog,
+.playlist-dialog {
   opacity: 1;
   transform: perspective(1000px) translate3d(0, -4vh, 0) rotateX(0deg) scale(1);
   transform-origin: center 42%;
@@ -230,8 +234,7 @@
   }
 }
 
-.search-box,
-.playlist-create form {
+.search-box {
   opacity: 1;
   transform: translate3d(0, 0, 0);
   transition:
@@ -251,12 +254,11 @@
 }
 
 .player-shortcuts button,
-.buttons button,
-.player-favorite,
+.zune-controls button,
+.zune-progress-favorite,
 .track-favorite,
 .header-icon,
 .primary-action,
-.now-panel-controls button,
 .now-track-card button,
 .dialog-actions button,
 .info-close,
@@ -269,13 +271,16 @@
     transform var(--motion-press) var(--motion-ease-direct);
 }
 
+.action-toast {
+  animation: wp7-toast-in var(--motion-micro) var(--motion-ease-direct) both;
+}
+
 .player-shortcuts button:active:not(:disabled),
-.buttons button:active:not(:disabled),
-.player-favorite:active:not(:disabled),
+.zune-controls button:active:not(:disabled),
+.zune-progress-favorite:active:not(:disabled),
 .track-favorite:active:not(:disabled),
 .header-icon:active:not(:disabled),
 .primary-action:active:not(:disabled),
-.now-panel-controls button:active:not(:disabled),
 .now-track-card button:active:not(:disabled),
 .dialog-actions button:active:not(:disabled),
 .info-close:active:not(:disabled),
@@ -283,14 +288,13 @@
   transform: scale(0.97);
 }
 
-.player-favorite.active svg,
+.zune-progress-favorite.active svg,
 .track-favorite.active svg,
 .favorite-active svg {
   animation: wp7-state-confirm var(--motion-micro) var(--motion-ease-direct) both;
 }
 
-.play-button svg,
-.now-play svg {
+.zune-play svg {
   animation: wp7-icon-swap var(--motion-press) var(--motion-ease-direct) both;
 }
 
@@ -355,6 +359,11 @@
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
+@keyframes wp7-toast-in {
+  from { opacity: 0; transform: translate3d(-50%, 8px, 0); }
+  to { opacity: 1; transform: translate3d(-50%, 0, 0); }
+}
+
 @media (hover: none), (pointer: coarse) {
   .quick-cover-button:hover .cover,
   .quick-album > button:hover .cover,
@@ -381,14 +390,16 @@
   .song-list .song-row,
   .album-detail-motion,
   .album-detail-motion .album-track-row,
+  .folder-list > div,
+  .settings-section-heading,
+  .settings-sidebar > section,
   .motion-continuum,
   .now-copy,
   .now-track-card,
-  .player-favorite.active svg,
+  .zune-progress-favorite.active svg,
   .track-favorite.active svg,
   .favorite-active svg,
-  .play-button svg,
-  .now-play svg {
+  .zune-play svg {
     animation: none;
     transform: none;
   }
@@ -397,8 +408,8 @@
   .context-menu,
   .info-panel section,
   .save-playlist-dialog,
-  .search-box,
-  .playlist-create form {
+  .playlist-dialog,
+  .search-box {
     transform: none;
   }
 
@@ -407,8 +418,13 @@
   .info-panel section,
   .save-playlist-overlay,
   .save-playlist-dialog,
-  .search-box,
-  .playlist-create form {
+  .playlist-dialog-overlay,
+  .playlist-dialog,
+  .search-box {
     transition-duration: var(--motion-instant);
+  }
+
+  .action-toast {
+    animation: none;
   }
 }

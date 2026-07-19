@@ -12,6 +12,7 @@ import {
   createMosaicMotion,
   createSlowTint,
   lerpColor,
+  mosaicTileRevealAmount,
   updateMosaicFlipState,
   type MosaicFlipState,
   type MosaicTile,
@@ -29,6 +30,7 @@ export function NowPlayingMosaicCanvas({
   beatPhase,
   beatConfidence,
   isPlaying,
+  onInitialRevealStart,
 }: {
   tracks: Track[];
   activeTrack: Track | null;
@@ -37,6 +39,7 @@ export function NowPlayingMosaicCanvas({
   beatPhase: number;
   beatConfidence: number;
   isPlaying: boolean;
+  onInitialRevealStart?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
@@ -52,8 +55,7 @@ export function NowPlayingMosaicCanvas({
   const frameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
   const sceneTimeRef = useRef(0);
-  const wallRevealRef = useRef(0);
-  const wallRevealTargetRef = useRef(0);
+  const wallRevealStartedAtRef = useRef(Number.NEGATIVE_INFINITY);
   const motionEnabledRef = useRef(true);
   const wallAlbums = useMemo(() => buildNowPlayingWall(tracks, activeTrack), [tracks, activeTrack]);
 
@@ -80,21 +82,21 @@ export function NowPlayingMosaicCanvas({
       if (cancelled) return;
 
       const isFirstWall = albumsRef.current.length === 0;
-      if (isFirstWall) wallRevealRef.current = 0;
       albumsRef.current = wallAlbums;
       flipRef.current = createMosaicFlipState();
       const { width, height } = sizeRef.current;
       tilesRef.current = width > 0 && height > 0
         ? buildCanvasMosaicTiles(width, height, wallAlbums)
         : [];
-      wallRevealTargetRef.current = 1;
+      wallRevealStartedAtRef.current = isFirstWall ? performance.now() : Number.NEGATIVE_INFINITY;
+      if (isFirstWall) onInitialRevealStart?.();
     };
 
     void prepareWall();
     return () => {
       cancelled = true;
     };
-  }, [wallAlbums]);
+  }, [onInitialRevealStart, wallAlbums]);
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -164,8 +166,6 @@ export function NowPlayingMosaicCanvas({
       lastTimeRef.current = time;
       const motionEnabled = motionEnabledRef.current;
       sceneTimeRef.current += deltaSeconds * (motionEnabled ? (isPlayingRef.current ? 1 : 0.1) : 0);
-      wallRevealRef.current += (wallRevealTargetRef.current - wallRevealRef.current)
-        * (1 - Math.exp(-deltaSeconds / 0.24));
       tintRef.current = lerpColor(tintRef.current, targetTintRef.current, 1 - Math.exp(-deltaSeconds / 11));
       drawMosaic(
         context,
@@ -180,7 +180,7 @@ export function NowPlayingMosaicCanvas({
         flipRef.current,
         time,
         sceneTimeRef.current,
-        wallRevealRef.current,
+        wallRevealStartedAtRef.current,
         motionEnabled,
       );
       frameRef.current = window.requestAnimationFrame(draw);
@@ -209,7 +209,7 @@ function drawMosaic(
   flipState: MosaicFlipState,
   time: number,
   sceneSeconds: number,
-  wallOpacity: number,
+  wallRevealStartedAt: number,
   motionEnabled: boolean,
 ) {
   const { width, height, dpr } = size;
@@ -232,15 +232,20 @@ function drawMosaic(
   context.fillRect(0, 0, width, height);
 
   const motion = createMosaicMotion(motionEnabled ? sceneSeconds : 0);
+  const revealElapsed = time - wallRevealStartedAt;
+  const wallReveal = motionEnabled
+    ? Math.max(0, Math.min(1, revealElapsed / 760))
+    : 1;
 
   context.save();
-  context.globalAlpha = Math.max(0, Math.min(1, wallOpacity));
   context.translate(width / 2, height / 2);
   context.scale(motion.scale, motion.scale);
   context.translate(-width / 2 + motion.driftX, -height / 2 + motion.driftY);
 
   for (let index = 0; index < tiles.length; index += 1) {
     const tile = tiles[index];
+    const tileReveal = mosaicTileRevealAmount(tile.seed, revealElapsed, motionEnabled);
+    if (tileReveal <= 0) continue;
     const flip = flipState.tileIndex === index
       ? {
           progress: (time - flipState.startedAt) / flipState.duration,
@@ -249,10 +254,14 @@ function drawMosaic(
           direction: flipState.direction,
         }
       : null;
+    context.save();
+    context.globalAlpha *= tileReveal;
     drawTile(context, tile, albums, tint, flip);
+    context.restore();
   }
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+  context.globalAlpha = wallReveal;
   context.globalCompositeOperation = "source-over";
   const sweepState = createMosaicColorSweep({ baseTint: tint, timeSeconds: sceneSeconds, isPlaying });
   const sweep = context.createLinearGradient(

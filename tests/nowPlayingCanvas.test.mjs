@@ -8,6 +8,7 @@ import {
   colorToZuneTint,
   createSlowTint,
   lerpColor,
+  mosaicTileRevealAmount,
   relativeLuminance,
   updateMosaicFlipState,
 } from "../.tmp/visualizer-tests/utils/nowPlayingCanvas.js";
@@ -87,6 +88,13 @@ test("mosaic wall breathes across useful distances without exposing its edges", 
     assert.ok(Math.abs(motion.driftY) <= 16, `vertical drift should stay restrained, got ${motion.driftY}`);
     assert.ok(motion.scale >= 1.016 && motion.scale <= 1.034, `breathing scale should stay subtle, got ${motion.scale}`);
   }
+});
+
+test("mosaic entry reveals tiles in a short non-sequential cascade", () => {
+  assert.ok(mosaicTileRevealAmount(0.05, 150) > 0, "an early random tile should already be visible");
+  assert.equal(mosaicTileRevealAmount(0.95, 150), 0, "a later random tile should still be hidden");
+  assert.equal(mosaicTileRevealAmount(0.95, 800), 1, "the full wall should settle in well under a second");
+  assert.equal(mosaicTileRevealAmount(0.95, 0, false), 1, "reduced motion should reveal the wall immediately");
 });
 
 test("mosaic flip scheduler is global, frequent, and commits the live tile back face", () => {

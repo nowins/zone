@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, AudioLines, Heart, ListMusic, Pause, Play, Repeat, Shuffle, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, AudioLines, ChevronDown, Heart } from "lucide-react";
 import { AudioGlowCanvas } from "../components/AudioGlowCanvas";
 import { Cover } from "../components/Cover";
 import { NowPlayingMosaicCanvas } from "../components/NowPlayingMosaicCanvas";
-import { formatTime } from "../utils/music";
+import { PlaybackProgress } from "../components/PlaybackProgress";
+import { TransportControls, VolumeControl } from "../components/TransportControls";
 import { queueAfterCurrent } from "../utils/playback";
 import type { RepeatMode, Track } from "../types";
 
 const COLLAPSED_UPCOMING_COUNT = 2;
+const IDLE_CHROME_DELAY = 5_000;
+const FOCUS_MODE_DELAY = 8_000;
 
 export function NowPlayingView({
   track,
@@ -67,51 +70,29 @@ export function NowPlayingView({
   onSaveQueueAsPlaylist: (name: string) => void;
 }) {
   const [chromeMode, setChromeMode] = useState<"active" | "idle" | "immersive">("active");
-  const [queueExpanded, setQueueExpanded] = useState(false);
+  const [isEntering, setIsEntering] = useState(true);
+  const [wallRevealStarted, setWallRevealStarted] = useState(false);
+  const [queueExpanded, setQueueExpanded] = useState(true);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-  const [playlistNameDraft, setPlaylistNameDraft] = useState("now playing");
+  const [playlistNameDraft, setPlaylistNameDraft] = useState("正在播放");
   const idleTimer = useRef<number | null>(null);
   const immersiveTimer = useRef<number | null>(null);
-  const progressBarRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef(false);
+  const entranceTimer = useRef<number | null>(null);
+  const previousTrackIdRef = useRef(track?.id ?? null);
   const orderedQueue = useMemo(() => queueAfterCurrent(queue, track?.id ?? null), [queue, track?.id]);
+  const hasExpandableQueue = orderedQueue.length > COLLAPSED_UPCOMING_COUNT;
+  const queueOpen = queueExpanded && hasExpandableQueue;
   const upcomingQueue = useMemo(() => {
-    return queueExpanded ? orderedQueue : orderedQueue.slice(0, COLLAPSED_UPCOMING_COUNT);
-  }, [orderedQueue, queueExpanded]);
+    return queueOpen ? orderedQueue : orderedQueue.slice(0, COLLAPSED_UPCOMING_COUNT);
+  }, [orderedQueue, queueOpen]);
+  const hiddenQueueCount = Math.max(0, orderedQueue.length - COLLAPSED_UPCOMING_COUNT);
   const [textFading, setTextFading] = useState(false);
-
-  function handleProgressInteraction(clientX: number) {
-    if (!progressBarRef.current || !duration) return;
-    const rect = progressBarRef.current.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    onSeek(ratio * duration);
-  }
-
-  function handleProgressMouseDown(event: React.MouseEvent<HTMLDivElement>) {
-    if (!duration || !track) return;
-    isDraggingRef.current = true;
-    handleProgressInteraction(event.clientX);
-
-    function handleMouseMove(moveEvent: MouseEvent) {
-      if (!isDraggingRef.current) return;
-      handleProgressInteraction(moveEvent.clientX);
-    }
-
-    function handleMouseUp() {
-      isDraggingRef.current = false;
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    }
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  }
 
   function scheduleChromeFade() {
     if (idleTimer.current) window.clearTimeout(idleTimer.current);
     if (immersiveTimer.current) window.clearTimeout(immersiveTimer.current);
-    idleTimer.current = window.setTimeout(() => setChromeMode("idle"), 15000);
-    immersiveTimer.current = window.setTimeout(() => setChromeMode("immersive"), 32000);
+    idleTimer.current = window.setTimeout(() => setChromeMode("idle"), IDLE_CHROME_DELAY);
+    immersiveTimer.current = window.setTimeout(() => setChromeMode("immersive"), FOCUS_MODE_DELAY);
   }
 
   function wakeChrome() {
@@ -119,11 +100,17 @@ export function NowPlayingView({
     scheduleChromeFade();
   }
 
+  const handleInitialWallRevealStart = useCallback(() => {
+    setWallRevealStarted(true);
+    if (entranceTimer.current) window.clearTimeout(entranceTimer.current);
+    entranceTimer.current = window.setTimeout(() => setIsEntering(false), 1_050);
+  }, []);
+
   function openSaveDialog() {
     if (queue.length === 0) return;
-    setPlaylistNameDraft("now playing");
+    setPlaylistNameDraft("正在播放");
     setSaveDialogOpen(true);
-    setChromeMode("active");
+    wakeChrome();
   }
 
   function closeSaveDialog() {
@@ -140,15 +127,22 @@ export function NowPlayingView({
 
   useEffect(() => {
     wakeChrome();
-    setTextFading(true);
-    const fadeInTimer = window.setTimeout(() => {
-      setTextFading(false);
-    }, 600);
     return () => {
       if (idleTimer.current) window.clearTimeout(idleTimer.current);
       if (immersiveTimer.current) window.clearTimeout(immersiveTimer.current);
-      window.clearTimeout(fadeInTimer);
+      if (entranceTimer.current) window.clearTimeout(entranceTimer.current);
     };
+  }, []);
+
+  useEffect(() => {
+    if (track?.id === previousTrackIdRef.current) return;
+    previousTrackIdRef.current = track?.id ?? null;
+    wakeChrome();
+    setTextFading(true);
+    const fadeInTimer = window.setTimeout(() => {
+      setTextFading(false);
+    }, 220);
+    return () => window.clearTimeout(fadeInTimer);
   }, [track?.id]);
 
   useEffect(() => {
@@ -164,7 +158,9 @@ export function NowPlayingView({
 
   return (
     <section
-      className={`now-playing-stage chrome-${chromeMode} ${
+      className={`now-playing-stage chrome-${chromeMode} ${isEntering ? "stage-entering" : ""} ${
+        wallRevealStarted ? "wall-reveal-started" : ""
+      } ${
         isPlaying ? "wall-playing" : "wall-paused"
       }`}
       onMouseMove={wakeChrome}
@@ -180,13 +176,14 @@ export function NowPlayingView({
         beatPhase={beatPhase}
         beatConfidence={beatConfidence}
         isPlaying={isPlaying}
+        onInitialRevealStart={handleInitialWallRevealStart}
       />
       <div className="now-canvas-grade" />
-      <button className="now-back" onClick={onBack} title="Back to collection">
+      <button className="now-back" onClick={onBack} title="返回收藏">
         <ArrowLeft size={40} strokeWidth={2.55} />
       </button>
 
-      <aside className={`now-side-panel ${queueExpanded ? "queue-expanded" : ""}`}>
+      <aside className={`now-side-panel ${queueOpen ? "queue-expanded" : ""}`}>
         <div className="now-panel-tracks">
           {track ? (
             <button className="now-panel-current" onClick={() => onPlay(track, queue)} disabled={!track}>
@@ -198,8 +195,8 @@ export function NowPlayingView({
             </button>
           ) : (
             <div className="now-panel-empty">
-              <strong>nothing playing</strong>
-              <span>choose a song</span>
+              <strong>暂无播放</strong>
+              <span>请选择一首歌曲</span>
             </div>
           )}
 
@@ -213,61 +210,28 @@ export function NowPlayingView({
           </div>
         </div>
 
+        {!queueOpen && hiddenQueueCount > 0 ? (
+          <button className="queue-disclosure" onClick={() => setQueueExpanded(true)}>
+            <span>{`展开其余 ${hiddenQueueCount} 首`}</span>
+            <ChevronDown size={14} aria-hidden="true" />
+          </button>
+        ) : null}
+
         <button className="save-queue" onClick={openSaveDialog} disabled={queue.length === 0}>
-          save as playlist
+          另存为播放列表
         </button>
 
-        <div className="now-panel-footer">
-          <div className="now-panel-controls">
-            <button
-              className={queueExpanded ? "active" : ""}
-              onClick={() => setQueueExpanded((value) => !value)}
-              title={queueExpanded ? "Collapse queue" : "Expand queue"}
-              disabled={orderedQueue.length <= COLLAPSED_UPCOMING_COUNT}
-            >
-              <ListMusic size={17} />
-            </button>
-            <button className={repeat !== "off" ? "active" : ""} onClick={onRepeat} title={`Repeat ${repeat}`}>
-              <Repeat size={16} />
-            </button>
-            <button className={shuffle ? "active" : ""} onClick={onShuffle} title="Shuffle">
-              <Shuffle size={16} />
-            </button>
-            <button onClick={onPrevious} title="Previous" disabled={!track}>
-              <SkipBack size={18} />
-            </button>
-            <button className="now-play" onClick={onPlayPause} title={isPlaying ? "Pause" : "Play"} disabled={!track}>
-              {isPlaying ? <Pause size={24} /> : <Play size={24} />}
-            </button>
-            <button onClick={onNext} title="Next" disabled={!track}>
-              <SkipForward size={18} />
-            </button>
-          </div>
-
-          <label className="now-volume">
-            <Volume2 className="now-volume-icon" size={15} aria-hidden="true" />
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={volume}
-              onChange={(event) => onVolume(Number(event.target.value))}
-            />
-            <span>{`volume ${Math.round(volume * 100)}`}</span>
-          </label>
-        </div>
       </aside>
 
       <section className={`now-track-card ${textFading ? "card-fading" : ""}`}>
-        <Cover artPath={track?.cover_path} label={track?.album ?? "now"} size="mini" />
+        <Cover artPath={track?.cover_path} label={track?.album ?? "正在播放"} size="mini" />
         <div className="now-track-copy">
           <strong>{track?.artist ?? "Zone"}</strong>
-          <span>{track?.album ?? "choose a song from collection"}</span>
-          <em>{track?.title ?? "nothing playing"}</em>
+          <span>{track?.album ?? "请从收藏中选择歌曲"}</span>
+          <em>{track?.title ?? "暂无播放"}</em>
           <button
             className={`now-favorite ${isFavorite ? "favorite-active" : ""}`}
-            title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+            title={isFavorite ? "取消收藏" : "添加到收藏"}
             onClick={onToggleFavorite}
             disabled={!track}
           >
@@ -288,22 +252,30 @@ export function NowPlayingView({
       />
 
       <div className="now-transport">
-        <div className="now-progress">
-          <span className="now-progress-track">{track?.artist ?? "Zone"}</span>
-          <span className="now-progress-time-start">{formatTime(progress)}</span>
-          <div
-            ref={progressBarRef}
-            className="now-progress-bar"
-            onMouseDown={handleProgressMouseDown}
-          >
-            <div
-              className="now-progress-fill"
-              style={{ width: `${duration > 0 ? (progress / duration) * 100 : 0}%` }}
-            />
-          </div>
-          <span className="now-progress-time-end">{duration > 0 ? `-${formatTime(Math.max(duration - progress, 0))}` : "0:00"}</span>
+        <PlaybackProgress
+          label={track?.title ?? "Zone"}
+          progress={progress}
+          duration={duration}
+          disabled={!track}
+          onSeek={onSeek}
+        />
+        <div className="now-transport-controls">
+          <TransportControls
+            trackAvailable={Boolean(track)}
+            isPlaying={isPlaying}
+            shuffle={shuffle}
+            repeat={repeat}
+            queueActive={queueOpen}
+            queueDisabled={!hasExpandableQueue}
+            onQueue={() => setQueueExpanded((value) => !value)}
+            onRepeat={onRepeat}
+            onShuffle={onShuffle}
+            onPrevious={onPrevious}
+            onPlayPause={onPlayPause}
+            onNext={onNext}
+          />
+          <VolumeControl volume={volume} onVolume={onVolume} />
         </div>
-
       </div>
 
       {saveDialogOpen && (
@@ -312,12 +284,12 @@ export function NowPlayingView({
             className="save-playlist-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Save playlist"
+            aria-label="保存播放列表"
             onSubmit={submitSaveDialog}
           >
             <div className="dialog-accent" aria-hidden="true" />
             <label>
-              <span>playlist</span>
+              <span>播放列表</span>
               <input
                 autoFocus
                 value={playlistNameDraft}
@@ -326,10 +298,10 @@ export function NowPlayingView({
             </label>
             <div className="dialog-actions">
               <button type="submit" disabled={!playlistNameDraft.trim()}>
-                OK
+                确定
               </button>
               <button type="button" onClick={closeSaveDialog}>
-                Cancel
+                取消
               </button>
             </div>
           </form>
