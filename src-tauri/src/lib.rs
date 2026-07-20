@@ -8,7 +8,11 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 use tauri::http::{header, Method, Request, Response, StatusCode};
+#[cfg(target_os = "windows")]
+use tauri::Manager;
 use walkdir::WalkDir;
+
+mod system_media;
 
 const AUDIO_RANGE_CHUNK_SIZE: u64 = 1024 * 1024;
 
@@ -100,6 +104,19 @@ fn scan_library(folders: Vec<String>) -> ScanResult {
     tracks,
     skipped,
   }
+}
+
+#[tauri::command]
+fn update_system_media(state: system_media::SystemMediaState) -> Result<(), String> {
+  system_media::update(state)
+}
+
+#[tauri::command]
+fn update_system_media_timeline(
+  duration_seconds: f64,
+  position_seconds: f64,
+) -> Result<(), String> {
+  system_media::update_timeline(duration_seconds, position_seconds)
 }
 
 fn is_supported_audio(path: &Path) -> bool {
@@ -565,10 +582,35 @@ fn hex_value(byte: u8) -> Option<u8> {
 }
 
 pub fn run() {
+  #[cfg(target_os = "windows")]
+  if let Err(error) = system_media::set_process_app_id() {
+    eprintln!("Unable to set the Windows AppUserModelID: {error}");
+  }
+
   tauri::Builder::default()
     .plugin(tauri_plugin_opener::init())
     .register_uri_scheme_protocol("zone-audio", |_ctx, request| serve_audio_protocol(request))
-    .invoke_handler(tauri::generate_handler![select_music_folder, scan_library])
+    .setup(|app| {
+      #[cfg(target_os = "windows")]
+      if let Some(window) = app.get_webview_window("main") {
+        match window.hwnd() {
+          Ok(hwnd) => {
+            if let Err(error) = system_media::initialize(app.handle().clone(), hwnd.0 as isize) {
+              eprintln!("Windows media integration is unavailable: {error}");
+            }
+          }
+          Err(error) => eprintln!("Unable to get the main window handle: {error}"),
+        }
+      }
+
+      Ok(())
+    })
+    .invoke_handler(tauri::generate_handler![
+      select_music_folder,
+      scan_library,
+      update_system_media,
+      update_system_media_timeline,
+    ])
     .run(tauri::generate_context!())
     .expect("error while running Zone");
 }

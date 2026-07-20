@@ -19,6 +19,7 @@ import { analyzePcmBeatGrid, createIdleBeatFrame, RealtimeBeatAnalyzer, type Bea
 import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/visualizer";
 import { createShuffleOrder, haveSameQueueItems, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
 import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
+import { useSystemMedia } from "./hooks/useSystemMedia";
 import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, HomePin, MusicFolder, Playlist, RepeatMode, ScanResult, SmartPlaylist, Track, TrackActivityMap, ViewMode } from "./types";
 
 type PlaybackSession = {
@@ -195,6 +196,16 @@ export default function App() {
   const playbackQueueIds = useMemo(
     () => shuffle && haveSameQueueItems(shuffleOrder, baseQueueIds) ? shuffleOrder : baseQueueIds,
     [baseQueueIds, shuffle, shuffleOrder],
+  );
+
+  const activePlaybackIndex = playbackQueueIds.indexOf(activeTrackId ?? "");
+  const canMovePrevious = Boolean(activeTrack) && (
+    repeat === "all" ? playbackQueueIds.length > 1 : activePlaybackIndex > 0
+  );
+  const canMoveNext = Boolean(activeTrack) && (
+    repeat === "all"
+      ? playbackQueueIds.length > 1
+      : activePlaybackIndex >= 0 && activePlaybackIndex < playbackQueueIds.length - 1
   );
 
   useEffect(() => {
@@ -931,6 +942,31 @@ export default function App() {
     audioRef.current.currentTime = value;
     setProgress(value);
   }
+
+  useSystemMedia({
+    track: activeTrack,
+    isPlaying,
+    canPrevious: canMovePrevious,
+    canNext: canMoveNext,
+    duration,
+    position: progress,
+    isFavorite: isActiveTrackFavorite,
+    onPlay: () => {
+      if (audioRef.current?.paused) togglePlay();
+    },
+    onPause: () => {
+      if (audioRef.current && !audioRef.current.paused) togglePlay();
+    },
+    onToggle: togglePlay,
+    onPrevious: () => {
+      move(-1);
+    },
+    onNext: () => {
+      move(1);
+    },
+    onSeek: seek,
+    onFavorite: toggleFavorite,
+  });
 
   return (
     <div
