@@ -95,6 +95,7 @@ test("queue and shared bottom controls follow the compact Zune layout", () => {
   const playerRule = cssRule(playerCss, ".player");
   const progressLayoutRule = cssRule(playerCss, ".zune-progress");
   const progressHeadingRule = cssRule(playerCss, ".zune-progress-heading");
+  const progressLabelButtonRule = cssRule(playerCss, ".zune-progress-heading > button:first-child");
   const progressInputRule = cssRule(playerCss, ".zune-progress input");
   const glowRule = cssRule(nowPlayingCss, ".audio-glow-canvas");
 
@@ -125,6 +126,7 @@ test("queue and shared bottom controls follow the compact Zune layout", () => {
   assert.ok(playerRule.includes("grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr)"));
   assert.ok(progressLayoutRule.includes("grid-template-rows: 18px 10px 13px"));
   assert.ok(progressHeadingRule.includes("grid-column: 1 / -1"));
+  assert.ok(progressLabelButtonRule.includes("padding: 0"), "track title should share the progress rail's left edge");
   assert.ok(progressInputRule.includes("grid-column: 1 / -1"));
   assert.ok(playbackProgressView.includes("zune-progress-time-start"));
   assert.ok(playbackProgressView.includes("zune-progress-time-end"));
