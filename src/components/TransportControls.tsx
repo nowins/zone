@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { ListMusic, Pause, Play, Repeat, Shuffle, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { ListMusic, MicVocal, Pause, Play, Repeat, Shuffle, SkipBack, SkipForward, Volume2 } from "lucide-react";
 import type { RepeatMode } from "../types";
 
 export function TransportControls({
@@ -9,7 +9,10 @@ export function TransportControls({
   repeat,
   queueActive = false,
   queueDisabled = false,
+  lyricsActive = false,
+  lyricsDisabled = false,
   onQueue,
+  onLyrics,
   onRepeat,
   onShuffle,
   onPrevious,
@@ -22,7 +25,10 @@ export function TransportControls({
   repeat: RepeatMode;
   queueActive?: boolean;
   queueDisabled?: boolean;
+  lyricsActive?: boolean;
+  lyricsDisabled?: boolean;
   onQueue: () => void;
+  onLyrics?: () => void;
   onRepeat: () => void;
   onShuffle: () => void;
   onPrevious: () => void;
@@ -42,6 +48,17 @@ export function TransportControls({
       >
         <ListMusic size={15} />
       </button>
+      {onLyrics ? (
+        <button
+          className={lyricsActive ? "active" : ""}
+          onClick={onLyrics}
+          title={lyricsActive ? "隐藏歌词" : "显示歌词"}
+          aria-pressed={lyricsActive}
+          disabled={lyricsDisabled}
+        >
+          <MicVocal size={15} />
+        </button>
+      ) : null}
       <button className={repeat !== "off" ? "active" : ""} onClick={onRepeat} title={repeatTitle}>
         <Repeat size={14} />
       </button>

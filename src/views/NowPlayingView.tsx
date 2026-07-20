@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, AudioLines, ChevronDown, Heart } from "lucide-react";
 import { AudioGlowCanvas } from "../components/AudioGlowCanvas";
 import { Cover } from "../components/Cover";
+import { LyricsStage } from "../components/LyricsStage";
 import { NowPlayingMosaicCanvas } from "../components/NowPlayingMosaicCanvas";
 import { PlaybackProgress } from "../components/PlaybackProgress";
 import { TransportControls, VolumeControl } from "../components/TransportControls";
 import { queueAfterCurrent } from "../utils/playback";
+import { createDemoLyrics } from "../utils/demoLyrics";
 import type { RepeatMode, Track } from "../types";
 
 const COLLAPSED_UPCOMING_COUNT = 2;
@@ -17,6 +19,7 @@ export function NowPlayingView({
   tracks,
   queue,
   isPlaying,
+  playbackClock,
   progress,
   duration,
   shuffle,
@@ -45,6 +48,7 @@ export function NowPlayingView({
   tracks: Track[];
   queue: Track[];
   isPlaying: boolean;
+  playbackClock: () => number;
   progress: number;
   duration: number;
   shuffle: boolean;
@@ -70,6 +74,8 @@ export function NowPlayingView({
   onSaveQueueAsPlaylist: (name: string) => void;
 }) {
   const [chromeMode, setChromeMode] = useState<"active" | "idle" | "immersive">("active");
+  const [surfaceMode, setSurfaceMode] = useState<"ambient" | "lyrics">("ambient");
+  const [keyboardSurfaceChange, setKeyboardSurfaceChange] = useState(false);
   const [isEntering, setIsEntering] = useState(true);
   const [wallRevealStarted, setWallRevealStarted] = useState(false);
   const [queueExpanded, setQueueExpanded] = useState(true);
@@ -78,10 +84,13 @@ export function NowPlayingView({
   const idleTimer = useRef<number | null>(null);
   const immersiveTimer = useRef<number | null>(null);
   const entranceTimer = useRef<number | null>(null);
+  const sidePanelRef = useRef<HTMLElement | null>(null);
   const previousTrackIdRef = useRef(track?.id ?? null);
   const orderedQueue = useMemo(() => queueAfterCurrent(queue, track?.id ?? null), [queue, track?.id]);
   const hasExpandableQueue = orderedQueue.length > COLLAPSED_UPCOMING_COUNT;
-  const queueOpen = queueExpanded && hasExpandableQueue;
+  const lyricsOpen = surfaceMode === "lyrics" && Boolean(track);
+  const queueOpen = !lyricsOpen && queueExpanded && hasExpandableQueue;
+  const lyricsDocument = useMemo(() => (track ? createDemoLyrics(track, duration) : null), [track, duration]);
   const upcomingQueue = useMemo(() => {
     return queueOpen ? orderedQueue : orderedQueue.slice(0, COLLAPSED_UPCOMING_COUNT);
   }, [orderedQueue, queueOpen]);
@@ -98,6 +107,22 @@ export function NowPlayingView({
   function wakeChrome() {
     setChromeMode("active");
     scheduleChromeFade();
+  }
+
+  function toggleLyrics() {
+    if (!track) return;
+    setSurfaceMode((current) => {
+      const next = current === "lyrics" ? "ambient" : "lyrics";
+      if (next === "lyrics") setQueueExpanded(false);
+      return next;
+    });
+    wakeChrome();
+  }
+
+  function toggleQueue() {
+    setSurfaceMode("ambient");
+    setQueueExpanded((value) => !value);
+    wakeChrome();
   }
 
   const handleInitialWallRevealStart = useCallback(() => {
@@ -146,6 +171,30 @@ export function NowPlayingView({
   }, [track?.id]);
 
   useEffect(() => {
+    if (track) return;
+    setSurfaceMode("ambient");
+  }, [track]);
+
+  useEffect(() => {
+    const sidePanel = sidePanelRef.current;
+    if (!sidePanel) return;
+    if (lyricsOpen) sidePanel.setAttribute("inert", "");
+    else sidePanel.removeAttribute("inert");
+  }, [lyricsOpen]);
+
+  useEffect(() => {
+    if (!lyricsOpen) return;
+    function handleLyricsKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setKeyboardSurfaceChange(true);
+      setSurfaceMode("ambient");
+      window.requestAnimationFrame(() => setKeyboardSurfaceChange(false));
+    }
+    window.addEventListener("keydown", handleLyricsKeyDown);
+    return () => window.removeEventListener("keydown", handleLyricsKeyDown);
+  }, [lyricsOpen]);
+
+  useEffect(() => {
     if (!saveDialogOpen) return;
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -162,7 +211,7 @@ export function NowPlayingView({
         wallRevealStarted ? "wall-reveal-started" : ""
       } ${
         isPlaying ? "wall-playing" : "wall-paused"
-      }`}
+      } ${lyricsOpen ? "lyrics-mode" : "ambient-mode"} ${keyboardSurfaceChange ? "keyboard-surface-change" : ""}`}
       onMouseMove={wakeChrome}
       onMouseDown={wakeChrome}
       onMouseEnter={wakeChrome}
@@ -179,11 +228,24 @@ export function NowPlayingView({
         onInitialRevealStart={handleInitialWallRevealStart}
       />
       <div className="now-canvas-grade" />
+      <LyricsStage
+        document={lyricsDocument}
+        progress={progress}
+        isPlaying={isPlaying}
+        playbackClock={playbackClock}
+        visible={lyricsOpen}
+        onSeek={onSeek}
+        onInteraction={wakeChrome}
+      />
       <button className="now-back" onClick={onBack} title="返回收藏">
         <ArrowLeft size={40} strokeWidth={2.55} />
       </button>
 
-      <aside className={`now-side-panel ${queueOpen ? "queue-expanded" : ""}`}>
+      <aside
+        ref={sidePanelRef}
+        className={`now-side-panel ${queueOpen ? "queue-expanded" : ""}`}
+        aria-hidden={lyricsOpen}
+      >
         <div className="now-panel-tracks">
           {track ? (
             <button className="now-panel-current" onClick={() => onPlay(track, queue)} disabled={!track}>
@@ -267,7 +329,10 @@ export function NowPlayingView({
             repeat={repeat}
             queueActive={queueOpen}
             queueDisabled={!hasExpandableQueue}
-            onQueue={() => setQueueExpanded((value) => !value)}
+            lyricsActive={lyricsOpen}
+            lyricsDisabled={!track}
+            onQueue={toggleQueue}
+            onLyrics={toggleLyrics}
             onRepeat={onRepeat}
             onShuffle={onShuffle}
             onPrevious={onPrevious}

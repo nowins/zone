@@ -1096,6 +1096,7 @@ export default function App() {
             tracks={tracks}
             queue={playbackQueueIds.map((id) => tracks.find((track) => track.id === id)).filter(Boolean) as Track[]}
             isPlaying={isPlaying}
+            playbackClock={() => audioRef.current?.currentTime ?? progress}
             progress={progress}
             duration={duration}
             shuffle={shuffle}

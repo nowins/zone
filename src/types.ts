@@ -143,3 +143,27 @@ export type ScanResult = {
 export type ViewMode = "songs" | "albums" | "artists" | "playlists";
 export type AppPage = "quickplay" | "collection" | "nowPlaying" | "settings";
 export type RepeatMode = "off" | "one" | "all";
+
+export type LyricsWord = {
+  text: string;
+  start: number;
+  end: number;
+};
+
+export type LyricsLine = {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  translation?: string;
+  transliteration?: string;
+  words?: LyricsWord[];
+};
+
+export type LyricsDocument = {
+  trackId: string;
+  sourceId: string;
+  format: "plain" | "line" | "word";
+  language?: string;
+  lines: LyricsLine[];
+};

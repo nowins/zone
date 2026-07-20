@@ -10,6 +10,8 @@ const nowPlayingView = readFileSync("src/views/NowPlayingView.tsx", "utf8");
 const playerBarView = readFileSync("src/components/PlayerBar.tsx", "utf8");
 const playbackProgressView = readFileSync("src/components/PlaybackProgress.tsx", "utf8");
 const mosaicCanvasSource = readFileSync("src/components/NowPlayingMosaicCanvas.tsx", "utf8");
+const lyricsSource = readFileSync("src/components/LyricsStage.tsx", "utf8");
+const lyricsCss = readFileSync("src/styles/lyrics.css", "utf8");
 
 test("now playing visual layers are canvas based", () => {
   assert.ok(nowPlayingView.includes("<NowPlayingMosaicCanvas"));
@@ -148,6 +150,13 @@ test("now playing enters in layered Zune order without delaying transport", () =
   assert.ok(animationCss.includes(".stage-entering .now-transport"));
   assert.ok(animationCss.includes("animation: now-queue-enter 240ms 55ms"));
   assert.ok(animationCss.includes("animation: now-track-info-enter 300ms 690ms"));
+});
+
+test("lyrics word fill follows the media clock at animation-frame cadence", () => {
+  assert.ok(lyricsSource.includes("window.requestAnimationFrame(drawFrame)"));
+  assert.ok(lyricsSource.includes("playbackClockRef.current()"));
+  assert.ok(lyricsSource.includes("element.style.clipPath"));
+  assert.ok(!lyricsCss.includes("transition: clip-path"), "frame-driven word fill must not wait on discrete CSS transitions");
 });
 
 test("mosaic canvas does not use audio energy for brightness", () => {
