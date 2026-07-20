@@ -4,7 +4,11 @@ import test from "node:test";
 
 const settingsView = readFileSync("src/views/SettingsView.tsx", "utf8");
 const appHeader = readFileSync("src/components/AppHeader.tsx", "utf8");
+const titlebar = readFileSync("src/components/Titlebar.tsx", "utf8");
+const appSource = readFileSync("src/App.tsx", "utf8");
+const baseCss = readFileSync("src/styles/base.css", "utf8");
 const settingsCss = readFileSync("src/styles/overlays-settings.css", "utf8");
+const responsiveCss = readFileSync("src/styles/animations-responsive.css", "utf8");
 
 test("music folder management has one persistent entry point", () => {
   assert.ok(settingsView.includes('className="settings-add-folder"'));
@@ -37,6 +41,29 @@ test("settings separate primary, secondary, and destructive actions", () => {
   assert.ok(dangerRule.includes("border: 1px solid rgba(255, 132, 132, 0.28)"));
   assert.ok(settingsView.includes("不会删除电脑中的音乐文件"));
   assert.ok(settingsView.includes("重新扫描资料库"));
+});
+
+test("search and settings live in the correct top chrome layers", () => {
+  const utilitiesRule = cssRule(baseCss, ".app-utilities");
+  const settingsControlRule = cssRule(baseCss, ".window-controls .titlebar-settings");
+
+  assert.ok(utilitiesRule.includes("margin-top: 0"));
+  assert.ok(!utilitiesRule.includes("padding-right"));
+  assert.ok(!responsiveCss.includes("padding-right: 134px"));
+  assert.ok(!appHeader.includes('onNavigate("settings")'));
+  assert.ok(titlebar.includes('className={isSettings ? "titlebar-settings active" : "titlebar-settings"}'));
+  assert.ok(appSource.includes('onOpenSettings={() => navigatePage("settings")}'));
+  assert.ok(settingsControlRule.includes("border-right: 1px solid"));
+});
+
+test("settings remain reachable at the default window height", () => {
+  const pageRule = cssRule(settingsCss, ".settings-page");
+  const layoutRule = cssRule(settingsCss, ".settings-layout");
+
+  assert.ok(pageRule.includes("overflow-y: auto"));
+  assert.ok(layoutRule.includes("overflow: visible"));
+  assert.ok(responsiveCss.includes("@media (max-height: 800px)"));
+  assert.ok(responsiveCss.includes(".settings-danger-action"));
 });
 
 function cssRule(source, selector) {

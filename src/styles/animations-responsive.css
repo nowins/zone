@@ -117,6 +117,41 @@
 
 }
 
+@media (max-height: 800px) {
+  .settings-header {
+    padding-top: 4px;
+    padding-bottom: 24px;
+  }
+
+  .settings-header h1 {
+    font-size: clamp(68px, 11vh, 86px);
+  }
+
+  .settings-header > div > p {
+    margin-top: 12px;
+  }
+
+  .settings-layout {
+    padding-top: 22px;
+  }
+
+  .settings-sidebar {
+    gap: 22px;
+  }
+
+  .settings-overview dl {
+    margin-top: 18px;
+  }
+
+  .settings-danger-zone {
+    padding-top: 18px;
+  }
+
+  .settings-danger-action {
+    margin-top: 12px;
+  }
+}
+
 @media (max-width: 980px) {
   .workspace {
     padding-inline: 24px;
@@ -260,10 +295,6 @@
 @media (max-width: 1280px) {
   .workspace {
     padding-inline: 36px;
-  }
-
-  .app-utilities {
-    padding-right: 134px;
   }
 
   .quickplay {

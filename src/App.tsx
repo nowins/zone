@@ -950,7 +950,10 @@ export default function App() {
         onPause={() => setIsPlaying(false)}
         onEnded={onEnded}
       />
-      <Titlebar />
+      <Titlebar
+        isSettings={page === "settings"}
+        onOpenSettings={() => navigatePage("settings")}
+      />
 
       <main className="workspace">
         {page !== "nowPlaying" ? (

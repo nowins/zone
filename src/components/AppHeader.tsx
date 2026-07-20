@@ -44,12 +44,6 @@ export function AppHeader({
             <Search size={17} aria-hidden="true" />
           </label>
         ) : null}
-        <button
-          className={page === "settings" ? "utility-active" : ""}
-          onClick={() => onNavigate("settings")}
-        >
-          设置
-        </button>
       </div>
     </header>
   );
