@@ -6,8 +6,8 @@ import { LyricsStage } from "../components/LyricsStage";
 import { NowPlayingMosaicCanvas } from "../components/NowPlayingMosaicCanvas";
 import { PlaybackProgress } from "../components/PlaybackProgress";
 import { TransportControls, VolumeControl } from "../components/TransportControls";
+import { useLyrics } from "../hooks/useLyrics";
 import { queueAfterCurrent } from "../utils/playback";
-import { createDemoLyrics } from "../utils/demoLyrics";
 import type { RepeatMode, Track } from "../types";
 
 const COLLAPSED_UPCOMING_COUNT = 2;
@@ -90,7 +90,7 @@ export function NowPlayingView({
   const hasExpandableQueue = orderedQueue.length > COLLAPSED_UPCOMING_COUNT;
   const lyricsOpen = surfaceMode === "lyrics" && Boolean(track);
   const queueOpen = !lyricsOpen && queueExpanded && hasExpandableQueue;
-  const lyricsDocument = useMemo(() => (track ? createDemoLyrics(track, duration) : null), [track, duration]);
+  const lyrics = useLyrics(track, duration);
   const upcomingQueue = useMemo(() => {
     return queueOpen ? orderedQueue : orderedQueue.slice(0, COLLAPSED_UPCOMING_COUNT);
   }, [orderedQueue, queueOpen]);
@@ -229,12 +229,20 @@ export function NowPlayingView({
       />
       <div className="now-canvas-grade" />
       <LyricsStage
-        document={lyricsDocument}
+        document={lyrics.document}
+        status={lyrics.status}
+        sourceLabel={lyrics.sourceLabel}
+        isManualSource={lyrics.isManual}
+        isDemoSource={lyrics.isDemo}
+        error={lyrics.error}
         progress={progress}
         isPlaying={isPlaying}
         playbackClock={playbackClock}
         visible={lyricsOpen}
         onSeek={onSeek}
+        onSelectSource={lyrics.selectFile}
+        onClearManualSource={lyrics.clearManualBinding}
+        onRetry={lyrics.retry}
         onInteraction={wakeChrome}
       />
       <button className="now-back" onClick={onBack} title="返回收藏">

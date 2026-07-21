@@ -167,3 +167,14 @@ export type LyricsDocument = {
   language?: string;
   lines: LyricsLine[];
 };
+
+export type LocalLyricsSource = {
+  source_id: string;
+  origin: "embedded" | "sidecar" | "manual";
+  format_hint: "ttml" | "lrc" | "plain";
+  label: string;
+  content: string;
+  path?: string | null;
+  modified_at?: number | null;
+  is_manual: boolean;
+};

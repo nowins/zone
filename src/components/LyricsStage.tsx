@@ -49,19 +49,35 @@ function lineStyle(offset: number, browsing: boolean): LyricsLineStyle {
 
 export function LyricsStage({
   document,
+  status,
+  sourceLabel,
+  isManualSource,
+  isDemoSource,
+  error,
   progress,
   isPlaying,
   playbackClock,
   visible,
   onSeek,
+  onSelectSource,
+  onClearManualSource,
+  onRetry,
   onInteraction,
 }: {
   document: LyricsDocument | null;
+  status: "idle" | "loading" | "ready" | "missing" | "error";
+  sourceLabel?: string;
+  isManualSource: boolean;
+  isDemoSource: boolean;
+  error?: string;
   progress: number;
   isPlaying: boolean;
   playbackClock: () => number;
   visible: boolean;
   onSeek: (value: number) => void;
+  onSelectSource: () => void | Promise<void>;
+  onClearManualSource: () => void;
+  onRetry: () => void;
   onInteraction: () => void;
 }) {
   const [browseIndex, setBrowseIndex] = useState<number | null>(null);
@@ -72,7 +88,11 @@ export function LyricsStage({
   const wordProgressRefs = useRef<Array<Array<HTMLSpanElement | null>>>([]);
   const playbackClockRef = useRef(playbackClock);
   const lines = document?.lines ?? [];
-  const initialActiveIndex = useMemo(() => findActiveLine(lines, progress), [document?.trackId]);
+  const isPlain = document?.format === "plain";
+  const initialActiveIndex = useMemo(
+    () => isPlain ? -1 : findActiveLine(lines, progress),
+    [document?.trackId, isPlain],
+  );
   const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
   const activeIndexRef = useRef(initialActiveIndex);
   const focusIndex = browseIndex ?? activeIndex;
@@ -81,6 +101,7 @@ export function LyricsStage({
   playbackClockRef.current = playbackClock;
 
   const paintWordProgress = useCallback((time: number, syncEveryLine = false) => {
+    if (isPlain) return;
     const nextActiveIndex = findActiveLine(lines, time);
     if (nextActiveIndex !== activeIndexRef.current) {
       activeIndexRef.current = nextActiveIndex;
@@ -102,7 +123,7 @@ export function LyricsStage({
         element.style.clipPath = `inset(0 ${(1 - fill) * 100}% 0 0)`;
       });
     });
-  }, [lines]);
+  }, [isPlain, lines]);
 
   function clearReturnTimer() {
     if (returnTimerRef.current) window.clearTimeout(returnTimerRef.current);
@@ -127,6 +148,7 @@ export function LyricsStage({
 
   function handleWheel(event: WheelEvent<HTMLElement>) {
     if (!visible || lines.length === 0) return;
+    if (isPlain) return;
     event.preventDefault();
     setNavigationInput("pointer");
     wheelDeltaRef.current += event.deltaY;
@@ -137,6 +159,7 @@ export function LyricsStage({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (isPlain) return;
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
     event.preventDefault();
     setNavigationInput("keyboard");
@@ -163,11 +186,11 @@ export function LyricsStage({
     setNavigationInput("pointer");
     wheelDeltaRef.current = 0;
     clearReturnTimer();
-    const nextActiveIndex = findActiveLine(lines, progress);
+    const nextActiveIndex = isPlain ? -1 : findActiveLine(lines, progress);
     activeIndexRef.current = nextActiveIndex;
     setActiveIndex(nextActiveIndex);
     window.requestAnimationFrame(() => paintWordProgress(playbackClockRef.current(), true));
-  }, [document?.trackId, visible]);
+  }, [document?.trackId, isPlain, visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -191,10 +214,31 @@ export function LyricsStage({
 
   useEffect(() => () => clearReturnTimer(), []);
 
+  function runSourceAction(action: () => void | Promise<void>) {
+    onInteraction();
+    void action();
+  }
+
   if (!document) {
+    const emptyLabel = status === "loading"
+      ? "正在查找歌词"
+      : status === "error"
+        ? "歌词无法读取"
+        : "没有找到本地歌词";
     return (
       <section className={`lyrics-stage ${visible ? "is-visible" : ""}`} aria-hidden={!visible} aria-label="歌词">
-        <p className="lyrics-empty">暂无歌词</p>
+        <div className="lyrics-empty" title={error}>
+          <p>{emptyLabel}</p>
+          {status !== "loading" && status !== "idle" ? (
+            <div className="lyrics-empty-actions">
+              <button type="button" onClick={() => runSourceAction(onSelectSource)}>选择本地歌词</button>
+              {status === "error" ? <button type="button" onClick={() => runSourceAction(onRetry)}>重试</button> : null}
+              {isManualSource ? (
+                <button type="button" onClick={() => runSourceAction(onClearManualSource)}>恢复自动查找</button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </section>
     );
   }
@@ -202,6 +246,8 @@ export function LyricsStage({
   return (
     <section
       className={`lyrics-stage ${visible ? "is-visible" : ""} ${browsing ? "is-browsing" : ""} ${
+        isPlain ? "is-plain" : ""
+      } ${
         navigationInput === "keyboard" ? "is-keyboard-browsing" : ""
       }`}
       aria-hidden={!visible}
@@ -210,6 +256,15 @@ export function LyricsStage({
       onKeyDown={handleKeyDown}
       onPointerDown={() => setNavigationInput("pointer")}
     >
+      <div className="lyrics-source-control">
+        <span title={sourceLabel}>{sourceLabel ?? "本地歌词"}</span>
+        <button type="button" onClick={() => runSourceAction(onSelectSource)}>
+          {isDemoSource ? "选择歌词" : "更换"}
+        </button>
+        {isManualSource ? (
+          <button type="button" onClick={() => runSourceAction(onClearManualSource)}>恢复自动</button>
+        ) : null}
+      </div>
       <div className="lyrics-lines">
         {lines.map((line, index) => {
           const offset = index - focusIndex;
@@ -225,11 +280,11 @@ export function LyricsStage({
               }}
               className={`lyrics-line ${isPlaybackLine ? "is-active" : ""} ${isFocusLine ? "is-focus" : ""}`}
               style={lineStyle(offset, browsing)}
-              onClick={(event) => seekToLine(line, event.detail === 0)}
+              onClick={isPlain ? undefined : (event) => seekToLine(line, event.detail === 0)}
               onFocus={onInteraction}
               aria-current={isPlaybackLine ? "true" : undefined}
-              aria-label={`跳转到歌词：${line.text}`}
-              tabIndex={visible && distance <= 3 ? 0 : -1}
+              aria-label={isPlain ? line.text : `跳转到歌词：${line.text}`}
+              tabIndex={visible && (isPlain || distance <= 3) ? 0 : -1}
             >
               <span className="lyrics-line-copy">
                 {(line.words ?? [{ text: line.text, start: line.start, end: line.end }]).map((word, wordIndex) => (
