@@ -18,6 +18,7 @@
     "src/utils/playback.ts",
     "src/utils/music.ts",
     "src/utils/lyrics.ts",
+    "src/utils/lyricsProviders.ts",
     "src/utils/homePins.ts",
     "src/utils/smartPlaylist.ts"
   ]

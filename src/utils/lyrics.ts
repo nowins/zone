@@ -1,4 +1,4 @@
-import type { LocalLyricsSource, LyricsDocument, LyricsLine, LyricsWord } from "../types";
+import type { LyricsSource, LyricsDocument, LyricsLine, LyricsWord } from "../types";
 
 type LineDraft = {
   start: number;
@@ -13,7 +13,7 @@ const LRC_WORD_TIME = /<(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)>/g;
 
 export function parseLyricsSource(
   trackId: string,
-  source: LocalLyricsSource,
+  source: LyricsSource,
   duration?: number,
 ): LyricsDocument | null {
   const hint = inferFormat(source);
@@ -235,7 +235,7 @@ function parseXmlAttributes(source: string) {
   return attributes;
 }
 
-function inferFormat(source: LocalLyricsSource): LocalLyricsSource["format_hint"] {
+function inferFormat(source: LyricsSource): LyricsSource["format_hint"] {
   const trimmed = source.content.trimStart();
   if (source.format_hint === "ttml" || (trimmed.startsWith("<") && /<(?:[\w-]+:)?tt\b/i.test(trimmed))) {
     return "ttml";

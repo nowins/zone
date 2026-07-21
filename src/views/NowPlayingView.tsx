@@ -234,6 +234,8 @@ export function NowPlayingView({
         sourceLabel={lyrics.sourceLabel}
         isManualSource={lyrics.isManual}
         isDemoSource={lyrics.isDemo}
+        onlineSearch={lyrics.onlineSearch}
+        hasOnlineProviders={lyrics.hasOnlineProviders}
         error={lyrics.error}
         progress={progress}
         isPlaying={isPlaying}
@@ -241,6 +243,8 @@ export function NowPlayingView({
         visible={lyricsOpen}
         onSeek={onSeek}
         onSelectSource={lyrics.selectFile}
+        onSearchOnline={lyrics.searchOnline}
+        onSelectOnlineSource={lyrics.selectRemoteCandidate}
         onClearManualSource={lyrics.clearManualBinding}
         onRetry={lyrics.retry}
         onInteraction={wakeChrome}

@@ -168,13 +168,71 @@ export type LyricsDocument = {
   lines: LyricsLine[];
 };
 
-export type LocalLyricsSource = {
+export type LyricsSource = {
   source_id: string;
-  origin: "embedded" | "sidecar" | "manual";
+  origin: "embedded" | "sidecar" | "manual" | "provider";
   format_hint: "ttml" | "lrc" | "plain";
   label: string;
   content: string;
   path?: string | null;
   modified_at?: number | null;
   is_manual: boolean;
+  provider_id?: string;
+  reference?: string;
+};
+
+export type LocalLyricsSource = LyricsSource & {
+  origin: "embedded" | "sidecar" | "manual";
+};
+
+export type LyricsProviderCapability = "line" | "word" | "translation" | "transliteration";
+
+export type LyricsQuery = {
+  title: string;
+  artist: string;
+  album?: string;
+  duration?: number;
+};
+
+export type LyricsCandidateScore = {
+  total: number;
+  title: number;
+  artist: number;
+  album: number | null;
+  duration: number | null;
+};
+
+export type LyricsCandidate = {
+  id: string;
+  providerId: string;
+  providerName: string;
+  title: string;
+  artist: string;
+  album?: string;
+  duration?: number;
+  instrumental: boolean;
+  formatHint: "lrc" | "ttml" | "plain";
+  content: string;
+  reference?: string;
+  score: LyricsCandidateScore;
+};
+
+export type LyricsProviderConfig = {
+  id: string;
+  enabled: boolean;
+  priority: number;
+  timeoutMs: number;
+};
+
+export type LyricsProviderDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  capabilities: LyricsProviderCapability[];
+  defaultEnabled: boolean;
+  defaultPriority: number;
+  defaultTimeoutMs: number;
+  rateLimitMs: number;
+  search(query: LyricsQuery, signal: AbortSignal, timeoutMs: number): Promise<LyricsCandidate[]>;
+  get(candidate: LyricsCandidate, signal: AbortSignal): Promise<LyricsSource>;
 };

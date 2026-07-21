@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type WheelEvent } from "react";
-import type { LyricsDocument, LyricsLine, LyricsWord } from "../types";
+import type { LyricsCandidate, LyricsDocument, LyricsLine, LyricsWord } from "../types";
+import type { LyricsOnlineSearchState } from "../hooks/useLyrics";
 
 const BROWSE_RETURN_DELAY = 3_000;
 const WHEEL_STEP_THRESHOLD = 34;
@@ -53,6 +54,8 @@ export function LyricsStage({
   sourceLabel,
   isManualSource,
   isDemoSource,
+  onlineSearch,
+  hasOnlineProviders,
   error,
   progress,
   isPlaying,
@@ -60,6 +63,8 @@ export function LyricsStage({
   visible,
   onSeek,
   onSelectSource,
+  onSearchOnline,
+  onSelectOnlineSource,
   onClearManualSource,
   onRetry,
   onInteraction,
@@ -69,6 +74,8 @@ export function LyricsStage({
   sourceLabel?: string;
   isManualSource: boolean;
   isDemoSource: boolean;
+  onlineSearch: LyricsOnlineSearchState;
+  hasOnlineProviders: boolean;
   error?: string;
   progress: number;
   isPlaying: boolean;
@@ -76,11 +83,14 @@ export function LyricsStage({
   visible: boolean;
   onSeek: (value: number) => void;
   onSelectSource: () => void | Promise<void>;
+  onSearchOnline: () => void | Promise<void>;
+  onSelectOnlineSource: (candidate: LyricsCandidate) => void | Promise<void>;
   onClearManualSource: () => void;
   onRetry: () => void;
   onInteraction: () => void;
 }) {
   const [browseIndex, setBrowseIndex] = useState<number | null>(null);
+  const [sourceBrowserOpen, setSourceBrowserOpen] = useState(false);
   const [navigationInput, setNavigationInput] = useState<"pointer" | "keyboard">("pointer");
   const returnTimerRef = useRef<number | null>(null);
   const wheelDeltaRef = useRef(0);
@@ -219,18 +229,98 @@ export function LyricsStage({
     void action();
   }
 
+  function openOnlineSearch() {
+    setSourceBrowserOpen(true);
+    runSourceAction(onSearchOnline);
+  }
+
+  function chooseOnlineSource(candidate: LyricsCandidate) {
+    onInteraction();
+    void Promise.resolve(onSelectOnlineSource(candidate)).then(() => setSourceBrowserOpen(false));
+  }
+
+  function sourceBrowser() {
+    if (!sourceBrowserOpen) return null;
+    const message = onlineSearch.status === "loading"
+      ? `正在联系已启用的来源${onlineSearch.attempt > 1 ? `（第 ${onlineSearch.attempt} 次）` : ""}…`
+      : onlineSearch.status === "error"
+        ? onlineSearch.errors[0] ?? "在线歌词暂时不可用"
+        : onlineSearch.candidates.length === 0
+          ? "没有找到足够接近的结果"
+          : `${onlineSearch.candidates.length} 个候选，按匹配度排列`;
+    return (
+      <section
+        className={`lyrics-source-browser ${onlineSearch.status === "loading" ? "is-searching" : ""}`}
+        aria-label="在线歌词候选"
+        aria-busy={onlineSearch.status === "loading"}
+        onWheel={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            <span>歌词来源</span>
+            <h2>在线搜索</h2>
+          </div>
+          <button type="button" onClick={() => setSourceBrowserOpen(false)}>关闭</button>
+        </header>
+        <p className={onlineSearch.status === "error" ? "is-error" : ""}>{message}</p>
+        <div className="lyrics-candidate-list" aria-live="polite">
+          {onlineSearch.candidates.map((candidate) => (
+            <button type="button" key={candidate.id} onClick={() => chooseOnlineSource(candidate)}>
+              <span className="lyrics-candidate-score">{candidate.score.total}</span>
+              <span className="lyrics-candidate-copy">
+                <strong>{candidate.title}</strong>
+                <span>{candidate.artist}{candidate.album ? ` / ${candidate.album}` : ""}</span>
+              </span>
+              <span className="lyrics-candidate-meta">
+                {candidate.providerName} · {candidate.formatHint === "plain" ? "纯文本" : "同步"}
+                {candidate.duration ? ` · ${formatDuration(candidate.duration)}` : ""}
+              </span>
+            </button>
+          ))}
+        </div>
+        <button
+          className="lyrics-source-refresh"
+          type="button"
+          disabled={onlineSearch.status === "loading"}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (onlineSearch.status !== "loading") runSourceAction(onSearchOnline);
+          }}
+          onClick={(event) => {
+            // Pointer input is handled on pointerdown so the action survives
+            // controls fading or focus changes between press and release.
+            // Keyboard and accessibility activation still arrive as detail 0.
+            if (event.detail === 0) runSourceAction(onSearchOnline);
+          }}
+        >
+          {onlineSearch.status === "loading" ? "正在重试…" : "重新搜索"}
+        </button>
+      </section>
+    );
+  }
+
+  useEffect(() => {
+    if (status === "loading" || !visible) setSourceBrowserOpen(false);
+  }, [status, visible]);
+
   if (!document) {
     const emptyLabel = status === "loading"
       ? "正在查找歌词"
       : status === "error"
         ? "歌词无法读取"
-        : "没有找到本地歌词";
+        : "没有找到歌词";
     return (
       <section className={`lyrics-stage ${visible ? "is-visible" : ""}`} aria-hidden={!visible} aria-label="歌词">
         <div className="lyrics-empty" title={error}>
           <p>{emptyLabel}</p>
           {status !== "loading" && status !== "idle" ? (
             <div className="lyrics-empty-actions">
+              {hasOnlineProviders ? (
+                <button type="button" onClick={openOnlineSearch}>在线搜索</button>
+              ) : null}
               <button type="button" onClick={() => runSourceAction(onSelectSource)}>选择本地歌词</button>
               {status === "error" ? <button type="button" onClick={() => runSourceAction(onRetry)}>重试</button> : null}
               {isManualSource ? (
@@ -239,6 +329,7 @@ export function LyricsStage({
             </div>
           ) : null}
         </div>
+        {sourceBrowser()}
       </section>
     );
   }
@@ -258,13 +349,15 @@ export function LyricsStage({
     >
       <div className="lyrics-source-control">
         <span title={sourceLabel}>{sourceLabel ?? "本地歌词"}</span>
+        {hasOnlineProviders ? <button type="button" onClick={openOnlineSearch}>在线搜索</button> : null}
         <button type="button" onClick={() => runSourceAction(onSelectSource)}>
-          {isDemoSource ? "选择歌词" : "更换"}
+          {isDemoSource ? "选择本地歌词" : "更换文件"}
         </button>
         {isManualSource ? (
           <button type="button" onClick={() => runSourceAction(onClearManualSource)}>恢复自动</button>
         ) : null}
       </div>
+      {sourceBrowser()}
       <div className="lyrics-lines">
         {lines.map((line, index) => {
           const offset = index - focusIndex;
@@ -310,4 +403,9 @@ export function LyricsStage({
       </div>
     </section>
   );
+}
+
+function formatDuration(value: number) {
+  const seconds = Math.max(0, Math.round(value));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }

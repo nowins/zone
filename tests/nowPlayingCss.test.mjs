@@ -159,6 +159,16 @@ test("lyrics word fill follows the media clock at animation-frame cadence", () =
   assert.ok(!lyricsCss.includes("transition: clip-path"), "frame-driven word fill must not wait on discrete CSS transitions");
 });
 
+test("lyrics provider retry keeps an explicit loading state and hit area", () => {
+  assert.ok(lyricsSource.includes('disabled={onlineSearch.status === "loading"}'));
+  assert.ok(lyricsSource.includes('onlineSearch.status === "loading" ? "正在重试…" : "重新搜索"'));
+  assert.ok(lyricsSource.includes('aria-busy={onlineSearch.status === "loading"}'));
+  assert.ok(lyricsSource.includes("onPointerDown={(event) =>"));
+  assert.ok(lyricsSource.includes("if (event.detail === 0) runSourceAction(onSearchOnline)"));
+  assert.match(lyricsCss, /\.lyrics-source-refresh\s*\{[\s\S]*?min-height:\s*36px/);
+  assert.match(lyricsCss, /\.lyrics-source-browser\s*\{[\s\S]*?pointer-events:\s*auto/);
+});
+
 test("mosaic canvas does not use audio energy for brightness", () => {
   assert.ok(!mosaicCanvasSource.includes("energyRef"));
   assert.ok(!mosaicCanvasSource.includes("createEnergyTint"));
