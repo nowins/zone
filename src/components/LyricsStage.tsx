@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type WheelEvent } from "react";
 import type { LyricsCandidate, LyricsDocument, LyricsLine, LyricsSearchMetadata, LyricsWord } from "../types";
 import type { LyricsOnlineSearchState } from "../hooks/useLyrics";
+import type { LyricsExportFormat } from "../utils/lyricsExport";
 import {
   formatLyricsTimingOffset,
   LYRICS_TIMING_STEP_MS,
@@ -97,6 +98,7 @@ export function LyricsStage({
   onSearchOnline,
   onUpdateSearchMetadata,
   onResetSearchMetadata,
+  onExportLyrics,
   onSelectOnlineSource,
   onClearManualSource,
   onRetry,
@@ -125,6 +127,7 @@ export function LyricsStage({
   onSearchOnline: () => void | Promise<void>;
   onUpdateSearchMetadata: (metadata: LyricsSearchMetadata) => boolean;
   onResetSearchMetadata: () => void;
+  onExportLyrics: (format: LyricsExportFormat) => Promise<string | null>;
   onSelectOnlineSource: (candidate: LyricsCandidate) => void | Promise<void>;
   onClearManualSource: () => void;
   onRetry: () => void;
@@ -141,6 +144,11 @@ export function LyricsStage({
     album: "",
   });
   const [timingControlOpen, setTimingControlOpen] = useState(false);
+  const [exportControlOpen, setExportControlOpen] = useState(false);
+  const [exportState, setExportState] = useState<{
+    status: "idle" | "saving" | "success" | "error";
+    message: string;
+  }>({ status: "idle", message: "" });
   const [navigationInput, setNavigationInput] = useState<"pointer" | "keyboard">("pointer");
   const returnTimerRef = useRef<number | null>(null);
   const wheelDeltaRef = useRef(0);
@@ -312,6 +320,8 @@ export function LyricsStage({
   function openOnlineSearch() {
     setSourceBrowserOpen(true);
     setSearchMetadataEditing(false);
+    setTimingControlOpen(false);
+    setExportControlOpen(false);
     runSourceAction(onSearchOnline);
   }
 
@@ -333,6 +343,22 @@ export function LyricsStage({
     onResetSearchMetadata();
     setSearchMetadataEditing(false);
     runSourceAction(onSearchOnline);
+  }
+
+  async function exportLyrics(format: LyricsExportFormat) {
+    onInteraction();
+    setExportState({ status: "saving", message: "正在打开保存位置…" });
+    try {
+      const path = await onExportLyrics(format);
+      setExportState(path
+        ? { status: "success", message: `已导出 ${fileName(path)}` }
+        : { status: "idle", message: "" });
+    } catch (exportError) {
+      setExportState({
+        status: "error",
+        message: exportError instanceof Error ? exportError.message : "导出失败",
+      });
+    }
   }
 
   function chooseOnlineSource(candidate: LyricsCandidate) {
@@ -465,10 +491,15 @@ export function LyricsStage({
     if (status === "loading" || !visible) {
       setSourceBrowserOpen(false);
       setTimingControlOpen(false);
+      setExportControlOpen(false);
     }
   }, [status, visible]);
 
-  useEffect(() => setTimingControlOpen(false), [document?.trackId, document?.sourceId]);
+  useEffect(() => {
+    setTimingControlOpen(false);
+    setExportControlOpen(false);
+    setExportState({ status: "idle", message: "" });
+  }, [document?.trackId, document?.sourceId]);
 
   useEffect(() => {
     setSearchMetadataEditing(false);
@@ -526,6 +557,7 @@ export function LyricsStage({
               aria-expanded={timingControlOpen}
               onClick={() => {
                 onInteraction();
+                setExportControlOpen(false);
                 setTimingControlOpen((open) => !open);
               }}
             >
@@ -573,6 +605,56 @@ export function LyricsStage({
                 >
                   重置
                 </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {!isDemoSource ? (
+          <div className={`lyrics-export-control ${exportControlOpen ? "is-open" : ""}`}>
+            <button
+              className="lyrics-export-toggle"
+              type="button"
+              aria-expanded={exportControlOpen}
+              onClick={() => {
+                onInteraction();
+                setTimingControlOpen(false);
+                setExportControlOpen((open) => !open);
+                setExportState({ status: "idle", message: "" });
+              }}
+            >
+              导出
+            </button>
+            {exportControlOpen ? (
+              <div
+                className="lyrics-export-popover"
+                role="group"
+                aria-label="歌词导出格式"
+                onWheel={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <span>导出歌词</span>
+                <button
+                  type="button"
+                  disabled={exportState.status === "saving"}
+                  onClick={() => void exportLyrics("ttml")}
+                >
+                  <strong>TTML</strong>
+                  <small>完整保留逐词、翻译、音译和背景人声</small>
+                </button>
+                <button
+                  type="button"
+                  disabled={exportState.status === "saving"}
+                  onClick={() => void exportLyrics("lrc")}
+                >
+                  <strong>LRC</strong>
+                  <small>兼容逐行、逐词起点和翻译；不含音译、背景人声</small>
+                </button>
+                {exportState.message ? (
+                  <output className={`is-${exportState.status}`} aria-live="polite">
+                    {exportState.message}
+                  </output>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -685,4 +767,9 @@ export function LyricsStage({
 function formatDuration(value: number) {
   const seconds = Math.max(0, Math.round(value));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function fileName(path: string) {
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] ?? path;
 }

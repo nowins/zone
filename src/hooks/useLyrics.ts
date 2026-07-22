@@ -13,6 +13,11 @@ import { createDemoLyrics } from "../utils/demoLyrics";
 import { parseLyricsSource } from "../utils/lyrics";
 import { clampLyricsTimingOffset } from "../utils/lyricsTiming";
 import {
+  lyricsExportFileName,
+  serializeLyricsDocument,
+  type LyricsExportFormat,
+} from "../utils/lyricsExport";
+import {
   defaultLyricsSearchMetadata,
   isDefaultLyricsSearchMetadata,
   lyricsQueryForTrack,
@@ -458,6 +463,16 @@ export function useLyrics(track: Track | null, duration: number) {
     setStore((current) => persistLyricsStore(setLyricsSearchOverride(current, track)));
   }, [resolvedDuration, track]);
 
+  const exportLyrics = useCallback(async (format: LyricsExportFormat) => {
+    if (!track || !state.document || state.isDemo) return null;
+    const content = serializeLyricsDocument(state.document, format, timingOffsetMs);
+    return invoke<string | null>("export_lyrics_file", {
+      suggestedName: lyricsExportFileName(track.title, format),
+      format,
+      content,
+    });
+  }, [state.document, state.isDemo, timingOffsetMs, track]);
+
   const adjustTimingOffset = useCallback((deltaMs: number) => {
     if (!timingKey) return;
     setTimingStore((current) => {
@@ -498,6 +513,7 @@ export function useLyrics(track: Track | null, duration: number) {
     retry,
     updateSearchMetadata,
     resetSearchMetadata,
+    exportLyrics,
     adjustTimingOffset,
     resetTimingOffset,
   };

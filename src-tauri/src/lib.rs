@@ -25,6 +25,7 @@ const LYRICS_PROVIDER_RESPONSE_LIMIT: usize = 1024 * 1024;
 const AMLL_INDEX_RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
 const LYRICS_PROVIDER_REQUEST_BODY_LIMIT: usize = 4 * 1024;
 const QRC_ENCRYPTED_TEXT_LIMIT: usize = 128 * 1024;
+const LYRICS_EXPORT_CONTENT_LIMIT: usize = 4 * 1024 * 1024;
 static LYRICS_REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Default)]
@@ -104,6 +105,63 @@ fn select_lyrics_file() -> Option<String> {
     .add_filter("歌词", &["ttml", "lrc", "txt"])
     .pick_file()
     .map(|path| path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn export_lyrics_file(
+  suggested_name: String,
+  format: String,
+  content: String,
+) -> Result<Option<String>, String> {
+  if content.trim().is_empty() {
+    return Err("没有可导出的歌词内容".to_string());
+  }
+  if content.len() > LYRICS_EXPORT_CONTENT_LIMIT {
+    return Err("歌词内容过大，无法导出".to_string());
+  }
+  let extension = match format.as_str() {
+    "ttml" => "ttml",
+    "lrc" => "lrc",
+    _ => return Err("不支持的歌词导出格式".to_string()),
+  };
+  let file_name = normalized_lyrics_export_name(&suggested_name, extension);
+  let Some(path) = rfd::FileDialog::new()
+    .set_title("导出歌词")
+    .set_file_name(&file_name)
+    .add_filter(if extension == "ttml" { "TTML 歌词" } else { "LRC 歌词" }, &[extension])
+    .save_file()
+  else {
+    return Ok(None);
+  };
+
+  fs::write(&path, content.as_bytes()).map_err(|_| "无法写入歌词文件".to_string())?;
+  Ok(Some(path.to_string_lossy().to_string()))
+}
+
+fn normalized_lyrics_export_name(value: &str, extension: &str) -> String {
+  let cleaned = value
+    .chars()
+    .map(|character| {
+      if character.is_control() || matches!(character, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') {
+        ' '
+      } else {
+        character
+      }
+    })
+    .collect::<String>()
+    .split_whitespace()
+    .collect::<Vec<_>>()
+    .join(" ")
+    .trim_end_matches(['.', ' '])
+    .chars()
+    .take(124)
+    .collect::<String>();
+  let mut file_name = if cleaned.is_empty() { "歌词".to_string() } else { cleaned };
+  let expected_suffix = format!(".{extension}");
+  if !file_name.to_lowercase().ends_with(&expected_suffix) {
+    file_name.push_str(&expected_suffix);
+  }
+  file_name
 }
 
 #[tauri::command]
@@ -1293,6 +1351,16 @@ mod lyrics_tests {
   }
 
   #[test]
+  fn lyrics_export_names_are_safe_and_keep_the_selected_format() {
+    assert_eq!(
+      normalized_lyrics_export_name("  21: Guns? / Live.ttml  ", "ttml"),
+      "21 Guns Live.ttml"
+    );
+    assert_eq!(normalized_lyrics_export_name("...", "lrc"), "歌词.lrc");
+    assert_eq!(normalized_lyrics_export_name("track.lrc", "ttml"), "track.lrc.ttml");
+  }
+
+  #[test]
   fn sidecar_discovery_is_case_insensitive_and_prefers_ttml() {
     let directory = test_directory("priority");
     let audio = directory.join("Track.mp3");
@@ -1528,6 +1596,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       select_music_folder,
       select_lyrics_file,
+      export_lyrics_file,
       scan_library,
       watch_music_folders,
       load_local_lyrics,

@@ -245,6 +245,7 @@ export function NowPlayingView({
         onSearchOnline={lyrics.searchOnline}
         onUpdateSearchMetadata={lyrics.updateSearchMetadata}
         onResetSearchMetadata={lyrics.resetSearchMetadata}
+        onExportLyrics={lyrics.exportLyrics}
         onSelectOnlineSource={lyrics.selectRemoteCandidate}
         onClearManualSource={lyrics.clearManualBinding}
         onRetry={lyrics.retry}

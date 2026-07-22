@@ -75,11 +75,11 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `smartPlaylist.ts`：智能播放列表规则求值与归一化。
   - `homePins.ts`：quickplay 固定项的归一化、移动、对账。
   - `visualizer.ts` / `beatAnalysis.ts` / `audioGlow.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格、Zune 光焰与封面拼贴的纯计算部分。
-  - `lyrics.ts` / `lyricsProviders.ts`：歌词解析（plain/line/word）与候选打分排序。
+  - `lyrics.ts` / `lyricsProviders.ts` / `lyricsExport.ts`：歌词解析（plain/line/word）、候选打分排序与 TTML/LRC 导出。
   - `demoLyrics.ts`：仅动效原型用的演示歌词。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`collection`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`motion`、`animations-responsive`。
 - `src-tauri/src/lib.rs`（约 1000 行）：Tauri 命令与自定义协议。
-  - 命令：`select_music_folder`、`select_lyrics_file`、`scan_library`、`watch_music_folders`、`load_local_lyrics`、`request_lyrics_provider`、`update_system_media`、`update_system_media_timeline`。
+  - 命令：`select_music_folder`、`select_lyrics_file`、`export_lyrics_file`、`scan_library`、`watch_music_folders`、`load_local_lyrics`、`request_lyrics_provider`、`update_system_media`、`update_system_media_timeline`。
   - `zone-audio` 自定义协议（`serve_audio_protocol`）：CORS 安全的本地音频播放与 Web Audio 分析，含字节范围（`Accept-Ranges`/`Content-Range`）与正确的音频 content type。
   - 歌词：内嵌标签歌词、同目录 sidecar 歌词（`.ttml` 优先于 `.lrc`，大小写不敏感）、UTF-16/GBK 解码修复。
   - 封面提取与缓存（内嵌封面写入缓存目录）。
@@ -164,7 +164,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 自定义右键菜单支持：播放、添加到正在播放、添加到收藏、添加到自定义播放列表、固定到 quickplay、查看信息。
 - 可创建手动播放列表与规则驱动的智能播放列表。
 - 正在播放页的收藏按钮切换当前曲目在收藏列表中的状态。
-- 歌词模式：本地（内嵌/sidecar/手动绑定）与在线歌词，支持逐行/逐词同步、音译、TTML 背景人声、滚轮浏览、点按跳转、在线搜索信息映射与手动选词。
+- 歌词模式：本地（内嵌/sidecar/手动绑定）与在线歌词，支持逐行/逐词同步、音译、TTML 背景人声、滚轮浏览、点按跳转、在线搜索信息映射、手动选词与 TTML/LRC 导出。
 - Windows 系统媒体控制（SMTC）：媒体信息、时间线、媒体按键与收藏同步。
 
 ## 测试策略
