@@ -60,12 +60,13 @@
 }
 
 .stage-entering .now-track-card {
+  animation: none;
   opacity: 0;
   transform: translate3d(0, 12px, 0);
 }
 
 .stage-entering.wall-reveal-started .now-track-card {
-  animation: now-track-info-enter 300ms 690ms cubic-bezier(0.18, 0.66, 0.24, 1) both;
+  animation: now-track-info-enter 320ms 850ms cubic-bezier(0.18, 0.66, 0.24, 1) both;
 }
 
 .stage-entering .now-transport {

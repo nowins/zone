@@ -43,18 +43,18 @@ test("now playing artwork is full bleed without a recording-frame inset", () => 
   assert.ok(stageRule.includes("box-shadow: none"));
 });
 
-test("chrome idle and immersive modes preserve the audio glow", () => {
-  const idleGlowRule = cssRule(nowPlayingCss, ".chrome-idle .audio-glow-canvas");
+test("chrome hides directly after idle without an intermediate dimmed state", () => {
   const immersiveGlowRule = cssRule(nowPlayingCss, ".chrome-immersive .audio-glow-canvas");
   const immersivePanelRule = cssRule(nowPlayingCss, ".chrome-immersive .now-side-panel");
   const immersiveTransportRule = cssRule(nowPlayingCss, ".chrome-immersive .now-back,\n.chrome-immersive .now-transport");
 
-  assert.ok(Number(idleGlowRule.match(/opacity:\s*([0-9.]+)/)?.[1]) >= 0.85);
+  assert.ok(!nowPlayingCss.includes(".chrome-idle"), "the dimmed intermediate chrome state should be removed");
+  assert.ok(!nowPlayingView.includes("chromeMode(\"active\" | \"idle\""), "chrome should go straight from active to hidden");
   assert.ok(immersiveGlowRule.includes("opacity: 1"));
   assert.ok(immersivePanelRule.includes("opacity: 0"));
   assert.ok(immersivePanelRule.includes("pointer-events: none"));
   assert.ok(immersiveTransportRule.includes("opacity: 0"));
-  assert.ok(nowPlayingView.includes("const FOCUS_MODE_DELAY = 8_000"));
+  assert.ok(nowPlayingView.includes("const IDLE_CHROME_DELAY = 5_000"));
   assert.ok(nowPlayingCss.includes(".chrome-immersive"));
 });
 
@@ -149,7 +149,7 @@ test("now playing enters in layered Zune order without delaying transport", () =
   assert.ok(animationCss.includes(".stage-entering.wall-reveal-started .now-track-card"));
   assert.ok(animationCss.includes(".stage-entering .now-transport"));
   assert.ok(animationCss.includes("animation: now-queue-enter 240ms 55ms"));
-  assert.ok(animationCss.includes("animation: now-track-info-enter 300ms 690ms"));
+  assert.ok(animationCss.includes("animation: now-track-info-enter 320ms 850ms"));
 });
 
 test("lyrics word fill follows the media clock at animation-frame cadence", () => {

@@ -12,7 +12,6 @@ import type { RepeatMode, Track } from "../types";
 
 const COLLAPSED_UPCOMING_COUNT = 2;
 const IDLE_CHROME_DELAY = 5_000;
-const FOCUS_MODE_DELAY = 8_000;
 
 export function NowPlayingView({
   track,
@@ -73,7 +72,7 @@ export function NowPlayingView({
   onVolume: (value: number) => void;
   onSaveQueueAsPlaylist: (name: string) => void;
 }) {
-  const [chromeMode, setChromeMode] = useState<"active" | "idle" | "immersive">("active");
+  const [chromeMode, setChromeMode] = useState<"active" | "immersive">("active");
   const [surfaceMode, setSurfaceMode] = useState<"ambient" | "lyrics">("ambient");
   const [keyboardSurfaceChange, setKeyboardSurfaceChange] = useState(false);
   const [isEntering, setIsEntering] = useState(true);
@@ -82,7 +81,6 @@ export function NowPlayingView({
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [playlistNameDraft, setPlaylistNameDraft] = useState("正在播放");
   const idleTimer = useRef<number | null>(null);
-  const immersiveTimer = useRef<number | null>(null);
   const entranceTimer = useRef<number | null>(null);
   const sidePanelRef = useRef<HTMLElement | null>(null);
   const previousTrackIdRef = useRef(track?.id ?? null);
@@ -99,9 +97,7 @@ export function NowPlayingView({
 
   function scheduleChromeFade() {
     if (idleTimer.current) window.clearTimeout(idleTimer.current);
-    if (immersiveTimer.current) window.clearTimeout(immersiveTimer.current);
-    idleTimer.current = window.setTimeout(() => setChromeMode("idle"), IDLE_CHROME_DELAY);
-    immersiveTimer.current = window.setTimeout(() => setChromeMode("immersive"), FOCUS_MODE_DELAY);
+    idleTimer.current = window.setTimeout(() => setChromeMode("immersive"), IDLE_CHROME_DELAY);
   }
 
   function wakeChrome() {
@@ -128,7 +124,7 @@ export function NowPlayingView({
   const handleInitialWallRevealStart = useCallback(() => {
     setWallRevealStarted(true);
     if (entranceTimer.current) window.clearTimeout(entranceTimer.current);
-    entranceTimer.current = window.setTimeout(() => setIsEntering(false), 1_050);
+    entranceTimer.current = window.setTimeout(() => setIsEntering(false), 1_250);
   }, []);
 
   function openSaveDialog() {
@@ -154,7 +150,6 @@ export function NowPlayingView({
     wakeChrome();
     return () => {
       if (idleTimer.current) window.clearTimeout(idleTimer.current);
-      if (immersiveTimer.current) window.clearTimeout(immersiveTimer.current);
       if (entranceTimer.current) window.clearTimeout(entranceTimer.current);
     };
   }, []);

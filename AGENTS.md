@@ -74,7 +74,6 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `homePins.ts`：quickplay 固定项的归一化、移动、对账。
   - `visualizer.ts` / `beatAnalysis.ts` / `audioGlow.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格、Zune 光焰与封面拼贴的纯计算部分。
   - `lyrics.ts` / `lyricsProviders.ts`：歌词解析（plain/line/word）与候选打分排序。
-  - `motion.ts`：页面切换动效方向。
   - `demoLyrics.ts`：仅动效原型用的演示歌词。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`collection`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`motion`、`animations-responsive`。
 - `src-tauri/src/lib.rs`（约 1000 行）：Tauri 命令与自定义协议。
@@ -94,7 +93,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 ## 持久化
 
 - 应用状态存于 `localStorage`，键为 `src/constants.ts` 的 `STORAGE_KEY`（`zone-player-state-v1`）。
-- 曲库 schema 版本为 `LIBRARY_SCHEMA_VERSION`（当前 5）。
+- 曲库 schema 版本为 `LIBRARY_SCHEMA_VERSION`（当前 6）。
 - 收藏是 id 为 `DEFAULT_PLAYLIST_ID`（`favorites`）的默认播放列表；读取播放列表状态时必须用 `normalizePlaylists`，让旧状态补齐默认收藏列表。
 - home pins 用 `normalizeHomePins`/`reconcileHomePins` 做归一化与对账。
 - 歌词缓存在 `zone-local-lyrics-v1`；歌词 provider 设置在 `zone-lyrics-providers-v1`。
@@ -131,14 +130,17 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 背景：
   - 视觉层为 Canvas 实现（`NowPlayingMosaicCanvas` + `AudioGlowCanvas`，测试 `tests/nowPlayingCss.test.mjs` 断言其为 canvas 而非旧 SVG 分层）。
   - 用本地专辑/艺术家封面做拼贴，优先当前艺术家的专辑。
-  - 从当前封面派生柔和色彩罩染。
+  - 从当前封面派生柔和色彩罩染；另有一盏「游动灯光」（`createMosaicColorSweep` 的径向光斑）沿非固定轨迹漂移，色相随位置变化，光斑对侧区域相应压暗。
   - 只做缓慢的平移/缩放，动效像呼吸而不是幻灯片；磁贴随机翻面稀少且缓慢。
+- 入场：
+  - 页面以 `now-stage-dissolve`（280ms 纯透明度溶解）进入，无位移/缩放。
+  - 队列面板先淡入，拼贴墙磁贴逐片错峰显现（`mosaicTileRevealAmount`，整墙约 0.9s，非顺序），曲目卡最后（墙 reveal 后约 850ms）淡入——由 `animations-responsive.css` 的 `stage-entering` 编排。
 - 排版：
   - 允许大号、部分裁切的幽灵文字。
   - 功能性文字保持可读且克制。
   - 应用内避免解释性 UI 文案。
 - 控制：
-  - 极简线性控制；无操作约 5 秒后 chrome 淡出，只留下拼贴与歌曲信息（`IDLE_CHROME_DELAY`，另有 `FOCUS_MODE_DELAY` 8 秒进入专注态）。
+  - 极简线性控制；无操作约 5 秒后 chrome 直接隐藏（`IDLE_CHROME_DELAY` 进入 `chrome-immersive`），只留下拼贴与歌曲信息，无中间虚化态。
   - 控制区不应主导页面。
 - 可视化：
   - 应像底部低暗的红/橙色光晕或火焰（`audioGlow.ts` 的 Zune mountain frame），不是传统均衡器。

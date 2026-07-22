@@ -29,8 +29,9 @@ export type MosaicFlipState = {
 };
 
 export type MosaicColorSweep = {
-  center: number;
-  width: number;
+  x: number;
+  y: number;
+  radius: number;
   alpha: number;
   color: RgbColor;
   shadow: RgbColor;
@@ -42,7 +43,7 @@ export type MosaicMotion = {
   scale: number;
 };
 
-const ZUNE_BASE: RgbColor = { r: 56, g: 68, b: 22 };
+const ZUNE_BASE: RgbColor = { r: 62, g: 50, b: 44 };
 const CANVAS_TILE_PATTERN = [3, 1, 2, 1, 2, 1, 3, 2, 1, 4, 1, 2, 1, 3, 1, 2, 1, 1, 2, 3];
 
 export function buildCanvasMosaicTiles(width: number, height: number, albums: AlbumGroup[]) {
@@ -84,8 +85,8 @@ export function buildCanvasMosaicTiles(width: number, height: number, albums: Al
 export function colorToZuneTint(color: RgbColor): RgbColor {
   const input = rgbToHsl(color);
   const base = rgbToHsl(ZUNE_BASE);
-  const hueDistanceToGreen = shortestHueDistance(input.h, base.h);
-  const hue = normalizeHue(base.h + hueDistanceToGreen * 0.22);
+  const hueDistanceToBase = shortestHueDistance(input.h, base.h);
+  const hue = normalizeHue(base.h + hueDistanceToBase * 0.55);
   const saturation = clamp(input.s * 0.2 + 0.4, 0.36, 0.54);
   const lightness = clamp(input.l * 0.12 + 0.13, 0.13, 0.24);
   return hslToRgb({ h: hue, s: saturation, l: lightness });
@@ -111,8 +112,8 @@ export function createMosaicMotion(timeSeconds: number): MosaicMotion {
 
 export function mosaicTileRevealAmount(seed: number, elapsedMs: number, motionEnabled = true) {
   if (!motionEnabled) return 1;
-  const delay = 70 + clamp(seed, 0, 1) * 500;
-  const progress = clamp((elapsedMs - delay) / 180, 0, 1);
+  const delay = clamp(seed, 0, 1) * 620;
+  const progress = clamp((elapsedMs - delay) / 260, 0, 1);
   return 1 - (1 - progress) ** 3;
 }
 
@@ -134,24 +135,30 @@ export function createMosaicColorSweep({
   timeSeconds: number;
   isPlaying: boolean;
 }): MosaicColorSweep {
-  const pace = isPlaying ? 0.045 : 0.012;
-  const center = 0.5 + Math.sin(timeSeconds * pace - 1.1) * 0.43;
+  // A roving light rather than a fixed-direction wash: the source drifts on a
+  // Lissajous-like path and its hue shifts as it travels, so bright and dim
+  // regions keep migrating across the wall.
+  const pace = isPlaying ? 1 : 0.25;
+  const t = timeSeconds * pace;
+  const x = 0.5 + Math.sin(t * 0.041) * 0.34 + Math.sin(t * 0.017 + 1.2) * 0.09;
+  const y = 0.44 + Math.cos(t * 0.033 + 0.7) * 0.26 + Math.sin(t * 0.012 + 2.1) * 0.07;
   const hsl = rgbToHsl(baseTint);
   const color = hslToRgb({
-    h: normalizeHue(hsl.h + Math.sin(timeSeconds * 0.021) * 5),
-    s: clamp(hsl.s + 0.075, 0.34, 0.53),
-    l: clamp(hsl.l + 0.036, 0.17, 0.27),
+    h: normalizeHue(hsl.h + Math.sin(t * 0.047 + 0.5) * 16),
+    s: clamp(hsl.s + 0.08, 0.34, 0.56),
+    l: clamp(hsl.l + 0.045, 0.17, 0.28),
   });
   const shadow = hslToRgb({
-    h: normalizeHue(hsl.h - 12),
+    h: normalizeHue(hsl.h - 14),
     s: clamp(hsl.s + 0.02, 0.28, 0.48),
-    l: clamp(hsl.l * 0.6, 0.07, 0.14),
+    l: clamp(hsl.l * 0.55, 0.06, 0.13),
   });
 
   return {
-    center,
-    width: 0.37,
-    alpha: 0.18,
+    x,
+    y,
+    radius: 0.58,
+    alpha: 0.2,
     color,
     shadow,
   };
@@ -236,7 +243,7 @@ export function updateMosaicFlipState(
   state.toAlbumIndex = toAlbumIndex;
   state.direction = seededNoise(time * 0.0017 + selected * 19) > 0.5 ? 1 : -1;
   state.startedAt = time;
-  state.duration = 820 + Math.round((tile?.seed ?? 0.5) * 260);
+  state.duration = 560 + Math.round((tile?.seed ?? 0.5) * 160);
   state.nextAt = time + 5_200 + Math.round((tile?.seed ?? 0.5) * 4_800);
   return state;
 }

@@ -52,7 +52,7 @@ test("zune tint stays dark and constrained while allowing slow color movement", 
   assert.ok(halfway.r >= Math.min(calm.r, later.r) && halfway.r <= Math.max(calm.r, later.r));
 });
 
-test("mosaic color sweep moves across the wall without audio-driven brightness", () => {
+test("mosaic color light roams the wall and shifts hue as it travels", () => {
   const tint = colorToZuneTint({ r: 40, g: 170, b: 220 });
   const first = createMosaicColorSweep({
     baseTint: tint,
@@ -70,12 +70,13 @@ test("mosaic color sweep moves across the wall without audio-driven brightness",
     isPlaying: false,
   });
 
-  assert.notEqual(first.center, later.center, "sweep should migrate across the wall over time");
-  assert.notDeepEqual(first.color, later.color, "sweep color should drift subtly over time");
-  assert.equal(first.alpha, paused.alpha, "audio/play state should not change sweep brightness");
-  assert.equal(first.width, paused.width, "audio/play state should not change sweep width");
-  assert.ok(first.alpha >= 0.13 && first.alpha <= 0.2, `sweep alpha should be visible but restrained, got ${first.alpha}`);
-  assert.ok(relativeLuminance(first.color) < 0.14, `sweep color should stay dark, got ${relativeLuminance(first.color)}`);
+  assert.notEqual(first.x, later.x, "the light should travel horizontally");
+  assert.notEqual(first.y, later.y, "the light should travel vertically");
+  assert.notDeepEqual(first.color, later.color, "light color should drift as it moves");
+  assert.equal(first.alpha, paused.alpha, "audio/play state should not change light brightness");
+  assert.ok(first.alpha >= 0.13 && first.alpha <= 0.24, `light alpha should be visible but restrained, got ${first.alpha}`);
+  assert.ok(first.x > 0 && first.x < 1 && first.y > 0 && first.y < 1, "the light should stay on the wall");
+  assert.ok(relativeLuminance(first.color) < 0.16, `light color should stay dark, got ${relativeLuminance(first.color)}`);
 });
 
 test("mosaic wall breathes across useful distances without exposing its edges", () => {
@@ -90,10 +91,10 @@ test("mosaic wall breathes across useful distances without exposing its edges", 
   }
 });
 
-test("mosaic entry reveals tiles in a short non-sequential cascade", () => {
+test("mosaic entry pops tiles in one by one in a brisk non-sequential cascade", () => {
   assert.ok(mosaicTileRevealAmount(0.05, 150) > 0, "an early random tile should already be visible");
   assert.equal(mosaicTileRevealAmount(0.95, 150), 0, "a later random tile should still be hidden");
-  assert.equal(mosaicTileRevealAmount(0.95, 800), 1, "the full wall should settle in well under a second");
+  assert.equal(mosaicTileRevealAmount(0.95, 900), 1, "the full wall should settle briskly");
   assert.equal(mosaicTileRevealAmount(0.95, 0, false), 1, "reduced motion should reveal the wall immediately");
 });
 
@@ -131,7 +132,7 @@ test("mosaic flip scheduler is global, frequent, and commits the live tile back 
   const flippedTileIndex = state.tileIndex;
   assert.ok(tiles[state.tileIndex].width === tiles[state.tileIndex].height, "flipped tile should be square");
   assert.ok(tiles[state.tileIndex].width >= 104, "scheduler should prefer medium or large tiles");
-  assert.ok(state.duration >= 820 && state.duration <= 1_080, `flip duration should feel like a live tile turn, got ${state.duration}`);
+  assert.ok(state.duration >= 560 && state.duration <= 720, `flip duration should feel like a live tile turn, got ${state.duration}`);
   assert.ok(state.nextAt >= state.startedAt + 5_200 && state.nextAt <= state.startedAt + 10_000, "next flip should arrive within a useful rhythm");
   assert.notEqual(state.fromAlbumIndex, state.toAlbumIndex, "the back face should use a different album");
   assert.notEqual(albums[state.fromAlbumIndex].coverPath, albums[state.toAlbumIndex].coverPath, "the live tile should visibly change artwork");

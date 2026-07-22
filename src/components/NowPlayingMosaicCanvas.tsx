@@ -20,7 +20,7 @@ import {
 } from "../utils/nowPlayingCanvas";
 
 const imageCache = new Map<string, HTMLImageElement>();
-const FALLBACK_TINT: RgbColor = { r: 56, g: 68, b: 22 };
+const FALLBACK_TINT: RgbColor = { r: 62, g: 50, b: 44 };
 const WALL_PRELOAD_TIMEOUT_MS = 1_600;
 
 export function NowPlayingMosaicCanvas({
@@ -228,13 +228,13 @@ function drawMosaic(
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.clearRect(0, 0, width, height);
-  context.fillStyle = "#020602";
+  context.fillStyle = "#030303";
   context.fillRect(0, 0, width, height);
 
   const motion = createMosaicMotion(motionEnabled ? sceneSeconds : 0);
   const revealElapsed = time - wallRevealStartedAt;
   const wallReveal = motionEnabled
-    ? Math.max(0, Math.min(1, revealElapsed / 760))
+    ? Math.max(0, Math.min(1, revealElapsed / 950))
     : 1;
 
   context.save();
@@ -262,28 +262,35 @@ function drawMosaic(
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   context.globalAlpha = wallReveal;
-  context.globalCompositeOperation = "source-over";
   const sweepState = createMosaicColorSweep({ baseTint: tint, timeSeconds: sceneSeconds, isPlaying });
-  const sweep = context.createLinearGradient(
-    width * (sweepState.center - sweepState.width),
-    height * 0.05,
-    width * (sweepState.center + sweepState.width),
-    height * 0.92,
-  );
-  sweep.addColorStop(0, colorCss(sweepState.shadow, 0));
-  sweep.addColorStop(0.28, colorCss(sweepState.shadow, sweepState.alpha * 0.36));
-  sweep.addColorStop(0.52, colorCss(sweepState.color, sweepState.alpha));
-  sweep.addColorStop(0.78, colorCss(sweepState.shadow, sweepState.alpha * 0.3));
-  sweep.addColorStop(1, colorCss(sweepState.shadow, 0));
+  const lightX = sweepState.x * width;
+  const lightY = sweepState.y * height;
+  const lightRadius = Math.max(width, height) * sweepState.radius;
   context.globalCompositeOperation = "screen";
-  context.fillStyle = sweep;
+  const light = context.createRadialGradient(lightX, lightY, 0, lightX, lightY, lightRadius);
+  light.addColorStop(0, colorCss(sweepState.color, sweepState.alpha));
+  light.addColorStop(0.55, colorCss(sweepState.color, sweepState.alpha * 0.32));
+  light.addColorStop(1, colorCss(sweepState.color, 0));
+  context.fillStyle = light;
   context.fillRect(0, 0, width, height);
   context.globalCompositeOperation = "source-over";
+  const dim = context.createRadialGradient(
+    width - lightX,
+    height - lightY,
+    0,
+    width - lightX,
+    height - lightY,
+    lightRadius * 0.85,
+  );
+  dim.addColorStop(0, colorCss(sweepState.shadow, 0.2));
+  dim.addColorStop(1, colorCss(sweepState.shadow, 0));
+  context.fillStyle = dim;
+  context.fillRect(0, 0, width, height);
 
   const wash = context.createLinearGradient(0, 0, width, height);
   wash.addColorStop(0, colorCss(tint, 0.1));
   wash.addColorStop(0.54, colorCss({ r: tint.r * 0.48, g: tint.g * 0.68, b: tint.b * 0.62 }, 0.13));
-  wash.addColorStop(1, "rgba(2, 7, 4, 0.26)");
+  wash.addColorStop(1, "rgba(6, 4, 3, 0.26)");
   context.fillStyle = wash;
   context.fillRect(0, 0, width, height);
   context.restore();
@@ -322,8 +329,9 @@ function drawTile(
     : tile.albumIndex;
   const album = albums[albumIndex];
   const image = album?.coverPath ? getCachedImage(album.coverPath) : null;
-  const flipScale = isFlipping ? Math.max(0.025, Math.abs(Math.cos(easedFlip * Math.PI))) : 1;
-  const flipShade = isFlipping ? 0.12 + Math.sin(easedFlip * Math.PI) * 0.5 : 0;
+  const flipScale = isFlipping ? Math.max(0.02, Math.abs(Math.cos(easedFlip * Math.PI))) : 1;
+  const flipForeshorten = isFlipping ? 1 - Math.sin(easedFlip * Math.PI) * 0.07 : 1;
+  const flipShade = isFlipping ? Math.sin(easedFlip * Math.PI) * 0.5 : 0;
   const centerX = tile.x + tile.width / 2;
   const centerY = tile.y + tile.height / 2;
   const perspectiveOffset = isFlipping
@@ -332,7 +340,7 @@ function drawTile(
 
   context.save();
   context.translate(centerX, centerY + perspectiveOffset);
-  context.scale(1, flipScale);
+  context.scale(flipForeshorten, flipScale);
   context.translate(-centerX, -centerY);
   context.beginPath();
   context.rect(tile.x, tile.y, tile.width - 1, tile.height - 1);
@@ -355,10 +363,11 @@ function drawTile(
   context.fillStyle = `rgba(0, 0, 0, ${0.18 + flipShade})`;
   context.fillRect(tile.x, tile.y, tile.width, tile.height);
   if (isFlipping) {
-    const highlight = context.createLinearGradient(tile.x, tile.y, tile.x, tile.y + tile.height);
-    highlight.addColorStop(0.42, "rgba(255, 255, 255, 0)");
-    highlight.addColorStop(0.5, `rgba(255, 255, 255, ${0.12 + flipShade * 0.32})`);
-    highlight.addColorStop(0.58, "rgba(255, 255, 255, 0)");
+    const sweepY = tile.y + tile.height * (0.08 + easedFlip * 0.84);
+    const highlight = context.createLinearGradient(0, sweepY - tile.height * 0.1, 0, sweepY + tile.height * 0.1);
+    highlight.addColorStop(0, "rgba(255, 255, 255, 0)");
+    highlight.addColorStop(0.5, `rgba(255, 255, 255, ${0.08 + flipShade * 0.3})`);
+    highlight.addColorStop(1, "rgba(255, 255, 255, 0)");
     context.fillStyle = highlight;
     context.fillRect(tile.x, tile.y, tile.width, tile.height);
   }

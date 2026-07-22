@@ -10,48 +10,6 @@
   --motion-ease-linear: linear;
 }
 
-/* Page hierarchy: Turnstile for peers, Continuum for now-playing depth. */
-.motion-page {
-  transform-origin: 10% 50%;
-  backface-visibility: hidden;
-  animation: wp7-page-settle var(--motion-content) var(--motion-ease-direct) both;
-}
-
-.shell[data-motion-direction="forward"] .motion-page {
-  animation-name: wp7-turnstile-forward-in;
-  animation-duration: var(--motion-page);
-}
-
-.shell[data-motion-direction="backward"] .motion-page {
-  animation-name: wp7-turnstile-backward-in;
-  animation-duration: var(--motion-page);
-}
-
-.shell[data-motion-direction="depth-in"] .motion-page {
-  animation-name: wp7-continuum-depth-in;
-  animation-duration: var(--motion-page);
-}
-
-.shell[data-motion-direction="depth-out"] .motion-page {
-  animation-name: wp7-continuum-depth-out;
-  animation-duration: var(--motion-page);
-}
-
-.shell[data-motion-input="keyboard"] .motion-page,
-.shell[data-motion-input="keyboard"] .library-motion-stage {
-  animation: none;
-}
-
-/* Pivot content moves in the same direction as its label order. */
-.library-motion-stage {
-  backface-visibility: hidden;
-  animation: wp7-pivot-forward-in var(--motion-content) var(--motion-ease-direct) both;
-}
-
-.shell[data-collection-direction="backward"] .library-motion-stage {
-  animation-name: wp7-pivot-backward-in;
-}
-
 /* Feather: short, capped cascades. Content remains interactive throughout. */
 .quick-group,
 .quick-album,
@@ -64,7 +22,6 @@
 .playlist-list > button,
 .playlist-rows button,
 .song-list .song-row,
-.album-detail-motion .album-track-row,
 .folder-list > div,
 .settings-section-heading,
 .settings-sidebar > section {
@@ -77,27 +34,21 @@
 .quick-group:nth-child(3) { --stagger: 72ms; }
 .quick-album:nth-child(1),
 .history-stack > button:nth-child(1),
-.album-detail-motion .album-track-row:nth-child(1),
 .folder-list > div:nth-child(1),
 .settings-section-heading { --stagger: 0ms; }
 .quick-album:nth-child(2),
 .history-stack > button:nth-child(2),
-.album-detail-motion .album-track-row:nth-child(2),
 .folder-list > div:nth-child(2),
 .settings-sidebar > section:nth-child(1) { --stagger: 24ms; }
 .quick-album:nth-child(3),
 .history-stack > button:nth-child(3),
-.album-detail-motion .album-track-row:nth-child(3),
 .folder-list > div:nth-child(3),
 .settings-sidebar > section:nth-child(2) { --stagger: 48ms; }
 .quick-album:nth-child(4),
-.album-detail-motion .album-track-row:nth-child(4),
 .folder-list > div:nth-child(4) { --stagger: 72ms; }
 .quick-album:nth-child(5),
-.album-detail-motion .album-track-row:nth-child(5),
 .folder-list > div:nth-child(5) { --stagger: 96ms; }
 .quick-album:nth-child(6),
-.album-detail-motion .album-track-row:nth-child(6),
 .folder-list > div:nth-child(6) { --stagger: 120ms; }
 
 .album-tile:nth-child(1),
@@ -152,24 +103,6 @@
 
 .song-list button {
   animation: none;
-}
-
-/* Continuum: a selection appears to carry its context into the detail pane. */
-.album-detail-motion,
-.motion-continuum {
-  min-height: 0;
-  animation: wp7-continuum-in var(--motion-content) var(--motion-ease-direct) both;
-}
-
-.album-detail-motion {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.now-copy,
-.now-track-card {
-  animation: wp7-track-continuum-in var(--motion-content) var(--motion-ease-direct) both;
 }
 
 /* Transient surfaces: Swivel from the trigger or owning edge. */
@@ -247,12 +180,7 @@
   }
 }
 
-/* Press and state feedback. Tilt surfaces are driven directly by pointer position. */
-[data-motion-tilt] {
-  transform-style: preserve-3d;
-  backface-visibility: hidden;
-}
-
+/* Press and state feedback. */
 .player-shortcuts button,
 .zune-controls button,
 .zune-progress-favorite,
@@ -298,53 +226,8 @@
   animation: wp7-icon-swap var(--motion-press) var(--motion-ease-direct) both;
 }
 
-@keyframes wp7-page-settle {
-  from { opacity: 0; transform: translate3d(18px, 0, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-
-@keyframes wp7-turnstile-forward-in {
-  from { opacity: 0; transform: perspective(1400px) translate3d(56px, 0, 0) rotateY(-4.5deg); }
-  to { opacity: 1; transform: perspective(1400px) translate3d(0, 0, 0) rotateY(0deg); }
-}
-
-@keyframes wp7-turnstile-backward-in {
-  from { opacity: 0; transform: perspective(1400px) translate3d(-42px, 0, 0) rotateY(3.5deg); }
-  to { opacity: 1; transform: perspective(1400px) translate3d(0, 0, 0) rotateY(0deg); }
-}
-
-@keyframes wp7-continuum-depth-in {
-  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.985); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
-
-@keyframes wp7-continuum-depth-out {
-  from { opacity: 0; transform: translate3d(0, -8px, 0) scale(1.018); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
-
-@keyframes wp7-pivot-forward-in {
-  from { opacity: 0; transform: translate3d(34px, 0, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-
-@keyframes wp7-pivot-backward-in {
-  from { opacity: 0; transform: translate3d(-28px, 0, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-
 @keyframes wp7-feather-in {
   from { opacity: 0; transform: translate3d(22px, 0, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-
-@keyframes wp7-continuum-in {
-  from { opacity: 0; transform: translate3d(26px, 0, 0) scale(0.99); }
-  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
-}
-
-@keyframes wp7-track-continuum-in {
-  from { opacity: 0; transform: translate3d(0, 8px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
@@ -375,8 +258,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .motion-page,
-  .library-motion-stage,
   .quick-group,
   .quick-album,
   .history-feature,
@@ -388,13 +269,9 @@
   .playlist-list > button,
   .playlist-rows button,
   .song-list .song-row,
-  .album-detail-motion,
-  .album-detail-motion .album-track-row,
   .folder-list > div,
   .settings-section-heading,
   .settings-sidebar > section,
-  .motion-continuum,
-  .now-copy,
   .now-track-card,
   .zune-progress-favorite.active svg,
   .track-favorite.active svg,
@@ -404,7 +281,6 @@
     transform: none;
   }
 
-  [data-motion-tilt],
   .context-menu,
   .info-panel section,
   .save-playlist-dialog,
