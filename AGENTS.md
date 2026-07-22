@@ -96,7 +96,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - 曲库 schema 版本为 `LIBRARY_SCHEMA_VERSION`（当前 6）。
 - 收藏是 id 为 `DEFAULT_PLAYLIST_ID`（`favorites`）的默认播放列表；读取播放列表状态时必须用 `normalizePlaylists`，让旧状态补齐默认收藏列表。
 - home pins 用 `normalizeHomePins`/`reconcileHomePins` 做归一化与对账。
-- 歌词缓存在 `zone-local-lyrics-v1`；歌词 provider 设置在 `zone-lyrics-providers-v1`。
+- 歌词缓存在 `zone-local-lyrics-v1`；歌词 provider 设置在 `zone-lyrics-providers-v1`；按曲目与歌词来源保存的时间校准在 `zone-lyrics-timing-v1`。
 
 ## 播放与 Web Audio
 

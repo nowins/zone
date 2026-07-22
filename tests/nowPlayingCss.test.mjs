@@ -11,6 +11,7 @@ const playerBarView = readFileSync("src/components/PlayerBar.tsx", "utf8");
 const playbackProgressView = readFileSync("src/components/PlaybackProgress.tsx", "utf8");
 const mosaicCanvasSource = readFileSync("src/components/NowPlayingMosaicCanvas.tsx", "utf8");
 const lyricsSource = readFileSync("src/components/LyricsStage.tsx", "utf8");
+const lyricsHookSource = readFileSync("src/hooks/useLyrics.ts", "utf8");
 const lyricsCss = readFileSync("src/styles/lyrics.css", "utf8");
 
 test("now playing visual layers are canvas based", () => {
@@ -157,6 +158,14 @@ test("lyrics word fill follows the media clock at animation-frame cadence", () =
   assert.ok(lyricsSource.includes("playbackClockRef.current()"));
   assert.ok(lyricsSource.includes("element.style.clipPath"));
   assert.ok(!lyricsCss.includes("transition: clip-path"), "frame-driven word fill must not wait on discrete CSS transitions");
+});
+
+test("lyrics calibration uses one reversible clock mapping per track and source", () => {
+  assert.ok(lyricsSource.includes("mediaTimeToLyricsTime(playbackClockRef.current(), timingOffsetMs)"));
+  assert.ok(lyricsSource.includes("lyricsTimeToMediaTime(line.start, timingOffsetMs, duration)"));
+  assert.ok(lyricsHookSource.includes('const LYRICS_TIMING_STORAGE_KEY = "zone-lyrics-timing-v1"'));
+  assert.ok(lyricsHookSource.includes("lyricsTimingKey(track.id, state.document.sourceId)"));
+  assert.ok(lyricsCss.includes(".lyrics-timing-popover"));
 });
 
 test("lyrics provider retry keeps an explicit loading state and hit area", () => {

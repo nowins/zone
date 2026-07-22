@@ -10,14 +10,17 @@ import type {
 } from "../types";
 import { createDemoLyrics } from "../utils/demoLyrics";
 import { parseLyricsSource } from "../utils/lyrics";
+import { clampLyricsTimingOffset } from "../utils/lyricsTiming";
 import { pickBestLyricsCandidate } from "../utils/lyricsProviders";
 import { getLyricsCandidateSource, searchLyricsProviders } from "../lyrics/providers";
 import { useLyricsProviderSettings } from "./useLyricsProviderSettings";
 
 const LYRICS_STORAGE_KEY = "zone-local-lyrics-v1";
+const LYRICS_TIMING_STORAGE_KEY = "zone-lyrics-timing-v1";
 const MAX_CACHE_ENTRIES = 80;
 const MAX_REMOTE_CACHE_ENTRIES = 24;
 const MAX_REMOTE_CANDIDATES = 8;
+const MAX_TIMING_ENTRIES = 160;
 
 type CacheEntry = {
   sourceId: string;
@@ -41,6 +44,13 @@ type LyricsStore = {
   cache: Record<string, CacheEntry>;
   remoteCache: Record<string, RemoteCacheEntry>;
 };
+
+type LyricsTimingEntry = {
+  offsetMs: number;
+  updatedAt: number;
+};
+
+type LyricsTimingStore = Record<string, LyricsTimingEntry>;
 
 export type LyricsState = {
   status: "idle" | "loading" | "ready" | "missing" | "error";
@@ -69,6 +79,7 @@ const EMPTY_STORE: LyricsStore = {
 export function useLyrics(track: Track | null, duration: number) {
   const { configs: providerConfigs } = useLyricsProviderSettings();
   const [store, setStore] = useState<LyricsStore>(readLyricsStore);
+  const [timingStore, setTimingStore] = useState<LyricsTimingStore>(readLyricsTimingStore);
   const [reloadToken, setReloadToken] = useState(0);
   const forceRemoteTrackRef = useRef<string | null>(null);
   const manualSearchControllerRef = useRef<AbortController | null>(null);
@@ -99,6 +110,10 @@ export function useLyrics(track: Track | null, duration: number) {
     .map((config) => `${config.id}:${config.enabled}:${config.priority}:${config.timeoutMs}`)
     .join("|");
   const hasOnlineProviders = providerConfigs.some((config) => config.enabled);
+  const timingKey = track && state.document
+    ? lyricsTimingKey(track.id, state.document.sourceId)
+    : null;
+  const timingOffsetMs = timingKey ? timingStore[timingKey]?.offsetMs ?? 0 : 0;
   activeTrackIdRef.current = track?.id;
 
   useEffect(() => {
@@ -389,15 +404,44 @@ export function useLyrics(track: Track | null, duration: number) {
     setReloadToken((value) => value + 1);
   }, [track?.id]);
 
+  const adjustTimingOffset = useCallback((deltaMs: number) => {
+    if (!timingKey) return;
+    setTimingStore((current) => {
+      const offsetMs = clampLyricsTimingOffset((current[timingKey]?.offsetMs ?? 0) + deltaMs);
+      if (offsetMs === 0) {
+        const next = { ...current };
+        delete next[timingKey];
+        return persistLyricsTimingStore(next);
+      }
+      return persistLyricsTimingStore({
+        ...current,
+        [timingKey]: { offsetMs, updatedAt: Date.now() },
+      });
+    });
+  }, [timingKey]);
+
+  const resetTimingOffset = useCallback(() => {
+    if (!timingKey) return;
+    setTimingStore((current) => {
+      if (!current[timingKey]) return current;
+      const next = { ...current };
+      delete next[timingKey];
+      return persistLyricsTimingStore(next);
+    });
+  }, [timingKey]);
+
   return {
     ...state,
     onlineSearch,
     hasOnlineProviders,
+    timingOffsetMs,
     selectFile,
     clearManualBinding,
     searchOnline,
     selectRemoteCandidate,
     retry,
+    adjustTimingOffset,
+    resetTimingOffset,
   };
 }
 
@@ -493,6 +537,42 @@ function persistLyricsStore(store: LyricsStore) {
   }
 }
 
+function readLyricsTimingStore(): LyricsTimingStore {
+  try {
+    const raw = localStorage.getItem(LYRICS_TIMING_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(parsed).flatMap(([key, value]) => {
+      if (!value || typeof value !== "object") return [];
+      const candidate = value as Partial<LyricsTimingEntry>;
+      const offsetMs = clampLyricsTimingOffset(candidate.offsetMs ?? 0);
+      if (offsetMs === 0) return [];
+      return [[key, {
+        offsetMs,
+        updatedAt: typeof candidate.updatedAt === "number" && Number.isFinite(candidate.updatedAt)
+          ? candidate.updatedAt
+          : 0,
+      }]];
+    }));
+  } catch {
+    return {};
+  }
+}
+
+function persistLyricsTimingStore(store: LyricsTimingStore) {
+  const compact = Object.fromEntries(
+    Object.entries(store)
+      .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
+      .slice(0, MAX_TIMING_ENTRIES),
+  );
+  try {
+    localStorage.setItem(LYRICS_TIMING_STORAGE_KEY, JSON.stringify(compact));
+  } catch {
+    // Keep the in-memory calibration available when storage is unavailable.
+  }
+  return compact;
+}
+
 function record<T>(value: T | undefined): T extends Record<string, unknown> ? T : Record<string, never> {
   return (value && typeof value === "object" ? value : {}) as T extends Record<string, unknown> ? T : Record<string, never>;
 }
@@ -514,6 +594,10 @@ function queryKey(query: LyricsQuery) {
   return [query.title, query.artist, query.album ?? "", Math.round(query.duration ?? 0)]
     .map((value) => String(value).trim().toLocaleLowerCase())
     .join("\u0000");
+}
+
+function lyricsTimingKey(trackId: string, sourceId: string) {
+  return `${trackId}\u0000${sourceId}`;
 }
 
 function mergeCandidate(candidates: LyricsCandidate[], candidate: LyricsCandidate) {

@@ -235,6 +235,8 @@ export function NowPlayingView({
         progress={progress}
         isPlaying={isPlaying}
         playbackClock={playbackClock}
+        duration={duration}
+        timingOffsetMs={lyrics.timingOffsetMs}
         visible={lyricsOpen}
         onSeek={onSeek}
         onSelectSource={lyrics.selectFile}
@@ -242,6 +244,8 @@ export function NowPlayingView({
         onSelectOnlineSource={lyrics.selectRemoteCandidate}
         onClearManualSource={lyrics.clearManualBinding}
         onRetry={lyrics.retry}
+        onAdjustTimingOffset={lyrics.adjustTimingOffset}
+        onResetTimingOffset={lyrics.resetTimingOffset}
         onInteraction={wakeChrome}
       />
       <button className="now-back" onClick={onBack} title="返回收藏">

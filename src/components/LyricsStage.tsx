@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type WheelEvent } from "react";
 import type { LyricsCandidate, LyricsDocument, LyricsLine, LyricsWord } from "../types";
 import type { LyricsOnlineSearchState } from "../hooks/useLyrics";
+import {
+  formatLyricsTimingOffset,
+  LYRICS_TIMING_STEP_MS,
+  lyricsTimeToMediaTime,
+  mediaTimeToLyricsTime,
+} from "../utils/lyricsTiming";
 
 const BROWSE_RETURN_DELAY = 3_000;
 const WHEEL_STEP_THRESHOLD = 34;
@@ -60,6 +66,8 @@ export function LyricsStage({
   progress,
   isPlaying,
   playbackClock,
+  duration,
+  timingOffsetMs,
   visible,
   onSeek,
   onSelectSource,
@@ -67,6 +75,8 @@ export function LyricsStage({
   onSelectOnlineSource,
   onClearManualSource,
   onRetry,
+  onAdjustTimingOffset,
+  onResetTimingOffset,
   onInteraction,
 }: {
   document: LyricsDocument | null;
@@ -80,6 +90,8 @@ export function LyricsStage({
   progress: number;
   isPlaying: boolean;
   playbackClock: () => number;
+  duration: number;
+  timingOffsetMs: number;
   visible: boolean;
   onSeek: (value: number) => void;
   onSelectSource: () => void | Promise<void>;
@@ -87,10 +99,13 @@ export function LyricsStage({
   onSelectOnlineSource: (candidate: LyricsCandidate) => void | Promise<void>;
   onClearManualSource: () => void;
   onRetry: () => void;
+  onAdjustTimingOffset: (deltaMs: number) => void;
+  onResetTimingOffset: () => void;
   onInteraction: () => void;
 }) {
   const [browseIndex, setBrowseIndex] = useState<number | null>(null);
   const [sourceBrowserOpen, setSourceBrowserOpen] = useState(false);
+  const [timingControlOpen, setTimingControlOpen] = useState(false);
   const [navigationInput, setNavigationInput] = useState<"pointer" | "keyboard">("pointer");
   const returnTimerRef = useRef<number | null>(null);
   const wheelDeltaRef = useRef(0);
@@ -99,9 +114,10 @@ export function LyricsStage({
   const playbackClockRef = useRef(playbackClock);
   const lines = document?.lines ?? [];
   const isPlain = document?.format === "plain";
+  const lyricsProgress = mediaTimeToLyricsTime(progress, timingOffsetMs);
   const initialActiveIndex = useMemo(
-    () => isPlain ? -1 : findActiveLine(lines, progress),
-    [document?.trackId, isPlain],
+    () => isPlain ? -1 : findActiveLine(lines, lyricsProgress),
+    [document?.trackId, document?.sourceId, isPlain],
   );
   const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
   const activeIndexRef = useRef(initialActiveIndex);
@@ -186,7 +202,7 @@ export function LyricsStage({
     setBrowseIndex(null);
     wheelDeltaRef.current = 0;
     setNavigationInput(keyboardInitiated ? "keyboard" : "pointer");
-    onSeek(line.start);
+    onSeek(lyricsTimeToMediaTime(line.start, timingOffsetMs, duration));
     onInteraction();
     if (keyboardInitiated) window.requestAnimationFrame(() => setNavigationInput("pointer"));
   }
@@ -196,31 +212,33 @@ export function LyricsStage({
     setNavigationInput("pointer");
     wheelDeltaRef.current = 0;
     clearReturnTimer();
-    const nextActiveIndex = isPlain ? -1 : findActiveLine(lines, progress);
+    const nextActiveIndex = isPlain ? -1 : findActiveLine(lines, lyricsProgress);
     activeIndexRef.current = nextActiveIndex;
     setActiveIndex(nextActiveIndex);
-    window.requestAnimationFrame(() => paintWordProgress(playbackClockRef.current(), true));
-  }, [document?.trackId, isPlain, visible]);
+    window.requestAnimationFrame(() => {
+      paintWordProgress(mediaTimeToLyricsTime(playbackClockRef.current(), timingOffsetMs), true);
+    });
+  }, [document?.trackId, document?.sourceId, isPlain, visible]);
 
   useEffect(() => {
     if (!visible) return;
     if (!isPlaying) {
-      paintWordProgress(playbackClockRef.current(), true);
+      paintWordProgress(mediaTimeToLyricsTime(playbackClockRef.current(), timingOffsetMs), true);
       return;
     }
 
     let frame = 0;
     const drawFrame = () => {
-      paintWordProgress(playbackClockRef.current());
+      paintWordProgress(mediaTimeToLyricsTime(playbackClockRef.current(), timingOffsetMs));
       frame = window.requestAnimationFrame(drawFrame);
     };
     frame = window.requestAnimationFrame(drawFrame);
     return () => window.cancelAnimationFrame(frame);
-  }, [document?.trackId, isPlaying, paintWordProgress, visible]);
+  }, [document?.trackId, document?.sourceId, isPlaying, paintWordProgress, timingOffsetMs, visible]);
 
   useEffect(() => {
-    if (visible && !isPlaying) paintWordProgress(progress, true);
-  }, [isPlaying, paintWordProgress, progress, visible]);
+    if (visible && !isPlaying) paintWordProgress(lyricsProgress, true);
+  }, [isPlaying, lyricsProgress, paintWordProgress, visible]);
 
   useEffect(() => () => clearReturnTimer(), []);
 
@@ -303,8 +321,13 @@ export function LyricsStage({
   }
 
   useEffect(() => {
-    if (status === "loading" || !visible) setSourceBrowserOpen(false);
+    if (status === "loading" || !visible) {
+      setSourceBrowserOpen(false);
+      setTimingControlOpen(false);
+    }
   }, [status, visible]);
+
+  useEffect(() => setTimingControlOpen(false), [document?.trackId, document?.sourceId]);
 
   if (!document) {
     const emptyLabel = status === "loading"
@@ -349,6 +372,65 @@ export function LyricsStage({
     >
       <div className="lyrics-source-control">
         <span title={sourceLabel}>{sourceLabel ?? "本地歌词"}</span>
+        {!isPlain && !isDemoSource ? (
+          <div className={`lyrics-timing-control ${timingControlOpen ? "is-open" : ""}`}>
+            <button
+              className="lyrics-timing-toggle"
+              type="button"
+              aria-expanded={timingControlOpen}
+              onClick={() => {
+                onInteraction();
+                setTimingControlOpen((open) => !open);
+              }}
+            >
+              {timingOffsetMs === 0 ? "校准" : formatLyricsTimingOffset(timingOffsetMs)}
+            </button>
+            {timingControlOpen ? (
+              <div
+                className="lyrics-timing-popover"
+                role="group"
+                aria-label="歌词时间校准"
+                onWheel={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <span>歌词时间</span>
+                <button
+                  type="button"
+                  title="歌词出现得太晚"
+                  onClick={() => {
+                    onInteraction();
+                    onAdjustTimingOffset(-LYRICS_TIMING_STEP_MS);
+                  }}
+                >
+                  提前
+                </button>
+                <output aria-live="polite">{formatLyricsTimingOffset(timingOffsetMs)}</output>
+                <button
+                  type="button"
+                  title="歌词出现得太早"
+                  onClick={() => {
+                    onInteraction();
+                    onAdjustTimingOffset(LYRICS_TIMING_STEP_MS);
+                  }}
+                >
+                  延后
+                </button>
+                <button
+                  className="lyrics-timing-reset"
+                  type="button"
+                  disabled={timingOffsetMs === 0}
+                  onClick={() => {
+                    onInteraction();
+                    onResetTimingOffset();
+                  }}
+                >
+                  重置
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {hasOnlineProviders ? <button type="button" onClick={openOnlineSearch}>在线搜索</button> : null}
         <button type="button" onClick={() => runSourceAction(onSelectSource)}>
           {isDemoSource ? "选择本地歌词" : "更换文件"}

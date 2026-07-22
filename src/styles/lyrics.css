@@ -65,7 +65,8 @@
   opacity: 1;
 }
 
-.lyrics-source-control span {
+.lyrics-source-control > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -90,6 +91,64 @@
   outline: none;
   border-color: var(--accent);
   color: #fff;
+}
+
+.lyrics-timing-control {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.lyrics-timing-control.is-open .lyrics-timing-toggle {
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.lyrics-timing-popover {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: auto minmax(94px, auto) auto auto;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  padding: 12px 14px 13px;
+  border-left: 2px solid var(--accent);
+  background: rgba(8, 8, 8, 0.94);
+  box-shadow: -16px 18px 34px rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.lyrics-timing-popover > span {
+  grid-column: 1 / -1;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+}
+
+.lyrics-source-control .lyrics-timing-popover button {
+  min-width: 38px;
+  padding: 3px 0;
+}
+
+.lyrics-timing-popover output {
+  min-width: 94px;
+  color: rgba(255, 255, 255, 0.9);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.lyrics-source-control .lyrics-timing-popover .lyrics-timing-reset {
+  color: rgba(255, 255, 255, 0.44);
+}
+
+.lyrics-source-control .lyrics-timing-popover button:disabled {
+  border-color: transparent;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: default;
 }
 
 .lyrics-source-browser {
