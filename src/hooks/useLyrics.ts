@@ -17,12 +17,14 @@ import { useLyricsProviderSettings } from "./useLyricsProviderSettings";
 
 const LYRICS_STORAGE_KEY = "zone-local-lyrics-v1";
 const LYRICS_TIMING_STORAGE_KEY = "zone-lyrics-timing-v1";
+const LYRICS_PARSER_VERSION = 2;
 const MAX_CACHE_ENTRIES = 80;
 const MAX_REMOTE_CACHE_ENTRIES = 24;
 const MAX_REMOTE_CANDIDATES = 8;
 const MAX_TIMING_ENTRIES = 160;
 
 type CacheEntry = {
+  parserVersion?: number;
   sourceId: string;
   modifiedAt: number | null;
   duration: number;
@@ -139,7 +141,8 @@ export function useLyrics(track: Track | null, duration: number) {
       if (stale) return false;
       const cached = store.cache[track.id];
       const modifiedAt = source.modified_at ?? null;
-      const document = cached?.sourceId === source.source_id
+      const document = cached?.parserVersion === LYRICS_PARSER_VERSION
+        && cached.sourceId === source.source_id
         && cached.modifiedAt === modifiedAt
         && Math.abs((cached.duration ?? -1) - resolvedDuration) < 0.02
         ? cached.document
@@ -455,6 +458,7 @@ function cacheDocument(
   const entries = Object.entries({
     ...store.cache,
     [trackId]: {
+      parserVersion: LYRICS_PARSER_VERSION,
       sourceId: source.source_id,
       modifiedAt: source.modified_at ?? null,
       duration,

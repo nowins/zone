@@ -1,4 +1,4 @@
-import type { LyricsSource, LyricsDocument, LyricsLine, LyricsWord } from "../types";
+import type { LyricsBackgroundLine, LyricsSource, LyricsDocument, LyricsLine, LyricsWord } from "../types";
 
 type LineDraft = {
   start: number;
@@ -7,6 +7,14 @@ type LineDraft = {
   translation?: string;
   transliteration?: string;
   words?: Array<Omit<LyricsWord, "end"> & { end?: number }>;
+  background?: LineDraft[];
+};
+
+type XmlElement = {
+  attributes: string;
+  body: string;
+  start: number;
+  end: number;
 };
 
 const LRC_LINE_TIME = /\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g;
@@ -67,41 +75,17 @@ export function parseTtml(
   duration?: number,
 ): LyricsDocument | null {
   const drafts: LineDraft[] = [];
-  const paragraphPattern = /<(?:[\w-]+:)?p\b([^>]*)>([\s\S]*?)<\/(?:[\w-]+:)?p\s*>/gi;
+  const normalizedContent = content.replace(/<!--[\s\S]*?-->/g, "");
 
-  for (const paragraph of content.matchAll(paragraphPattern)) {
-    const attributes = parseXmlAttributes(paragraph[1]);
-    const body = paragraph[2];
-    const spans = [...body.matchAll(/<(?:[\w-]+:)?span\b([^>]*)>([\s\S]*?)<\/(?:[\w-]+:)?span\s*>/gi)];
-    const words: NonNullable<LineDraft["words"]> = [];
-    for (const span of spans) {
-      const spanAttributes = parseXmlAttributes(span[1]);
-      if (isAuxiliaryTtmlRole(spanAttributes.role)) continue;
-      const start = parseTtmlTime(spanAttributes.begin);
-      const end = parseTtmlTime(spanAttributes.end);
-      const text = stripXml(span[2], false);
-      if (start === null || !text.trim()) continue;
-      words.push({ text, start, end: end ?? undefined });
-    }
-    const text = stripXml(removeAuxiliaryTtmlSpans(body));
-    if (!text) continue;
-
-    const translation = auxiliaryTtmlText(spans, "x-translation");
-    const transliteration = auxiliaryTtmlText(spans, "x-roman");
-
-    const paragraphStart = parseTtmlTime(attributes.begin);
-    const start = paragraphStart ?? words[0]?.start ?? Number.NaN;
-    const explicitEnd = parseTtmlTime(attributes.end);
-    const durationValue = parseTtmlTime(attributes.dur);
-    const end = explicitEnd ?? (durationValue !== null && Number.isFinite(start) ? start + durationValue : undefined);
-    drafts.push({
-      start,
-      end,
-      text,
-      translation,
-      transliteration,
-      words: words.length > 0 ? words : undefined,
-    });
+  for (const paragraph of xmlElements(normalizedContent, "p")) {
+    const draft = ttmlLineDraft(paragraph);
+    if (!draft) continue;
+    const background = xmlElements(paragraph.body, "span")
+      .filter((span) => parseXmlAttributes(span.attributes).role === "x-bg")
+      .map((span) => ttmlLineDraft(span, draft.start, draft.end))
+      .filter((line): line is LineDraft => Boolean(line));
+    if (background.length > 0) draft.background = background;
+    drafts.push(draft);
   }
 
   const timedDrafts = drafts.filter((line) => Number.isFinite(line.start));
@@ -111,6 +95,47 @@ export function parseTtml(
   }
 
   return documentFromTimedDrafts(trackId, sourceId, timedDrafts, duration);
+}
+
+function ttmlLineDraft(
+  element: XmlElement,
+  fallbackStart = Number.NaN,
+  fallbackEnd?: number,
+): LineDraft | null {
+  const attributes = parseXmlAttributes(element.attributes);
+  const spans = xmlElements(element.body, "span");
+  const auxiliary = spans.filter((span) => isAuxiliaryTtmlRole(parseXmlAttributes(span.attributes).role));
+  const words: NonNullable<LineDraft["words"]> = [];
+
+  for (const span of spans) {
+    const spanAttributes = parseXmlAttributes(span.attributes);
+    if (isAuxiliaryTtmlRole(spanAttributes.role)) continue;
+    const start = parseTtmlTime(spanAttributes.begin);
+    const end = parseTtmlTime(spanAttributes.end);
+    const text = stripXml(span.body, false);
+    if (start === null || !text.trim()) continue;
+    words.push({ text, start, end: end ?? undefined });
+  }
+
+  const text = stripXml(removeXmlElements(element.body, auxiliary));
+  if (!text) return null;
+  const explicitStart = parseTtmlTime(attributes.begin);
+  const start = explicitStart ?? words[0]?.start ?? fallbackStart;
+  const explicitEnd = parseTtmlTime(attributes.end);
+  const durationValue = parseTtmlTime(attributes.dur);
+  const end = explicitEnd
+    ?? (durationValue !== null && Number.isFinite(start) ? start + durationValue : undefined)
+    ?? words[words.length - 1]?.end
+    ?? fallbackEnd;
+
+  return {
+    start,
+    end,
+    text,
+    translation: auxiliaryTtmlText(auxiliary, "x-translation"),
+    transliteration: auxiliaryTtmlText(auxiliary, "x-roman"),
+    words: words.length > 0 ? words : undefined,
+  };
 }
 
 export function parsePlain(trackId: string, sourceId: string, content: string): LyricsDocument | null {
@@ -158,12 +183,22 @@ function documentFromTimedDrafts(
     const nextStart = merged[index + 1]?.start;
     const fallbackEnd = nextStart ?? (duration && duration > draft.start ? duration : draft.start + 6);
     const end = draft.end && draft.end > draft.start ? draft.end : Math.max(draft.start + 0.05, fallbackEnd);
-    const words = draft.words?.map<LyricsWord>((word, wordIndex) => {
-      const nextWordStart = draft.words?.[wordIndex + 1]?.start;
+    const words = finalizedWords(draft, end);
+    const background = draft.background?.map<LyricsBackgroundLine>((backgroundDraft, backgroundIndex) => {
+      const backgroundStart = Number.isFinite(backgroundDraft.start)
+        ? Math.max(0, backgroundDraft.start)
+        : draft.start;
+      const backgroundEnd = backgroundDraft.end && backgroundDraft.end > backgroundStart
+        ? backgroundDraft.end
+        : Math.max(backgroundStart + 0.05, end);
       return {
-        text: word.text,
-        start: Math.max(draft.start, word.start),
-        end: Math.max(word.start + 0.02, word.end ?? nextWordStart ?? end),
+        id: `${trackId}-lyrics-${index}-background-${backgroundIndex}`,
+        start: backgroundStart,
+        end: backgroundEnd,
+        text: backgroundDraft.text,
+        translation: backgroundDraft.translation,
+        transliteration: backgroundDraft.transliteration,
+        words: finalizedWords({ ...backgroundDraft, start: backgroundStart }, backgroundEnd),
       };
     });
     return {
@@ -174,6 +209,7 @@ function documentFromTimedDrafts(
       translation: draft.translation,
       transliteration: draft.transliteration,
       words: words?.length ? words : undefined,
+      background: background?.length ? background : undefined,
     };
   });
 
@@ -184,6 +220,18 @@ function documentFromTimedDrafts(
     format: lines.some((line) => line.words?.length) ? "word" : "line",
     lines,
   };
+}
+
+function finalizedWords(draft: LineDraft, end: number) {
+  const words = draft.words?.map<LyricsWord>((word, wordIndex) => {
+    const nextWordStart = draft.words?.[wordIndex + 1]?.start;
+    return {
+      text: word.text,
+      start: Math.max(draft.start, word.start),
+      end: Math.max(word.start + 0.02, word.end ?? nextWordStart ?? end),
+    };
+  });
+  return words?.length ? words : undefined;
 }
 
 function parseEnhancedLrcWords(
@@ -244,21 +292,64 @@ function parseXmlAttributes(source: string) {
 }
 
 function auxiliaryTtmlText(
-  spans: RegExpMatchArray[],
+  spans: XmlElement[],
   role: "x-translation" | "x-roman",
 ) {
-  const span = spans.find((candidate) => parseXmlAttributes(candidate[1]).role === role);
-  const text = span ? stripXml(span[2]) : "";
+  const span = spans.find((candidate) => parseXmlAttributes(candidate.attributes).role === role);
+  const text = span ? stripXml(span.body) : "";
   return text || undefined;
 }
 
-function removeAuxiliaryTtmlSpans(value: string) {
-  return value.replace(
-    /<(?:[\w-]+:)?span\b([^>]*)>[\s\S]*?<\/(?:[\w-]+:)?span\s*>/gi,
-    (span, attributes: string) => (
-      isAuxiliaryTtmlRole(parseXmlAttributes(attributes).role) ? "" : span
-    ),
-  );
+function xmlElements(source: string, localName: string): XmlElement[] {
+  const elements: XmlElement[] = [];
+  const tagPattern = /<(\/?)\s*(?:[\w-]+:)?([\w-]+)\b([^>]*)>/gi;
+  let depth = 0;
+  let opening: { attributes: string; start: number; bodyStart: number } | null = null;
+
+  for (const match of source.matchAll(tagPattern)) {
+    if (match[2].toLocaleLowerCase() !== localName.toLocaleLowerCase()) continue;
+    const closing = match[1] === "/";
+    const selfClosing = !closing && /\/\s*$/.test(match[3]);
+    if (selfClosing) continue;
+
+    if (!closing) {
+      if (depth === 0) {
+        opening = {
+          attributes: match[3],
+          start: match.index ?? 0,
+          bodyStart: (match.index ?? 0) + match[0].length,
+        };
+      }
+      depth += 1;
+      continue;
+    }
+
+    if (depth === 0) continue;
+    depth -= 1;
+    if (depth !== 0 || !opening) continue;
+    const closingStart = match.index ?? source.length;
+    elements.push({
+      attributes: opening.attributes,
+      body: source.slice(opening.bodyStart, closingStart),
+      start: opening.start,
+      end: closingStart + match[0].length,
+    });
+    opening = null;
+  }
+
+  return elements;
+}
+
+function removeXmlElements(source: string, elements: XmlElement[]) {
+  if (elements.length === 0) return source;
+  const ordered = [...elements].sort((left, right) => left.start - right.start);
+  let cursor = 0;
+  let result = "";
+  for (const element of ordered) {
+    result += source.slice(cursor, element.start);
+    cursor = Math.max(cursor, element.end);
+  }
+  return result + source.slice(cursor);
 }
 
 function isAuxiliaryTtmlRole(role?: string) {

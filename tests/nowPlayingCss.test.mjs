@@ -160,6 +160,17 @@ test("lyrics word fill follows the media clock at animation-frame cadence", () =
   assert.ok(!lyricsCss.includes("transition: clip-path"), "frame-driven word fill must not wait on discrete CSS transitions");
 });
 
+test("lyrics keeps transliteration and timed background vocals subordinate to the main line", () => {
+  assert.ok(lyricsSource.includes("line.transliteration"));
+  assert.ok(lyricsSource.includes("backgroundLineRefs"));
+  assert.ok(lyricsSource.includes("backgroundWordProgressRefs"));
+  assert.ok(lyricsSource.includes("--lyrics-background-presence"));
+  assert.ok(lyricsCss.includes(".lyrics-transliteration"));
+  assert.ok(lyricsCss.includes(".lyrics-background-line"));
+  assert.ok(lyricsCss.includes("opacity: var(--lyrics-background-presence, 0)"));
+  assert.ok(lyricsCss.includes("text-align: right"));
+});
+
 test("lyrics calibration uses one reversible clock mapping per track and source", () => {
   assert.ok(lyricsSource.includes("mediaTimeToLyricsTime(playbackClockRef.current(), timingOffsetMs)"));
   assert.ok(lyricsSource.includes("lyricsTimeToMediaTime(line.start, timingOffsetMs, duration)"));

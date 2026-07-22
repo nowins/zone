@@ -35,6 +35,27 @@ function getWordProgress(word: LyricsWord, progress: number) {
   return (progress - word.start) / Math.max(0.001, word.end - word.start);
 }
 
+function getBackgroundPresence(start: number, end: number, progress: number) {
+  if (progress < start || progress >= end) return 0;
+  const fadeIn = Math.min(1, (progress - start) / 0.16);
+  const fadeOut = Math.min(1, (end - progress) / 0.22);
+  return Math.max(0, Math.min(fadeIn, fadeOut));
+}
+
+function lineAriaLabel(line: LyricsLine, isPlain: boolean) {
+  if (isPlain) return line.text;
+  const supportingText = [
+    line.translation,
+    line.transliteration,
+    ...(line.background ?? []).flatMap((background) => [
+      `背景人声：${background.text}`,
+      background.translation,
+      background.transliteration,
+    ]),
+  ].filter(Boolean);
+  return [`跳转到歌词：${line.text}`, ...supportingText].join("；");
+}
+
 function lineStyle(offset: number, browsing: boolean): LyricsLineStyle {
   const distance = Math.abs(offset);
   const opacity = browsing
@@ -111,6 +132,8 @@ export function LyricsStage({
   const wheelDeltaRef = useRef(0);
   const lineButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const wordProgressRefs = useRef<Array<Array<HTMLSpanElement | null>>>([]);
+  const backgroundLineRefs = useRef<Array<Array<HTMLSpanElement | null>>>([]);
+  const backgroundWordProgressRefs = useRef<Array<Array<Array<HTMLSpanElement | null>>>>([]);
   const playbackClockRef = useRef(playbackClock);
   const lines = document?.lines ?? [];
   const isPlain = document?.format === "plain";
@@ -147,6 +170,31 @@ export function LyricsStage({
             ? 0
             : getWordProgress(word, time);
         element.style.clipPath = `inset(0 ${(1 - fill) * 100}% 0 0)`;
+      });
+
+      line.background?.forEach((background, backgroundIndex) => {
+        const presence = lineIndex === nextActiveIndex
+          ? getBackgroundPresence(background.start, background.end, time)
+          : 0;
+        const backgroundElement = backgroundLineRefs.current[lineIndex]?.[backgroundIndex];
+        backgroundElement?.style.setProperty("--lyrics-background-presence", String(presence));
+        backgroundElement?.style.setProperty("--lyrics-background-shift", `${(1 - presence) * 4}px`);
+
+        const backgroundWords = background.words ?? [{
+          text: background.text,
+          start: background.start,
+          end: background.end,
+        }];
+        backgroundWords.forEach((word, wordIndex) => {
+          const element = backgroundWordProgressRefs.current[lineIndex]?.[backgroundIndex]?.[wordIndex];
+          if (!element) return;
+          const fill = lineIndex < nextActiveIndex
+            ? 1
+            : lineIndex > nextActiveIndex
+              ? 0
+              : getWordProgress(word, time);
+          element.style.clipPath = `inset(0 ${(1 - fill) * 100}% 0 0)`;
+        });
       });
     });
   }, [isPlain, lines]);
@@ -458,7 +506,7 @@ export function LyricsStage({
               onClick={isPlain ? undefined : (event) => seekToLine(line, event.detail === 0)}
               onFocus={onInteraction}
               aria-current={isPlaybackLine ? "true" : undefined}
-              aria-label={isPlain ? line.text : `跳转到歌词：${line.text}`}
+              aria-label={lineAriaLabel(line, isPlain)}
               tabIndex={visible && (isPlain || distance <= 3) ? 0 : -1}
             >
               <span className="lyrics-line-copy">
@@ -479,6 +527,55 @@ export function LyricsStage({
                 ))}
               </span>
               {line.translation ? <span className="lyrics-translation">{line.translation}</span> : null}
+              {line.transliteration ? (
+                <span className="lyrics-transliteration">{line.transliteration}</span>
+              ) : null}
+              {line.background?.length ? (
+                <span className="lyrics-backgrounds" aria-hidden="true">
+                  {line.background.map((background, backgroundIndex) => (
+                    <span
+                      className="lyrics-background-line"
+                      key={background.id}
+                      ref={(element) => {
+                        if (!backgroundLineRefs.current[index]) backgroundLineRefs.current[index] = [];
+                        backgroundLineRefs.current[index][backgroundIndex] = element;
+                      }}
+                    >
+                      <span className="lyrics-background-copy">
+                        {(background.words ?? [{
+                          text: background.text,
+                          start: background.start,
+                          end: background.end,
+                        }]).map((word, wordIndex) => (
+                          <span className="lyrics-word" key={`${background.id}-word-${wordIndex}`}>
+                            <span className="lyrics-word-base">{word.text}</span>
+                            <span
+                              className="lyrics-word-progress"
+                              ref={(element) => {
+                                if (!backgroundWordProgressRefs.current[index]) {
+                                  backgroundWordProgressRefs.current[index] = [];
+                                }
+                                if (!backgroundWordProgressRefs.current[index][backgroundIndex]) {
+                                  backgroundWordProgressRefs.current[index][backgroundIndex] = [];
+                                }
+                                backgroundWordProgressRefs.current[index][backgroundIndex][wordIndex] = element;
+                              }}
+                            >
+                              {word.text}
+                            </span>
+                          </span>
+                        ))}
+                      </span>
+                      {background.translation ? (
+                        <span className="lyrics-background-translation">{background.translation}</span>
+                      ) : null}
+                      {background.transliteration ? (
+                        <span className="lyrics-background-transliteration">{background.transliteration}</span>
+                      ) : null}
+                    </span>
+                  ))}
+                </span>
+              ) : null}
             </button>
           );
         })}

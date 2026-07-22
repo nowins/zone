@@ -81,6 +81,36 @@ test("AMLL TTML keeps auxiliary text out of timed words", () => {
   assert.deepEqual(document?.lines[0].words?.map((word) => word.text), ["Hello ", "world"]);
 });
 
+test("AMLL TTML keeps nested background vocals on a separate timeline", () => {
+  const document = parseTtml(
+    "track-amll-bg",
+    "provider:amll:bg",
+    `<tt xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div>
+      <p begin="1s" end="6s">
+        <span begin="1s" end="3s">Main </span><span begin="3s" end="6s">voice</span>
+        <span ttm:role="x-bg" begin="2s" end="5s">
+          <span begin="2s" end="3.5s">back </span><span begin="3.5s" end="5s">vocal</span>
+          <span ttm:role="x-translation">背景人声</span>
+          <span ttm:role="x-roman">bakku bōkaru</span>
+        </span>
+        <span ttm:role="x-translation">主唱</span>
+        <span ttm:role="x-roman">mein boisu</span>
+      </p>
+    </div></body></tt>`,
+  );
+
+  assert.equal(document?.lines.length, 1);
+  assert.equal(document?.lines[0].text, "Main voice");
+  assert.equal(document?.lines[0].transliteration, "mein boisu");
+  assert.equal(document?.lines[0].background?.[0].text, "back vocal");
+  assert.equal(document?.lines[0].background?.[0].translation, "背景人声");
+  assert.equal(document?.lines[0].background?.[0].transliteration, "bakku bōkaru");
+  assert.deepEqual(document?.lines[0].background?.[0].words, [
+    { text: "back ", start: 2, end: 3.5 },
+    { text: "vocal", start: 3.5, end: 5 },
+  ]);
+});
+
 test("plain lyrics stay explicitly unsynchronized", () => {
   const source = {
     source_id: "manual:test.txt",

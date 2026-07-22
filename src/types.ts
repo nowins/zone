@@ -150,6 +150,16 @@ export type LyricsWord = {
   end: number;
 };
 
+export type LyricsBackgroundLine = {
+  id: string;
+  start: number;
+  end: number;
+  text: string;
+  translation?: string;
+  transliteration?: string;
+  words?: LyricsWord[];
+};
+
 export type LyricsLine = {
   id: string;
   start: number;
@@ -158,6 +168,7 @@ export type LyricsLine = {
   translation?: string;
   transliteration?: string;
   words?: LyricsWord[];
+  background?: LyricsBackgroundLine[];
 };
 
 export type LyricsDocument = {
