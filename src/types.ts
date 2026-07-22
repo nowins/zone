@@ -205,6 +205,12 @@ export type LyricsQuery = {
   duration?: number;
 };
 
+export type LyricsSearchMetadata = {
+  title: string;
+  artist: string;
+  album: string;
+};
+
 export type LyricsCandidateScore = {
   total: number;
   title: number;

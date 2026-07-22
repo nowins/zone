@@ -189,6 +189,16 @@ test("lyrics provider retry keeps an explicit loading state and hit area", () =>
   assert.match(lyricsCss, /\.lyrics-source-browser\s*\{[\s\S]*?pointer-events:\s*auto/);
 });
 
+test("lyrics search metadata can be corrected without rewriting local tags", () => {
+  assert.ok(lyricsSource.includes("保存并搜索"));
+  assert.ok(lyricsSource.includes("恢复标签"));
+  assert.ok(lyricsSource.includes("onUpdateSearchMetadata(searchMetadataDraft)"));
+  assert.ok(lyricsHookSource.includes("queryOverrides"));
+  assert.ok(lyricsHookSource.includes("queryRef.current = nextQuery"));
+  assert.ok(lyricsHookSource.includes("suppressQueryReloadKeyRef"));
+  assert.ok(lyricsCss.includes(".lyrics-search-metadata-form"));
+});
+
 test("mosaic canvas does not use audio energy for brightness", () => {
   assert.ok(!mosaicCanvasSource.includes("energyRef"));
   assert.ok(!mosaicCanvasSource.includes("createEnergyTint"));

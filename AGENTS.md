@@ -98,7 +98,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - 曲库 schema 版本为 `LIBRARY_SCHEMA_VERSION`（当前 6）。
 - 收藏是 id 为 `DEFAULT_PLAYLIST_ID`（`favorites`）的默认播放列表；读取播放列表状态时必须用 `normalizePlaylists`，让旧状态补齐默认收藏列表。
 - home pins 用 `normalizeHomePins`/`reconcileHomePins` 做归一化与对账。
-- 歌词缓存在 `zone-local-lyrics-v1`；歌词 provider 设置在 `zone-lyrics-providers-v1`；按曲目与歌词来源保存的时间校准在 `zone-lyrics-timing-v1`。
+- 歌词缓存、手动绑定与按曲目保存的在线搜索信息映射在 `zone-local-lyrics-v1`；歌词 provider 设置在 `zone-lyrics-providers-v1`；按曲目与歌词来源保存的时间校准在 `zone-lyrics-timing-v1`。
 
 ## 播放与 Web Audio
 
@@ -164,7 +164,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 自定义右键菜单支持：播放、添加到正在播放、添加到收藏、添加到自定义播放列表、固定到 quickplay、查看信息。
 - 可创建手动播放列表与规则驱动的智能播放列表。
 - 正在播放页的收藏按钮切换当前曲目在收藏列表中的状态。
-- 歌词模式：本地（内嵌/sidecar/手动绑定）与在线歌词，支持逐行/逐词同步、音译、TTML 背景人声、滚轮浏览、点按跳转、在线搜索手动选词。
+- 歌词模式：本地（内嵌/sidecar/手动绑定）与在线歌词，支持逐行/逐词同步、音译、TTML 背景人声、滚轮浏览、点按跳转、在线搜索信息映射与手动选词。
 - Windows 系统媒体控制（SMTC）：媒体信息、时间线、媒体按键与收藏同步。
 
 ## 测试策略

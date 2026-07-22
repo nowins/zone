@@ -5,12 +5,20 @@ import type {
   LyricsCandidate,
   LyricsDocument,
   LyricsQuery,
+  LyricsSearchMetadata,
   LyricsSource,
   Track,
 } from "../types";
 import { createDemoLyrics } from "../utils/demoLyrics";
 import { parseLyricsSource } from "../utils/lyrics";
 import { clampLyricsTimingOffset } from "../utils/lyricsTiming";
+import {
+  defaultLyricsSearchMetadata,
+  isDefaultLyricsSearchMetadata,
+  lyricsQueryForTrack,
+  lyricsQueryKey,
+  normalizeLyricsSearchMetadata,
+} from "../utils/lyricsSearch";
 import { pickBestLyricsCandidate } from "../utils/lyricsProviders";
 import { getLyricsCandidateSource, searchLyricsProviders } from "../lyrics/providers";
 import { useLyricsProviderSettings } from "./useLyricsProviderSettings";
@@ -22,6 +30,7 @@ const MAX_CACHE_ENTRIES = 80;
 const MAX_REMOTE_CACHE_ENTRIES = 24;
 const MAX_REMOTE_CANDIDATES = 8;
 const MAX_TIMING_ENTRIES = 160;
+const MAX_QUERY_OVERRIDE_ENTRIES = 160;
 
 type CacheEntry = {
   parserVersion?: number;
@@ -45,6 +54,11 @@ type LyricsStore = {
   providerBindings: Record<string, string>;
   cache: Record<string, CacheEntry>;
   remoteCache: Record<string, RemoteCacheEntry>;
+  queryOverrides: Record<string, LyricsSearchOverride>;
+};
+
+type LyricsSearchOverride = LyricsSearchMetadata & {
+  updatedAt: number;
 };
 
 type LyricsTimingEntry = {
@@ -76,6 +90,7 @@ const EMPTY_STORE: LyricsStore = {
   providerBindings: {},
   cache: {},
   remoteCache: {},
+  queryOverrides: {},
 };
 
 export function useLyrics(track: Track | null, duration: number) {
@@ -85,6 +100,8 @@ export function useLyrics(track: Track | null, duration: number) {
   const [reloadToken, setReloadToken] = useState(0);
   const forceRemoteTrackRef = useRef<string | null>(null);
   const manualSearchControllerRef = useRef<AbortController | null>(null);
+  const queryRef = useRef<LyricsQuery | null>(null);
+  const suppressQueryReloadKeyRef = useRef<string | null>(null);
   const activeTrackIdRef = useRef(track?.id);
   const [state, setState] = useState<LyricsState>({
     status: track ? "loading" : "idle",
@@ -100,14 +117,19 @@ export function useLyrics(track: Track | null, duration: number) {
   });
   const manualPath = track ? store.bindings[track.id] : undefined;
   const providerBindingId = track ? store.providerBindings[track.id] : undefined;
+  const queryOverride = track ? store.queryOverrides[track.id] : undefined;
   const resolvedDuration = duration > 0 ? duration : track?.duration_seconds ?? 0;
-  const query = useMemo(() => track ? trackToLyricsQuery(track, resolvedDuration) : null, [
+  const searchMetadata = track
+    ? queryOverride ?? defaultLyricsSearchMetadata(track)
+    : null;
+  const query = useMemo(() => track ? lyricsQueryForTrack(track, resolvedDuration, searchMetadata ?? undefined) : null, [
     resolvedDuration,
-    track?.album,
-    track?.artist,
     track?.id,
-    track?.title,
+    searchMetadata?.album,
+    searchMetadata?.artist,
+    searchMetadata?.title,
   ]);
+  queryRef.current = query;
   const providerConfigKey = providerConfigs
     .map((config) => `${config.id}:${config.enabled}:${config.priority}:${config.timeoutMs}`)
     .join("|");
@@ -124,11 +146,16 @@ export function useLyrics(track: Track | null, duration: number) {
       setOnlineSearch({ status: "idle", candidates: [], errors: [], attempt: 0 });
       return;
     }
+    const activeQueryKey = trackLyricsQueryKey(track.id, query);
+    if (suppressQueryReloadKeyRef.current === activeQueryKey) {
+      suppressQueryReloadKeyRef.current = null;
+      return;
+    }
 
     const controller = new AbortController();
     let stale = false;
     const remoteEntry = store.remoteCache[track.id];
-    const remoteCacheMatchesQuery = remoteEntry?.queryKey === queryKey(query)
+    const remoteCacheMatchesQuery = remoteEntry?.queryKey === lyricsQueryKey(query)
       && remoteEntry?.providerKey === providerConfigKey;
     const forceRemote = forceRemoteTrackRef.current === track.id;
     if (forceRemote) forceRemoteTrackRef.current = null;
@@ -331,7 +358,8 @@ export function useLyrics(track: Track | null, duration: number) {
   }, [track]);
 
   const searchOnline = useCallback(async () => {
-    if (!track || !query || !hasOnlineProviders) return;
+    const activeQuery = queryRef.current;
+    if (!track || !activeQuery || !hasOnlineProviders) return;
     manualSearchControllerRef.current?.abort();
     const controller = new AbortController();
     manualSearchControllerRef.current = controller;
@@ -347,7 +375,7 @@ export function useLyrics(track: Track | null, duration: number) {
       });
     }
     try {
-      const result = await searchLyricsProviders(query, providerConfigs, controller.signal);
+      const result = await searchLyricsProviders(activeQuery, providerConfigs, controller.signal);
       if (controller.signal.aborted) return;
       const candidates = result.candidates.slice(0, MAX_REMOTE_CANDIDATES);
       const errors = result.errors.map((item) => `${item.providerName}：${item.message}`);
@@ -360,10 +388,10 @@ export function useLyrics(track: Track | null, duration: number) {
       setStore((current) => persistLyricsStore(cacheRemoteCandidates(
         current,
         track.id,
-        query,
+        activeQuery,
         providerConfigKey,
         candidates,
-        current.remoteCache[track.id]?.autoSourceId,
+        cachedAutoSourceId(current, track.id, activeQuery),
       )));
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -375,7 +403,7 @@ export function useLyrics(track: Track | null, duration: number) {
         attempt: current.attempt,
       }));
     }
-  }, [hasOnlineProviders, providerConfigKey, providerConfigs, query, track?.id]);
+  }, [hasOnlineProviders, providerConfigKey, providerConfigs, track?.id]);
 
   const selectRemoteCandidate = useCallback(async (candidate: LyricsCandidate) => {
     if (!track) return;
@@ -389,10 +417,10 @@ export function useLyrics(track: Track | null, duration: number) {
       const withCandidates = cacheRemoteCandidates(
         current,
         track.id,
-        query ?? trackToLyricsQuery(track, resolvedDuration),
+        query ?? lyricsQueryForTrack(track, resolvedDuration),
         providerConfigKey,
         mergeCandidate(current.remoteCache[track.id]?.candidates ?? [], candidate),
-        current.remoteCache[track.id]?.autoSourceId,
+        cachedAutoSourceId(current, track.id, query ?? lyricsQueryForTrack(track, resolvedDuration)),
       );
       return persistLyricsStore({
         ...withCandidates,
@@ -406,6 +434,29 @@ export function useLyrics(track: Track | null, duration: number) {
     forceRemoteTrackRef.current = track?.id ?? null;
     setReloadToken((value) => value + 1);
   }, [track?.id]);
+
+  const updateSearchMetadata = useCallback((metadata: LyricsSearchMetadata) => {
+    if (!track) return false;
+    const normalized = normalizeLyricsSearchMetadata(metadata);
+    if (!normalized) return false;
+    manualSearchControllerRef.current?.abort();
+    const nextQuery = lyricsQueryForTrack(track, resolvedDuration, normalized);
+    const queryChanged = !sameLyricsQuery(queryRef.current, nextQuery);
+    queryRef.current = nextQuery;
+    suppressQueryReloadKeyRef.current = queryChanged ? trackLyricsQueryKey(track.id, nextQuery) : null;
+    setStore((current) => persistLyricsStore(setLyricsSearchOverride(current, track, normalized)));
+    return true;
+  }, [resolvedDuration, track]);
+
+  const resetSearchMetadata = useCallback(() => {
+    if (!track) return;
+    manualSearchControllerRef.current?.abort();
+    const nextQuery = lyricsQueryForTrack(track, resolvedDuration);
+    const queryChanged = !sameLyricsQuery(queryRef.current, nextQuery);
+    queryRef.current = nextQuery;
+    suppressQueryReloadKeyRef.current = queryChanged ? trackLyricsQueryKey(track.id, nextQuery) : null;
+    setStore((current) => persistLyricsStore(setLyricsSearchOverride(current, track)));
+  }, [resolvedDuration, track]);
 
   const adjustTimingOffset = useCallback((deltaMs: number) => {
     if (!timingKey) return;
@@ -437,12 +488,16 @@ export function useLyrics(track: Track | null, duration: number) {
     ...state,
     onlineSearch,
     hasOnlineProviders,
+    searchMetadata,
+    hasSearchMetadataOverride: Boolean(queryOverride),
     timingOffsetMs,
     selectFile,
     clearManualBinding,
     searchOnline,
     selectRemoteCandidate,
     retry,
+    updateSearchMetadata,
+    resetSearchMetadata,
     adjustTimingOffset,
     resetTimingOffset,
   };
@@ -479,7 +534,11 @@ function cacheRemoteCandidates(
   candidates: LyricsCandidate[],
   autoSourceId?: string,
 ): LyricsStore {
-  const previousCandidates = store.remoteCache[trackId]?.candidates ?? [];
+  const nextQueryKey = lyricsQueryKey(query);
+  const previousEntry = store.remoteCache[trackId];
+  const previousCandidates = previousEntry?.queryKey === nextQueryKey
+    ? previousEntry.candidates
+    : [];
   const boundSourceId = store.providerBindings[trackId];
   const boundCandidate = previousCandidates.find((candidate) => sourceId(candidate) === boundSourceId);
   const nextCandidates = boundCandidate && !candidates.some((candidate) => candidate.id === boundCandidate.id)
@@ -488,7 +547,7 @@ function cacheRemoteCandidates(
   const entries = Object.entries({
     ...store.remoteCache,
     [trackId]: {
-      queryKey: queryKey(query),
+      queryKey: nextQueryKey,
       providerKey,
       candidates: nextCandidates,
       autoSourceId,
@@ -500,10 +559,34 @@ function cacheRemoteCandidates(
   return { ...store, remoteCache: Object.fromEntries(entries) };
 }
 
+function cachedAutoSourceId(store: LyricsStore, trackId: string, query: LyricsQuery) {
+  const entry = store.remoteCache[trackId];
+  return entry?.queryKey === lyricsQueryKey(query) ? entry.autoSourceId : undefined;
+}
+
 function removeProviderBinding(store: LyricsStore, trackId: string): LyricsStore {
   const providerBindings = { ...store.providerBindings };
   delete providerBindings[trackId];
   return { ...store, providerBindings };
+}
+
+function setLyricsSearchOverride(
+  store: LyricsStore,
+  track: Track,
+  metadata?: LyricsSearchMetadata,
+): LyricsStore {
+  const queryOverrides = { ...store.queryOverrides };
+  if (!metadata || isDefaultLyricsSearchMetadata(track, metadata)) {
+    delete queryOverrides[track.id];
+  } else {
+    queryOverrides[track.id] = { ...metadata, updatedAt: Date.now() };
+  }
+  const compactOverrides = Object.fromEntries(
+    Object.entries(queryOverrides)
+      .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
+      .slice(0, MAX_QUERY_OVERRIDE_ENTRIES),
+  );
+  return { ...store, queryOverrides: compactOverrides };
 }
 
 function readLyricsStore(): LyricsStore {
@@ -516,6 +599,7 @@ function readLyricsStore(): LyricsStore {
       providerBindings: record(parsed.providerBindings),
       cache: record(parsed.cache),
       remoteCache: record(parsed.remoteCache),
+      queryOverrides: readLyricsSearchOverrides(parsed.queryOverrides),
     };
   } catch {
     return EMPTY_STORE;
@@ -531,6 +615,7 @@ function persistLyricsStore(store: LyricsStore) {
       ...store,
       cache: recentEntries(store.cache, 40),
       remoteCache: recentEntries(store.remoteCache, 8),
+      queryOverrides: recentEntries(store.queryOverrides, MAX_QUERY_OVERRIDE_ENTRIES),
     };
     try {
       localStorage.setItem(LYRICS_STORAGE_KEY, JSON.stringify(compact));
@@ -577,27 +662,49 @@ function persistLyricsTimingStore(store: LyricsTimingStore) {
   return compact;
 }
 
-function record<T>(value: T | undefined): T extends Record<string, unknown> ? T : Record<string, never> {
-  return (value && typeof value === "object" ? value : {}) as T extends Record<string, unknown> ? T : Record<string, never>;
+function readLyricsSearchOverrides(value: unknown): Record<string, LyricsSearchOverride> {
+  if (!value || typeof value !== "object") return {};
+  return Object.fromEntries(Object.entries(value).flatMap(([trackId, item]) => {
+    if (!item || typeof item !== "object") return [];
+    const candidate = item as Partial<LyricsSearchOverride>;
+    if (
+      typeof candidate.title !== "string"
+      || typeof candidate.artist !== "string"
+      || typeof candidate.album !== "string"
+    ) return [];
+    const metadata = normalizeLyricsSearchMetadata({
+      title: candidate.title,
+      artist: candidate.artist,
+      album: candidate.album,
+    });
+    if (!metadata) return [];
+    return [[trackId, {
+      ...metadata,
+      updatedAt: typeof candidate.updatedAt === "number" && Number.isFinite(candidate.updatedAt)
+        ? candidate.updatedAt
+        : 0,
+    }]];
+  }));
 }
 
-function trackToLyricsQuery(track: Track, duration: number): LyricsQuery {
-  return {
-    title: track.title,
-    artist: track.artist,
-    album: track.album || undefined,
-    duration: duration > 0 ? duration : undefined,
-  };
+function record<T>(value: T | undefined): T extends Record<string, unknown> ? T : Record<string, never> {
+  return (value && typeof value === "object" ? value : {}) as T extends Record<string, unknown> ? T : Record<string, never>;
 }
 
 function sourceId(candidate: LyricsCandidate) {
   return `provider:${candidate.id}`;
 }
 
-function queryKey(query: LyricsQuery) {
-  return [query.title, query.artist, query.album ?? "", Math.round(query.duration ?? 0)]
-    .map((value) => String(value).trim().toLocaleLowerCase())
-    .join("\u0000");
+function sameLyricsQuery(left: LyricsQuery | null, right: LyricsQuery) {
+  if (!left) return false;
+  return left.title === right.title
+    && left.artist === right.artist
+    && left.album === right.album
+    && left.duration === right.duration;
+}
+
+function trackLyricsQueryKey(trackId: string, query: LyricsQuery) {
+  return `${trackId}\u0000${lyricsQueryKey(query)}`;
 }
 
 function lyricsTimingKey(trackId: string, sourceId: string) {

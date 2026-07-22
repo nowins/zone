@@ -224,6 +224,116 @@
   border-color: var(--accent);
 }
 
+.lyrics-search-metadata-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 54px;
+  margin-top: 18px;
+  padding: 0 0 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.lyrics-search-metadata-summary > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.lyrics-search-metadata-summary strong,
+.lyrics-search-metadata-summary span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyrics-search-metadata-summary strong {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 15px;
+  font-weight: 430;
+}
+
+.lyrics-search-metadata-summary span {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+}
+
+.lyrics-search-metadata-summary em {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 10px;
+  font-style: normal;
+  letter-spacing: 0.06em;
+}
+
+.lyrics-search-metadata-summary button,
+.lyrics-search-metadata-actions button {
+  flex: 0 0 auto;
+  padding: 3px 0;
+  border-bottom: 1px solid transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+}
+
+.lyrics-search-metadata-summary button:hover,
+.lyrics-search-metadata-summary button:focus-visible,
+.lyrics-search-metadata-actions button:hover,
+.lyrics-search-metadata-actions button:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.lyrics-search-metadata-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px 16px;
+  margin-top: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.lyrics-search-metadata-form label {
+  min-width: 0;
+}
+
+.lyrics-search-metadata-form label > span {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.lyrics-search-metadata-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 0 6px;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  outline: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font: inherit;
+  font-size: 13px;
+  transition: border-color var(--motion-micro) var(--motion-ease-direct);
+}
+
+.lyrics-search-metadata-form input:focus {
+  border-color: var(--accent);
+}
+
+.lyrics-search-metadata-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 18px;
+}
+
+.lyrics-search-metadata-actions button[type="submit"] {
+  color: rgba(255, 255, 255, 0.9);
+}
+
 .lyrics-source-browser > p {
   margin: 18px 0 14px;
   color: rgba(255, 255, 255, 0.42);
@@ -624,6 +734,14 @@
     left: 22px;
     width: auto;
     min-width: 0;
+  }
+
+  .lyrics-search-metadata-form {
+    grid-template-columns: 1fr;
+  }
+
+  .lyrics-search-metadata-actions {
+    grid-column: 1;
   }
 
   .lyrics-line {

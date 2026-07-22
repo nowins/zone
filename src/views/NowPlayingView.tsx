@@ -231,6 +231,8 @@ export function NowPlayingView({
         isDemoSource={lyrics.isDemo}
         onlineSearch={lyrics.onlineSearch}
         hasOnlineProviders={lyrics.hasOnlineProviders}
+        searchMetadata={lyrics.searchMetadata}
+        hasSearchMetadataOverride={lyrics.hasSearchMetadataOverride}
         error={lyrics.error}
         progress={progress}
         isPlaying={isPlaying}
@@ -241,6 +243,8 @@ export function NowPlayingView({
         onSeek={onSeek}
         onSelectSource={lyrics.selectFile}
         onSearchOnline={lyrics.searchOnline}
+        onUpdateSearchMetadata={lyrics.updateSearchMetadata}
+        onResetSearchMetadata={lyrics.resetSearchMetadata}
         onSelectOnlineSource={lyrics.selectRemoteCandidate}
         onClearManualSource={lyrics.clearManualBinding}
         onRetry={lyrics.retry}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type WheelEvent } from "react";
-import type { LyricsCandidate, LyricsDocument, LyricsLine, LyricsWord } from "../types";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type WheelEvent } from "react";
+import type { LyricsCandidate, LyricsDocument, LyricsLine, LyricsSearchMetadata, LyricsWord } from "../types";
 import type { LyricsOnlineSearchState } from "../hooks/useLyrics";
 import {
   formatLyricsTimingOffset,
@@ -83,6 +83,8 @@ export function LyricsStage({
   isDemoSource,
   onlineSearch,
   hasOnlineProviders,
+  searchMetadata,
+  hasSearchMetadataOverride,
   error,
   progress,
   isPlaying,
@@ -93,6 +95,8 @@ export function LyricsStage({
   onSeek,
   onSelectSource,
   onSearchOnline,
+  onUpdateSearchMetadata,
+  onResetSearchMetadata,
   onSelectOnlineSource,
   onClearManualSource,
   onRetry,
@@ -107,6 +111,8 @@ export function LyricsStage({
   isDemoSource: boolean;
   onlineSearch: LyricsOnlineSearchState;
   hasOnlineProviders: boolean;
+  searchMetadata: LyricsSearchMetadata | null;
+  hasSearchMetadataOverride: boolean;
   error?: string;
   progress: number;
   isPlaying: boolean;
@@ -117,6 +123,8 @@ export function LyricsStage({
   onSeek: (value: number) => void;
   onSelectSource: () => void | Promise<void>;
   onSearchOnline: () => void | Promise<void>;
+  onUpdateSearchMetadata: (metadata: LyricsSearchMetadata) => boolean;
+  onResetSearchMetadata: () => void;
   onSelectOnlineSource: (candidate: LyricsCandidate) => void | Promise<void>;
   onClearManualSource: () => void;
   onRetry: () => void;
@@ -126,6 +134,12 @@ export function LyricsStage({
 }) {
   const [browseIndex, setBrowseIndex] = useState<number | null>(null);
   const [sourceBrowserOpen, setSourceBrowserOpen] = useState(false);
+  const [searchMetadataEditing, setSearchMetadataEditing] = useState(false);
+  const [searchMetadataDraft, setSearchMetadataDraft] = useState<LyricsSearchMetadata>({
+    title: "",
+    artist: "",
+    album: "",
+  });
   const [timingControlOpen, setTimingControlOpen] = useState(false);
   const [navigationInput, setNavigationInput] = useState<"pointer" | "keyboard">("pointer");
   const returnTimerRef = useRef<number | null>(null);
@@ -297,6 +311,27 @@ export function LyricsStage({
 
   function openOnlineSearch() {
     setSourceBrowserOpen(true);
+    setSearchMetadataEditing(false);
+    runSourceAction(onSearchOnline);
+  }
+
+  function editSearchMetadata() {
+    if (!searchMetadata) return;
+    setSearchMetadataDraft({ ...searchMetadata });
+    setSearchMetadataEditing(true);
+    onInteraction();
+  }
+
+  function submitSearchMetadata(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!onUpdateSearchMetadata(searchMetadataDraft)) return;
+    setSearchMetadataEditing(false);
+    runSourceAction(onSearchOnline);
+  }
+
+  function restoreSearchMetadata() {
+    onResetSearchMetadata();
+    setSearchMetadataEditing(false);
     runSourceAction(onSearchOnline);
   }
 
@@ -330,6 +365,64 @@ export function LyricsStage({
           </div>
           <button type="button" onClick={() => setSourceBrowserOpen(false)}>关闭</button>
         </header>
+        {searchMetadataEditing ? (
+          <form className="lyrics-search-metadata-form" onSubmit={submitSearchMetadata}>
+            <label>
+              <span>标题</span>
+              <input
+                type="text"
+                value={searchMetadataDraft.title}
+                required
+                autoFocus
+                onChange={(event) => setSearchMetadataDraft((current) => ({
+                  ...current,
+                  title: event.target.value,
+                }))}
+              />
+            </label>
+            <label>
+              <span>艺术家</span>
+              <input
+                type="text"
+                value={searchMetadataDraft.artist}
+                onChange={(event) => setSearchMetadataDraft((current) => ({
+                  ...current,
+                  artist: event.target.value,
+                }))}
+              />
+            </label>
+            <label>
+              <span>专辑</span>
+              <input
+                type="text"
+                value={searchMetadataDraft.album}
+                onChange={(event) => setSearchMetadataDraft((current) => ({
+                  ...current,
+                  album: event.target.value,
+                }))}
+              />
+            </label>
+            <div className="lyrics-search-metadata-actions">
+              <button type="submit">保存并搜索</button>
+              <button type="button" onClick={() => setSearchMetadataEditing(false)}>取消</button>
+              {hasSearchMetadataOverride ? (
+                <button type="button" onClick={restoreSearchMetadata}>恢复标签</button>
+              ) : null}
+            </div>
+          </form>
+        ) : searchMetadata ? (
+          <div className="lyrics-search-metadata-summary">
+            <div>
+              <strong>{searchMetadata.title}</strong>
+              <span>
+                {searchMetadata.artist || "未指定艺术家"}
+                {searchMetadata.album ? ` / ${searchMetadata.album}` : ""}
+              </span>
+            </div>
+            {hasSearchMetadataOverride ? <em>已修正</em> : null}
+            <button type="button" onClick={editSearchMetadata}>修改</button>
+          </div>
+        ) : null}
         <p className={onlineSearch.status === "error" ? "is-error" : ""}>{message}</p>
         <div className="lyrics-candidate-list" aria-live="polite">
           {onlineSearch.candidates.map((candidate) => (
@@ -376,6 +469,11 @@ export function LyricsStage({
   }, [status, visible]);
 
   useEffect(() => setTimingControlOpen(false), [document?.trackId, document?.sourceId]);
+
+  useEffect(() => {
+    setSearchMetadataEditing(false);
+    if (searchMetadata) setSearchMetadataDraft({ ...searchMetadata });
+  }, [searchMetadata?.album, searchMetadata?.artist, searchMetadata?.title]);
 
   if (!document) {
     const emptyLabel = status === "loading"
