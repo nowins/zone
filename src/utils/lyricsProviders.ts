@@ -5,6 +5,8 @@ const ARTIST_WEIGHT = 0.29;
 const ALBUM_WEIGHT = 0.1;
 const DURATION_WEIGHT = 0.15;
 
+export const DEFAULT_LYRICS_MATCH_THRESHOLD = 72;
+
 export function scoreLyricsCandidate(
   query: LyricsQuery,
   candidate: Pick<LyricsCandidate, "title" | "artist" | "album" | "duration">,
@@ -35,10 +37,22 @@ export function scoreLyricsCandidate(
   };
 }
 
-export function pickBestLyricsCandidate(candidates: LyricsCandidate[], threshold = 72) {
+export function pickBestLyricsCandidate(
+  candidates: LyricsCandidate[],
+  threshold = DEFAULT_LYRICS_MATCH_THRESHOLD,
+) {
   return [...candidates]
     .filter((candidate) => candidate.content.trim() && !candidate.instrumental && candidate.score.total >= threshold)
     .sort(compareLyricsCandidates)[0] ?? null;
+}
+
+export function combineTranslatedLrc(primary: string, translation?: string | null) {
+  const normalizedPrimary = primary.trim();
+  const normalizedTranslation = translation?.trim() ?? "";
+  if (!normalizedPrimary) return "";
+  return normalizedTranslation
+    ? `${normalizedPrimary}\n${normalizedTranslation}`
+    : normalizedPrimary;
 }
 
 export function compareLyricsCandidates(left: LyricsCandidate, right: LyricsCandidate) {

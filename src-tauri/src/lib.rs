@@ -251,14 +251,76 @@ fn validate_lyrics_provider_url(provider_id: &str, value: &str) -> Result<reqwes
       url.scheme() == "https"
         && url.host_str() == Some("lrclib.net")
         && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.fragment().is_none()
         && (url.path() == "/api/search" || url.path().starts_with("/api/get/"))
     }
+    "netease" => validate_netease_lyrics_url(&url),
     _ => false,
   };
   if !allowed {
     return Err("在线歌词来源或请求地址未获允许".to_string());
   }
   Ok(url)
+}
+
+fn validate_netease_lyrics_url(url: &reqwest::Url) -> bool {
+  if url.scheme() != "https"
+    || url.host_str() != Some("music.163.com")
+    || url.port().is_some()
+    || !url.username().is_empty()
+    || url.password().is_some()
+    || url.fragment().is_some()
+  {
+    return false;
+  }
+
+  let pairs = url
+    .query_pairs()
+    .map(|(key, value)| (key.into_owned(), value.into_owned()))
+    .collect::<Vec<_>>();
+  match url.path() {
+    "/api/search/get/web" => {
+      if pairs.len() != 6 {
+        return false;
+      }
+      let Some(search) = unique_query_value(&pairs, "s") else {
+        return false;
+      };
+      !search.trim().is_empty()
+        && search.chars().count() <= 300
+        && unique_query_value(&pairs, "csrf_token") == Some("")
+        && unique_query_value(&pairs, "type") == Some("1")
+        && unique_query_value(&pairs, "offset") == Some("0")
+        && unique_query_value(&pairs, "total") == Some("true")
+        && unique_query_value(&pairs, "limit")
+          .and_then(|value| value.parse::<u8>().ok())
+          .is_some_and(|limit| (1..=10).contains(&limit))
+    }
+    "/api/song/lyric" => {
+      pairs.len() == 5
+        && unique_query_value(&pairs, "id")
+          .and_then(|value| value.parse::<u64>().ok())
+          .is_some_and(|id| id > 0)
+        && ["lv", "tv", "rv", "kv"]
+          .iter()
+          .all(|key| unique_query_value(&pairs, key) == Some("-1"))
+    }
+    _ => false,
+  }
+}
+
+fn unique_query_value<'a>(pairs: &'a [(String, String)], key: &str) -> Option<&'a str> {
+  let mut matches = pairs
+    .iter()
+    .filter(|(candidate, _)| candidate == key)
+    .map(|(_, value)| value.as_str());
+  let value = matches.next()?;
+  if matches.next().is_some() {
+    return None;
+  }
+  Some(value)
 }
 
 #[tauri::command]
@@ -993,6 +1055,31 @@ mod lyrics_tests {
     assert!(validate_lyrics_provider_url("lrclib", "http://lrclib.net/api/search").is_err());
     assert!(validate_lyrics_provider_url("lrclib", "https://example.com/api/search").is_err());
     assert!(validate_lyrics_provider_url("lrclib", "https://lrclib.net.evil.test/api/search").is_err());
+    assert!(validate_lyrics_provider_url(
+      "netease",
+      "https://music.163.com/api/search/get/web?csrf_token=&s=21+Guns+Green+Day&type=1&limit=8&offset=0&total=true"
+    )
+    .is_ok());
+    assert!(validate_lyrics_provider_url(
+      "netease",
+      "https://music.163.com/api/song/lyric?id=32194502&lv=-1&tv=-1&rv=-1&kv=-1"
+    )
+    .is_ok());
+    assert!(validate_lyrics_provider_url(
+      "netease",
+      "http://music.163.com/api/song/lyric?id=32194502&lv=-1&tv=-1&rv=-1&kv=-1"
+    )
+    .is_err());
+    assert!(validate_lyrics_provider_url(
+      "netease",
+      "https://music.163.com/api/song/lyric?id=32194502&lv=-1&tv=-1&rv=-1&kv=-1&redirect=true"
+    )
+    .is_err());
+    assert!(validate_lyrics_provider_url(
+      "netease",
+      "https://example.com/api/song/lyric?id=32194502&lv=-1&tv=-1&rv=-1&kv=-1"
+    )
+    .is_err());
     assert!(validate_lyrics_provider_url("unknown", "https://lrclib.net/api/search").is_err());
   }
 

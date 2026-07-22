@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  combineTranslatedLrc,
   normalizeMetadata,
   pickBestLyricsCandidate,
   scoreLyricsCandidate,
@@ -63,4 +64,13 @@ test("automatic selection ignores instrumental and empty candidates", () => {
   const instrumental = candidate({ id: "lrclib:2", instrumental: true });
   const empty = candidate({ id: "lrclib:3", content: "" });
   assert.equal(pickBestLyricsCandidate([instrumental, empty, valid])?.id, valid.id);
+});
+
+test("translated LRC keeps the original line before its translation", () => {
+  assert.equal(
+    combineTranslatedLrc(" [00:01.00]Hello ", " [00:01.00]你好 "),
+    "[00:01.00]Hello\n[00:01.00]你好",
+  );
+  assert.equal(combineTranslatedLrc("[00:01.00]Hello", "  "), "[00:01.00]Hello");
+  assert.equal(combineTranslatedLrc("", "[00:01.00]你好"), "");
 });
