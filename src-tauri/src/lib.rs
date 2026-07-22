@@ -2,17 +2,19 @@ use encoding_rs::GBK;
 use lofty::file::{AudioFile, TaggedFileExt};
 use lofty::prelude::{Accessor, ItemKey};
 use lofty::read_from_path;
+use notify::event::{CreateKind, ModifyKind, RemoveKind};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::UNIX_EPOCH;
 use tauri::http::{header, Method, Request, Response, StatusCode};
-#[cfg(target_os = "windows")]
-use tauri::Manager;
+use tauri::{Emitter, Manager, State};
 use walkdir::WalkDir;
 
 mod qrc;
@@ -24,6 +26,11 @@ const AMLL_INDEX_RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
 const LYRICS_PROVIDER_REQUEST_BODY_LIMIT: usize = 4 * 1024;
 const QRC_ENCRYPTED_TEXT_LIMIT: usize = 128 * 1024;
 static LYRICS_REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Default)]
+struct LibraryWatcherState {
+  watcher: Mutex<Option<RecommendedWatcher>>,
+}
 
 #[derive(Debug, Serialize)]
 struct MusicFolder {
@@ -55,6 +62,12 @@ struct ScanResult {
   folders: Vec<String>,
   tracks: Vec<Track>,
   skipped: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryFilesChanged {
+  paths: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -537,6 +550,86 @@ fn scan_library(folders: Vec<String>) -> ScanResult {
     tracks,
     skipped,
   }
+}
+
+#[tauri::command]
+fn watch_music_folders(
+  app: tauri::AppHandle,
+  state: State<'_, LibraryWatcherState>,
+  folders: Vec<String>,
+) -> Result<(), String> {
+  let mut watcher_slot = state
+    .watcher
+    .lock()
+    .map_err(|_| "无法更新曲库目录监听".to_string())?;
+  *watcher_slot = None;
+
+  if folders.is_empty() {
+    return Ok(());
+  }
+
+  let app_handle = app.clone();
+  let mut watcher = notify::recommended_watcher(move |result: notify::Result<Event>| match result {
+    Ok(event) if should_refresh_library(&event) => {
+      let mut paths = event
+        .paths
+        .iter()
+        .map(|path| path.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+      paths.sort();
+      paths.dedup();
+      paths.truncate(12);
+      eprintln!("[library] filesystem change kind={:?} paths={}", event.kind, paths.len());
+      if let Err(error) = app_handle.emit("library-files-changed", LibraryFilesChanged { paths }) {
+        eprintln!("[library] unable to notify frontend: {error}");
+      }
+    }
+    Ok(_) => {}
+    Err(error) => eprintln!("[library] filesystem watcher error: {error}"),
+  })
+  .map_err(|error| format!("无法初始化曲库目录监听：{error}"))?;
+
+  let mut watched_count = 0usize;
+  let mut failures = Vec::new();
+  for folder in folders {
+    let path = PathBuf::from(&folder);
+    if !path.is_dir() {
+      failures.push(folder);
+      continue;
+    }
+    match watcher.watch(&path, RecursiveMode::Recursive) {
+      Ok(()) => watched_count += 1,
+      Err(error) => {
+        eprintln!("[library] unable to watch {}: {error}", path.display());
+        failures.push(path.to_string_lossy().to_string());
+      }
+    }
+  }
+
+  if watched_count == 0 {
+    return Err("没有可监听的音乐目录".to_string());
+  }
+  if !failures.is_empty() {
+    eprintln!(
+      "[library] watching {watched_count} folders; {} folders unavailable",
+      failures.len(),
+    );
+  }
+  *watcher_slot = Some(watcher);
+  Ok(())
+}
+
+fn should_refresh_library(event: &Event) -> bool {
+  if event.paths.iter().any(|path| is_supported_audio(path)) {
+    return true;
+  }
+
+  matches!(
+    event.kind,
+    EventKind::Create(CreateKind::Folder)
+      | EventKind::Remove(RemoveKind::Folder)
+      | EventKind::Modify(ModifyKind::Name(_))
+  )
 }
 
 #[tauri::command]
@@ -1181,6 +1274,25 @@ mod lyrics_tests {
   }
 
   #[test]
+  fn library_watcher_refreshes_only_for_audio_or_directory_changes() {
+    let audio = Event::new(EventKind::Any).add_path(PathBuf::from("music/Track.FLAC"));
+    let cover = Event::new(EventKind::Create(CreateKind::File))
+      .add_path(PathBuf::from("music/cover.jpg"));
+    let folder = Event::new(EventKind::Create(CreateKind::Folder))
+      .add_path(PathBuf::from("music/New Album"));
+    let rename = Event::new(EventKind::Modify(ModifyKind::Name(
+      notify::event::RenameMode::Both,
+    )))
+    .add_path(PathBuf::from("music/Old Name"))
+    .add_path(PathBuf::from("music/New Name"));
+
+    assert!(should_refresh_library(&audio));
+    assert!(!should_refresh_library(&cover));
+    assert!(should_refresh_library(&folder));
+    assert!(should_refresh_library(&rename));
+  }
+
+  #[test]
   fn sidecar_discovery_is_case_insensitive_and_prefers_ttml() {
     let directory = test_directory("priority");
     let audio = directory.join("Track.mp3");
@@ -1396,6 +1508,7 @@ pub fn run() {
 
   tauri::Builder::default()
     .plugin(tauri_plugin_opener::init())
+    .manage(LibraryWatcherState::default())
     .register_uri_scheme_protocol("zone-audio", |_ctx, request| serve_audio_protocol(request))
     .setup(|app| {
       #[cfg(target_os = "windows")]
@@ -1416,6 +1529,7 @@ pub fn run() {
       select_music_folder,
       select_lyrics_file,
       scan_library,
+      watch_music_folders,
       load_local_lyrics,
       request_lyrics_provider,
       decrypt_qrc_lyrics,

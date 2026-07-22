@@ -26,6 +26,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `walkdir`：曲库扫描。
   - `rfd`：文件夹/歌词文件选择对话框。
   - `reqwest`（rustls）：在线歌词请求（经 Rust 端中转，见下文安全约束）。
+  - `notify`：递归监听已添加的音乐目录，驱动防抖后的曲库自动刷新。
   - `windows` 0.61（仅 Windows）：系统媒体传输控制（SMTC）集成。
 
 ## 构建与测试命令
@@ -63,6 +64,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `SettingsView.tsx`：音乐文件夹管理与在线歌词来源（provider）启用/优先级设置。
 - `src/components/`：可复用 UI。包括 `Cover`、`PlayerBar`、`TransportControls`、`PlaybackProgress`、`ContextMenu`、`InfoPanel`、`Titlebar`、`EmptyState`、`PlaylistDialog`、`SmartPlaylistDialog`、`LyricsStage`（歌词舞台）、`NowPlayingMosaicCanvas` 与 `AudioGlowCanvas`（正在播放的两个 Canvas 视觉层）。
 - `src/hooks/`：
+  - `useLibraryWatcher.ts`：配置 Rust 目录监听、接收文件变化事件并在 800ms 防抖后触发曲库刷新。
   - `useLyrics.ts`：歌词加载/缓存/在线搜索状态机（本地缓存键 `zone-local-lyrics-v1`）。
   - `useLyricsProviderSettings.ts`：歌词 provider 启用与优先级（键 `zone-lyrics-providers-v1`）。
   - `useSystemMedia.ts`：与 Rust 端 SMTC 集成（`update_system_media*` 命令与媒体按键事件）。
@@ -77,7 +79,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `demoLyrics.ts`：仅动效原型用的演示歌词。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`collection`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`motion`、`animations-responsive`。
 - `src-tauri/src/lib.rs`（约 1000 行）：Tauri 命令与自定义协议。
-  - 命令：`select_music_folder`、`select_lyrics_file`、`scan_library`、`load_local_lyrics`、`request_lyrics_provider`、`update_system_media`、`update_system_media_timeline`。
+  - 命令：`select_music_folder`、`select_lyrics_file`、`scan_library`、`watch_music_folders`、`load_local_lyrics`、`request_lyrics_provider`、`update_system_media`、`update_system_media_timeline`。
   - `zone-audio` 自定义协议（`serve_audio_protocol`）：CORS 安全的本地音频播放与 Web Audio 分析，含字节范围（`Accept-Ranges`/`Content-Range`）与正确的音频 content type。
   - 歌词：内嵌标签歌词、同目录 sidecar 歌词（`.ttml` 优先于 `.lrc`，大小写不敏感）、UTF-16/GBK 解码修复。
   - 封面提取与缓存（内嵌封面写入缓存目录）。
@@ -154,6 +156,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 ## 已实现的用户体验
 
 - `quickplay`、`collection`、`now playing`、`settings` 导航可用。
+- 已添加的音乐目录会被递归监听；音频文件或目录结构变化后，前端防抖并串行刷新曲库。
 - 专辑网格纵向滚动；选中专辑显示曲目列表而不是立即播放。
 - 专辑悬停播放按钮有延迟且低调。
 - 艺术家标签是 Zune 式浏览器：艺术家 → 专辑 → 歌曲。

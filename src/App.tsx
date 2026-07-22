@@ -20,6 +20,7 @@ import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/v
 import { createShuffleOrder, haveSameQueueItems, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
 import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
 import { useSystemMedia } from "./hooks/useSystemMedia";
+import { useLibraryWatcher } from "./hooks/useLibraryWatcher";
 import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, HomePin, MusicFolder, Playlist, RepeatMode, ScanResult, SmartPlaylist, Track, TrackActivityMap, ViewMode } from "./types";
 
 type PlaybackSession = {
@@ -52,7 +53,10 @@ export default function App() {
   const actionNoticeTimerRef = useRef<number | null>(null);
   const playbackSessionRef = useRef<PlaybackSession | null>(null);
   const activityMigrationRef = useRef(false);
+  const scanInFlightRef = useRef(false);
+  const queuedScanRef = useRef<{ folders: MusicFolder[]; automatic: boolean } | null>(null);
   const [folders, setFolders] = useState<MusicFolder[]>([]);
+  const foldersRef = useRef<MusicFolder[]>(folders);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("albums");
@@ -87,6 +91,11 @@ export default function App() {
   const [playlistDialog, setPlaylistDialog] = useState<PlaylistDialogState | null>(null);
   const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  foldersRef.current = folders;
+
+  useLibraryWatcher(folders, restored, () => {
+    void rescan(folders, true);
+  });
 
   useEffect(() => () => {
     if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
@@ -346,21 +355,43 @@ export default function App() {
     await rescan(nextFolders);
   }
 
-  async function rescan(targetFolders = folders) {
+  async function rescan(targetFolders = folders, automatic = false) {
     if (targetFolders.length === 0) return;
+    if (scanInFlightRef.current) {
+      queuedScanRef.current = { folders: targetFolders, automatic };
+      return;
+    }
+    scanInFlightRef.current = true;
     setIsScanning(true);
-    setScanNote("正在扫描");
+    setScanNote(automatic ? "检测到文件变化，正在同步" : "正在扫描");
 
     try {
-      const result = await invoke<ScanResult>("scan_library", {
-        folders: targetFolders.map((folder) => folder.path),
-      });
-      const scannedIds = result.tracks.map((track) => track.id);
-      setTracks(result.tracks);
-      setQueue((current) => reconcileQueueWithLibrary(current, scannedIds));
-      setScanNote(`已索引 ${result.tracks.length} 首歌曲`);
-      setNeedsMetadataRefresh(false);
+      let pending: { folders: MusicFolder[]; automatic: boolean } | null = {
+        folders: targetFolders,
+        automatic,
+      };
+      while (pending) {
+        queuedScanRef.current = null;
+        setScanNote(pending.automatic ? "检测到文件变化，正在同步" : "正在扫描");
+        const result = await invoke<ScanResult>("scan_library", {
+          folders: pending.folders.map((folder) => folder.path),
+        });
+        const requestedFolders = pending.folders.map((folder) => folder.path).join("\u0000");
+        const currentFolders = foldersRef.current.map((folder) => folder.path).join("\u0000");
+        if (requestedFolders === currentFolders) {
+          const scannedIds = result.tracks.map((track) => track.id);
+          setTracks(result.tracks);
+          setQueue((current) => reconcileQueueWithLibrary(current, scannedIds));
+          setScanNote(`已索引 ${result.tracks.length} 首歌曲`);
+          setNeedsMetadataRefresh(false);
+        }
+        pending = queuedScanRef.current;
+      }
+    } catch (error) {
+      setScanNote("曲库同步失败");
+      if (import.meta.env.DEV) console.warn("[library] scan failed", error);
     } finally {
+      scanInFlightRef.current = false;
       setIsScanning(false);
     }
   }
