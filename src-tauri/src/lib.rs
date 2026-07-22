@@ -926,7 +926,10 @@ fn looks_like_gbk_mojibake(value: &str) -> bool {
     if (0x00c0..=0x00ff).contains(&codepoint) {
       high_latin += 1;
     }
-    if matches!(character, '°' | '±' | '²' | '³' | 'Ä' | 'Å' | 'Æ' | 'Ç' | 'È' | 'É' | 'Ê' | 'Ë' | 'Ì' | 'Í' | 'Î' | 'Ï' | 'Ð' | 'Ñ' | 'Ò' | 'Ó' | 'Ô' | 'Õ' | 'Ö' | '×' | 'Ø' | 'Ù' | 'Ú' | 'Û' | 'Ü' | 'Ý' | 'Þ' | 'ß' | 'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'æ' | 'ç' | 'è' | 'é' | 'ê' | 'ë' | 'ì' | 'í' | 'î' | 'ï' | 'ð' | 'ñ' | 'ò' | 'ó' | 'ô' | 'õ' | 'ö' | '÷' | 'ø' | 'ù' | 'ú' | 'û' | 'ü') {
+    // GBK lead bytes 0xb0-0xbf surface as Latin-1 symbols (° ± ² ³ ´ µ ¶ · ¸ ¹ º » ¼ ½ ¾ ¿),
+    // which almost never appear in genuine titles.
+    if (0x00b0..=0x00bf).contains(&codepoint)
+      || matches!(character, 'Ä' | 'Å' | 'Æ' | 'Ç' | 'È' | 'É' | 'Ê' | 'Ë' | 'Ì' | 'Í' | 'Î' | 'Ï' | 'Ð' | 'Ñ' | 'Ò' | 'Ó' | 'Ô' | 'Õ' | 'Ö' | '×' | 'Ø' | 'Ù' | 'Ú' | 'Û' | 'Ü' | 'Ý' | 'Þ' | 'ß' | 'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'æ' | 'ç' | 'è' | 'é' | 'ê' | 'ë' | 'ì' | 'í' | 'î' | 'ï' | 'ð' | 'ñ' | 'ò' | 'ó' | 'ô' | 'õ' | 'ö' | '÷' | 'ø' | 'ù' | 'ú' | 'û' | 'ü') {
       suspicious += 1;
     }
   }
@@ -1216,6 +1219,18 @@ mod lyrics_tests {
     assert!(source.is_manual);
     assert_eq!(source.format_hint, "plain");
     fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn mojibake_repairs_gbk_tags_with_symbol_bytes() {
+    assert_eq!(repair_mojibake("ºì¶¹"), "红豆");
+    assert_eq!(repair_mojibake("Íõ·Æ"), "王菲");
+  }
+
+  #[test]
+  fn mojibake_leaves_genuine_latin_text_alone() {
+    assert_eq!(repair_mojibake("Café del Mar"), "Café del Mar");
+    assert_eq!(repair_mojibake("Eyes On Me"), "Eyes On Me");
   }
 
   #[test]
