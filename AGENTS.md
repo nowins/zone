@@ -75,7 +75,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `smartPlaylist.ts`：智能播放列表规则求值与归一化。
   - `homePins.ts`：quickplay 固定项的归一化、移动、对账。
   - `visualizer.ts` / `beatAnalysis.ts` / `audioGlow.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格、Zune 光焰与封面拼贴的纯计算部分。
-  - `lyrics.ts` / `lyricsProviders.ts` / `lyricsExport.ts`：歌词解析（plain/line/word）、候选打分排序与 TTML/LRC 导出。
+  - `lyrics.ts` / `lyricsProviders.ts` / `lyricsExport.ts` / `lyricsMotion.ts`：歌词解析（plain/line/word）、候选打分排序、TTML/LRC 导出与真实逐词时间驱动的长音包络。
   - `demoLyrics.ts`：仅动效原型用的演示歌词。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`collection`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`motion`、`animations-responsive`。
 - `src-tauri/src/lib.rs`（约 1000 行）：Tauri 命令与自定义协议。
@@ -164,7 +164,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 自定义右键菜单支持：播放、添加到正在播放、添加到收藏、添加到自定义播放列表、固定到 quickplay、查看信息。
 - 可创建手动播放列表与规则驱动的智能播放列表。
 - 正在播放页的收藏按钮切换当前曲目在收藏列表中的状态。
-- 歌词模式：本地（内嵌/sidecar/手动绑定）与在线歌词，支持逐行/逐词同步、音译、TTML 背景人声、滚轮浏览、点按跳转、在线搜索信息映射、手动选词与 TTML/LRC 导出。
+- 歌词模式：本地（内嵌/sidecar/手动绑定）与在线歌词，支持逐行/逐词同步、音译、TTML 背景人声、长音细节、滚轮浏览、点按跳转、在线搜索信息映射、手动选词与 TTML/LRC 导出。
 - Windows 系统媒体控制（SMTC）：媒体信息、时间线、媒体按键与收藏同步。
 
 ## 测试策略

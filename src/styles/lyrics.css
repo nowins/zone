@@ -581,22 +581,54 @@
   display: inline-block;
 }
 
+.lyrics-word.has-long-note {
+  transform-origin: center 68%;
+}
+
+.lyrics-line.is-active .lyrics-word.has-long-note {
+  will-change: transform;
+}
+
 .lyrics-word-base,
-.lyrics-word-progress {
+.lyrics-word-progress,
+.lyrics-word-sustain {
   display: inline-block;
 }
 
-.lyrics-word-progress {
+.lyrics-word-progress,
+.lyrics-word-sustain {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.98);
   clip-path: inset(0 100% 0 0);
   will-change: clip-path;
 }
 
+.lyrics-word-progress {
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.lyrics-word-sustain {
+  color: #fff;
+  opacity: 0;
+  text-shadow: 0 0 13px rgba(255, 255, 255, 0.34);
+}
+
+.lyrics-line.is-active .lyrics-word-sustain {
+  will-change: clip-path, opacity;
+}
+
 .lyrics-line:not(.is-active) .lyrics-word-progress {
   color: rgba(255, 255, 255, 0.72);
+}
+
+.lyrics-line:not(.is-active) .lyrics-word-sustain,
+.lyrics-stage.is-browsing .lyrics-word-sustain {
+  opacity: 0 !important;
+}
+
+.lyrics-stage.is-browsing .lyrics-word.has-long-note {
+  transform: none !important;
 }
 
 .lyrics-translation {
@@ -872,5 +904,9 @@
   .lyrics-line {
     filter: none;
     transform: translate3d(0, var(--lyrics-y), 0);
+  }
+
+  .lyrics-word.has-long-note {
+    transform: none !important;
   }
 }

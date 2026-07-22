@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type { LyricsCandidate, LyricsDocument, LyricsLine, LyricsSearchMetadata, LyricsWord } from "../types";
 import type { LyricsOnlineSearchState } from "../hooks/useLyrics";
 import type { LyricsExportFormat } from "../utils/lyricsExport";
+import { isLyricsLongNote, lyricsLongNoteEnvelope } from "../utils/lyricsMotion";
 import {
   formatLyricsTimingOffset,
   LYRICS_TIMING_STEP_MS,
@@ -154,6 +155,8 @@ export function LyricsStage({
   const wheelDeltaRef = useRef(0);
   const lineButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const wordProgressRefs = useRef<Array<Array<HTMLSpanElement | null>>>([]);
+  const wordMotionRefs = useRef<Array<Array<HTMLSpanElement | null>>>([]);
+  const wordSustainRefs = useRef<Array<Array<HTMLSpanElement | null>>>([]);
   const backgroundLineRefs = useRef<Array<Array<HTMLSpanElement | null>>>([]);
   const backgroundWordProgressRefs = useRef<Array<Array<Array<HTMLSpanElement | null>>>>([]);
   const playbackClockRef = useRef(playbackClock);
@@ -192,6 +195,16 @@ export function LyricsStage({
             ? 0
             : getWordProgress(word, time);
         element.style.clipPath = `inset(0 ${(1 - fill) * 100}% 0 0)`;
+        const sustain = line.words?.length && lineIndex === nextActiveIndex
+          ? lyricsLongNoteEnvelope(word, time)
+          : 0;
+        const motionElement = wordMotionRefs.current[lineIndex]?.[wordIndex];
+        if (motionElement) motionElement.style.transform = `scale(${(1 + sustain * 0.016).toFixed(4)})`;
+        const sustainElement = wordSustainRefs.current[lineIndex]?.[wordIndex];
+        if (sustainElement) {
+          sustainElement.style.clipPath = `inset(0 ${(1 - fill) * 100}% 0 0)`;
+          sustainElement.style.opacity = String(sustain * 0.34);
+        }
       });
 
       line.background?.forEach((background, backgroundIndex) => {
@@ -690,21 +703,43 @@ export function LyricsStage({
               tabIndex={visible && (isPlain || distance <= 3) ? 0 : -1}
             >
               <span className="lyrics-line-copy">
-                {(line.words ?? [{ text: line.text, start: line.start, end: line.end }]).map((word, wordIndex) => (
-                  <span className="lyrics-word" key={`${line.id}-word-${wordIndex}`}>
-                    <span className="lyrics-word-base">{word.text}</span>
+                {(line.words ?? [{ text: line.text, start: line.start, end: line.end }]).map((word, wordIndex) => {
+                  const hasLongNote = Boolean(line.words?.length) && isLyricsLongNote(word);
+                  return (
                     <span
-                      className="lyrics-word-progress"
-                      ref={(element) => {
-                        if (!wordProgressRefs.current[index]) wordProgressRefs.current[index] = [];
-                        wordProgressRefs.current[index][wordIndex] = element;
-                      }}
-                      aria-hidden="true"
+                      className={`lyrics-word ${hasLongNote ? "has-long-note" : ""}`}
+                      key={`${line.id}-word-${wordIndex}`}
+                      ref={hasLongNote ? (element) => {
+                        if (!wordMotionRefs.current[index]) wordMotionRefs.current[index] = [];
+                        wordMotionRefs.current[index][wordIndex] = element;
+                      } : undefined}
                     >
-                      {word.text}
+                      <span className="lyrics-word-base">{word.text}</span>
+                      <span
+                        className="lyrics-word-progress"
+                        ref={(element) => {
+                          if (!wordProgressRefs.current[index]) wordProgressRefs.current[index] = [];
+                          wordProgressRefs.current[index][wordIndex] = element;
+                        }}
+                        aria-hidden="true"
+                      >
+                        {word.text}
+                      </span>
+                      {hasLongNote ? (
+                        <span
+                          className="lyrics-word-sustain"
+                          ref={(element) => {
+                            if (!wordSustainRefs.current[index]) wordSustainRefs.current[index] = [];
+                            wordSustainRefs.current[index][wordIndex] = element;
+                          }}
+                          aria-hidden="true"
+                        >
+                          {word.text}
+                        </span>
+                      ) : null}
                     </span>
-                  </span>
-                ))}
+                  );
+                })}
               </span>
               {line.translation ? <span className="lyrics-translation">{line.translation}</span> : null}
               {line.transliteration ? (

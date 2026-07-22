@@ -171,6 +171,16 @@ test("lyrics keeps transliteration and timed background vocals subordinate to th
   assert.ok(lyricsCss.includes("text-align: right"));
 });
 
+test("long-note detail is real-timeline driven, restrained, and browsing safe", () => {
+  assert.ok(lyricsSource.includes("lyricsLongNoteEnvelope(word, time)"));
+  assert.ok(lyricsSource.includes("line.words?.length && lineIndex === nextActiveIndex"));
+  assert.ok(lyricsSource.includes("sustain * 0.016"));
+  assert.ok(lyricsSource.includes("sustainElement.style.opacity"));
+  assert.ok(lyricsCss.includes(".lyrics-stage.is-browsing .lyrics-word-sustain"));
+  assert.ok(lyricsCss.includes(".lyrics-line.is-active .lyrics-word.has-long-note"));
+  assert.match(lyricsCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.lyrics-word\.has-long-note\s*\{[\s\S]*?transform: none !important/);
+});
+
 test("lyrics calibration uses one reversible clock mapping per track and source", () => {
   assert.ok(lyricsSource.includes("mediaTimeToLyricsTime(playbackClockRef.current(), timingOffsetMs)"));
   assert.ok(lyricsSource.includes("lyricsTimeToMediaTime(line.start, timingOffsetMs, duration)"));
