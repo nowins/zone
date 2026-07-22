@@ -15,11 +15,14 @@ use tauri::http::{header, Method, Request, Response, StatusCode};
 use tauri::Manager;
 use walkdir::WalkDir;
 
+mod qrc;
 mod system_media;
 
 const AUDIO_RANGE_CHUNK_SIZE: u64 = 1024 * 1024;
 const LYRICS_PROVIDER_RESPONSE_LIMIT: usize = 1024 * 1024;
 const AMLL_INDEX_RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
+const LYRICS_PROVIDER_REQUEST_BODY_LIMIT: usize = 4 * 1024;
+const QRC_ENCRYPTED_TEXT_LIMIT: usize = 128 * 1024;
 static LYRICS_REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Serialize)]
@@ -132,15 +135,18 @@ async fn request_lyrics_provider(
   provider_id: String,
   url: String,
   timeout_ms: u64,
+  body: Option<String>,
 ) -> Result<String, String> {
   let url = validate_lyrics_provider_url(&provider_id, &url)?;
+  let body = validate_lyrics_provider_request_body(&provider_id, &url, body)?;
   let response_limit = lyrics_provider_response_limit(&provider_id, &url);
   let timeout = Duration::from_millis(timeout_ms.clamp(1_500, 20_000));
   let request_id = LYRICS_REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
   let started_at = Instant::now();
   eprintln!(
-    "[lyrics:{request_id}] start provider={} endpoint={} timeout={}ms",
+    "[lyrics:{request_id}] start provider={} method={} endpoint={} timeout={}ms",
     provider_id,
+    if body.is_some() { "POST" } else { "GET" },
     url.path(),
     timeout.as_millis(),
   );
@@ -153,11 +159,22 @@ async fn request_lyrics_provider(
   let mut attempt = 0;
   let response = loop {
     let send_started_at = Instant::now();
-    let response = match client
-      .get(url.clone())
-      .send()
-      .await
-    {
+    let request = if provider_id == "qq" {
+      let content_type = if url.path() == "/cgi-bin/musicu.fcg" {
+        "application/json"
+      } else {
+        "application/x-www-form-urlencoded"
+      };
+      client
+        .post(url.clone())
+        .header("Content-Type", content_type)
+        .header("Referer", "https://c.y.qq.com/")
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Zone/0.1")
+        .body(body.clone().unwrap_or_default())
+    } else {
+      client.get(url.clone())
+    };
+    let response = match request.send().await {
       Ok(response) => response,
       Err(error) => {
         eprintln!(
@@ -237,6 +254,29 @@ async fn request_lyrics_provider(
   String::from_utf8(bytes).map_err(|_| "在线歌词响应编码无效".to_string())
 }
 
+#[tauri::command]
+fn decrypt_qrc_lyrics(encrypted: String) -> Result<String, String> {
+  if encrypted.len() > QRC_ENCRYPTED_TEXT_LIMIT {
+    return Err("QQ 音乐歌词数据超过大小限制".to_string());
+  }
+  let compact = encrypted
+    .chars()
+    .filter(|character| !character.is_whitespace())
+    .collect::<String>();
+  if compact.is_empty()
+    || compact.len() % 16 != 0
+    || !compact.bytes().all(|byte| byte.is_ascii_hexdigit())
+  {
+    return Err("QQ 音乐歌词数据无效".to_string());
+  }
+  let decoded = qrc::decrypt_lyrics(&compact, LYRICS_PROVIDER_RESPONSE_LIMIT)
+    .ok_or_else(|| "无法解密 QQ 音乐歌词".to_string())?;
+  if decoded.len() > LYRICS_PROVIDER_RESPONSE_LIMIT {
+    return Err("QQ 音乐歌词解压后超过大小限制".to_string());
+  }
+  Ok(decoded)
+}
+
 fn lyrics_provider_response_limit(provider_id: &str, url: &reqwest::Url) -> usize {
   if provider_id == "amll-ttml-db"
     && url.path() == "/amll-dev/amll-ttml-db/refs/heads/main/metadata/raw-lyrics-index.jsonl"
@@ -270,12 +310,104 @@ fn validate_lyrics_provider_url(provider_id: &str, value: &str) -> Result<reqwes
     }
     "amll-ttml-db" => validate_amll_ttml_url(&url),
     "netease" => validate_netease_lyrics_url(&url),
+    "qq" => validate_qq_lyrics_url(&url),
     _ => false,
   };
   if !allowed {
     return Err("在线歌词来源或请求地址未获允许".to_string());
   }
   Ok(url)
+}
+
+fn validate_qq_lyrics_url(url: &reqwest::Url) -> bool {
+  url.scheme() == "https"
+    && url.port().is_none()
+    && url.username().is_empty()
+    && url.password().is_none()
+    && url.query().is_none()
+    && url.fragment().is_none()
+    && matches!(
+      (url.host_str(), url.path()),
+      (Some("u.y.qq.com"), "/cgi-bin/musicu.fcg")
+        | (Some("c.y.qq.com"), "/qqmusic/fcgi-bin/lyric_download.fcg")
+    )
+}
+
+fn validate_lyrics_provider_request_body(
+  provider_id: &str,
+  url: &reqwest::Url,
+  body: Option<String>,
+) -> Result<Option<String>, String> {
+  if provider_id != "qq" {
+    return if body.is_none() {
+      Ok(None)
+    } else {
+      Err("该在线歌词来源不接受请求内容".to_string())
+    };
+  }
+  let body = body.ok_or_else(|| "QQ 音乐请求缺少必要内容".to_string())?;
+  if body.is_empty() || body.len() > LYRICS_PROVIDER_REQUEST_BODY_LIMIT {
+    return Err("QQ 音乐请求内容无效".to_string());
+  }
+  let valid = match url.path() {
+    "/cgi-bin/musicu.fcg" => validate_qq_search_body(&body),
+    "/qqmusic/fcgi-bin/lyric_download.fcg" => validate_qq_lyric_body(&body),
+    _ => false,
+  };
+  if !valid {
+    return Err("QQ 音乐请求内容无效".to_string());
+  }
+  Ok(Some(body))
+}
+
+fn validate_qq_search_body(body: &str) -> bool {
+  let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+    return false;
+  };
+  let Some(root) = value.as_object() else {
+    return false;
+  };
+  let Some(request) = root.get("req_1").and_then(serde_json::Value::as_object) else {
+    return false;
+  };
+  let Some(params) = request.get("param").and_then(serde_json::Value::as_object) else {
+    return false;
+  };
+  let Some(query) = params.get("query").and_then(serde_json::Value::as_str) else {
+    return false;
+  };
+  root.len() == 1
+    && request.len() == 3
+    && params.len() == 4
+    && request.get("method").and_then(serde_json::Value::as_str)
+      == Some("DoSearchForQQMusicDesktop")
+    && request.get("module").and_then(serde_json::Value::as_str)
+      == Some("music.search.SearchCgiService")
+    && params.get("num_per_page").and_then(serde_json::Value::as_str) == Some("20")
+    && params.get("page_num").and_then(serde_json::Value::as_str) == Some("1")
+    && params.get("search_type").and_then(serde_json::Value::as_u64) == Some(0)
+    && !query.trim().is_empty()
+    && query.chars().count() <= 300
+}
+
+fn validate_qq_lyric_body(body: &str) -> bool {
+  let Ok(url) = reqwest::Url::parse(&format!("https://zone.invalid/?{body}")) else {
+    return false;
+  };
+  if url.fragment().is_some() {
+    return false;
+  }
+  let pairs = url
+    .query_pairs()
+    .map(|(key, value)| (key.into_owned(), value.into_owned()))
+    .collect::<Vec<_>>();
+  pairs.len() == 4
+    && unique_query_value(&pairs, "version") == Some("15")
+    && unique_query_value(&pairs, "miniversion") == Some("82")
+    && unique_query_value(&pairs, "lrctype") == Some("4")
+    && unique_query_value(&pairs, "musicid")
+      .and_then(|value| value.parse::<u64>().ok())
+      .is_some_and(|id| id > 0)
 }
 
 fn validate_amll_ttml_url(url: &reqwest::Url) -> bool {
@@ -1146,7 +1278,73 @@ mod lyrics_tests {
       "https://example.com/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics/test.ttml"
     )
     .is_err());
+    assert!(validate_lyrics_provider_url(
+      "qq",
+      "https://u.y.qq.com/cgi-bin/musicu.fcg"
+    )
+    .is_ok());
+    assert!(validate_lyrics_provider_url(
+      "qq",
+      "https://c.y.qq.com/qqmusic/fcgi-bin/lyric_download.fcg"
+    )
+    .is_ok());
+    assert!(validate_lyrics_provider_url(
+      "qq",
+      "https://u.y.qq.com/cgi-bin/musicu.fcg?redirect=true"
+    )
+    .is_err());
+    assert!(validate_lyrics_provider_url(
+      "qq",
+      "https://y.qq.com/cgi-bin/musicu.fcg"
+    )
+    .is_err());
     assert!(validate_lyrics_provider_url("unknown", "https://lrclib.net/api/search").is_err());
+  }
+
+  #[test]
+  fn qq_provider_only_accepts_expected_post_bodies() {
+    let search_url = validate_lyrics_provider_url(
+      "qq",
+      "https://u.y.qq.com/cgi-bin/musicu.fcg"
+    )
+    .expect("valid QQ search URL");
+    let lyric_url = validate_lyrics_provider_url(
+      "qq",
+      "https://c.y.qq.com/qqmusic/fcgi-bin/lyric_download.fcg"
+    )
+    .expect("valid QQ lyric URL");
+    let search_body = r#"{"req_1":{"method":"DoSearchForQQMusicDesktop","module":"music.search.SearchCgiService","param":{"num_per_page":"20","page_num":"1","query":"21 Guns Green Day","search_type":0}}}"#;
+    assert!(validate_lyrics_provider_request_body(
+      "qq",
+      &search_url,
+      Some(search_body.to_string())
+    )
+    .is_ok());
+    assert!(validate_lyrics_provider_request_body(
+      "qq",
+      &search_url,
+      Some(search_body.replace("21 Guns Green Day", ""))
+    )
+    .is_err());
+    assert!(validate_lyrics_provider_request_body(
+      "qq",
+      &lyric_url,
+      Some("version=15&miniversion=82&lrctype=4&musicid=902359".to_string())
+    )
+    .is_ok());
+    assert!(validate_lyrics_provider_request_body(
+      "qq",
+      &lyric_url,
+      Some("version=15&miniversion=82&lrctype=4&musicid=902359&redirect=true".to_string())
+    )
+    .is_err());
+    assert!(validate_lyrics_provider_request_body("qq", &lyric_url, None).is_err());
+  }
+
+  #[test]
+  fn qrc_decrypter_rejects_untrusted_shapes_before_decryption() {
+    assert!(decrypt_qrc_lyrics("not-hex".to_string()).is_err());
+    assert!(decrypt_qrc_lyrics("00".repeat(QRC_ENCRYPTED_TEXT_LIMIT)).is_err());
   }
 
   #[test]
@@ -1205,6 +1403,7 @@ pub fn run() {
       scan_library,
       load_local_lyrics,
       request_lyrics_provider,
+      decrypt_qrc_lyrics,
       update_system_media,
       update_system_media_timeline,
     ])

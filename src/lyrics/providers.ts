@@ -14,6 +14,12 @@ import {
   scoreLyricsCandidate,
 } from "../utils/lyricsProviders";
 import { parseAmllTtmlIndex, type AmllTtmlIndexEntry } from "../utils/amllTtml";
+import {
+  extractQrcLyricContent,
+  isEncryptedQrc,
+  parseQqLyricsResponse,
+  qrcToTtml,
+} from "../utils/qrc";
 
 type NeteaseArtist = {
   name?: string;
@@ -60,6 +66,31 @@ type LrcLibResult = {
   syncedLyrics?: string | null;
 };
 
+type QqSong = {
+  id?: number | string;
+  mid?: string;
+  name?: string;
+  title?: string;
+  interval?: number;
+  album?: { name?: string; title?: string };
+  singer?: Array<{ name?: string }>;
+  grp?: QqSong[];
+};
+
+type QqSearchResponse = {
+  code?: number;
+  req_1?: {
+    code?: number;
+    data?: {
+      body?: {
+        song?: {
+          list?: QqSong[];
+        };
+      };
+    };
+  };
+};
+
 export type LyricsProviderSearchResult = {
   candidates: LyricsCandidate[];
   errors: Array<{ providerId: string; providerName: string; message: string }>;
@@ -69,6 +100,8 @@ const lastRequestAt = new Map<string, number>();
 const AMLL_INDEX_URL = "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/metadata/raw-lyrics-index.jsonl";
 const AMLL_RAW_URL = "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics";
 const AMLL_MANUAL_MATCH_THRESHOLD = 55;
+const QQ_SEARCH_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg";
+const QQ_LYRIC_URL = "https://c.y.qq.com/qqmusic/fcgi-bin/lyric_download.fcg";
 let amllIndexCache: AmllTtmlIndexEntry[] | null = null;
 let amllIndexRequest: Promise<AmllTtmlIndexEntry[]> | null = null;
 
@@ -153,13 +186,128 @@ const amllTtmlProvider: LyricsProviderDefinition = {
   },
 };
 
+const qqMusicProvider: LyricsProviderDefinition = {
+  id: "qq",
+  name: "QQ 音乐",
+  description: "覆盖广泛的逐词 QRC 歌词，并可附带翻译。",
+  capabilities: ["word", "translation"],
+  defaultEnabled: true,
+  defaultPriority: 10,
+  defaultTimeoutMs: 8_000,
+  rateLimitMs: 600,
+  async search(query, signal, timeoutMs) {
+    await enforceRateLimit("qq", 600, signal);
+    const keyword = [query.title, query.artist].filter((value) => value.trim()).join(" ");
+    const searchBody = JSON.stringify({
+      req_1: {
+        method: "DoSearchForQQMusicDesktop",
+        module: "music.search.SearchCgiService",
+        param: {
+          num_per_page: "20",
+          page_num: "1",
+          query: keyword,
+          search_type: 0,
+        },
+      },
+    });
+    const response = await requestProviderJson<QqSearchResponse>(
+      "qq",
+      QQ_SEARCH_URL,
+      timeoutMs,
+      signal,
+      searchBody,
+    );
+    const songs = response.req_1?.data?.body?.song?.list;
+    if (response.code !== 0 || response.req_1?.code !== 0 || !Array.isArray(songs)) {
+      throw new Error("QQ 音乐返回了无法识别的搜索结果");
+    }
+
+    const seen = new Set<string>();
+    const matches = songs
+      .flatMap((song) => [song, ...(song.grp ?? [])])
+      .map((song): LyricsCandidate | null => {
+        const id = qqSongId(song.id);
+        const title = song.title?.trim() || song.name?.trim();
+        if (!id || !title || seen.has(id)) return null;
+        seen.add(id);
+        const candidateBase = {
+          id: `qq:${id}`,
+          providerId: "qq",
+          providerName: "QQ 音乐",
+          title,
+          artist: song.singer?.map((artist) => artist.name?.trim()).filter(Boolean).join(" / ") || "未知艺术家",
+          album: song.album?.title?.trim() || song.album?.name?.trim() || undefined,
+          duration: validNumber(song.interval) ? song.interval : undefined,
+          instrumental: false,
+          formatHint: "ttml" as const,
+          content: "",
+          reference: song.mid?.trim() ? `https://y.qq.com/n/ryqq/songDetail/${song.mid.trim()}` : undefined,
+        };
+        return {
+          ...candidateBase,
+          score: scoreLyricsCandidate(query, candidateBase),
+        };
+      })
+      .filter((candidate): candidate is LyricsCandidate => candidate !== null)
+      .sort(compareLyricsCandidates)
+      .slice(0, 4);
+
+    const lyricTargets = (matches[0]?.score.total ?? 0) >= DEFAULT_LYRICS_MATCH_THRESHOLD
+      ? matches.slice(0, 1)
+      : matches;
+    const settled = await Promise.allSettled(lyricTargets.map(async (candidate) => {
+      const id = candidate.id.slice("qq:".length);
+      const lyricBody = new URLSearchParams({
+        version: "15",
+        miniversion: "82",
+        lrctype: "4",
+        musicid: id,
+      }).toString();
+      const raw = await requestProviderText("qq", QQ_LYRIC_URL, timeoutMs, signal, lyricBody);
+      const payload = parseQqLyricsResponse(raw);
+      const primary = await decodeQqLyricsPart(payload.original, signal);
+      const translation = await decodeQqLyricsPart(payload.translation, signal);
+      if (!primary) return null;
+      const ttml = qrcToTtml(primary, translation);
+      if (ttml) return { ...candidate, content: ttml, formatHint: "ttml" as const };
+      const content = combineTranslatedLrc(primary, translation);
+      if (!content) return null;
+      return {
+        ...candidate,
+        content,
+        formatHint: hasLrcTimestamps(primary) ? "lrc" as const : "plain" as const,
+      };
+    }));
+
+    const candidates: LyricsCandidate[] = [];
+    let firstError: unknown;
+    for (const result of settled) {
+      if (result.status === "fulfilled") {
+        if (result.value) candidates.push(result.value);
+      } else if (firstError === undefined) {
+        firstError = result.reason;
+      }
+    }
+    if (signal.aborted) throw abortError();
+    if (candidates.length === 0 && firstError !== undefined) throw firstError;
+    if (import.meta.env.DEV) {
+      console.info("[lyrics] provider response", { provider: "qq", results: candidates.length });
+    }
+    return candidates.sort(compareLyricsCandidates);
+  },
+  async get(candidate, signal) {
+    if (signal.aborted) throw abortError();
+    return candidateToSource(candidate);
+  },
+};
+
 const neteaseProvider: LyricsProviderDefinition = {
   id: "netease",
   name: "网易云音乐",
   description: "覆盖较广的同步歌词来源；高置信命中后不再等待后续来源。",
   capabilities: ["line", "translation"],
   defaultEnabled: true,
-  defaultPriority: 10,
+  defaultPriority: 20,
   defaultTimeoutMs: 8_000,
   rateLimitMs: 800,
   async search(query, signal, timeoutMs) {
@@ -270,7 +418,7 @@ const lrclibProvider: LyricsProviderDefinition = {
   description: "开放歌词资料库；本地无歌词时按歌曲信息检索。",
   capabilities: ["line"],
   defaultEnabled: true,
-  defaultPriority: 20,
+  defaultPriority: 30,
   defaultTimeoutMs: 15_000,
   rateLimitMs: 1_200,
   async search(query, signal, timeoutMs) {
@@ -324,6 +472,7 @@ const lrclibProvider: LyricsProviderDefinition = {
 
 export const LYRICS_PROVIDERS: LyricsProviderDefinition[] = [
   amllTtmlProvider,
+  qqMusicProvider,
   neteaseProvider,
   lrclibProvider,
 ];
@@ -394,8 +543,9 @@ async function requestProviderJson<T>(
   url: string,
   timeoutMs: number,
   signal: AbortSignal,
+  body?: string,
 ) {
-  const raw = await requestProviderText(providerId, url, timeoutMs, signal);
+  const raw = await requestProviderText(providerId, url, timeoutMs, signal, body);
   try {
     return JSON.parse(raw) as T;
   } catch {
@@ -408,15 +558,24 @@ async function requestProviderText(
   url: string,
   timeoutMs: number,
   signal: AbortSignal,
+  body?: string,
 ) {
-  return raceWithAbort(invokeProviderText(providerId, url, timeoutMs), signal);
+  return raceWithAbort(invokeProviderText(providerId, url, timeoutMs, body), signal);
 }
 
-function invokeProviderText(providerId: string, url: string, timeoutMs: number) {
+function invokeProviderText(providerId: string, url: string, timeoutMs: number, body?: string) {
   if (import.meta.env.DEV) {
     console.info("[lyrics] provider request", { provider: providerId, timeoutMs });
   }
-  return invoke<string>("request_lyrics_provider", { providerId, url, timeoutMs });
+  return invoke<string>("request_lyrics_provider", { providerId, url, timeoutMs, body: body ?? null });
+}
+
+async function decodeQqLyricsPart(value: string, signal: AbortSignal) {
+  if (!value.trim()) return "";
+  const decoded = isEncryptedQrc(value)
+    ? await raceWithAbort(invoke<string>("decrypt_qrc_lyrics", { encrypted: value }), signal)
+    : value;
+  return extractQrcLyricContent(decoded);
 }
 
 async function loadAmllIndex(signal: AbortSignal, timeoutMs: number) {
@@ -488,6 +647,13 @@ function abortError() {
 
 function validNumber(value?: number): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function qqSongId(value?: number | string) {
+  const normalized = typeof value === "number" && Number.isSafeInteger(value)
+    ? String(value)
+    : typeof value === "string" ? value.trim() : "";
+  return /^\d+$/.test(normalized) && normalized !== "0" ? normalized : "";
 }
 
 function hasLrcTimestamps(value: string) {
