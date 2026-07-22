@@ -13,6 +13,7 @@ import {
   pickBestLyricsCandidate,
   scoreLyricsCandidate,
 } from "../utils/lyricsProviders";
+import { parseAmllTtmlIndex, type AmllTtmlIndexEntry } from "../utils/amllTtml";
 
 type NeteaseArtist = {
   name?: string;
@@ -65,6 +66,92 @@ export type LyricsProviderSearchResult = {
 };
 
 const lastRequestAt = new Map<string, number>();
+const AMLL_INDEX_URL = "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/metadata/raw-lyrics-index.jsonl";
+const AMLL_RAW_URL = "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics";
+const AMLL_MANUAL_MATCH_THRESHOLD = 55;
+let amllIndexCache: AmllTtmlIndexEntry[] | null = null;
+let amllIndexRequest: Promise<AmllTtmlIndexEntry[]> | null = null;
+
+const amllTtmlProvider: LyricsProviderDefinition = {
+  id: "amll-ttml-db",
+  name: "AMLL TTML DB",
+  description: "开源逐词 TTML 资料库；有高质量时间轴时优先使用。",
+  capabilities: ["word", "translation", "transliteration"],
+  defaultEnabled: true,
+  defaultPriority: 5,
+  defaultTimeoutMs: 15_000,
+  rateLimitMs: 1_500,
+  async search(query, signal, timeoutMs) {
+    await enforceRateLimit("amll-ttml-db", 1_500, signal);
+    const index = await loadAmllIndex(signal, timeoutMs);
+    const seen = new Set<string>();
+    const matches = [...index]
+      .sort((left, right) => right.rawLyricFile.localeCompare(left.rawLyricFile))
+      .map((entry): LyricsCandidate | null => {
+        const identity = [entry.title, entry.artist, entry.album ?? "", entry.neteaseId ?? ""].join("\u0000");
+        if (seen.has(identity)) return null;
+        seen.add(identity);
+        const candidateBase = {
+          id: `amll-ttml-db:${entry.rawLyricFile}`,
+          providerId: "amll-ttml-db",
+          providerName: "AMLL TTML DB",
+          title: entry.title,
+          artist: entry.artist,
+          album: entry.album,
+          duration: undefined,
+          instrumental: false,
+          formatHint: "ttml" as const,
+          content: "",
+          reference: `https://github.com/amll-dev/amll-ttml-db/blob/main/raw-lyrics/${entry.rawLyricFile}`,
+        };
+        return {
+          ...candidateBase,
+          score: scoreLyricsCandidate(query, candidateBase),
+        };
+      })
+      .filter((candidate): candidate is LyricsCandidate => candidate !== null)
+      .sort((left, right) => right.score.total - left.score.total || right.id.localeCompare(left.id))
+      .filter((candidate) => candidate.score.total >= AMLL_MANUAL_MATCH_THRESHOLD)
+      .slice(0, 4);
+
+    const lyricTargets = (matches[0]?.score.total ?? 0) >= DEFAULT_LYRICS_MATCH_THRESHOLD
+      ? matches.slice(0, 1)
+      : matches;
+    const settled = await Promise.allSettled(lyricTargets.map(async (candidate) => {
+      const rawLyricFile = candidate.id.slice("amll-ttml-db:".length);
+      const content = (await requestProviderText(
+        "amll-ttml-db",
+        `${AMLL_RAW_URL}/${encodeURIComponent(rawLyricFile)}`,
+        timeoutMs,
+        signal,
+      )).trim();
+      if (!/<(?:[\w-]+:)?tt\b/i.test(content) || !/<(?:[\w-]+:)?p\b/i.test(content)) {
+        throw new Error("AMLL TTML DB 返回了无法识别的歌词数据");
+      }
+      return { ...candidate, content };
+    }));
+
+    const candidates: LyricsCandidate[] = [];
+    let firstError: unknown;
+    for (const result of settled) {
+      if (result.status === "fulfilled") {
+        candidates.push(result.value);
+      } else if (firstError === undefined) {
+        firstError = result.reason;
+      }
+    }
+    if (signal.aborted) throw abortError();
+    if (candidates.length === 0 && firstError !== undefined) throw firstError;
+    if (import.meta.env.DEV) {
+      console.info("[lyrics] provider response", { provider: "amll-ttml-db", results: candidates.length });
+    }
+    return candidates.sort(compareLyricsCandidates);
+  },
+  async get(candidate, signal) {
+    if (signal.aborted) throw abortError();
+    return candidateToSource(candidate);
+  },
+};
 
 const neteaseProvider: LyricsProviderDefinition = {
   id: "netease",
@@ -235,7 +322,11 @@ const lrclibProvider: LyricsProviderDefinition = {
   },
 };
 
-export const LYRICS_PROVIDERS: LyricsProviderDefinition[] = [neteaseProvider, lrclibProvider];
+export const LYRICS_PROVIDERS: LyricsProviderDefinition[] = [
+  amllTtmlProvider,
+  neteaseProvider,
+  lrclibProvider,
+];
 
 export async function searchLyricsProviders(
   query: LyricsQuery,
@@ -304,22 +395,52 @@ async function requestProviderJson<T>(
   timeoutMs: number,
   signal: AbortSignal,
 ) {
-  if (import.meta.env.DEV) {
-    console.info("[lyrics] provider request", { provider: providerId, timeoutMs });
-  }
-  const raw = await raceWithAbort(
-    invoke<string>("request_lyrics_provider", {
-      providerId,
-      url,
-      timeoutMs,
-    }),
-    signal,
-  );
+  const raw = await requestProviderText(providerId, url, timeoutMs, signal);
   try {
     return JSON.parse(raw) as T;
   } catch {
     throw new Error("在线歌词来源返回了无法识别的数据");
   }
+}
+
+async function requestProviderText(
+  providerId: string,
+  url: string,
+  timeoutMs: number,
+  signal: AbortSignal,
+) {
+  return raceWithAbort(invokeProviderText(providerId, url, timeoutMs), signal);
+}
+
+function invokeProviderText(providerId: string, url: string, timeoutMs: number) {
+  if (import.meta.env.DEV) {
+    console.info("[lyrics] provider request", { provider: providerId, timeoutMs });
+  }
+  return invoke<string>("request_lyrics_provider", { providerId, url, timeoutMs });
+}
+
+async function loadAmllIndex(signal: AbortSignal, timeoutMs: number) {
+  if (amllIndexCache) return amllIndexCache;
+  if (!amllIndexRequest) {
+    amllIndexRequest = invokeProviderText("amll-ttml-db", AMLL_INDEX_URL, timeoutMs)
+      .then((content) => {
+        const entries = parseAmllTtmlIndex(content);
+        if (entries.length === 0) throw new Error("AMLL TTML DB 索引无法解析");
+        amllIndexCache = entries;
+        if (import.meta.env.DEV) {
+          console.info("[lyrics] provider index ready", {
+            provider: "amll-ttml-db",
+            entries: entries.length,
+          });
+        }
+        return entries;
+      })
+      .catch((error) => {
+        amllIndexRequest = null;
+        throw error;
+      });
+  }
+  return raceWithAbort(amllIndexRequest, signal);
 }
 
 async function enforceRateLimit(providerId: string, intervalMs: number, signal: AbortSignal) {

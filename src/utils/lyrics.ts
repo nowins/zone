@@ -5,6 +5,7 @@ type LineDraft = {
   end?: number;
   text: string;
   translation?: string;
+  transliteration?: string;
   words?: Array<Omit<LyricsWord, "end"> & { end?: number }>;
 };
 
@@ -75,14 +76,18 @@ export function parseTtml(
     const words: NonNullable<LineDraft["words"]> = [];
     for (const span of spans) {
       const spanAttributes = parseXmlAttributes(span[1]);
+      if (isAuxiliaryTtmlRole(spanAttributes.role)) continue;
       const start = parseTtmlTime(spanAttributes.begin);
       const end = parseTtmlTime(spanAttributes.end);
       const text = stripXml(span[2], false);
       if (start === null || !text.trim()) continue;
       words.push({ text, start, end: end ?? undefined });
     }
-    const text = stripXml(body);
+    const text = stripXml(removeAuxiliaryTtmlSpans(body));
     if (!text) continue;
+
+    const translation = auxiliaryTtmlText(spans, "x-translation");
+    const transliteration = auxiliaryTtmlText(spans, "x-roman");
 
     const paragraphStart = parseTtmlTime(attributes.begin);
     const start = paragraphStart ?? words[0]?.start ?? Number.NaN;
@@ -93,6 +98,8 @@ export function parseTtml(
       start,
       end,
       text,
+      translation,
+      transliteration,
       words: words.length > 0 ? words : undefined,
     });
   }
@@ -165,6 +172,7 @@ function documentFromTimedDrafts(
       end,
       text: draft.text,
       translation: draft.translation,
+      transliteration: draft.transliteration,
       words: words?.length ? words : undefined,
     };
   });
@@ -233,6 +241,28 @@ function parseXmlAttributes(source: string) {
     attributes[nameParts[nameParts.length - 1] ?? match[1]] = decodeXml(match[3]);
   }
   return attributes;
+}
+
+function auxiliaryTtmlText(
+  spans: RegExpMatchArray[],
+  role: "x-translation" | "x-roman",
+) {
+  const span = spans.find((candidate) => parseXmlAttributes(candidate[1]).role === role);
+  const text = span ? stripXml(span[2]) : "";
+  return text || undefined;
+}
+
+function removeAuxiliaryTtmlSpans(value: string) {
+  return value.replace(
+    /<(?:[\w-]+:)?span\b([^>]*)>[\s\S]*?<\/(?:[\w-]+:)?span\s*>/gi,
+    (span, attributes: string) => (
+      isAuxiliaryTtmlRole(parseXmlAttributes(attributes).role) ? "" : span
+    ),
+  );
+}
+
+function isAuxiliaryTtmlRole(role?: string) {
+  return role === "x-translation" || role === "x-roman" || role === "x-bg";
 }
 
 function inferFormat(source: LyricsSource): LyricsSource["format_hint"] {

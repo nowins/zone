@@ -19,6 +19,7 @@ mod system_media;
 
 const AUDIO_RANGE_CHUNK_SIZE: u64 = 1024 * 1024;
 const LYRICS_PROVIDER_RESPONSE_LIMIT: usize = 1024 * 1024;
+const AMLL_INDEX_RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
 static LYRICS_REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Serialize)]
@@ -133,6 +134,7 @@ async fn request_lyrics_provider(
   timeout_ms: u64,
 ) -> Result<String, String> {
   let url = validate_lyrics_provider_url(&provider_id, &url)?;
+  let response_limit = lyrics_provider_response_limit(&provider_id, &url);
   let timeout = Duration::from_millis(timeout_ms.clamp(1_500, 20_000));
   let request_id = LYRICS_REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
   let started_at = Instant::now();
@@ -200,7 +202,7 @@ async fn request_lyrics_provider(
   }
   if response
     .content_length()
-    .is_some_and(|length| length > LYRICS_PROVIDER_RESPONSE_LIMIT as u64)
+    .is_some_and(|length| length > response_limit as u64)
   {
     return Err("在线歌词响应超过大小限制".to_string());
   }
@@ -221,7 +223,7 @@ async fn request_lyrics_provider(
       "无法读取在线歌词响应".to_string()
     })?
   {
-    if bytes.len().saturating_add(chunk.len()) > LYRICS_PROVIDER_RESPONSE_LIMIT {
+    if bytes.len().saturating_add(chunk.len()) > response_limit {
       return Err("在线歌词响应超过大小限制".to_string());
     }
     bytes.extend_from_slice(&chunk);
@@ -233,6 +235,16 @@ async fn request_lyrics_provider(
     started_at.elapsed().as_millis(),
   );
   String::from_utf8(bytes).map_err(|_| "在线歌词响应编码无效".to_string())
+}
+
+fn lyrics_provider_response_limit(provider_id: &str, url: &reqwest::Url) -> usize {
+  if provider_id == "amll-ttml-db"
+    && url.path() == "/amll-dev/amll-ttml-db/refs/heads/main/metadata/raw-lyrics-index.jsonl"
+  {
+    AMLL_INDEX_RESPONSE_LIMIT
+  } else {
+    LYRICS_PROVIDER_RESPONSE_LIMIT
+  }
 }
 
 fn is_retryable_provider_status(status: reqwest::StatusCode) -> bool {
@@ -256,6 +268,7 @@ fn validate_lyrics_provider_url(provider_id: &str, value: &str) -> Result<reqwes
         && url.fragment().is_none()
         && (url.path() == "/api/search" || url.path().starts_with("/api/get/"))
     }
+    "amll-ttml-db" => validate_amll_ttml_url(&url),
     "netease" => validate_netease_lyrics_url(&url),
     _ => false,
   };
@@ -263,6 +276,34 @@ fn validate_lyrics_provider_url(provider_id: &str, value: &str) -> Result<reqwes
     return Err("在线歌词来源或请求地址未获允许".to_string());
   }
   Ok(url)
+}
+
+fn validate_amll_ttml_url(url: &reqwest::Url) -> bool {
+  if url.scheme() != "https"
+    || url.host_str() != Some("raw.githubusercontent.com")
+    || url.port().is_some()
+    || !url.username().is_empty()
+    || url.password().is_some()
+    || url.query().is_some()
+    || url.fragment().is_some()
+  {
+    return false;
+  }
+
+  if url.path() == "/amll-dev/amll-ttml-db/refs/heads/main/metadata/raw-lyrics-index.jsonl" {
+    return true;
+  }
+  let Some(file_name) = url
+    .path()
+    .strip_prefix("/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics/")
+  else {
+    return false;
+  };
+  !file_name.is_empty()
+    && file_name.ends_with(".ttml")
+    && file_name
+      .chars()
+      .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'))
 }
 
 fn validate_netease_lyrics_url(url: &reqwest::Url) -> bool {
@@ -1080,7 +1121,48 @@ mod lyrics_tests {
       "https://example.com/api/song/lyric?id=32194502&lv=-1&tv=-1&rv=-1&kv=-1"
     )
     .is_err());
+    assert!(validate_lyrics_provider_url(
+      "amll-ttml-db",
+      "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/metadata/raw-lyrics-index.jsonl"
+    )
+    .is_ok());
+    assert!(validate_lyrics_provider_url(
+      "amll-ttml-db",
+      "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics/1689089845000-39523898-31c2fa0c.ttml"
+    )
+    .is_ok());
+    assert!(validate_lyrics_provider_url(
+      "amll-ttml-db",
+      "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics/unsafe.json"
+    )
+    .is_err());
+    assert!(validate_lyrics_provider_url(
+      "amll-ttml-db",
+      "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics/%2e%2e%2funsafe.ttml"
+    )
+    .is_err());
+    assert!(validate_lyrics_provider_url(
+      "amll-ttml-db",
+      "https://example.com/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics/test.ttml"
+    )
+    .is_err());
     assert!(validate_lyrics_provider_url("unknown", "https://lrclib.net/api/search").is_err());
+  }
+
+  #[test]
+  fn provider_response_limit_only_expands_for_the_amll_index() {
+    let index = validate_lyrics_provider_url(
+      "amll-ttml-db",
+      "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/metadata/raw-lyrics-index.jsonl"
+    )
+    .expect("valid AMLL index");
+    let lyric = validate_lyrics_provider_url(
+      "amll-ttml-db",
+      "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics/test.ttml"
+    )
+    .expect("valid AMLL lyric");
+    assert_eq!(lyrics_provider_response_limit("amll-ttml-db", &index), AMLL_INDEX_RESPONSE_LIMIT);
+    assert_eq!(lyrics_provider_response_limit("amll-ttml-db", &lyric), LYRICS_PROVIDER_RESPONSE_LIMIT);
   }
 
   #[test]

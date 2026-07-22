@@ -62,6 +62,25 @@ test("TTML paragraph and span timing normalize to words", () => {
   ]);
 });
 
+test("AMLL TTML keeps auxiliary text out of timed words", () => {
+  const document = parseTtml(
+    "track-amll",
+    "provider:amll:test",
+    `<tt xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body><div>
+      <p begin="1s" end="4s">
+        <span begin="1s" end="2s">Hello </span><span begin="2s" end="4s">world</span>
+        <span ttm:role="x-translation">你好世界</span>
+        <span ttm:role="x-roman">Hāi luó</span>
+      </p>
+    </div></body></tt>`,
+  );
+
+  assert.equal(document?.lines[0].text, "Hello world");
+  assert.equal(document?.lines[0].translation, "你好世界");
+  assert.equal(document?.lines[0].transliteration, "Hāi luó");
+  assert.deepEqual(document?.lines[0].words?.map((word) => word.text), ["Hello ", "world"]);
+});
+
 test("plain lyrics stay explicitly unsynchronized", () => {
   const source = {
     source_id: "manual:test.txt",

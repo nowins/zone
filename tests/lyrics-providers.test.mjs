@@ -6,6 +6,7 @@ import {
   pickBestLyricsCandidate,
   scoreLyricsCandidate,
 } from "../.tmp/visualizer-tests/utils/lyricsProviders.js";
+import { parseAmllTtmlIndex } from "../.tmp/visualizer-tests/utils/amllTtml.js";
 
 const query = {
   title: "The Chain",
@@ -73,4 +74,28 @@ test("translated LRC keeps the original line before its translation", () => {
   );
   assert.equal(combineTranslatedLrc("[00:01.00]Hello", "  "), "[00:01.00]Hello");
   assert.equal(combineTranslatedLrc("", "[00:01.00]你好"), "");
+});
+
+test("AMLL JSONL index parsing keeps safe searchable metadata", () => {
+  const entries = parseAmllTtmlIndex([
+    JSON.stringify({
+      metadata: [
+        ["album", ["Idol"]],
+        ["artists", ["YOASOBI", "Guest"]],
+        ["musicName", ["Idol"]],
+        ["ncmMusicId", ["2048982668"]],
+      ],
+      rawLyricFile: "1689089845000-39523898-31c2fa0c.ttml",
+    }),
+    "not json",
+    JSON.stringify({ metadata: [["musicName", ["Unsafe"]]], rawLyricFile: "../unsafe.ttml" }),
+  ].join("\n"));
+
+  assert.deepEqual(entries, [{
+    rawLyricFile: "1689089845000-39523898-31c2fa0c.ttml",
+    title: "Idol",
+    artist: "YOASOBI / Guest",
+    album: "Idol",
+    neteaseId: "2048982668",
+  }]);
 });
