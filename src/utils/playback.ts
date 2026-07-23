@@ -6,6 +6,10 @@ export type QueueMoveResult =
   | { kind: "boundary" }
   | { kind: "empty" };
 
+export function playbackSourceKey(track: { id: string; path: string } | null) {
+  return track ? `${track.id}\0${track.path}` : null;
+}
+
 export function createShuffleOrder(
   queue: string[],
   activeTrackId: string | null,

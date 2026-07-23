@@ -3,11 +3,23 @@ import test from "node:test";
 import {
   createShuffleOrder,
   haveSameQueueItems,
+  playbackSourceKey,
   queueAfterCurrent,
   reconcileActiveTrack,
   reconcileQueueWithLibrary,
   resolveQueueMove,
 } from "../.tmp/visualizer-tests/utils/playback.js";
+
+test("library metadata refresh keeps the active audio source stable", () => {
+  const original = { id: "track-a", path: "D:\\Music\\song.mp3", title: "旧标题" };
+  const refreshed = { ...original, title: "新标题" };
+
+  assert.equal(playbackSourceKey(original), playbackSourceKey(refreshed));
+  assert.notEqual(
+    playbackSourceKey(original),
+    playbackSourceKey({ ...refreshed, path: "D:\\Music\\song-renamed.mp3" }),
+  );
+});
 
 test("shuffle keeps the current track first and includes every queue item", () => {
   const order = createShuffleOrder(["a", "b", "c", "d"], "c", () => 0);

@@ -20,3 +20,9 @@ test("automatic scans serialize bursts and ignore results for stale folder sets"
   assert.ok(appSource.includes("requestedFolders === currentFolders"));
   assert.ok(appSource.includes('setScanNote(automatic ? "检测到文件变化，正在同步" : "正在扫描")'));
 });
+
+test("automatic scans do not reload an unchanged active audio file", () => {
+  assert.ok(appSource.includes("const activePlaybackSourceKey = playbackSourceKey(activeTrack)"));
+  assert.ok(appSource.includes("}, [activePlaybackSourceKey]);"));
+  assert.ok(!appSource.includes("}, [activeTrack]);"));
+});

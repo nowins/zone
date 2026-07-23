@@ -17,7 +17,7 @@ import { albumKey, bestAlbumArtist, compareTracksForAlbum, defaultPlaylists, nor
 import { homePinForPayload, homePinStateForPayload, moveHomePin, normalizeHomePins, reconcileHomePins, shiftHomePin } from "./utils/homePins";
 import { analyzePcmBeatGrid, createIdleBeatFrame, RealtimeBeatAnalyzer, type BeatFrame, type BeatGrid } from "./utils/beatAnalysis";
 import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/visualizer";
-import { createShuffleOrder, haveSameQueueItems, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
+import { createShuffleOrder, haveSameQueueItems, playbackSourceKey, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
 import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
 import { useSystemMedia } from "./hooks/useSystemMedia";
 import { useLibraryWatcher } from "./hooks/useLibraryWatcher";
@@ -196,6 +196,7 @@ export default function App() {
     () => tracks.find((track) => track.id === activeTrackId) ?? null,
     [tracks, activeTrackId],
   );
+  const activePlaybackSourceKey = playbackSourceKey(activeTrack);
 
   const baseQueueIds = useMemo(
     () => (queue.length > 0 ? queue : tracks.map((track) => track.id)),
@@ -344,7 +345,7 @@ export default function App() {
         void resumeAudioGraph();
       })
       .catch(() => setIsPlaying(false));
-  }, [activeTrack]);
+  }, [activePlaybackSourceKey]);
 
   async function addFolder() {
     const folder = await invoke<MusicFolder | null>("select_music_folder");
