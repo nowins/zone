@@ -24,7 +24,7 @@ import {
   lyricsQueryKey,
   normalizeLyricsSearchMetadata,
 } from "../utils/lyricsSearch";
-import { pickBestLyricsCandidate } from "../utils/lyricsProviders";
+import { pickBestLyricsCandidate, selectDiverseLyricsCandidates } from "../utils/lyricsProviders";
 import { getLyricsCandidateSource, searchLyricsProviders } from "../lyrics/providers";
 import { useLyricsProviderSettings } from "./useLyricsProviderSettings";
 
@@ -33,7 +33,8 @@ const LYRICS_TIMING_STORAGE_KEY = "zone-lyrics-timing-v1";
 const LYRICS_PARSER_VERSION = 2;
 const MAX_CACHE_ENTRIES = 80;
 const MAX_REMOTE_CACHE_ENTRIES = 24;
-const MAX_REMOTE_CANDIDATES = 8;
+const MAX_AUTOMATIC_CANDIDATES = 8;
+const MAX_REMOTE_CANDIDATES = 24;
 const MAX_TIMING_ENTRIES = 160;
 const MAX_QUERY_OVERRIDE_ENTRIES = 160;
 
@@ -278,7 +279,7 @@ export function useLyrics(track: Track | null, duration: number) {
         setOnlineSearch({ status: "loading", candidates: remoteEntry?.candidates ?? [], errors: [], attempt: 1 });
         const result = await searchLyricsProviders(query, providerConfigs, controller.signal);
         if (stale) return;
-        const candidates = result.candidates.slice(0, MAX_REMOTE_CANDIDATES);
+        const candidates = result.candidates.slice(0, MAX_AUTOMATIC_CANDIDATES);
         const best = pickBestLyricsCandidate(candidates);
         const errors = result.errors.map((item) => `${item.providerName}：${item.message}`);
         setOnlineSearch({
@@ -380,9 +381,9 @@ export function useLyrics(track: Track | null, duration: number) {
       });
     }
     try {
-      const result = await searchLyricsProviders(activeQuery, providerConfigs, controller.signal);
+      const result = await searchLyricsProviders(activeQuery, providerConfigs, controller.signal, "all");
       if (controller.signal.aborted) return;
-      const candidates = result.candidates.slice(0, MAX_REMOTE_CANDIDATES);
+      const candidates = selectDiverseLyricsCandidates(result.candidates, MAX_REMOTE_CANDIDATES);
       const errors = result.errors.map((item) => `${item.providerName}：${item.message}`);
       setOnlineSearch((current) => ({
         status: errors.length > 0 && candidates.length === 0 ? "error" : "ready",

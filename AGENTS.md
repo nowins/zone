@@ -68,7 +68,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `useLyrics.ts`：歌词加载/缓存/在线搜索状态机（本地缓存键 `zone-local-lyrics-v1`）。
   - `useLyricsProviderSettings.ts`：歌词 provider 启用与优先级（键 `zone-lyrics-providers-v1`）。
   - `useSystemMedia.ts`：与 Rust 端 SMTC 集成（`update_system_media*` 命令与媒体按键事件）。
-- `src/lyrics/providers.ts`：在线歌词 provider 定义。目前只有 LRCLIB（`lrclib.net`），请求统一经 Rust 命令 `request_lyrics_provider` 中转。
+- `src/lyrics/providers.ts`：在线歌词 provider 定义与编排。自动查找按优先级回退并在高置信命中后停止；手动在线搜索并行查询全部已启用来源。请求统一经 Rust 命令 `request_lyrics_provider` 中转。
 - `src/utils/`：纯逻辑模块（详见各测试）。
   - `music.ts`：专辑分组、曲目排序、播放列表默认值、`normalizePlaylists`。
   - `playback.ts`：队列移动/随机顺序/边界解析。
@@ -179,7 +179,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 ## 安全约束
 
 - 在线歌词请求一律经 Rust 命令 `request_lyrics_provider` 中转，前端不直接 fetch：
-  - URL 白名单校验（`validate_lyrics_provider_url`）：仅允许 `https://lrclib.net` 的 `/api/search` 与 `/api/get/*`，无端口、禁重定向；新增 provider 必须同时在此注册允许规则。
+  - URL 白名单校验（`validate_lyrics_provider_url`）：只允许已注册的 LRCLIB、AMLL TTML DB、网易云音乐和 QQ 音乐 HTTPS 主机与固定 API 路径，无端口、禁重定向；QQ 回退搜索的查询参数也逐项校验。新增 provider 必须同时注册允许规则。
   - 超时钳制在 1.5s–20s；响应体大小有上限（`LYRICS_PROVIDER_RESPONSE_LIMIT`）；仅对 502/503/504 重试一次。
 - `zone-audio` 协议：对协议路径做百分号解码与路径校验，范围请求做上限钳制，避免任意文件读取与超大响应。
 - `tauri.conf.json` 中 `csp: null` 且 `assetProtocol.scope: ["**"]`，改动配置时注意不要进一步扩大攻击面。

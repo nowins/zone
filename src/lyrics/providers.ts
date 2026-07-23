@@ -13,6 +13,10 @@ import {
   pickBestLyricsCandidate,
   scoreLyricsCandidate,
 } from "../utils/lyricsProviders";
+import {
+  runLyricsProviderSearchTasks,
+  type LyricsProviderSearchStrategy,
+} from "../utils/lyricsProviderSearch";
 import { parseAmllTtmlIndex, type AmllTtmlIndexEntry } from "../utils/amllTtml";
 import {
   extractQrcLyricContent,
@@ -68,11 +72,15 @@ type LrcLibResult = {
 
 type QqSong = {
   id?: number | string;
+  songid?: number | string;
   mid?: string;
+  songmid?: string;
   name?: string;
   title?: string;
+  songname?: string;
   interval?: number;
   album?: { name?: string; title?: string };
+  albumname?: string;
   singer?: Array<{ name?: string }>;
   grp?: QqSong[];
 };
@@ -91,6 +99,16 @@ type QqSearchResponse = {
   };
 };
 
+type QqLegacySearchResponse = {
+  code?: number;
+  subcode?: number;
+  data?: {
+    song?: {
+      list?: QqSong[];
+    };
+  };
+};
+
 export type LyricsProviderSearchResult = {
   candidates: LyricsCandidate[];
   errors: Array<{ providerId: string; providerName: string; message: string }>;
@@ -101,6 +119,7 @@ const AMLL_INDEX_URL = "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/
 const AMLL_RAW_URL = "https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics";
 const AMLL_MANUAL_MATCH_THRESHOLD = 55;
 const QQ_SEARCH_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg";
+const QQ_LEGACY_SEARCH_URL = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp";
 const QQ_LYRIC_URL = "https://c.y.qq.com/qqmusic/fcgi-bin/lyric_download.fcg";
 let amllIndexCache: AmllTtmlIndexEntry[] | null = null;
 let amllIndexRequest: Promise<AmllTtmlIndexEntry[]> | null = null;
@@ -217,17 +236,39 @@ const qqMusicProvider: LyricsProviderDefinition = {
       signal,
       searchBody,
     );
-    const songs = response.req_1?.data?.body?.song?.list;
-    if (response.code !== 0 || response.req_1?.code !== 0 || !Array.isArray(songs)) {
-      throw new Error("QQ 音乐返回了无法识别的搜索结果");
+    let songs = response.req_1?.data?.body?.song?.list;
+    if (response.code !== 0 || response.req_1?.code !== 0 || !Array.isArray(songs) || songs.length === 0) {
+      if (import.meta.env.DEV) {
+        console.warn("[lyrics] QQ primary search unavailable; using fallback", {
+          rootCode: response.code,
+          requestCode: response.req_1?.code,
+          results: Array.isArray(songs) ? songs.length : null,
+        });
+      }
+      const fallbackParams = new URLSearchParams({
+        p: "1",
+        n: "20",
+        w: keyword,
+        format: "json",
+      });
+      const fallback = await requestProviderJson<QqLegacySearchResponse>(
+        "qq",
+        `${QQ_LEGACY_SEARCH_URL}?${fallbackParams.toString()}`,
+        timeoutMs,
+        signal,
+      );
+      songs = fallback.data?.song?.list;
+      if (fallback.code !== 0 || fallback.subcode !== 0 || !Array.isArray(songs)) {
+        throw new Error("QQ 音乐返回了无法识别的搜索结果");
+      }
     }
 
     const seen = new Set<string>();
     const matches = songs
       .flatMap((song) => [song, ...(song.grp ?? [])])
       .map((song): LyricsCandidate | null => {
-        const id = qqSongId(song.id);
-        const title = song.title?.trim() || song.name?.trim();
+        const id = qqSongId(song.id ?? song.songid);
+        const title = song.title?.trim() || song.name?.trim() || song.songname?.trim();
         if (!id || !title || seen.has(id)) return null;
         seen.add(id);
         const candidateBase = {
@@ -236,12 +277,14 @@ const qqMusicProvider: LyricsProviderDefinition = {
           providerName: "QQ 音乐",
           title,
           artist: song.singer?.map((artist) => artist.name?.trim()).filter(Boolean).join(" / ") || "未知艺术家",
-          album: song.album?.title?.trim() || song.album?.name?.trim() || undefined,
+          album: song.album?.title?.trim() || song.album?.name?.trim() || song.albumname?.trim() || undefined,
           duration: validNumber(song.interval) ? song.interval : undefined,
           instrumental: false,
           formatHint: "ttml" as const,
           content: "",
-          reference: song.mid?.trim() ? `https://y.qq.com/n/ryqq/songDetail/${song.mid.trim()}` : undefined,
+          reference: (song.mid?.trim() || song.songmid?.trim())
+            ? `https://y.qq.com/n/ryqq/songDetail/${song.mid?.trim() || song.songmid?.trim()}`
+            : undefined,
         };
         return {
           ...candidateBase,
@@ -481,6 +524,7 @@ export async function searchLyricsProviders(
   query: LyricsQuery,
   configs: LyricsProviderConfig[],
   signal: AbortSignal,
+  strategy: LyricsProviderSearchStrategy = "priority-fallback",
 ): Promise<LyricsProviderSearchResult> {
   const configById = new Map(configs.map((config) => [config.id, config]));
   const enabled = LYRICS_PROVIDERS
@@ -489,23 +533,16 @@ export async function searchLyricsProviders(
       Boolean(entry.config?.enabled)
     ))
     .sort((left, right) => left.config.priority - right.config.priority);
-  const candidates: LyricsCandidate[] = [];
-  const errors: LyricsProviderSearchResult["errors"] = [];
-  for (const { provider, config } of enabled) {
-    if (signal.aborted) throw abortError();
-    try {
-      const providerCandidates = await provider.search(query, signal, config.timeoutMs);
-      candidates.push(...providerCandidates);
-      if (pickBestLyricsCandidate(providerCandidates)) break;
-    } catch (error) {
-      if (signal.aborted) throw error;
-      errors.push({
-        providerId: provider.id,
-        providerName: provider.name,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  const { candidates, errors } = await runLyricsProviderSearchTasks(
+    enabled.map(({ provider, config }) => ({
+      providerId: provider.id,
+      providerName: provider.name,
+      run: () => provider.search(query, signal, config.timeoutMs),
+    })),
+    strategy,
+    signal,
+    (providerCandidates) => Boolean(pickBestLyricsCandidate(providerCandidates)),
+  );
 
   return {
     candidates: candidates.sort((left, right) => {

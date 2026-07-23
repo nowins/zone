@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   combineTranslatedLrc,
   normalizeMetadata,
   pickBestLyricsCandidate,
   scoreLyricsCandidate,
+  selectDiverseLyricsCandidates,
 } from "../.tmp/visualizer-tests/utils/lyricsProviders.js";
 import { parseAmllTtmlIndex } from "../.tmp/visualizer-tests/utils/amllTtml.js";
 
@@ -67,6 +69,20 @@ test("automatic selection ignores instrumental and empty candidates", () => {
   assert.equal(pickBestLyricsCandidate([instrumental, empty, valid])?.id, valid.id);
 });
 
+test("manual result trimming preserves the best candidate from every provider", () => {
+  const candidates = [
+    candidate({ id: "lrclib:1" }),
+    candidate({ id: "lrclib:2" }),
+    candidate({ id: "lrclib:3" }),
+    candidate({ id: "qq:1", providerId: "qq", providerName: "QQ 音乐" }),
+    candidate({ id: "netease:1", providerId: "netease", providerName: "网易云音乐" }),
+  ];
+  const selected = selectDiverseLyricsCandidates(candidates, 4);
+
+  assert.equal(selected.length, 4);
+  assert.deepEqual(new Set(selected.map((item) => item.providerId)), new Set(["lrclib", "qq", "netease"]));
+});
+
 test("translated LRC keeps the original line before its translation", () => {
   assert.equal(
     combineTranslatedLrc(" [00:01.00]Hello ", " [00:01.00]你好 "),
@@ -98,4 +114,11 @@ test("AMLL JSONL index parsing keeps safe searchable metadata", () => {
     album: "Idol",
     neteaseId: "2048982668",
   }]);
+});
+
+test("QQ provider keeps a legacy search fallback for internal API failures", () => {
+  const providersSource = readFileSync("src/lyrics/providers.ts", "utf8");
+  assert.ok(providersSource.includes("QQ_LEGACY_SEARCH_URL"));
+  assert.ok(providersSource.includes("response.req_1?.code !== 0"));
+  assert.ok(providersSource.includes("fallback.data?.song?.list"));
 });

@@ -23,6 +23,7 @@
     "src/utils/lyricsExport.ts",
     "src/utils/lyricsMotion.ts",
     "src/utils/lyricsProviders.ts",
+    "src/utils/lyricsProviderSearch.ts",
     "src/utils/amllTtml.ts",
     "src/utils/qrc.ts",
     "src/utils/homePins.ts",

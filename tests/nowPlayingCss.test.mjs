@@ -199,6 +199,13 @@ test("lyrics provider retry keeps an explicit loading state and hit area", () =>
   assert.match(lyricsCss, /\.lyrics-source-browser\s*\{[\s\S]*?pointer-events:\s*auto/);
 });
 
+test("manual lyrics search queries every enabled provider and labels the aggregate", () => {
+  assert.ok(lyricsHookSource.includes('searchLyricsProviders(activeQuery, providerConfigs, controller.signal, "all")'));
+  assert.ok(lyricsHookSource.includes("selectDiverseLyricsCandidates(result.candidates, MAX_REMOTE_CANDIDATES)"));
+  assert.ok(lyricsSource.includes("来自 ${providerCount} 个来源"));
+  assert.ok(lyricsSource.includes("candidate.providerName"));
+});
+
 test("lyrics search metadata can be corrected without rewriting local tags", () => {
   assert.ok(lyricsSource.includes("保存并搜索"));
   assert.ok(lyricsSource.includes("恢复标签"));

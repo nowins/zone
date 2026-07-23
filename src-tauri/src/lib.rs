@@ -230,7 +230,7 @@ async fn request_lyrics_provider(
   let mut attempt = 0;
   let response = loop {
     let send_started_at = Instant::now();
-    let request = if provider_id == "qq" {
+    let request = if provider_id == "qq" && body.is_some() {
       let content_type = if url.path() == "/cgi-bin/musicu.fcg" {
         "application/json"
       } else {
@@ -242,6 +242,11 @@ async fn request_lyrics_provider(
         .header("Referer", "https://c.y.qq.com/")
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Zone/0.1")
         .body(body.clone().unwrap_or_default())
+    } else if provider_id == "qq" {
+      client
+        .get(url.clone())
+        .header("Referer", "https://c.y.qq.com/")
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Zone/0.1")
     } else {
       client.get(url.clone())
     };
@@ -391,17 +396,18 @@ fn validate_lyrics_provider_url(provider_id: &str, value: &str) -> Result<reqwes
 }
 
 fn validate_qq_lyrics_url(url: &reqwest::Url) -> bool {
-  url.scheme() == "https"
+  let common_shape = url.scheme() == "https"
     && url.port().is_none()
     && url.username().is_empty()
     && url.password().is_none()
-    && url.query().is_none()
-    && url.fragment().is_none()
-    && matches!(
-      (url.host_str(), url.path()),
+    && url.fragment().is_none();
+  common_shape
+    && match (url.host_str(), url.path()) {
       (Some("u.y.qq.com"), "/cgi-bin/musicu.fcg")
-        | (Some("c.y.qq.com"), "/qqmusic/fcgi-bin/lyric_download.fcg")
-    )
+        | (Some("c.y.qq.com"), "/qqmusic/fcgi-bin/lyric_download.fcg") => url.query().is_none(),
+      (Some("c.y.qq.com"), "/soso/fcgi-bin/client_search_cp") => validate_qq_legacy_search_query(url),
+      _ => false,
+    }
 }
 
 fn validate_lyrics_provider_request_body(
@@ -414,6 +420,13 @@ fn validate_lyrics_provider_request_body(
       Ok(None)
     } else {
       Err("该在线歌词来源不接受请求内容".to_string())
+    };
+  }
+  if url.path() == "/soso/fcgi-bin/client_search_cp" {
+    return if body.is_none() {
+      Ok(None)
+    } else {
+      Err("QQ 音乐回退搜索不接受请求内容".to_string())
     };
   }
   let body = body.ok_or_else(|| "QQ 音乐请求缺少必要内容".to_string())?;
@@ -429,6 +442,19 @@ fn validate_lyrics_provider_request_body(
     return Err("QQ 音乐请求内容无效".to_string());
   }
   Ok(Some(body))
+}
+
+fn validate_qq_legacy_search_query(url: &reqwest::Url) -> bool {
+  let pairs = url
+    .query_pairs()
+    .map(|(key, value)| (key.into_owned(), value.into_owned()))
+    .collect::<Vec<_>>();
+  pairs.len() == 4
+    && unique_query_value(&pairs, "p") == Some("1")
+    && unique_query_value(&pairs, "n") == Some("20")
+    && unique_query_value(&pairs, "format") == Some("json")
+    && unique_query_value(&pairs, "w")
+      .is_some_and(|query| !query.trim().is_empty() && query.chars().count() <= 300)
 }
 
 fn validate_qq_search_body(body: &str) -> bool {
@@ -1485,6 +1511,16 @@ mod lyrics_tests {
     .is_ok());
     assert!(validate_lyrics_provider_url(
       "qq",
+      "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=20&w=21+Guns+Green+Day&format=json"
+    )
+    .is_ok());
+    assert!(validate_lyrics_provider_url(
+      "qq",
+      "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=20&w=21+Guns&format=json&redirect=true"
+    )
+    .is_err());
+    assert!(validate_lyrics_provider_url(
+      "qq",
       "https://u.y.qq.com/cgi-bin/musicu.fcg?redirect=true"
     )
     .is_err());
@@ -1497,7 +1533,7 @@ mod lyrics_tests {
   }
 
   #[test]
-  fn qq_provider_only_accepts_expected_post_bodies() {
+  fn qq_provider_only_accepts_expected_request_shapes() {
     let search_url = validate_lyrics_provider_url(
       "qq",
       "https://u.y.qq.com/cgi-bin/musicu.fcg"
@@ -1508,6 +1544,11 @@ mod lyrics_tests {
       "https://c.y.qq.com/qqmusic/fcgi-bin/lyric_download.fcg"
     )
     .expect("valid QQ lyric URL");
+    let fallback_url = validate_lyrics_provider_url(
+      "qq",
+      "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=20&w=21+Guns+Green+Day&format=json"
+    )
+    .expect("valid QQ fallback search URL");
     let search_body = r#"{"req_1":{"method":"DoSearchForQQMusicDesktop","module":"music.search.SearchCgiService","param":{"num_per_page":"20","page_num":"1","query":"21 Guns Green Day","search_type":0}}}"#;
     assert!(validate_lyrics_provider_request_body(
       "qq",
@@ -1534,6 +1575,13 @@ mod lyrics_tests {
     )
     .is_err());
     assert!(validate_lyrics_provider_request_body("qq", &lyric_url, None).is_err());
+    assert!(validate_lyrics_provider_request_body("qq", &fallback_url, None).is_ok());
+    assert!(validate_lyrics_provider_request_body(
+      "qq",
+      &fallback_url,
+      Some(search_body.to_string())
+    )
+    .is_err());
   }
 
   #[test]

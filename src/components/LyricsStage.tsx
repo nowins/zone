@@ -381,13 +381,14 @@ export function LyricsStage({
 
   function sourceBrowser() {
     if (!sourceBrowserOpen) return null;
+    const providerCount = new Set(onlineSearch.candidates.map((candidate) => candidate.providerId)).size;
     const message = onlineSearch.status === "loading"
       ? `正在联系已启用的来源${onlineSearch.attempt > 1 ? `（第 ${onlineSearch.attempt} 次）` : ""}…`
       : onlineSearch.status === "error"
         ? onlineSearch.errors[0] ?? "在线歌词暂时不可用"
         : onlineSearch.candidates.length === 0
           ? "没有找到足够接近的结果"
-          : `${onlineSearch.candidates.length} 个候选，按匹配度排列`;
+          : `${onlineSearch.candidates.length} 个候选，来自 ${providerCount} 个来源，按匹配度排列`;
     return (
       <section
         className={`lyrics-source-browser ${onlineSearch.status === "loading" ? "is-searching" : ""}`}

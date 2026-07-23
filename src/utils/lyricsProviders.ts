@@ -46,6 +46,35 @@ export function pickBestLyricsCandidate(
     .sort(compareLyricsCandidates)[0] ?? null;
 }
 
+export function selectDiverseLyricsCandidates(candidates: LyricsCandidate[], limit: number) {
+  if (limit <= 0 || candidates.length === 0) return [];
+
+  const selectedKeys = new Set<string>();
+  const representedProviders = new Set<string>();
+  for (const candidate of candidates) {
+    if (representedProviders.has(candidate.providerId)) continue;
+    representedProviders.add(candidate.providerId);
+    selectedKeys.add(candidateKey(candidate));
+    if (selectedKeys.size >= limit) break;
+  }
+  for (const candidate of candidates) {
+    if (selectedKeys.size >= limit) break;
+    selectedKeys.add(candidateKey(candidate));
+  }
+
+  const emittedKeys = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = candidateKey(candidate);
+    if (!selectedKeys.has(key) || emittedKeys.has(key)) return false;
+    emittedKeys.add(key);
+    return true;
+  });
+}
+
+function candidateKey(candidate: LyricsCandidate) {
+  return `${candidate.providerId}:${candidate.id}`;
+}
+
 export function combineTranslatedLrc(primary: string, translation?: string | null) {
   const normalizedPrimary = primary.trim();
   const normalizedTranslation = translation?.trim() ?? "";
