@@ -75,7 +75,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `smartPlaylist.ts`：智能播放列表规则求值与归一化。
   - `homePins.ts`：quickplay 固定项的归一化、移动、对账。
   - `visualizer.ts` / `beatAnalysis.ts` / `audioGlow.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格、Zune 光焰与封面拼贴的纯计算部分。
-  - `lyrics.ts` / `lyricsProviders.ts` / `lyricsExport.ts` / `lyricsMotion.ts`：歌词解析（plain/line/word）、候选打分排序、TTML/LRC 导出与真实逐词时间驱动的长音包络。
+  - `lyrics.ts` / `lyricsProviders.ts` / `lyricsProviderSearch.ts` / `lyricsExport.ts` / `lyricsMotion.ts`：歌词解析（plain/line/word）、候选打分排序、多来源搜索编排、TTML/LRC 导出与真实逐词时间驱动的长音包络。
   - `demoLyrics.ts`：仅动效原型用的演示歌词。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`collection`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`motion`、`animations-responsive`。
 - `src-tauri/src/lib.rs`（约 1000 行）：Tauri 命令与自定义协议。

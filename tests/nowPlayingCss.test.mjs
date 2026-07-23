@@ -204,6 +204,9 @@ test("manual lyrics search queries every enabled provider and labels the aggrega
   assert.ok(lyricsHookSource.includes("selectDiverseLyricsCandidates(result.candidates, MAX_REMOTE_CANDIDATES)"));
   assert.ok(lyricsSource.includes("来自 ${providerCount} 个来源"));
   assert.ok(lyricsSource.includes("candidate.providerName"));
+  assert.ok(lyricsSource.includes("lyrics-provider-outcomes"));
+  assert.ok(lyricsSource.includes("providerOutcomeLabel(provider.status)"));
+  assert.ok(lyricsCss.includes(".lyrics-provider-outcomes"));
 });
 
 test("lyrics search metadata can be corrected without rewriting local tags", () => {

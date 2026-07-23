@@ -15,6 +15,7 @@ import {
 } from "../utils/lyricsProviders";
 import {
   runLyricsProviderSearchTasks,
+  type LyricsProviderTaskOutcome,
   type LyricsProviderSearchStrategy,
 } from "../utils/lyricsProviderSearch";
 import { parseAmllTtmlIndex, type AmllTtmlIndexEntry } from "../utils/amllTtml";
@@ -112,6 +113,7 @@ type QqLegacySearchResponse = {
 export type LyricsProviderSearchResult = {
   candidates: LyricsCandidate[];
   errors: Array<{ providerId: string; providerName: string; message: string }>;
+  outcomes: LyricsProviderTaskOutcome[];
 };
 
 const lastRequestAt = new Map<string, number>();
@@ -533,7 +535,7 @@ export async function searchLyricsProviders(
       Boolean(entry.config?.enabled)
     ))
     .sort((left, right) => left.config.priority - right.config.priority);
-  const { candidates, errors } = await runLyricsProviderSearchTasks(
+  const { candidates, errors, outcomes } = await runLyricsProviderSearchTasks(
     enabled.map(({ provider, config }) => ({
       providerId: provider.id,
       providerName: provider.name,
@@ -552,6 +554,7 @@ export async function searchLyricsProviders(
         - (configById.get(right.providerId)?.priority ?? 999);
     }),
     errors,
+    outcomes,
   };
 }
 

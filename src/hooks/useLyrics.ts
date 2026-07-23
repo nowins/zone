@@ -25,7 +25,11 @@ import {
   normalizeLyricsSearchMetadata,
 } from "../utils/lyricsSearch";
 import { pickBestLyricsCandidate, selectDiverseLyricsCandidates } from "../utils/lyricsProviders";
-import { getLyricsCandidateSource, searchLyricsProviders } from "../lyrics/providers";
+import {
+  getLyricsCandidateSource,
+  searchLyricsProviders,
+  type LyricsProviderSearchResult,
+} from "../lyrics/providers";
 import { useLyricsProviderSettings } from "./useLyricsProviderSettings";
 
 const LYRICS_STORAGE_KEY = "zone-local-lyrics-v1";
@@ -88,6 +92,7 @@ export type LyricsOnlineSearchState = {
   status: "idle" | "loading" | "ready" | "error";
   candidates: LyricsCandidate[];
   errors: string[];
+  providers: LyricsProviderSearchResult["outcomes"];
   attempt: number;
 };
 
@@ -119,6 +124,7 @@ export function useLyrics(track: Track | null, duration: number) {
     status: "idle",
     candidates: [],
     errors: [],
+    providers: [],
     attempt: 0,
   });
   const manualPath = track ? store.bindings[track.id] : undefined;
@@ -149,7 +155,7 @@ export function useLyrics(track: Track | null, duration: number) {
   useEffect(() => {
     if (!track || !query) {
       setState({ status: "idle", document: null, isManual: false, isDemo: false });
-      setOnlineSearch({ status: "idle", candidates: [], errors: [], attempt: 0 });
+      setOnlineSearch({ status: "idle", candidates: [], errors: [], providers: [], attempt: 0 });
       return;
     }
     const activeQueryKey = trackLyricsQueryKey(track.id, query);
@@ -167,8 +173,8 @@ export function useLyrics(track: Track | null, duration: number) {
     if (forceRemote) forceRemoteTrackRef.current = null;
     setState((current) => ({ ...current, status: "loading", document: null, error: undefined }));
     setOnlineSearch(remoteCacheMatchesQuery && remoteEntry?.candidates.length
-      ? { status: "ready", candidates: remoteEntry.candidates, errors: [], attempt: 0 }
-      : { status: "idle", candidates: [], errors: [], attempt: 0 });
+      ? { status: "ready", candidates: remoteEntry.candidates, errors: [], providers: [], attempt: 0 }
+      : { status: "idle", candidates: [], errors: [], providers: [], attempt: 0 });
 
     const presentSource = (source: LyricsSource, manualOverride = false) => {
       if (stale) return false;
@@ -276,7 +282,13 @@ export function useLyrics(track: Track | null, duration: number) {
           return;
         }
 
-        setOnlineSearch({ status: "loading", candidates: remoteEntry?.candidates ?? [], errors: [], attempt: 1 });
+        setOnlineSearch({
+          status: "loading",
+          candidates: remoteEntry?.candidates ?? [],
+          errors: [],
+          providers: [],
+          attempt: 1,
+        });
         const result = await searchLyricsProviders(query, providerConfigs, controller.signal);
         if (stale) return;
         const candidates = result.candidates.slice(0, MAX_AUTOMATIC_CANDIDATES);
@@ -286,6 +298,7 @@ export function useLyrics(track: Track | null, duration: number) {
           status: errors.length > 0 && candidates.length === 0 ? "error" : "ready",
           candidates,
           errors,
+          providers: result.outcomes,
           attempt: 1,
         });
         setStore((current) => persistLyricsStore(cacheRemoteCandidates(
@@ -373,6 +386,7 @@ export function useLyrics(track: Track | null, duration: number) {
       ...current,
       status: "loading",
       errors: [],
+      providers: [],
       attempt: current.attempt + 1,
     }));
     if (import.meta.env.DEV) {
@@ -389,6 +403,7 @@ export function useLyrics(track: Track | null, duration: number) {
         status: errors.length > 0 && candidates.length === 0 ? "error" : "ready",
         candidates,
         errors,
+        providers: result.outcomes,
         attempt: current.attempt,
       }));
       setStore((current) => persistLyricsStore(cacheRemoteCandidates(
@@ -406,6 +421,7 @@ export function useLyrics(track: Track | null, duration: number) {
         status: "error",
         candidates: [],
         errors: [error instanceof Error ? error.message : String(error)],
+        providers: [],
         attempt: current.attempt,
       }));
     }

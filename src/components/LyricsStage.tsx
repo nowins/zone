@@ -464,6 +464,20 @@ export function LyricsStage({
           </div>
         ) : null}
         <p className={onlineSearch.status === "error" ? "is-error" : ""}>{message}</p>
+        {onlineSearch.providers.length > 0 ? (
+          <div className="lyrics-provider-outcomes" aria-label="歌词来源搜索状态">
+            {onlineSearch.providers.map((provider) => (
+              <span
+                key={provider.providerId}
+                className={`is-${provider.status}`}
+                title={provider.message}
+              >
+                <strong>{provider.providerName}</strong>
+                <em>{providerOutcomeLabel(provider.status)}</em>
+              </span>
+            ))}
+          </div>
+        ) : null}
         <div className="lyrics-candidate-list" aria-live="polite">
           {onlineSearch.candidates.map((candidate) => (
             <button type="button" key={candidate.id} onClick={() => chooseOnlineSource(candidate)}>
@@ -803,6 +817,12 @@ export function LyricsStage({
 function formatDuration(value: number) {
   const seconds = Math.max(0, Math.round(value));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function providerOutcomeLabel(status: LyricsOnlineSearchState["providers"][number]["status"]) {
+  if (status === "ready") return "有结果";
+  if (status === "empty") return "未找到";
+  return "失败";
 }
 
 function fileName(path: string) {

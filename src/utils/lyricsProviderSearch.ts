@@ -12,9 +12,18 @@ export type LyricsProviderTaskError = {
   message: string;
 };
 
+export type LyricsProviderTaskOutcome = {
+  providerId: string;
+  providerName: string;
+  status: "ready" | "empty" | "error";
+  candidateCount: number;
+  message?: string;
+};
+
 type LyricsProviderTaskResult<T> = {
   candidates: T[];
   errors: LyricsProviderTaskError[];
+  outcomes: LyricsProviderTaskOutcome[];
 };
 
 export async function runLyricsProviderSearchTasks<T>(
@@ -29,16 +38,18 @@ export async function runLyricsProviderSearchTasks<T>(
       (combined, result) => ({
         candidates: [...combined.candidates, ...result.candidates],
         errors: [...combined.errors, ...result.errors],
+        outcomes: [...combined.outcomes, ...result.outcomes],
       }),
-      { candidates: [], errors: [] },
+      { candidates: [], errors: [], outcomes: [] },
     );
   }
 
-  const combined: LyricsProviderTaskResult<T> = { candidates: [], errors: [] };
+  const combined: LyricsProviderTaskResult<T> = { candidates: [], errors: [], outcomes: [] };
   for (const task of tasks) {
     const result = await runTask(task, signal);
     combined.candidates.push(...result.candidates);
     combined.errors.push(...result.errors);
+    combined.outcomes.push(...result.outcomes);
     if (hasHighConfidenceResult(result.candidates)) break;
   }
   return combined;
@@ -50,15 +61,33 @@ async function runTask<T>(
 ): Promise<LyricsProviderTaskResult<T>> {
   if (signal.aborted) throw abortError();
   try {
-    return { candidates: await task.run(), errors: [] };
+    const candidates = await task.run();
+    return {
+      candidates,
+      errors: [],
+      outcomes: [{
+        providerId: task.providerId,
+        providerName: task.providerName,
+        status: candidates.length > 0 ? "ready" : "empty",
+        candidateCount: candidates.length,
+      }],
+    };
   } catch (error) {
     if (signal.aborted) throw error;
+    const message = error instanceof Error ? error.message : String(error);
     return {
       candidates: [],
       errors: [{
         providerId: task.providerId,
         providerName: task.providerName,
-        message: error instanceof Error ? error.message : String(error),
+        message,
+      }],
+      outcomes: [{
+        providerId: task.providerId,
+        providerName: task.providerName,
+        status: "error",
+        candidateCount: 0,
+        message,
       }],
     };
   }
