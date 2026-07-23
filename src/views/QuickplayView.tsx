@@ -198,7 +198,11 @@ export function QuickplayView({
       const payload: ContextPayload = {
         kind: "playlist",
         title: playlist.name,
-        subtitle: playlist.id === DEFAULT_PLAYLIST_ID ? "收藏的歌曲" : playlist.description,
+        subtitle: playlist.id === DEFAULT_PLAYLIST_ID
+          ? "收藏的歌曲"
+          : smart
+            ? playlist.description
+            : `${result.tracks.length} 首歌曲`,
         tracks: result.tracks,
         playlistId: playlist.id,
         playlistKind: smart ? "smart" : "manual",

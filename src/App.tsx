@@ -662,7 +662,7 @@ export default function App() {
     const playlist: Playlist = {
       id: `playlist-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       name: cleanName,
-      description: `${trackIds.length} 首歌曲`,
+      description: "自定义播放列表",
       kind: "manual",
       trackIds,
     };

@@ -14,6 +14,9 @@ test("playlist page presents one total and localized labels", () => {
   assert.ok(browserSource.includes("新建播放列表"));
   assert.ok(browserSource.includes("当前队列"));
   assert.ok(browserSource.includes("首歌曲"));
+  assert.ok(browserSource.includes("description: isCustomManual ? `${result.tracks.length} 首歌曲` : playlistDescription"));
+  assert.ok(browserSource.includes("detailDescription: isCustomManual ? null : playlistDescription"));
+  assert.ok(browserSource.includes("{selected.detailDescription && <span>{selected.detailDescription}</span>}"));
   assert.ok(!collectionCss.includes(".playlist-list p"));
 });
 

@@ -41,17 +41,21 @@ export function PlaylistBrowser({
   const entries = useMemo(() => {
     const nowPlayingTracks = queueIds.map((id) => trackMap.get(id)).filter(Boolean) as Track[];
     return [
-      { id: "now", name: "正在播放", description: "当前队列", tracks: nowPlayingTracks, kind: "manual" as const, source: null, matchedCount: nowPlayingTracks.length },
+      { id: "now", name: "正在播放", description: "当前队列", detailDescription: "当前队列", tracks: nowPlayingTracks, kind: "manual" as const, source: null, matchedCount: nowPlayingTracks.length },
       ...playlists.map((playlist) => {
         const result = resolvePlaylistTracks(playlist, tracks, { favoriteTrackIds, activity });
+        const smart = isSmartPlaylist(playlist);
+        const isCustomManual = !smart && playlist.id !== DEFAULT_PLAYLIST_ID;
+        const playlistDescription = playlist.id === DEFAULT_PLAYLIST_ID
+          ? "收藏的歌曲"
+          : playlist.description || (smart ? "自动更新的智能播放列表" : "自定义播放列表");
         return {
           id: playlist.id,
           name: playlist.name,
-          description: playlist.id === DEFAULT_PLAYLIST_ID
-            ? "收藏的歌曲"
-            : playlist.description || (isSmartPlaylist(playlist) ? "自动更新的智能播放列表" : "自定义播放列表"),
+          description: isCustomManual ? `${result.tracks.length} 首歌曲` : playlistDescription,
+          detailDescription: isCustomManual ? null : playlistDescription,
           tracks: result.tracks,
-          kind: isSmartPlaylist(playlist) ? "smart" as const : "manual" as const,
+          kind: smart ? "smart" as const : "manual" as const,
           source: playlist,
           matchedCount: result.matchedCount,
         };
@@ -139,7 +143,7 @@ export function PlaylistBrowser({
           {selected.kind === "smart" ? <Sparkles size={42} /> : initials(selected.name)}
         </div>
         <strong>{selected.name}</strong>
-        <span>{selected.description}</span>
+        {selected.detailDescription && <span>{selected.detailDescription}</span>}
         <p>{selected.tracks.length} 首歌曲</p>
         {selected.kind === "smart" && <small>从 {selected.matchedCount} 首匹配歌曲中智能编排</small>}
         {selected.tracks.length > 0 && (
