@@ -120,7 +120,7 @@
 .quick-pin {
   position: relative;
   min-width: 0;
-  transition: opacity 150ms ease, transform 180ms cubic-bezier(0.18, 0.88, 0.24, 1);
+  transition: opacity 150ms ease, transform var(--motion-content) var(--motion-ease-back);
 }
 
 .quick-pin.wide {
@@ -130,6 +130,22 @@
 .quick-pin.dragging {
   opacity: 0.38;
   transform: scale(0.98);
+}
+
+.quick-pin.tilt-pressed {
+  transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
+  transition: opacity 150ms ease, transform var(--motion-press) var(--motion-ease-direct);
+}
+
+.quick-album > button,
+.history-stack > button {
+  transition: transform var(--motion-content) var(--motion-ease-back);
+}
+
+.quick-album > button.tilt-pressed,
+.history-stack > button.tilt-pressed {
+  transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
+  transition: transform var(--motion-press) var(--motion-ease-direct);
 }
 
 .quick-pin-main {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { MouseEvent } from "react";
 import { Heart, Play } from "lucide-react";
 import { Cover } from "../components/Cover";
+import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import { ArtistBrowser } from "./ArtistBrowser";
 import { PlaylistBrowser } from "./PlaylistBrowser";
 import type { AlbumGroup, ArtistGroup, ContextPayload, Playlist, Track, TrackActivityMap, ViewMode } from "../types";
@@ -70,6 +71,10 @@ export function LibraryView({
               key={album.key}
               className={`album-tile ${album.key === selectedAlbum?.key ? "selected" : ""}`}
               onClick={() => onSelectAlbum(album.key)}
+              onPointerDown={tiltPressDown}
+              onPointerUp={tiltPressClear}
+              onPointerLeave={tiltPressClear}
+              onPointerCancel={tiltPressClear}
               onContextMenu={(event) =>
                 onContextMenu(event, {
                   kind: "album",

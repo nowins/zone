@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent, KeyboardEvent, MouseEvent } from "react";
+import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { GripVertical, Pin, PinOff, Play, Sparkles } from "lucide-react";
 import { Cover } from "../components/Cover";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
+import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type {
   AlbumGroup,
   ArtistGroup,
@@ -307,6 +308,16 @@ export function QuickplayView({
     }
   }
 
+  // Metro-style tile tilt: press tilts the pin around the pressed point.
+  function handlePinTiltDown(event: PointerEvent<HTMLButtonElement>) {
+    if (editingPins) return;
+    tiltPressDown(event, ".quick-pin");
+  }
+
+  function clearPinTilt(event: PointerEvent<HTMLButtonElement>) {
+    tiltPressClear(event, ".quick-pin");
+  }
+
   function handleDrop(event: DragEvent<HTMLElement>, targetId: string) {
     if (!editingPins) return;
     event.preventDefault();
@@ -381,6 +392,10 @@ export function QuickplayView({
                       if (!editingPins) onOpenPin(item.pin);
                     }}
                     onKeyDown={(event) => handlePinKey(event, item.pin.id)}
+                    onPointerDown={handlePinTiltDown}
+                    onPointerUp={clearPinTilt}
+                    onPointerLeave={clearPinTilt}
+                    onPointerCancel={clearPinTilt}
                     title={`打开 ${item.title}`}
                   >
                     <PinArtwork item={item} index={index} />
@@ -467,7 +482,14 @@ export function QuickplayView({
                   })
                 }
               >
-                <button onClick={() => onPlayTracks(album.tracks)} title={`播放 ${album.album}`}>
+                <button
+                  onClick={() => onPlayTracks(album.tracks)}
+                  onPointerDown={tiltPressDown}
+                  onPointerUp={tiltPressClear}
+                  onPointerLeave={tiltPressClear}
+                  onPointerCancel={tiltPressClear}
+                  title={`播放 ${album.album}`}
+                >
                   <Cover artPath={album.coverPath} label={album.album} size="large" index={index + 1} />
                 </button>
                 <strong>{album.album}</strong>
@@ -507,6 +529,10 @@ export function QuickplayView({
                 <button
                   key={track.id}
                   onClick={() => onPlay(track, tracks)}
+                  onPointerDown={tiltPressDown}
+                  onPointerUp={tiltPressClear}
+                  onPointerLeave={tiltPressClear}
+                  onPointerCancel={tiltPressClear}
                   onContextMenu={(event) =>
                     onContextMenu(event, {
                       kind: "track",

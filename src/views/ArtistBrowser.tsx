@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import { Play } from "lucide-react";
 import { Cover } from "../components/Cover";
 import { albumKey, bestAlbumArtist, compareTracksForAlbum } from "../utils/music";
+import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type { ArtistGroup, ContextPayload, Track } from "../types";
 
 export function ArtistBrowser({
@@ -107,6 +108,10 @@ export function ArtistBrowser({
               key={album.key}
               className={`artist-album-tile ${album.key === selectedAlbum?.key ? "selected" : ""}`}
               onClick={() => setSelectedAlbumKey(album.key)}
+              onPointerDown={tiltPressDown}
+              onPointerUp={tiltPressClear}
+              onPointerLeave={tiltPressClear}
+              onPointerCancel={tiltPressClear}
               onContextMenu={(event) =>
                 onContextMenu(event, {
                   kind: "album",

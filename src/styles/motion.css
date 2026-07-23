@@ -7,6 +7,7 @@
   --motion-chrome: 420ms;
   --motion-ease-direct: cubic-bezier(0.23, 1, 0.32, 1);
   --motion-ease-point: cubic-bezier(0.55, 0.55, 0, 1);
+  --motion-ease-back: cubic-bezier(0.175, 0.885, 0.32, 1.275);
   --motion-ease-linear: linear;
 }
 
@@ -25,7 +26,7 @@
 .folder-list > div,
 .settings-section-heading,
 .settings-sidebar > section {
-  animation: wp7-feather-in var(--motion-content) var(--motion-ease-direct) both;
+  animation: wp7-feather-in var(--motion-content) var(--motion-ease-direct) backwards;
   animation-delay: var(--stagger, 0ms);
 }
 
@@ -302,5 +303,9 @@
 
   .action-toast {
     animation: none;
+  }
+
+  .tilt-pressed {
+    transform: none !important;
   }
 }

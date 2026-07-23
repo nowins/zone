@@ -80,9 +80,16 @@
   width: 100%;
   min-width: 0;
   text-align: left;
-  animation: zune-enter 360ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
+  animation: zune-enter 360ms cubic-bezier(0.18, 0.88, 0.24, 1) backwards;
   animation-delay: var(--stagger, 0ms);
   cursor: default;
+  transition: transform var(--motion-content) var(--motion-ease-back);
+}
+
+.album-tile.tilt-pressed {
+  transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
+  transition-duration: var(--motion-press);
+  transition-timing-function: var(--motion-ease-direct);
 }
 
 .album-tile.selected .cover {
@@ -373,8 +380,15 @@
 .artist-album-tile {
   min-width: 0;
   cursor: default;
-  animation: zune-enter 350ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
+  animation: zune-enter 350ms cubic-bezier(0.18, 0.88, 0.24, 1) backwards;
   animation-delay: var(--stagger, 0ms);
+  transition: transform var(--motion-content) var(--motion-ease-back);
+}
+
+.artist-album-tile.tilt-pressed {
+  transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
+  transition-duration: var(--motion-press);
+  transition-timing-function: var(--motion-ease-direct);
 }
 
 .artist-album-tile .cover {
