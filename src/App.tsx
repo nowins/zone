@@ -9,6 +9,7 @@ import { InfoPanel } from "./components/InfoPanel";
 import { PlaylistDialog, type PlaylistDialogState } from "./components/PlaylistDialog";
 import { SmartPlaylistDialog, type SmartPlaylistDraft } from "./components/SmartPlaylistDialog";
 import { LibraryView } from "./views/LibraryView";
+import { SearchResultsView } from "./views/SearchResultsView";
 import { QuickplayView } from "./views/QuickplayView";
 import { NowPlayingView } from "./views/NowPlayingView";
 import { SettingsView } from "./views/SettingsView";
@@ -257,19 +258,9 @@ export default function App() {
 
   const isActiveTrackFavorite = activeTrack ? favoriteTrackIds.has(activeTrack.id) : false;
 
-  const filteredTracks = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return tracks;
-    return tracks.filter((track) =>
-      [track.title, track.artist, track.album, track.file_name].some((value) =>
-        value.toLowerCase().includes(needle),
-      ),
-    );
-  }, [query, tracks]);
-
   const albums = useMemo(() => {
     const map = new Map<string, Track[]>();
-    for (const track of filteredTracks) {
+    for (const track of tracks) {
       const key = albumKey(track.album, track.album_artist ?? track.artist);
       map.set(key, [...(map.get(key) ?? []), track]);
     }
@@ -285,7 +276,7 @@ export default function App() {
         };
       })
       .sort((a, b) => a.album.localeCompare(b.album));
-  }, [filteredTracks]);
+  }, [tracks]);
 
   useEffect(() => {
     if (view !== "albums") return;
@@ -301,11 +292,11 @@ export default function App() {
 
   const artists = useMemo<ArtistGroup[]>(() => {
     const map = new Map<string, Track[]>();
-    for (const track of filteredTracks) map.set(track.artist, [...(map.get(track.artist) ?? []), track]);
+    for (const track of tracks) map.set(track.artist, [...(map.get(track.artist) ?? []), track]);
     return Array.from(map.entries())
       .map(([artist, artistTracks]) => ({ artist, tracks: artistTracks }))
       .sort((a, b) => a.artist.localeCompare(b.artist));
-  }, [filteredTracks]);
+  }, [tracks]);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -397,7 +388,7 @@ export default function App() {
     }
   }
 
-  function playTrack(track: Track, sourceTracks = filteredTracks) {
+  function playTrack(track: Track, sourceTracks = tracks) {
     setQueue(sourceTracks.map((item) => item.id));
     if (track.id === activeTrackId) {
       recordSkipIfEligible();
@@ -483,6 +474,24 @@ export default function App() {
   function navigateCollection(nextView: ViewMode) {
     setView(nextView);
     setPage("collection");
+  }
+
+  function openSearchArtist(artist: string) {
+    setSelectedArtistName(artist);
+    setView("artists");
+    setQuery("");
+  }
+
+  function openSearchAlbum(key: string) {
+    setSelectedAlbumKey(key);
+    setView("albums");
+    setQuery("");
+  }
+
+  function openSearchPlaylist(playlistId: string) {
+    setSelectedPlaylistId(playlistId);
+    setView("playlists");
+    setQuery("");
   }
 
   function toggleHomePin(payload: ContextPayload) {
@@ -1057,67 +1066,87 @@ export default function App() {
         ) : null}
 
         {page === "collection" && (
-          <section className="content-band">
-            <div className="collection-header">
-              <div className="collection-title">
-                <h1>collection</h1>
-                <p>
-                  {tracks.length === 0
-                    ? "选择一个文件夹开始"
-                    : view === "albums"
-                      ? `${albums.length} 张专辑`
-                      : view === "artists"
-                        ? `${artists.length} 位艺术家`
-                        : view === "playlists"
-                          ? `${playlists.length} 个播放列表`
-                          : `${filteredTracks.length} 首歌曲`}
-                  {scanNote ? ` · ${scanNote}` : ""}
-                </p>
-              </div>
-              <div className="collection-navigation">
-                <span>音乐</span>
-                <div className="segmented">
-                {(["artists", "albums", "songs", "playlists"] as ViewMode[]).map((item) => (
-                  <button
-                    key={item}
-                    className={view === item ? "selected" : ""}
-                    onClick={() => setView(item)}
-                  >
-                    {{ artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" }[item]}
-                  </button>
-                ))}
-                </div>
-              </div>
-            </div>
-
-            {tracks.length === 0 ? (
-              <EmptyState onAddFolder={addFolder} isScanning={isScanning} />
-            ) : (
-              <LibraryView
-                key={view}
-                view={view}
-                tracks={filteredTracks}
-                libraryTracks={tracks}
+          <section className={`content-band ${query.trim() ? "collection-searching" : ""}`}>
+            {query.trim() ? (
+              <SearchResultsView
+                query={query}
+                tracks={tracks}
                 albums={albums}
                 artists={artists}
-                queueIds={playbackQueueIds}
-                activeTrackId={activeTrackId}
-                selectedAlbumKey={selectedAlbumKey}
-                onSelectAlbum={setSelectedAlbumKey}
-                selectedArtistName={selectedArtistName}
-                onPlay={playTrack}
-                onPlayTracks={playTracks}
-                onContextMenu={showContextMenu}
                 playlists={playlists}
-                selectedPlaylistId={selectedPlaylistId}
-                onSelectPlaylist={setSelectedPlaylistId}
-                onCreatePlaylist={openCreatePlaylistDialog}
-                onEditSmartPlaylist={openSmartPlaylistEditor}
-                onRefreshSmartPlaylist={refreshSmartPlaylist}
-                trackActivity={trackActivity}
+                activity={trackActivity}
                 favoriteTrackIds={favoriteTrackIds}
-                onToggleFavorite={toggleFavoriteTrack}
+                activeTrackId={activeTrackId}
+                onPlay={playTrack}
+                onOpenArtist={openSearchArtist}
+                onOpenAlbum={openSearchAlbum}
+                onOpenPlaylist={openSearchPlaylist}
+                onContextMenu={showContextMenu}
               />
+            ) : (
+              <>
+                <div className="collection-header">
+                  <div className="collection-title">
+                    <h1>collection</h1>
+                    <p>
+                      {tracks.length === 0
+                        ? "选择一个文件夹开始"
+                        : view === "albums"
+                          ? `${albums.length} 张专辑`
+                          : view === "artists"
+                            ? `${artists.length} 位艺术家`
+                            : view === "playlists"
+                              ? `${playlists.length} 个播放列表`
+                              : `${tracks.length} 首歌曲`}
+                      {scanNote ? ` · ${scanNote}` : ""}
+                    </p>
+                  </div>
+                  <div className="collection-navigation">
+                    <span>音乐</span>
+                    <div className="segmented">
+                      {(["artists", "albums", "songs", "playlists"] as ViewMode[]).map((item) => (
+                        <button
+                          key={item}
+                          className={view === item ? "selected" : ""}
+                          onClick={() => setView(item)}
+                        >
+                          {{ artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" }[item]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {tracks.length === 0 ? (
+                  <EmptyState onAddFolder={addFolder} isScanning={isScanning} />
+                ) : (
+                  <LibraryView
+                    key={view}
+                    view={view}
+                    tracks={tracks}
+                    libraryTracks={tracks}
+                    albums={albums}
+                    artists={artists}
+                    queueIds={playbackQueueIds}
+                    activeTrackId={activeTrackId}
+                    selectedAlbumKey={selectedAlbumKey}
+                    onSelectAlbum={setSelectedAlbumKey}
+                    selectedArtistName={selectedArtistName}
+                    onPlay={playTrack}
+                    onPlayTracks={playTracks}
+                    onContextMenu={showContextMenu}
+                    playlists={playlists}
+                    selectedPlaylistId={selectedPlaylistId}
+                    onSelectPlaylist={setSelectedPlaylistId}
+                    onCreatePlaylist={openCreatePlaylistDialog}
+                    onEditSmartPlaylist={openSmartPlaylistEditor}
+                    onRefreshSmartPlaylist={refreshSmartPlaylist}
+                    trackActivity={trackActivity}
+                    favoriteTrackIds={favoriteTrackIds}
+                    onToggleFavorite={toggleFavoriteTrack}
+                  />
+                )}
+              </>
             )}
           </section>
         )}

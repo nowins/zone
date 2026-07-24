@@ -1101,3 +1101,369 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Collection search keeps Zune's broad result hierarchy without copying its light theme. */
+
+.content-band.collection-searching {
+  overflow: hidden;
+}
+
+.search-results-view {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-results-heading {
+  min-height: 116px;
+  flex: 0 0 auto;
+  padding: 4px 0 16px;
+}
+
+.search-results-heading > p:first-child {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.search-results-heading h1 {
+  max-width: min(940px, 76vw);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  font-size: clamp(38px, 4.5vw, 58px);
+  line-height: 0.98;
+  font-weight: 250;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+}
+
+.search-results-heading h1 strong {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.96);
+  font-weight: 590;
+  text-overflow: ellipsis;
+}
+
+.search-results-heading h1 span {
+  flex: 0 0 auto;
+  color: rgba(247, 242, 246, 0.5);
+  font-weight: 250;
+}
+
+.search-results-summary {
+  margin: 10px 0 0;
+  color: rgba(247, 242, 246, 0.44);
+  font-size: 13px;
+}
+
+.search-results-layout {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
+  gap: 34px;
+  overflow: hidden;
+}
+
+.search-filter {
+  min-height: 0;
+  padding: 8px 26px 0 0;
+  border-right: 1px solid rgba(247, 242, 246, 0.1);
+}
+
+.search-filter h2 {
+  margin: 0 0 12px 12px;
+  color: rgba(247, 242, 246, 0.68);
+  font-size: 17px;
+  font-weight: 450;
+}
+
+.search-filter button {
+  position: relative;
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 10px 0 12px;
+  color: rgba(247, 242, 246, 0.54);
+  text-align: left;
+  background: transparent;
+}
+
+.search-filter button::before {
+  position: absolute;
+  inset: 7px auto 7px 0;
+  width: 2px;
+  content: "";
+  background: transparent;
+}
+
+.search-filter button:hover {
+  color: rgba(255, 255, 255, 0.84);
+  background: rgba(247, 242, 246, 0.035);
+}
+
+.search-filter button.selected {
+  color: #fff;
+}
+
+.search-filter button.selected::before {
+  background: var(--accent);
+}
+
+.search-filter small {
+  color: rgba(247, 242, 246, 0.32);
+  font-size: 11px;
+}
+
+.search-filter button.selected small {
+  color: rgba(247, 242, 246, 0.6);
+}
+
+.search-results-scroll {
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 14px 74px 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.search-result-section + .search-result-section {
+  margin-top: 34px;
+}
+
+.search-section-heading {
+  min-height: 32px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 12px;
+}
+
+.search-section-heading h2 {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 430;
+}
+
+.search-section-heading h2 span {
+  color: rgba(247, 242, 246, 0.42);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.search-section-heading > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0 4px 8px;
+  color: rgba(247, 242, 246, 0.45);
+  font-size: 12px;
+}
+
+.search-section-heading > button:hover {
+  color: #fff;
+}
+
+.search-artist-list,
+.search-playlist-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  column-gap: 28px;
+}
+
+.search-artist-result,
+.search-playlist-result {
+  min-width: 0;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 10px;
+  color: rgba(255, 255, 255, 0.88);
+  text-align: left;
+  border-bottom: 1px solid rgba(247, 242, 246, 0.065);
+}
+
+.search-artist-result:hover,
+.search-playlist-result:hover {
+  background: rgba(87, 36, 72, 0.2);
+}
+
+.search-artist-result > span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-artist-result > small,
+.search-playlist-result > em {
+  flex: 0 0 auto;
+  color: rgba(247, 242, 246, 0.4);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.search-album-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 128px));
+  gap: 20px;
+}
+
+.search-album-result {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.search-album-result .cover {
+  width: 100%;
+  aspect-ratio: 1;
+  height: auto;
+  transition: opacity 150ms ease;
+}
+
+.search-album-result:hover .cover {
+  opacity: 0.78;
+}
+
+.search-album-result > strong,
+.search-album-result > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-album-result > strong {
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 510;
+}
+
+.search-album-result > span {
+  margin-top: 3px;
+  color: rgba(247, 242, 246, 0.42);
+  font-size: 11px;
+}
+
+.search-song-list {
+  min-width: 0;
+}
+
+.search-song-head,
+.search-song-result {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 42px minmax(170px, 1.25fr) minmax(120px, 0.72fr) minmax(120px, 0.85fr);
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+}
+
+.search-song-head {
+  min-height: 28px;
+  padding: 0 10px;
+  color: rgba(247, 242, 246, 0.32);
+  font-size: 11px;
+  border-bottom: 1px solid rgba(247, 242, 246, 0.08);
+}
+
+.search-song-result {
+  position: relative;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  color: rgba(247, 242, 246, 0.5);
+  border-bottom: 1px solid rgba(247, 242, 246, 0.055);
+}
+
+.search-song-result:hover,
+.search-song-result.active {
+  background: rgba(87, 36, 72, 0.22);
+}
+
+.search-song-result.active::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  content: "";
+  background: var(--accent);
+}
+
+.search-song-result strong,
+.search-song-result span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-song-result strong {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 14px;
+  font-weight: 540;
+}
+
+.search-playlist-result > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.search-playlist-result strong,
+.search-playlist-result small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-playlist-result strong {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 16px;
+  font-weight: 480;
+}
+
+.search-playlist-result small {
+  color: rgba(247, 242, 246, 0.38);
+  font-size: 11px;
+}
+
+.search-empty {
+  min-height: 190px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  color: rgba(247, 242, 246, 0.38);
+}
+
+.search-empty strong {
+  color: rgba(247, 242, 246, 0.72);
+  font-size: 24px;
+  font-weight: 380;
+}
+
+.search-empty span {
+  font-size: 13px;
+}

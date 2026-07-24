@@ -347,7 +347,21 @@
   }
 
   .search-box {
-    width: 190px;
+    width: 178px;
+  }
+
+  .search-results-layout {
+    grid-template-columns: 148px minmax(0, 1fr);
+    gap: 26px;
+  }
+
+  .search-filter {
+    padding-right: 18px;
+  }
+
+  .search-album-grid {
+    grid-template-columns: repeat(auto-fill, minmax(104px, 116px));
+    gap: 16px;
   }
 
   .quickplay {
