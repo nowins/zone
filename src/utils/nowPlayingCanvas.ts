@@ -6,6 +6,20 @@ export type RgbColor = {
   b: number;
 };
 
+export type MosaicColorPalette = [
+  RgbColor,
+  RgbColor,
+  RgbColor,
+  RgbColor,
+];
+
+export type MosaicColorFieldMotion = {
+  angle: number;
+  offsetX: number;
+  offsetY: number;
+  bend: number;
+};
+
 export type MosaicTile = {
   albumIndex: number;
   x: number;
@@ -28,15 +42,6 @@ export type MosaicFlipState = {
   direction: -1 | 1;
 };
 
-export type MosaicColorSweep = {
-  x: number;
-  y: number;
-  radius: number;
-  alpha: number;
-  color: RgbColor;
-  shadow: RgbColor;
-};
-
 export type MosaicMotion = {
   driftX: number;
   driftY: number;
@@ -44,6 +49,7 @@ export type MosaicMotion = {
 };
 
 const ZUNE_BASE: RgbColor = { r: 62, g: 50, b: 44 };
+const FIELD_HUE_OFFSETS = [-64, -18, 28, 72];
 const CANVAS_TILE_PATTERN = [3, 1, 2, 1, 2, 1, 3, 2, 1, 4, 1, 2, 1, 3, 1, 2, 1, 1, 2, 3];
 
 export function buildCanvasMosaicTiles(width: number, height: number, albums: AlbumGroup[]) {
@@ -82,26 +88,6 @@ export function buildCanvasMosaicTiles(width: number, height: number, albums: Al
   return tiles;
 }
 
-export function colorToZuneTint(color: RgbColor): RgbColor {
-  const input = rgbToHsl(color);
-  const base = rgbToHsl(ZUNE_BASE);
-  const hueDistanceToBase = shortestHueDistance(input.h, base.h);
-  const hue = normalizeHue(base.h + hueDistanceToBase * 0.55);
-  const saturation = clamp(input.s * 0.2 + 0.4, 0.36, 0.54);
-  const lightness = clamp(input.l * 0.12 + 0.13, 0.13, 0.24);
-  return hslToRgb({ h: hue, s: saturation, l: lightness });
-}
-
-export function createSlowTint(baseTint: RgbColor, timeSeconds: number): RgbColor {
-  const hsl = rgbToHsl(baseTint);
-  const slowDrift = Math.sin(timeSeconds * 0.052) * 12 + Math.sin(timeSeconds * 0.019 + 0.8) * 7;
-  return hslToRgb({
-    h: normalizeHue(hsl.h + slowDrift),
-    s: clamp(hsl.s + 0.006 + Math.sin(timeSeconds * 0.033 + 1.2) * 0.024, 0.34, 0.56),
-    l: clamp(hsl.l + 0.006 + Math.sin(timeSeconds * 0.027 + 0.4) * 0.012, 0.13, 0.25),
-  });
-}
-
 export function createMosaicMotion(timeSeconds: number): MosaicMotion {
   return {
     driftX: Math.sin(timeSeconds * 0.055) * 16 + Math.sin(timeSeconds * 0.021 + 1.3) * 7,
@@ -117,51 +103,108 @@ export function mosaicTileRevealAmount(seed: number, elapsedMs: number, motionEn
   return 1 - (1 - progress) ** 3;
 }
 
-export function lerpColor(from: RgbColor, to: RgbColor, amount: number): RgbColor {
-  const alpha = clamp(amount, 0, 1);
+export function extractMosaicColorPalette(data: Uint8ClampedArray): MosaicColorPalette {
+  const baseColor = averageImageColor(data);
+  const hueBuckets = new Map<number, {
+    count: number;
+    score: number;
+    r: number;
+    g: number;
+    b: number;
+  }>();
+
+  for (let index = 0; index + 3 < data.length; index += 4) {
+    const alpha = data[index + 3] / 255;
+    if (alpha < 0.5) continue;
+    const color = { r: data[index], g: data[index + 1], b: data[index + 2] };
+    const hsl = rgbToHsl(color);
+    if (hsl.l < 0.035 || hsl.l > 0.965 || hsl.s < 0.08) continue;
+
+    const bucketKey = Math.floor(normalizeHue(hsl.h) / 15);
+    const bucket = hueBuckets.get(bucketKey) ?? { count: 0, score: 0, r: 0, g: 0, b: 0 };
+    const weight = alpha * (0.35 + hsl.s * 0.65);
+    bucket.count += weight;
+    bucket.score += weight * (0.72 + (1 - Math.abs(hsl.l - 0.48)) * 0.28);
+    bucket.r += color.r * weight;
+    bucket.g += color.g * weight;
+    bucket.b += color.b * weight;
+    hueBuckets.set(bucketKey, bucket);
+  }
+
+  const accents = [...hueBuckets.values()]
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 4)
+    .map((bucket) => ({
+      r: bucket.r / Math.max(bucket.count, 0.001),
+      g: bucket.g / Math.max(bucket.count, 0.001),
+      b: bucket.b / Math.max(bucket.count, 0.001),
+    }));
+
+  return createMosaicColorPalette(baseColor, accents);
+}
+
+export function createMosaicColorPalette(baseColor: RgbColor, accents: RgbColor[] = []): MosaicColorPalette {
+  const baseHsl = rgbToHsl(baseColor);
+  const accentHsl = accents.map(rgbToHsl);
+  const strongestAccent = accentHsl.find((color) => color.s >= 0.16);
+  const anchorHue = strongestAccent?.h ?? (baseHsl.s >= 0.08 ? baseHsl.h : rgbToHsl(ZUNE_BASE).h);
+  const lightness = [0.235, 0.225, 0.24, 0.23];
+
+  return FIELD_HUE_OFFSETS.map((plannedOffset, index) => {
+    const source = accentHsl[index % Math.max(1, accentHsl.length)];
+    const sourceOffset = source
+      ? clamp(shortestHueDistance(source.h, anchorHue), -110, 110)
+      : plannedOffset;
+    const hueOffset = plannedOffset * 0.74 + sourceOffset * 0.26;
+    return hslToRgb({
+      h: normalizeHue(anchorHue + hueOffset),
+      s: clamp(0.48 + (source?.s ?? baseHsl.s) * 0.14, 0.46, 0.64),
+      l: lightness[index],
+    });
+  }) as MosaicColorPalette;
+}
+
+export function interpolateMosaicColorPalette(
+  from: MosaicColorPalette,
+  to: MosaicColorPalette,
+  amount: number,
+): MosaicColorPalette {
+  const progress = clamp(amount, 0, 1);
+  return from.map((color, index) => lerpHslColor(color, to[index], progress)) as MosaicColorPalette;
+}
+
+export function createMosaicColorFieldMotion(timeSeconds: number): MosaicColorFieldMotion {
   return {
-    r: from.r + (to.r - from.r) * alpha,
-    g: from.g + (to.g - from.g) * alpha,
-    b: from.b + (to.b - from.b) * alpha,
+    angle:
+      -0.75
+      + timeSeconds * 0.09
+      + Math.sin(timeSeconds * 0.17) * 0.35,
+    offsetX:
+      Math.sin(timeSeconds * 0.11 + 0.2) * 0.22
+      + Math.sin(timeSeconds * 0.031 + 2.1) * 0.07,
+    offsetY:
+      Math.cos(timeSeconds * 0.083 + 1.1) * 0.18
+      + Math.sin(timeSeconds * 0.027 + 0.4) * 0.06,
+    bend: 0.15 + Math.sin(timeSeconds * 0.12 + 2.3) * 0.065,
   };
 }
 
-export function createMosaicColorSweep({
-  baseTint,
-  timeSeconds,
-  isPlaying,
-}: {
-  baseTint: RgbColor;
-  timeSeconds: number;
-  isPlaying: boolean;
-}): MosaicColorSweep {
-  // A roving light rather than a fixed-direction wash: the source drifts on a
-  // Lissajous-like path and its hue shifts as it travels, so bright and dim
-  // regions keep migrating across the wall.
-  const pace = isPlaying ? 1 : 0.25;
-  const t = timeSeconds * pace;
-  const x = 0.5 + Math.sin(t * 0.041) * 0.34 + Math.sin(t * 0.017 + 1.2) * 0.09;
-  const y = 0.44 + Math.cos(t * 0.033 + 0.7) * 0.26 + Math.sin(t * 0.012 + 2.1) * 0.07;
-  const hsl = rgbToHsl(baseTint);
-  const color = hslToRgb({
-    h: normalizeHue(hsl.h + Math.sin(t * 0.047 + 0.5) * 16),
-    s: clamp(hsl.s + 0.08, 0.34, 0.56),
-    l: clamp(hsl.l + 0.045, 0.17, 0.28),
-  });
-  const shadow = hslToRgb({
-    h: normalizeHue(hsl.h - 14),
-    s: clamp(hsl.s + 0.02, 0.28, 0.48),
-    l: clamp(hsl.l * 0.55, 0.06, 0.13),
-  });
+export function sampleMosaicColorField(
+  palette: MosaicColorPalette,
+  timeSeconds: number,
+  x: number,
+  y: number,
+): RgbColor {
+  return createMosaicColorFieldSampler(palette, timeSeconds)(x, y);
+}
 
-  return {
-    x,
-    y,
-    radius: 0.58,
-    alpha: 0.2,
-    color,
-    shadow,
-  };
+export function createMosaicColorFieldSampler(
+  palette: MosaicColorPalette,
+  timeSeconds: number,
+) {
+  const hslPalette = palette.map(rgbToHsl);
+  const motion = createMosaicColorFieldMotion(timeSeconds);
+  return (x: number, y: number) => sampleMosaicColorFieldHsl(hslPalette, motion, timeSeconds, x, y);
 }
 
 export function createMosaicFlipState(): MosaicFlipState {
@@ -248,10 +291,6 @@ export function updateMosaicFlipState(
   return state;
 }
 
-export function colorCss(color: RgbColor, alpha = 1) {
-  return `rgba(${Math.round(color.r)}, ${Math.round(color.g)}, ${Math.round(color.b)}, ${alpha})`;
-}
-
 export function relativeLuminance(color: RgbColor) {
   const channel = (value: number) => {
     const normalized = value / 255;
@@ -275,6 +314,34 @@ export function averageImageColor(data: Uint8ClampedArray): RgbColor {
   return count > 0
     ? { r: r / count, g: g / count, b: b / count }
     : ZUNE_BASE;
+}
+
+function sampleMosaicColorFieldHsl(
+  palette: Array<{ h: number; s: number; l: number }>,
+  motion: MosaicColorFieldMotion,
+  timeSeconds: number,
+  x: number,
+  y: number,
+) {
+  const centeredX = x - 0.5 + motion.offsetX;
+  const centeredY = y - 0.5 + motion.offsetY;
+  const cosine = Math.cos(motion.angle);
+  const sine = Math.sin(motion.angle);
+  const rotatedX = centeredX * cosine - centeredY * sine;
+  const rotatedY = centeredX * sine + centeredY * cosine;
+  const warpX =
+    rotatedX
+    + Math.sin(rotatedY * 5.2 + timeSeconds * 0.17) * motion.bend
+    + Math.sin((rotatedX + rotatedY) * 3.1 - timeSeconds * 0.11) * 0.045;
+  const warpY =
+    rotatedY
+    + Math.sin(rotatedX * 4.4 - timeSeconds * 0.13) * motion.bend * 0.72
+    + Math.cos((rotatedX - rotatedY) * 2.7 + timeSeconds * 0.09) * 0.04;
+  const horizontal = smoothstep(-0.52, 0.52, warpX);
+  const vertical = smoothstep(-0.48, 0.5, warpY);
+  const upper = lerpHsl(palette[0], palette[1], horizontal);
+  const lower = lerpHsl(palette[2], palette[3], 1 - horizontal);
+  return hslToRgb(lerpHsl(upper, lower, vertical));
 }
 
 function canOccupy(
@@ -396,6 +463,28 @@ function normalizeHue(hue: number) {
 
 function positiveModulo(value: number, divisor: number) {
   return ((value % divisor) + divisor) % divisor;
+}
+
+function lerpHslColor(from: RgbColor, to: RgbColor, amount: number) {
+  return hslToRgb(lerpHsl(rgbToHsl(from), rgbToHsl(to), amount));
+}
+
+function lerpHsl(
+  from: { h: number; s: number; l: number },
+  to: { h: number; s: number; l: number },
+  amount: number,
+) {
+  const progress = clamp(amount, 0, 1);
+  return {
+    h: normalizeHue(from.h + shortestHueDistance(to.h, from.h) * progress),
+    s: from.s + (to.s - from.s) * progress,
+    l: from.l + (to.l - from.l) * progress,
+  };
+}
+
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const progress = clamp((value - edge0) / Math.max(0.0001, edge1 - edge0), 0, 1);
+  return progress * progress * (3 - 2 * progress);
 }
 
 function clamp(value: number, min: number, max: number) {

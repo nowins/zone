@@ -2,14 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCanvasMosaicTiles,
-  createMosaicColorSweep,
+  createMosaicColorFieldMotion,
+  createMosaicColorPalette,
+  extractMosaicColorPalette,
   createMosaicFlipState,
   createMosaicMotion,
-  colorToZuneTint,
-  createSlowTint,
-  lerpColor,
+  interpolateMosaicColorPalette,
   mosaicTileRevealAmount,
   relativeLuminance,
+  sampleMosaicColorField,
   updateMosaicFlipState,
 } from "../.tmp/visualizer-tests/utils/nowPlayingCanvas.js";
 
@@ -39,44 +40,44 @@ test("canvas mosaic falls back when no albums are available", () => {
   assert.ok(tiles.every((tile) => tile.albumIndex === 0));
 });
 
-test("zune tint stays dark and constrained while allowing slow color movement", () => {
-  const source = { r: 248, g: 80, b: 210 };
-  const tint = colorToZuneTint(source);
-  const later = createSlowTint(tint, 180);
-  const calm = createSlowTint(tint, 0);
-  const halfway = lerpColor(calm, later, 0.5);
+test("cover sampling produces a restrained multi-color Zune field palette", () => {
+  const pixels = makePalettePixels([
+    [18, 74, 160],
+    [34, 154, 102],
+    [184, 52, 42],
+    [196, 156, 38],
+  ], 32);
+  const palette = extractMosaicColorPalette(pixels);
+  const uniqueColors = new Set(palette.map((color) => `${Math.round(color.r / 12)}:${Math.round(color.g / 12)}:${Math.round(color.b / 12)}`));
 
-  assert.ok(relativeLuminance(tint) < 0.11, `base tint should stay dark, got ${relativeLuminance(tint)}`);
-  assert.ok(relativeLuminance(later) < 0.14, `slow tint should remain restrained, got ${relativeLuminance(later)}`);
-  assert.notDeepEqual(calm, later, "time should move the wall color slowly");
-  assert.ok(halfway.r >= Math.min(calm.r, later.r) && halfway.r <= Math.max(calm.r, later.r));
+  assert.equal(palette.length, 4);
+  assert.ok(uniqueColors.size >= 3, `field needs several distinct colors, got ${JSON.stringify(palette)}`);
+  assert.ok(palette.every((color) => relativeLuminance(color) < 0.19), "field colors should stay dark enough for Zune");
 });
 
-test("mosaic color light roams the wall and shifts hue as it travels", () => {
-  const tint = colorToZuneTint({ r: 40, g: 170, b: 220 });
-  const first = createMosaicColorSweep({
-    baseTint: tint,
-    timeSeconds: 4,
-    isPlaying: true,
-  });
-  const later = createMosaicColorSweep({
-    baseTint: tint,
-    timeSeconds: 32,
-    isPlaying: true,
-  });
-  const paused = createMosaicColorSweep({
-    baseTint: tint,
-    timeSeconds: 4,
-    isPlaying: false,
-  });
+test("mosaic color field changes its gradient direction and color distribution over time", () => {
+  const palette = createMosaicColorPalette(
+    { r: 36, g: 110, b: 188 },
+    [{ r: 26, g: 92, b: 188 }, { r: 38, g: 170, b: 102 }],
+  );
+  const firstMotion = createMosaicColorFieldMotion(0);
+  const laterMotion = createMosaicColorFieldMotion(12);
+  const positions = [[0.02, 0.02], [0.5, 0.5], [0.02, 0.98]];
+  const firstColors = positions.map(([x, y]) => sampleMosaicColorField(palette, 0, x, y));
+  const laterColors = positions.map(([x, y]) => sampleMosaicColorField(palette, 12, x, y));
 
-  assert.notEqual(first.x, later.x, "the light should travel horizontally");
-  assert.notEqual(first.y, later.y, "the light should travel vertically");
-  assert.notDeepEqual(first.color, later.color, "light color should drift as it moves");
-  assert.equal(first.alpha, paused.alpha, "audio/play state should not change light brightness");
-  assert.ok(first.alpha >= 0.13 && first.alpha <= 0.24, `light alpha should be visible but restrained, got ${first.alpha}`);
-  assert.ok(first.x > 0 && first.x < 1 && first.y > 0 && first.y < 1, "the light should stay on the wall");
-  assert.ok(relativeLuminance(first.color) < 0.16, `light color should stay dark, got ${relativeLuminance(first.color)}`);
+  assert.ok(Math.abs(firstMotion.angle - laterMotion.angle) > 0.35, "gradient direction should visibly turn");
+  assert.notDeepEqual(firstColors, laterColors, "the same screen positions should receive different colors over time");
+  assert.ok(colorDistance(firstColors[0], firstColors[2]) > 35, "one frame should contain distinct color regions");
+});
+
+test("track palette changes interpolate without flashing through unrelated brightness", () => {
+  const from = createMosaicColorPalette({ r: 190, g: 52, b: 38 });
+  const to = createMosaicColorPalette({ r: 32, g: 112, b: 196 });
+  const halfway = interpolateMosaicColorPalette(from, to, 0.5);
+
+  assert.equal(halfway.length, 4);
+  assert.ok(halfway.every((color) => relativeLuminance(color) < 0.2));
 });
 
 test("mosaic wall breathes across useful distances without exposing its edges", () => {
@@ -227,4 +228,16 @@ function makeAlbum(key, album, artist) {
     tracks: [],
     coverPath: `${key}.jpg`,
   };
+}
+
+function makePalettePixels(colors, repeats) {
+  const values = [];
+  for (const color of colors) {
+    for (let index = 0; index < repeats; index += 1) values.push(...color, 255);
+  }
+  return new Uint8ClampedArray(values);
+}
+
+function colorDistance(left, right) {
+  return Math.hypot(left.r - right.r, left.g - right.g, left.b - right.b);
 }

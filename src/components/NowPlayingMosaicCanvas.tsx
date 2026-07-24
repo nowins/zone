@@ -3,17 +3,16 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { AlbumGroup, Track } from "../types";
 import { buildNowPlayingWall } from "../utils/nowPlayingWall";
 import {
-  averageImageColor,
   buildCanvasMosaicTiles,
-  colorCss,
-  colorToZuneTint,
-  createMosaicColorSweep,
+  createMosaicColorPalette,
+  createMosaicColorFieldSampler,
   createMosaicFlipState,
   createMosaicMotion,
-  createSlowTint,
-  lerpColor,
+  extractMosaicColorPalette,
+  interpolateMosaicColorPalette,
   mosaicTileRevealAmount,
   updateMosaicFlipState,
+  type MosaicColorPalette,
   type MosaicFlipState,
   type MosaicTile,
   type RgbColor,
@@ -21,7 +20,18 @@ import {
 
 const imageCache = new Map<string, HTMLImageElement>();
 const FALLBACK_TINT: RgbColor = { r: 62, g: 50, b: 44 };
+const FALLBACK_PALETTE = createMosaicColorPalette(FALLBACK_TINT);
 const WALL_PRELOAD_TIMEOUT_MS = 1_600;
+const COLOR_FIELD_WIDTH = 112;
+const COLOR_FIELD_FRAME_INTERVAL_MS = 42;
+
+type MosaicColorFieldRenderer = {
+  canvas: HTMLCanvasElement;
+  context: CanvasRenderingContext2D;
+  imageData: ImageData;
+  aspectRatio: number;
+  lastUpdateAt: number;
+};
 
 export function NowPlayingMosaicCanvas({
   tracks,
@@ -49,8 +59,9 @@ export function NowPlayingMosaicCanvas({
   const beatPhaseRef = useRef(beatPhase);
   const beatConfidenceRef = useRef(beatConfidence);
   const isPlayingRef = useRef(isPlaying);
-  const tintRef = useRef<RgbColor>(FALLBACK_TINT);
-  const targetTintRef = useRef<RgbColor>(FALLBACK_TINT);
+  const paletteRef = useRef<MosaicColorPalette>(clonePalette(FALLBACK_PALETTE));
+  const targetPaletteRef = useRef<MosaicColorPalette>(clonePalette(FALLBACK_PALETTE));
+  const colorFieldRendererRef = useRef<MosaicColorFieldRenderer | null>(null);
   const flipRef = useRef<MosaicFlipState>(createMosaicFlipState());
   const frameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
@@ -110,24 +121,25 @@ export function NowPlayingMosaicCanvas({
 
   useEffect(() => {
     if (!activeTrack?.cover_path) {
-      targetTintRef.current = FALLBACK_TINT;
+      targetPaletteRef.current = clonePalette(FALLBACK_PALETTE);
       return;
     }
 
     const image = getCachedImage(activeTrack.cover_path);
     const extract = () => {
-      const color = extractAverageColor(image);
-      if (color) targetTintRef.current = colorToZuneTint(color);
+      const palette = extractColorPalette(image);
+      targetPaletteRef.current = palette ?? clonePalette(FALLBACK_PALETTE);
     };
 
-    if (image.complete && image.naturalWidth > 0) {
-      extract();
+    if (image.complete) {
+      if (image.naturalWidth > 0) extract();
+      else targetPaletteRef.current = clonePalette(FALLBACK_PALETTE);
       return;
     }
 
     image.addEventListener("load", extract, { once: true });
     image.addEventListener("error", () => {
-      targetTintRef.current = FALLBACK_TINT;
+      targetPaletteRef.current = clonePalette(FALLBACK_PALETTE);
     }, { once: true });
     return () => image.removeEventListener("load", extract);
   }, [activeTrack?.cover_path]);
@@ -166,13 +178,17 @@ export function NowPlayingMosaicCanvas({
       lastTimeRef.current = time;
       const motionEnabled = motionEnabledRef.current;
       sceneTimeRef.current += deltaSeconds * (motionEnabled ? (isPlayingRef.current ? 1 : 0.1) : 0);
-      tintRef.current = lerpColor(tintRef.current, targetTintRef.current, 1 - Math.exp(-deltaSeconds / 11));
+      paletteRef.current = interpolateMosaicColorPalette(
+        paletteRef.current,
+        targetPaletteRef.current,
+        1 - Math.exp(-deltaSeconds / 1.2),
+      );
       drawMosaic(
         context,
         sizeRef.current,
         tilesRef.current,
         albumsRef.current,
-        tintRef.current,
+        paletteRef.current,
         beatPulseRef.current,
         beatPhaseRef.current,
         beatConfidenceRef.current,
@@ -182,6 +198,7 @@ export function NowPlayingMosaicCanvas({
         sceneTimeRef.current,
         wallRevealStartedAtRef.current,
         motionEnabled,
+        colorFieldRendererRef,
       );
       frameRef.current = window.requestAnimationFrame(draw);
     };
@@ -201,7 +218,7 @@ function drawMosaic(
   size: { width: number; height: number; dpr: number },
   tiles: MosaicTile[],
   albums: AlbumGroup[],
-  baseTint: RgbColor,
+  palette: MosaicColorPalette,
   beatPulse: number,
   beatPhase: number,
   beatConfidence: number,
@@ -211,11 +228,11 @@ function drawMosaic(
   sceneSeconds: number,
   wallRevealStartedAt: number,
   motionEnabled: boolean,
+  colorFieldRendererRef: { current: MosaicColorFieldRenderer | null },
 ) {
   const { width, height, dpr } = size;
   if (width <= 1 || height <= 1) return;
 
-  const tint = createSlowTint(baseTint, sceneSeconds);
   updateMosaicFlipState(flipState, tiles, {
     isPlaying: isPlaying && motionEnabled,
     beatPulse,
@@ -256,42 +273,27 @@ function drawMosaic(
       : null;
     context.save();
     context.globalAlpha *= tileReveal;
-    drawTile(context, tile, albums, tint, flip);
+    drawTile(context, tile, albums, flip);
     context.restore();
   }
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   context.globalAlpha = wallReveal;
-  const sweepState = createMosaicColorSweep({ baseTint: tint, timeSeconds: sceneSeconds, isPlaying });
-  const lightX = sweepState.x * width;
-  const lightY = sweepState.y * height;
-  const lightRadius = Math.max(width, height) * sweepState.radius;
-  context.globalCompositeOperation = "screen";
-  const light = context.createRadialGradient(lightX, lightY, 0, lightX, lightY, lightRadius);
-  light.addColorStop(0, colorCss(sweepState.color, sweepState.alpha));
-  light.addColorStop(0.55, colorCss(sweepState.color, sweepState.alpha * 0.32));
-  light.addColorStop(1, colorCss(sweepState.color, 0));
-  context.fillStyle = light;
-  context.fillRect(0, 0, width, height);
-  context.globalCompositeOperation = "source-over";
-  const dim = context.createRadialGradient(
-    width - lightX,
-    height - lightY,
-    0,
-    width - lightX,
-    height - lightY,
-    lightRadius * 0.85,
+  drawMosaicColorField(
+    context,
+    colorFieldRendererRef,
+    palette,
+    width,
+    height,
+    sceneSeconds,
+    time,
   );
-  dim.addColorStop(0, colorCss(sweepState.shadow, 0.2));
-  dim.addColorStop(1, colorCss(sweepState.shadow, 0));
-  context.fillStyle = dim;
-  context.fillRect(0, 0, width, height);
-
-  const wash = context.createLinearGradient(0, 0, width, height);
-  wash.addColorStop(0, colorCss(tint, 0.1));
-  wash.addColorStop(0.54, colorCss({ r: tint.r * 0.48, g: tint.g * 0.68, b: tint.b * 0.62 }, 0.13));
-  wash.addColorStop(1, "rgba(6, 4, 3, 0.26)");
-  context.fillStyle = wash;
+  const edgeGrade = context.createLinearGradient(0, 0, width, height);
+  edgeGrade.addColorStop(0, "rgba(0, 0, 0, 0.06)");
+  edgeGrade.addColorStop(0.5, "rgba(0, 0, 0, 0)");
+  edgeGrade.addColorStop(1, "rgba(0, 0, 0, 0.18)");
+  context.globalCompositeOperation = "source-over";
+  context.fillStyle = edgeGrade;
   context.fillRect(0, 0, width, height);
   context.restore();
 
@@ -310,11 +312,75 @@ function drawMosaic(
   context.fillRect(0, height * 0.52, width, height * 0.48);
 }
 
+function drawMosaicColorField(
+  context: CanvasRenderingContext2D,
+  rendererRef: { current: MosaicColorFieldRenderer | null },
+  palette: MosaicColorPalette,
+  width: number,
+  height: number,
+  sceneSeconds: number,
+  frameTime: number,
+) {
+  const aspectRatio = width / Math.max(1, height);
+  if (!rendererRef.current || Math.abs(rendererRef.current.aspectRatio - aspectRatio) > 0.04) {
+    rendererRef.current = createColorFieldRenderer(aspectRatio);
+  }
+  const renderer = rendererRef.current;
+  if (!renderer) return;
+
+  if (frameTime - renderer.lastUpdateAt >= COLOR_FIELD_FRAME_INTERVAL_MS) {
+    // The field is intentionally low resolution: bilinear upscaling turns the
+    // sampled warp into broad gradients and keeps per-frame work bounded.
+    const { data } = renderer.imageData;
+    const fieldWidth = renderer.canvas.width;
+    const fieldHeight = renderer.canvas.height;
+    const sampleColor = createMosaicColorFieldSampler(palette, sceneSeconds);
+    for (let row = 0; row < fieldHeight; row += 1) {
+      const y = (row + 0.5) / fieldHeight;
+      for (let column = 0; column < fieldWidth; column += 1) {
+        const x = (column + 0.5) / fieldWidth;
+        const color = sampleColor(x, y);
+        const index = (row * fieldWidth + column) * 4;
+        data[index] = color.r;
+        data[index + 1] = color.g;
+        data[index + 2] = color.b;
+        data[index + 3] = 255;
+      }
+    }
+    renderer.context.putImageData(renderer.imageData, 0, 0);
+    renderer.lastUpdateAt = frameTime;
+  }
+
+  context.save();
+  // Color blending preserves the cover wall's luminance. Motion therefore
+  // reads as migrating color, not as a spotlight getting brighter and dimmer.
+  context.globalCompositeOperation = "color";
+  context.globalAlpha *= 0.92;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(renderer.canvas, 0, 0, width, height);
+  context.restore();
+}
+
+function createColorFieldRenderer(aspectRatio: number): MosaicColorFieldRenderer | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = COLOR_FIELD_WIDTH;
+  canvas.height = Math.max(52, Math.min(88, Math.round(COLOR_FIELD_WIDTH / Math.max(0.8, aspectRatio))));
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  return {
+    canvas,
+    context,
+    imageData: context.createImageData(canvas.width, canvas.height),
+    aspectRatio,
+    lastUpdateAt: Number.NEGATIVE_INFINITY,
+  };
+}
+
 function drawTile(
   context: CanvasRenderingContext2D,
   tile: MosaicTile,
   albums: AlbumGroup[],
-  tint: RgbColor,
   flip: {
     progress: number;
     fromAlbumIndex: number;
@@ -345,22 +411,20 @@ function drawTile(
   context.beginPath();
   context.rect(tile.x, tile.y, tile.width - 1, tile.height - 1);
   context.clip();
-  context.fillStyle = colorCss({ r: tint.r * 0.38, g: tint.g * 0.42, b: tint.b * 0.34 }, 1);
+  context.fillStyle = "#171717";
   context.fillRect(tile.x, tile.y, tile.width, tile.height);
 
   if (image?.complete && image.naturalWidth > 0) {
     const inheritedAlpha = context.globalAlpha;
     context.globalAlpha = inheritedAlpha * 0.86;
-    context.filter = "grayscale(0.82) sepia(0.66) hue-rotate(18deg) saturate(1.2) brightness(0.56) contrast(1.09)";
+    context.filter = "grayscale(0.92) saturate(0.38) brightness(0.58) contrast(1.1)";
     drawImageCover(context, image, tile.x, tile.y, tile.width, tile.height);
     context.filter = "none";
     context.globalAlpha = inheritedAlpha;
   }
 
   context.globalCompositeOperation = "source-over";
-  context.fillStyle = colorCss(tint, 0.4);
-  context.fillRect(tile.x, tile.y, tile.width, tile.height);
-  context.fillStyle = `rgba(0, 0, 0, ${0.18 + flipShade})`;
+  context.fillStyle = `rgba(0, 0, 0, ${0.12 + flipShade})`;
   context.fillRect(tile.x, tile.y, tile.width, tile.height);
   if (isFlipping) {
     const sweepY = tile.y + tile.height * (0.08 + easedFlip * 0.84);
@@ -445,7 +509,7 @@ function getCachedImage(path: string) {
   return image;
 }
 
-function extractAverageColor(image: HTMLImageElement) {
+function extractColorPalette(image: HTMLImageElement) {
   try {
     const canvas = document.createElement("canvas");
     canvas.width = 48;
@@ -453,10 +517,14 @@ function extractAverageColor(image: HTMLImageElement) {
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) return null;
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return averageImageColor(context.getImageData(0, 0, canvas.width, canvas.height).data);
+    return extractMosaicColorPalette(context.getImageData(0, 0, canvas.width, canvas.height).data);
   } catch {
     return null;
   }
+}
+
+function clonePalette(palette: MosaicColorPalette): MosaicColorPalette {
+  return palette.map((color) => ({ ...color })) as MosaicColorPalette;
 }
 
 function easeInOutCubic(value: number) {
