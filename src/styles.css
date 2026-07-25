@@ -1,0 +1,6 @@
+@import "./styles/base.css";
+@import "./styles/collection.css";
+@import "./styles/player.css";
+@import "./styles/now-playing.css";
+@import "./styles/overlays-settings.css";
+@import "./styles/animations-responsive.css";

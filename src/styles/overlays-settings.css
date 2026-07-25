@@ -1,0 +1,292 @@
+.queue-panel,
+.settings-grid section {
+  min-height: 0;
+}
+
+h2 {
+  margin: 0 0 16px;
+  font-size: 28px;
+  font-weight: 300;
+}
+
+.queue-list,
+.folder-list {
+  max-height: 100%;
+  overflow: auto;
+}
+
+.queue-list button {
+  width: 100%;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 42px minmax(120px, 1fr) minmax(90px, 0.65fr);
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.queue-list button:hover,
+.queue-list .playing {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+
+.queue-list span,
+.queue-list em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.queue-list strong,
+.queue-list em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-page {
+  overflow: hidden;
+}
+
+.settings-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) 280px;
+  gap: 48px;
+}
+
+.folder-list {
+  display: grid;
+  gap: 10px;
+}
+
+.folder-list div {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.folder-list strong,
+.folder-list span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-list strong {
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.folder-list span {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.settings-actions {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.settings-actions .primary-action {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.settings-actions .danger:hover {
+  background: #9f3030;
+}
+
+.album-tile:nth-child(1),
+.artist-album-tile:nth-child(1),
+.artist-picker button:nth-child(1),
+.artist-song-list button:nth-child(1),
+.playlist-list button:nth-child(1),
+.playlist-rows button:nth-child(1),
+.song-list button:nth-child(1) {
+  --stagger: 0ms;
+}
+
+.album-tile:nth-child(2),
+.artist-album-tile:nth-child(2),
+.artist-picker button:nth-child(2),
+.artist-song-list button:nth-child(2),
+.playlist-list button:nth-child(2),
+.playlist-rows button:nth-child(2),
+.song-list button:nth-child(2) {
+  --stagger: 46ms;
+}
+
+.album-tile:nth-child(3),
+.artist-album-tile:nth-child(3),
+.artist-picker button:nth-child(3),
+.artist-song-list button:nth-child(3),
+.playlist-list button:nth-child(3),
+.playlist-rows button:nth-child(3),
+.song-list button:nth-child(3) {
+  --stagger: 92ms;
+}
+
+.album-tile:nth-child(4),
+.artist-album-tile:nth-child(4),
+.artist-picker button:nth-child(4),
+.artist-song-list button:nth-child(4),
+.playlist-list button:nth-child(4),
+.playlist-rows button:nth-child(4),
+.song-list button:nth-child(4) {
+  --stagger: 138ms;
+}
+
+.album-tile:nth-child(5),
+.artist-album-tile:nth-child(5),
+.artist-picker button:nth-child(5),
+.artist-song-list button:nth-child(5),
+.playlist-list button:nth-child(5),
+.playlist-rows button:nth-child(5),
+.song-list button:nth-child(5) {
+  --stagger: 184ms;
+}
+
+.album-tile:nth-child(6),
+.artist-album-tile:nth-child(6),
+.artist-picker button:nth-child(6),
+.artist-song-list button:nth-child(6),
+.playlist-list button:nth-child(6),
+.playlist-rows button:nth-child(6),
+.song-list button:nth-child(6) {
+  --stagger: 230ms;
+}
+
+.album-tile:nth-child(n + 7),
+.artist-album-tile:nth-child(n + 7),
+.artist-picker button:nth-child(n + 7),
+.artist-song-list button:nth-child(n + 7),
+.playlist-list button:nth-child(n + 7),
+.playlist-rows button:nth-child(n + 7),
+.song-list button:nth-child(n + 7) {
+  --stagger: 276ms;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 40;
+  width: 240px;
+  max-height: min(520px, 72vh);
+  overflow-y: auto;
+  padding: 8px 0;
+  background: rgba(18, 18, 18, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
+.context-title {
+  padding: 10px 16px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.context-title strong,
+.context-title span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-title strong {
+  font-size: 17px;
+  font-weight: 400;
+}
+
+.context-title span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.context-menu button {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.context-menu button:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.context-section {
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.context-section > span {
+  display: block;
+  padding: 4px 16px 6px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.info-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  display: grid;
+  justify-content: end;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.info-panel section {
+  width: min(420px, 90vw);
+  height: 100%;
+  padding: 58px 34px;
+  background: rgba(10, 10, 10, 0.96);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.info-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+}
+
+.info-panel h2 {
+  margin-bottom: 8px;
+}
+
+.info-panel p {
+  margin: 0 0 24px;
+  color: var(--muted);
+}
+
+.info-panel dl {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px 16px;
+}
+
+.info-panel dt {
+  color: var(--muted);
+}
+
+.info-panel dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

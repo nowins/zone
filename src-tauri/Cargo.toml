@@ -1,0 +1,23 @@
+[package]
+name = "zone-player"
+version = "0.1.0"
+description = "A Zune-inspired local music player"
+authors = ["Zone"]
+edition = "2021"
+
+[lib]
+name = "zone_player_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.1", features = [] }
+
+[dependencies]
+encoding_rs = "0.8"
+lofty = "0.22"
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.9.1", features = ["protocol-asset"] }
+tauri-plugin-opener = "2.5.0"
+walkdir = "2.5"

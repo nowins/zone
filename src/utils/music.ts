@@ -1,0 +1,75 @@
+import { DEFAULT_PLAYLIST_ID } from "../constants";
+import type { Playlist, Track } from "../types";
+
+export function defaultPlaylists(): Playlist[] {
+  return [
+    {
+      id: DEFAULT_PLAYLIST_ID,
+      name: "favorites",
+      description: "saved playlist",
+      trackIds: [],
+    },
+  ];
+}
+
+export function normalizePlaylists(playlists: Playlist[] | undefined | null): Playlist[] {
+  const defaults = defaultPlaylists();
+  const items = playlists?.length ? playlists : [];
+  const hasDefault = items.some((playlist) => playlist.id === DEFAULT_PLAYLIST_ID);
+  return hasDefault ? items : [...defaults, ...items];
+}
+
+export function uniqueIds(ids: string[]) {
+  return Array.from(new Set(ids));
+}
+
+export function albumKey(album: string) {
+  return album.trim().toLocaleLowerCase() || "unknown album";
+}
+
+export function compareTracksForAlbum(a: Track, b: Track) {
+  return leadingTrackNumber(a.file_name) - leadingTrackNumber(b.file_name)
+    || a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function leadingTrackNumber(value: string) {
+  const match = value.match(/^\D*(\d{1,3})\D/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+export function bestAlbumArtist(tracks: Track[]) {
+  const counts = new Map<string, number>();
+  for (const track of tracks) {
+    const artist = track.artist.trim() || "Unknown artist";
+    counts.set(artist, (counts.get(artist) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || qualityScore(b[0]) - qualityScore(a[0]))[0]?.[0] ?? "Unknown artist";
+}
+
+function qualityScore(value: string) {
+  let score = 0;
+  for (const character of value) {
+    if (/[\u4e00-\u9fff]/u.test(character)) score += 2;
+    if (/[a-z0-9]/iu.test(character)) score += 1;
+    if ("ÃÕÄÐÂÒ".includes(character)) score -= 2;
+  }
+  return score;
+}
+
+export function initials(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
+export function formatTime(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0:00";
+  const minutes = Math.floor(value / 60);
+  const seconds = Math.floor(value % 60);
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}

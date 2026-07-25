@@ -1,0 +1,113 @@
+.player {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.6fr) minmax(150px, 0.55fr);
+  align-items: center;
+  gap: 26px;
+  padding: 12px 56px 22px;
+  background: rgba(0, 0, 0, 0.68);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.now {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+}
+
+.now:disabled {
+  opacity: 1;
+}
+
+.now:not(:disabled):hover strong {
+  color: var(--accent);
+}
+
+.mini-cover {
+  width: 64px;
+  height: 64px;
+  flex: none;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 23px;
+  font-weight: 200;
+  overflow: hidden;
+}
+
+.now div:last-child {
+  min-width: 0;
+}
+
+.now strong,
+.now span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.now strong {
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.now span {
+  color: var(--muted);
+}
+
+.transport {
+  min-width: 0;
+}
+
+.buttons {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+.buttons button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.buttons button:hover,
+.buttons .active {
+  color: #fff;
+}
+
+.buttons .play-button {
+  width: 48px;
+  height: 48px;
+  background: #fff;
+  color: #050505;
+}
+
+.scrub,
+.volume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.scrub span {
+  width: 44px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.volume {
+  min-width: 0;
+  color: var(--muted);
+}
