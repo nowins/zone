@@ -99,7 +99,6 @@ export function LibraryView({
               </div>
               <strong>{album.album}</strong>
               <span>{album.artist}</span>
-              <small>{album.tracks.length} 首歌曲</small>
             </div>
           ))}
         </div>
