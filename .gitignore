@@ -57,5 +57,5 @@ src-tauri/*.log
 .tmp/
 tmp/
 # Agent design specs / plans (local only)
-docs/superpowers/
+docs/
 
