@@ -54,7 +54,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 
 - `src/App.tsx`：顶层应用状态（约 1200 行）。负责曲库扫描编排、播放队列、当前曲目、随机/重复、进度、音量、播放活动统计（playCount/skip）、播放列表持久化、home pins、Web Audio 分析器搭建与可视化采样、节拍分析。
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "nowPlaying" | "settings"`。
-- `src/constants.ts`：`STORAGE_KEY = "zone-player-state-v1"`、`LIBRARY_SCHEMA_VERSION = 5`、`DEFAULT_PLAYLIST_ID = "favorites"`、`MAX_HOME_PINS = 12`、`VISUALIZER_SAMPLE_COUNT = 180`。
+- `src/constants.ts`：`STORAGE_KEY = "zone-player-state-v1"`、`LIBRARY_SCHEMA_VERSION = 6`、`DEFAULT_PLAYLIST_ID = "favorites"`、`MAX_HOME_PINS = 12`、`VISUALIZER_SAMPLE_COUNT = 180`。
 - `src/views/`：页面级视图。
   - `QuickplayView.tsx`：Zune quickplay 首页，可固定/排序磁贴。
   - `LibraryView.tsx`：收藏页标签切换（专辑/艺术家/歌曲/播放列表），保持轻薄并向下委托。
@@ -68,22 +68,25 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `useLyrics.ts`：歌词加载/缓存/在线搜索状态机（本地缓存键 `zone-local-lyrics-v1`）。
   - `useLyricsProviderSettings.ts`：歌词 provider 启用与优先级（键 `zone-lyrics-providers-v1`）。
   - `useSystemMedia.ts`：与 Rust 端 SMTC 集成（`update_system_media*` 命令与媒体按键事件）。
-- `src/lyrics/providers.ts`：在线歌词 provider 定义与编排。自动查找按优先级回退并在高置信命中后停止；手动在线搜索并行查询全部已启用来源。请求统一经 Rust 命令 `request_lyrics_provider` 中转。
+- `src/lyrics/providers.ts`：AMLL TTML DB、QQ 音乐、网易云音乐、LRCLIB 四个在线歌词 provider 的定义与编排。自动查找按优先级回退并在高置信命中后停止；手动在线搜索并行查询全部已启用来源。请求统一经 Rust 命令 `request_lyrics_provider` 中转。
 - `src/utils/`：纯逻辑模块（详见各测试）。
   - `music.ts`：专辑分组、曲目排序、播放列表默认值、`normalizePlaylists`。
   - `playback.ts`：队列移动/随机顺序/边界解析。
   - `smartPlaylist.ts`：智能播放列表规则求值与归一化。
   - `homePins.ts`：quickplay 固定项的归一化、移动、对账。
   - `visualizer.ts` / `beatAnalysis.ts` / `audioGlow.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格、Zune 光焰与封面拼贴的纯计算部分。
-  - `lyrics.ts` / `lyricsProviders.ts` / `lyricsProviderSearch.ts` / `lyricsExport.ts` / `lyricsMotion.ts`：歌词解析（plain/line/word）、候选打分排序、多来源搜索编排、TTML/LRC 导出与真实逐词时间驱动的长音包络。
+  - `lyrics.ts` / `amllTtml.ts` / `qrc.ts`：plain、LRC、增强 LRC、TTML、AMLL 元数据和 QQ QRC 的解析与归一化。
+  - `lyricsProviders.ts` / `lyricsProviderSearch.ts` / `lyricsSearch.ts`：候选打分与多样性裁剪、多来源搜索策略、按曲目保存的搜索信息修正。
+  - `lyricsTiming.ts` / `lyricsExport.ts` / `lyricsMotion.ts`：时间校准、TTML/LRC 导出与真实逐词时间驱动的长音包络。
   - `demoLyrics.ts`：仅动效原型用的演示歌词。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`collection`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`motion`、`animations-responsive`。
 - `src-tauri/src/lib.rs`（约 1000 行）：Tauri 命令与自定义协议。
   - 命令：`select_music_folder`、`select_lyrics_file`、`export_lyrics_file`、`scan_library`、`watch_music_folders`、`load_local_lyrics`、`request_lyrics_provider`、`update_system_media`、`update_system_media_timeline`。
   - `zone-audio` 自定义协议（`serve_audio_protocol`）：CORS 安全的本地音频播放与 Web Audio 分析，含字节范围（`Accept-Ranges`/`Content-Range`）与正确的音频 content type。
-  - 歌词：内嵌标签歌词、同目录 sidecar 歌词（`.ttml` 优先于 `.lrc`，大小写不敏感）、UTF-16/GBK 解码修复。
+  - 歌词：内嵌标签歌词、同目录 sidecar 歌词（`.ttml` → `.lrc` → `.txt`，文件名和扩展名大小写不敏感）、UTF-16/GBK 解码修复。
   - 封面提取与缓存（内嵌封面写入缓存目录）。
   - 文件内自带 Rust 单元测试（`#[cfg(test)]` 模块）。
+- `src-tauri/src/qrc.rs`：有边界限制的 QQ QRC 解密/解压实现；解密后的逐词时间轴由前端 `src/utils/qrc.ts` 转换为统一 TTML 再进入通用解析器。
 - `src-tauri/src/system_media.rs`：Windows SMTC 集成（设置 AppUserModelID、媒体信息/时间线更新、媒体按键事件转发到前端）。
 - `docs/`：设计文档（`lyrics-experience-plan.md`、`lyrics-motion-review.md`）与视觉证据截图（`docs/evidence/`）。`design-qa.md` 记录歌词模式的视觉 QA。
 - `scripts/`：目前为空。
@@ -91,6 +94,57 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 ### 模块导入约定
 
 `src/utils/` 中被 node 测试覆盖的模块之间互相引用时，相对导入必须带显式 `.js` 后缀（例如 `music.ts` 中 `from "./smartPlaylist.js"`、`from "../constants.js"`），因为测试直接运行 `tsconfig.test.json` 编译出的 ESM 产物。React 侧（`.tsx` 及 `App.tsx`）的导入不带后缀。向被测 util 新增跨模块导入时遵守带 `.js` 后缀的写法。
+
+## 歌词子系统基线
+
+歌词功能已经进入可用阶段。后续修改应建立在现有链路上，不要另起一套搜索、缓存、解析或播放时钟。
+
+### 统一数据模型与来源顺序
+
+- 所有来源最终归一化为 `LyricsDocument`：`format` 为 `plain`、`line` 或 `word`；行可包含翻译、音译、逐词时间和带独立时间轴的背景人声。
+- 音译是原文的罗马字/读音辅助（TTML `x-roman`），不是翻译；背景人声是 TTML `x-bg` 提供的独立演唱轨，不从普通文本猜测生成。
+- 已手动选定的在线候选或本地文件是按曲目保存的显式覆盖，二者互斥；清除覆盖后恢复自动发现。
+- 没有显式覆盖时，自动顺序为：音频标签内嵌歌词 → 同名 sidecar（`.ttml` → `.lrc` → `.txt`）→ 在线自动搜索。现有实现让内嵌歌词优先于 sidecar，不要在无产品决策时悄悄交换。
+- `src/utils/demoLyrics.ts` 只在开发环境中作为动效预览兜底；生产环境无歌词时显示 missing/error，演示歌词禁止导出或写入正式缓存。
+- 解析结果缓存会校验 parser version、`sourceId`、源文件修改时间和曲目时长。改变解析语义时应递增 `LYRICS_PARSER_VERSION`，避免继续读取旧文档。
+
+### 在线 Provider 与搜索语义
+
+四个来源默认均启用，用户可在设置中启用/停用和调整顺序：
+
+| 默认顺序 | Provider ID | 能力 | 默认超时 |
+| --- | --- | --- | --- |
+| 5 | `amll-ttml-db` | 逐词、翻译、音译，以及 TTML 中的背景人声 | 15 秒 |
+| 10 | `qq` | QRC 逐词、翻译 | 8 秒 |
+| 20 | `netease` | 逐行、翻译 | 8 秒 |
+| 30 | `lrclib` | 逐行或纯文本 | 15 秒 |
+
+- 自动搜索使用 `priority-fallback`：按用户优先级串行查询，某个来源出现分数不低于 `DEFAULT_LYRICS_MATCH_THRESHOLD`（当前 72）的有效候选后停止，不让弱匹配自动替换正确歌词。
+- 手动“在线搜索”使用 `all`：同时查询全部已启用来源；单个来源超时、报错或无结果不能吞掉其他来源的候选。结果先保证每个有结果的 Provider 至少保留一个，再按匹配度补齐（当前最多 24 个）。
+- 候选匹配综合标题、艺术家、专辑和时长；常见版本/发行后缀会在比较前归一化。Provider 优先级只用于同等匹配的排序，不应压过明显更准确的候选。
+- 搜索面板会显示每个 Provider 的 `ready` / `empty` / `error` 结果和候选数量。修改搜索编排时要保留这些 outcome，不能只返回合并后的单一结果。
+- 用户可以只为歌词搜索修正标题、艺术家和专辑；修正值按曲目持久化，不改写本地音频标签。查询信息或 Provider 配置变化后，旧远程缓存不得被当作当前查询结果。
+- 开发环境前端使用 `[lyrics]` 控制台日志；Rust 中转使用 `[lyrics:<request_id>]` 输出请求开始、响应头、完成、重试或错误信息。通过 `npm run tauri:dev` 可同时观察前后端诊断，但仍只在用户明确要求时启动。
+
+### 同步、动效与交互
+
+- `LyricsStage` 的逐词填充由 `requestAnimationFrame` 直接读取真实媒体时钟，并通过 DOM/CSS 变量更新；不要用 React state 做逐帧进度，以免重新引入卡顿。
+- 当前行居中，相邻行按距离降低透明度、缩小和轻微模糊；滚轮进入临时浏览态，约 3 秒后回到播放行，点击歌词行需按同一时间映射跳转。
+- 长音细节只由真实逐词起止时间计算，普通短词不触发；进入手动浏览或 `prefers-reduced-motion` 时应收敛或关闭。
+- 时间校准按 `trackId + sourceId` 保存，步进 250ms、范围 ±5 秒；正值表示歌词延后。逐词填充、行聚焦和点按跳转必须共同使用 `lyricsTiming.ts` 的可逆映射，避免显示与 seek 采用两套符号约定。
+
+### 导出与持久化边界
+
+- TTML 是保真导出：保留逐词时间、翻译、音译、背景人声和当前校准。
+- LRC 导出优先兼容性：逐词文档输出增强 LRC，保留逐词起点与翻译；音译和背景人声无法无歧义表达时不写入。界面必须继续明确这一损失边界。
+- 导出时会把当前校准烘焙进时间戳；写文件只经 Rust `export_lyrics_file` 的保存对话框完成，不在前端直接写路径。
+- `zone-local-lyrics-v1` 保存本地/在线手动绑定、解析缓存、远程候选缓存和按曲目搜索信息；`zone-lyrics-providers-v1` 保存 Provider 开关与优先级；`zone-lyrics-timing-v1` 保存每首曲目、每个来源的校准。迁移或清理任一存储时不能误删另外两类状态。
+
+### 修改歌词功能时的最低验证
+
+- 解析、评分、搜索编排、校准、导出或长音逻辑变化：运行 `npm test`，并更新对应的 `tests/lyrics*.test.mjs` 或 `tests/qrc.test.mjs`。
+- Provider URL、请求体、响应上限、QRC 解密或 Rust 文件读写变化：除 `npm test` 外，在 `src-tauri/` 运行 `cargo check`；改白名单时同步补 Rust 测试。
+- 歌词舞台结构或动效变化：运行 `npm run build` 和 `npm test`，并按 `docs/lyrics-motion-review.md` 检查真实播放、手动浏览、点击跳转、减少动态效果和窄窗口布局。
 
 ## 持久化
 
