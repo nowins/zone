@@ -15,7 +15,15 @@ import { QuickplayView } from "./views/QuickplayView";
 import { NowPlayingView } from "./views/NowPlayingView";
 import { SettingsView } from "./views/SettingsView";
 import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, MAX_HOME_PINS, STORAGE_KEY, VISUALIZER_SAMPLE_COUNT } from "./constants";
-import { albumKey, bestAlbumArtist, compareTracksForAlbum, defaultPlaylists, normalizePlaylists, uniqueIds } from "./utils/music";
+import {
+  albumKey,
+  bestAlbumArtist,
+  compareTracksForAlbum,
+  defaultPlaylists,
+  formatCollectionPlaylistCount,
+  normalizePlaylists,
+  uniqueIds,
+} from "./utils/music";
 import { homePinForPayload, homePinStateForPayload, moveHomePin, normalizeHomePins, reconcileHomePins, shiftHomePin } from "./utils/homePins";
 import { analyzePcmBeatGrid, createIdleBeatFrame, RealtimeBeatAnalyzer, type BeatFrame, type BeatGrid } from "./utils/beatAnalysis";
 import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/visualizer";
@@ -1299,9 +1307,22 @@ export default function App() {
         ) : null}
 
         {page === "collection" && (
-          <section className={`content-band ${showSearchResults ? "collection-searching" : ""}`}>
+          <section
+            className={`content-band collection-band${showSearchResults ? " collection-searching" : ""}`}
+          >
             <div className="collection-header">
-              <div className="collection-header-top">
+              <div className="collection-chrome">
+                <span className="collection-chrome-label">音乐</span>
+                <CollectionSearchField
+                  ref={searchInputRef}
+                  query={query}
+                  onQuery={setCollectionSearchQuery}
+                  onClear={clearCollectionSearch}
+                  showReturnToResults={query.trim().length > 0 && searchMode === "browse"}
+                  onReturnToResults={() => setSearchMode("results")}
+                />
+              </div>
+              <div className="collection-header-main">
                 <div className="collection-title">
                   <h1>collection</h1>
                   <p>
@@ -1314,36 +1335,27 @@ export default function App() {
                           : view === "artists"
                             ? `${artists.length} 位艺术家`
                             : view === "playlists"
-                              ? `${playlists.length} 个播放列表`
+                              ? formatCollectionPlaylistCount(playlists.length)
                               : `${tracks.length} 首歌曲`}
                     {scanNote ? ` · ${scanNote}` : ""}
                   </p>
                 </div>
-                <CollectionSearchField
-                  ref={searchInputRef}
-                  query={query}
-                  onQuery={setCollectionSearchQuery}
-                  onClear={clearCollectionSearch}
-                  showReturnToResults={query.trim().length > 0 && searchMode === "browse"}
-                  onReturnToResults={() => setSearchMode("results")}
-                />
+                {!showSearchResults ? (
+                  <nav className="collection-navigation" aria-label="收藏视图">
+                    <div className="segmented">
+                      {(["artists", "albums", "songs", "playlists"] as ViewMode[]).map((item) => (
+                        <button
+                          key={item}
+                          className={view === item ? "selected" : ""}
+                          onClick={() => setView(item)}
+                        >
+                          {{ artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" }[item]}
+                        </button>
+                      ))}
+                    </div>
+                  </nav>
+                ) : null}
               </div>
-              {!showSearchResults ? (
-                <div className="collection-navigation">
-                  <span>音乐</span>
-                  <div className="segmented">
-                    {(["artists", "albums", "songs", "playlists"] as ViewMode[]).map((item) => (
-                      <button
-                        key={item}
-                        className={view === item ? "selected" : ""}
-                        onClick={() => setView(item)}
-                      >
-                        {{ artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" }[item]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
             </div>
 
             {showSearchResults ? (

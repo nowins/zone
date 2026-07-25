@@ -731,51 +731,65 @@
   font-weight: 400;
 }
 
-/* Zune collection composition */
+/* Collection page wash: ~half of quickplay pink radial strength so the
+   library is not pure black, without washing out covers or list type. */
+.collection-band {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(
+      ellipse 42% 58% at 48% 18%,
+      rgba(112, 14, 61, 0.14) 0%,
+      rgba(74, 8, 43, 0.07) 42%,
+      rgba(11, 7, 12, 0) 78%
+    ),
+    radial-gradient(
+      ellipse 34% 48% at 82% 72%,
+      rgba(92, 10, 52, 0.08) 0%,
+      rgba(11, 7, 12, 0) 72%
+    ),
+    var(--app-bg);
+}
+
+/* Zune collection composition:
+   chrome row  — 音乐 (left) + search (right)
+   main row    — ghost title (left) + view tabs (right) */
 .collection-header {
   position: relative;
-  min-height: 104px;
+  min-height: 96px;
   flex: none;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 0 4px 12px;
+  gap: 0;
+  padding: 0 4px 10px;
 }
 
-.collection-header-top {
+.collection-chrome {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 28px;
+  gap: 24px;
   min-width: 0;
+  min-height: 32px;
 }
 
-.collection-title {
-  min-width: 0;
-}
-
-.collection-title h1 {
-  margin-left: 24px;
-  color: rgba(247, 242, 246, 0.105);
-  font-size: clamp(68px, 7.4vw, 108px);
-  letter-spacing: -0.055em;
-  white-space: nowrap;
-}
-
-.collection-title p {
-  margin: 10px 0 0;
-  color: rgba(247, 242, 246, 0.72);
-  font-size: 13px;
+.collection-chrome-label {
+  flex: 0 0 auto;
+  padding: 0 0 6px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 17px;
+  line-height: 1;
+  border-bottom: 2px solid var(--accent);
 }
 
 .collection-search {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 12px;
   min-width: 0;
-  padding-bottom: 6px;
+  padding-bottom: 2px;
 }
 
 .collection-search-return {
@@ -791,14 +805,14 @@
 }
 
 .collection-search-field {
-  width: clamp(220px, 28vw, 320px);
+  width: clamp(200px, 22vw, 280px);
   min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 0 2px 6px;
-  color: rgba(247, 242, 246, 0.48);
-  border-bottom: 1px solid rgba(247, 242, 246, 0.18);
+  color: rgba(247, 242, 246, 0.58);
+  border-bottom: 1px solid rgba(247, 242, 246, 0.24);
   transition:
     color var(--motion-micro) var(--motion-ease-standard),
     border-color var(--motion-micro) var(--motion-ease-standard);
@@ -823,7 +837,7 @@
 }
 
 .collection-search-field input::placeholder {
-  color: rgba(247, 242, 246, 0.34);
+  color: rgba(247, 242, 246, 0.44);
   font-weight: 300;
 }
 
@@ -841,20 +855,38 @@
   color: #fff;
 }
 
-.collection-navigation {
+.collection-header-main {
   display: flex;
   align-items: flex-end;
-  padding-bottom: 2px;
+  justify-content: space-between;
+  gap: 36px;
+  min-width: 0;
 }
 
-.collection-navigation > span {
-  position: absolute;
-  top: 0;
-  left: 4px;
-  padding-bottom: 7px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 17px;
-  border-bottom: 2px solid var(--accent);
+.collection-title {
+  min-width: 0;
+}
+
+.collection-title h1 {
+  margin-left: 24px;
+  color: rgba(247, 242, 246, 0.105);
+  font-size: clamp(60px, 6.8vw, 100px);
+  letter-spacing: -0.055em;
+  white-space: nowrap;
+}
+
+.collection-title p {
+  margin: 8px 0 0;
+  color: rgba(247, 242, 246, 0.72);
+  font-size: 13px;
+}
+
+.collection-navigation {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding-bottom: 2px;
 }
 
 .segmented {

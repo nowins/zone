@@ -18,6 +18,9 @@ test("playlist page presents one total and localized labels", () => {
   assert.ok(browserSource.includes("detailDescription: isCustomManual ? null : playlistDescription"));
   assert.ok(browserSource.includes("{selected.detailDescription && <span>{selected.detailDescription}</span>}"));
   assert.ok(!collectionCss.includes(".playlist-list p"));
+  // Header count includes the ephemeral "正在播放" row prepended in PlaylistBrowser.
+  assert.ok(appSource.includes("formatCollectionPlaylistCount(playlists.length)"));
+  assert.ok(!appSource.includes("${playlists.length} 个播放列表"));
 });
 
 test("playlist context actions do not offer favorites or self nesting", () => {

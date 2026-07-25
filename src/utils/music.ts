@@ -37,6 +37,19 @@ export function normalizePlaylists(playlists: Playlist[] | undefined | null): Pl
   return hasDefault ? items : [...defaults, ...items];
 }
 
+/**
+ * PlaylistBrowser always prepends the ephemeral "正在播放" queue before the
+ * stored playlists (收藏 + user/smart). Collection header count must match
+ * that left-rail surface, not bare `playlists.length`.
+ */
+export function collectionPlaylistSurfaceCount(storedPlaylistCount: number): number {
+  return Math.max(0, storedPlaylistCount) + 1;
+}
+
+export function formatCollectionPlaylistCount(storedPlaylistCount: number): string {
+  return `${collectionPlaylistSurfaceCount(storedPlaylistCount)} 个列表`;
+}
+
 export function uniqueIds(ids: string[]) {
   return Array.from(new Set(ids));
 }

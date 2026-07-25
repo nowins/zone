@@ -24,9 +24,23 @@ test("collection search opens a dedicated grouped result state", () => {
   assert.ok(collectionCss.includes("grid-template-columns: 176px minmax(0, 1fr)"));
 });
 
-test("search lives in the collection header as a always-visible field", () => {
+test("Zune collection chrome puts music+search above title+view tabs", () => {
   assert.ok(appSource.includes("<CollectionSearchField"));
-  assert.ok(appSource.includes("collection-header-top"));
+  assert.ok(appSource.includes("collection-chrome"));
+  assert.ok(appSource.includes("collection-chrome-label"));
+  assert.ok(appSource.includes("collection-chrome-label"));
+  assert.ok(appSource.includes("音乐"));
+  assert.ok(appSource.includes("collection-header-main"));
+  assert.ok(appSource.includes('aria-label="收藏视图"'));
+  assert.ok(appSource.includes("collection-band"));
+  assert.ok(collectionCss.includes(".collection-band"));
+  assert.ok(collectionCss.includes("radial-gradient"));
+  assert.ok(collectionCss.includes(".collection-chrome"));
+  assert.ok(collectionCss.includes(".collection-header-main"));
+  // Settings keeps plain content-band without the collection wash class.
+  const settingsSource = readFileSync("src/views/SettingsView.tsx", "utf8");
+  assert.ok(settingsSource.includes('className="content-band settings-page"'));
+  assert.ok(!settingsSource.includes("collection-band"));
   assert.ok(searchFieldSource.includes('placeholder="搜索音乐、艺术家、专辑…"'));
   assert.ok(searchFieldSource.includes('aria-label="搜索音乐"'));
   assert.ok(searchFieldSource.includes('aria-label="清除搜索"'));
