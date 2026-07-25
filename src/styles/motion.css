@@ -158,6 +158,12 @@
   pointer-events: none;
 }
 
+.motion-exit .lyrics-settings-panel,
+.motion-exit .lyrics-source-browser {
+  animation: motion-exit-lyrics-panel var(--motion-micro) var(--motion-ease-exit) both;
+  pointer-events: none;
+}
+
 /* Chrome exits: the header and player bar start fading the moment a
    navigation toward now playing begins, sharing the old page's exit window
    and unmounting exactly as the stage flips in. They stay in flow so the
@@ -335,6 +341,11 @@
   to { opacity: 0; transform: translate3d(-50%, 6px, 0); }
 }
 
+@keyframes motion-exit-lyrics-panel {
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to { opacity: 0; transform: translate3d(var(--motion-drift-s), 0, 0); }
+}
+
 @keyframes motion-page-enter {
   from {
     opacity: 0;
@@ -424,6 +435,8 @@
   .motion-exit .playlist-dialog,
   .motion-exit .smart-playlist-dialog,
   .motion-exit .action-toast,
+  .motion-exit .lyrics-settings-panel,
+  .motion-exit .lyrics-source-browser,
   .motion-exit .player,
   .motion-exit .app-header {
     animation: motion-exit-reduced var(--motion-instant) var(--motion-ease-standard) both;
@@ -463,6 +476,14 @@
   .audio-glow-canvas,
   .now-canvas-grade::after,
   .lyrics-stage,
+  .lyrics-settings-panel,
+  .lyrics-source-browser,
+  .lyrics-settings-toggle,
+  .lyrics-settings-switch-row,
+  .lyrics-settings-switch,
+  .lyrics-settings-switch::after,
+  .lyrics-font-size-options button,
+  .lyrics-settings-actions > button,
   .lyrics-line,
   .lyrics-line::before,
   .lyrics-word-progress,
@@ -475,7 +496,9 @@
   .save-playlist-dialog,
   .playlist-dialog,
   .smart-playlist-dialog,
-  .lyrics-stage {
+  .lyrics-stage,
+  .lyrics-settings-panel,
+  .lyrics-source-browser {
     transform: none;
   }
 
@@ -486,6 +509,10 @@
 
   .tilt-pressed,
   .quickplay-ghost,
+  .lyrics-settings-toggle:active,
+  .lyrics-settings-switch-row:active,
+  .lyrics-font-size-options button:active,
+  .lyrics-settings-actions > button:active,
   .lyrics-word.has-long-note {
     transform: none !important;
   }

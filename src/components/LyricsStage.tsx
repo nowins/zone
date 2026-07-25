@@ -1,7 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type WheelEvent } from "react";
+import { SlidersHorizontal } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type WheelEvent,
+} from "react";
 import type { LyricsCandidate, LyricsDocument, LyricsLine, LyricsSearchMetadata, LyricsWord } from "../types";
 import type { LyricsOnlineSearchState } from "../hooks/useLyrics";
+import { useLyricsDisplaySettings } from "../hooks/useLyricsDisplaySettings";
 import type { LyricsExportFormat } from "../utils/lyricsExport";
+import {
+  LYRICS_FONT_SIZE_OPTIONS,
+  type LyricsDisplaySettings,
+  type LyricsFontSize,
+} from "../utils/lyricsDisplay";
 import { isLyricsLongNote, lyricsLongNoteEnvelope } from "../utils/lyricsMotion";
 import {
   formatLyricsTimingOffset,
@@ -9,6 +27,8 @@ import {
   lyricsTimeToMediaTime,
   mediaTimeToLyricsTime,
 } from "../utils/lyricsTiming";
+import { Presence, useLastNonNull } from "../motion/presence";
+import { MOTION_DURATIONS } from "../motion/tokens";
 
 const BROWSE_RETURN_DELAY = 3_000;
 const WHEEL_STEP_THRESHOLD = 34;
@@ -44,16 +64,16 @@ function getBackgroundPresence(start: number, end: number, progress: number) {
   return Math.max(0, Math.min(fadeIn, fadeOut));
 }
 
-function lineAriaLabel(line: LyricsLine, isPlain: boolean) {
+function lineAriaLabel(line: LyricsLine, isPlain: boolean, settings: LyricsDisplaySettings) {
   if (isPlain) return line.text;
   const supportingText = [
-    line.translation,
-    line.transliteration,
-    ...(line.background ?? []).flatMap((background) => [
+    settings.showTranslation ? line.translation : undefined,
+    settings.showTransliteration ? line.transliteration : undefined,
+    ...(!settings.showBackgroundVocals ? [] : (line.background ?? []).flatMap((background) => [
       `背景人声：${background.text}`,
-      background.translation,
-      background.transliteration,
-    ]),
+      settings.showTranslation ? background.translation : undefined,
+      settings.showTransliteration ? background.transliteration : undefined,
+    ])),
   ].filter(Boolean);
   return [`跳转到歌词：${line.text}`, ...supportingText].join("；");
 }
@@ -138,21 +158,27 @@ export function LyricsStage({
 }) {
   const [browseIndex, setBrowseIndex] = useState<number | null>(null);
   const [sourceBrowserOpen, setSourceBrowserOpen] = useState(false);
+  const [sourceBrowserOrigin, setSourceBrowserOrigin] = useState<"stage" | "settings">("stage");
+  const [sourceBrowserKeyboardTransition, setSourceBrowserKeyboardTransition] = useState(false);
   const [searchMetadataEditing, setSearchMetadataEditing] = useState(false);
   const [searchMetadataDraft, setSearchMetadataDraft] = useState<LyricsSearchMetadata>({
     title: "",
     artist: "",
     album: "",
   });
-  const [timingControlOpen, setTimingControlOpen] = useState(false);
-  const [exportControlOpen, setExportControlOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsKeyboardTransition, setSettingsKeyboardTransition] = useState(false);
   const [exportState, setExportState] = useState<{
     status: "idle" | "saving" | "success" | "error";
     message: string;
   }>({ status: "idle", message: "" });
+  const { settings, setFontSize, setDisplayOption } = useLyricsDisplaySettings();
   const [navigationInput, setNavigationInput] = useState<"pointer" | "keyboard">("pointer");
   const returnTimerRef = useRef<number | null>(null);
   const wheelDeltaRef = useRef(0);
+  const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const settingsPanelRef = useRef<HTMLElement | null>(null);
+  const sourceBrowserRef = useRef<HTMLElement | null>(null);
   const lineButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const wordProgressRefs = useRef<Array<Array<HTMLSpanElement | null>>>([]);
   const wordMotionRefs = useRef<Array<Array<HTMLSpanElement | null>>>([]);
@@ -171,6 +197,15 @@ export function LyricsStage({
   const activeIndexRef = useRef(initialActiveIndex);
   const focusIndex = browseIndex ?? activeIndex;
   const browsing = browseIndex !== null;
+  const displayAvailability = useMemo(() => ({
+    translation: lines.some((line) => Boolean(
+      line.translation || line.background?.some((background) => background.translation),
+    )),
+    transliteration: lines.some((line) => Boolean(
+      line.transliteration || line.background?.some((background) => background.transliteration),
+    )),
+    backgroundVocals: lines.some((line) => Boolean(line.background?.length)),
+  }), [document?.lines]);
 
   playbackClockRef.current = playbackClock;
 
@@ -268,6 +303,16 @@ export function LyricsStage({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape") {
+      if (sourceBrowserOpen) {
+        event.preventDefault();
+        closeSourceBrowser(true);
+      } else if (settingsOpen) {
+        event.preventDefault();
+        closeSettings(true);
+      }
+      return;
+    }
     if (isPlain) return;
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
     event.preventDefault();
@@ -330,12 +375,50 @@ export function LyricsStage({
     void action();
   }
 
-  function openOnlineSearch() {
+  function openOnlineSearch(
+    keyboardInitiated = false,
+    origin: "stage" | "settings" = "stage",
+  ) {
+    setSourceBrowserKeyboardTransition(keyboardInitiated);
+    setSettingsKeyboardTransition(keyboardInitiated);
+    setSourceBrowserOrigin(origin);
     setSourceBrowserOpen(true);
     setSearchMetadataEditing(false);
-    setTimingControlOpen(false);
-    setExportControlOpen(false);
+    setSettingsOpen(false);
     runSourceAction(onSearchOnline);
+  }
+
+  function closeSourceBrowser(keyboardInitiated = false) {
+    setSourceBrowserKeyboardTransition(keyboardInitiated);
+    setSourceBrowserOpen(false);
+    if (sourceBrowserOrigin === "settings") {
+      setSettingsKeyboardTransition(keyboardInitiated);
+      setSettingsOpen(true);
+    }
+    onInteraction();
+  }
+
+  function toggleSettings(event: ReactMouseEvent<HTMLButtonElement>) {
+    const keyboardInitiated = event.detail === 0;
+    setSettingsKeyboardTransition(keyboardInitiated);
+    setSourceBrowserOpen(false);
+    setSettingsOpen((open) => !open);
+    setExportState({ status: "idle", message: "" });
+    onInteraction();
+  }
+
+  function closeSettings(keyboardInitiated = false) {
+    setSettingsKeyboardTransition(keyboardInitiated);
+    setSettingsOpen(false);
+    onInteraction();
+    if (keyboardInitiated) {
+      window.requestAnimationFrame(() => settingsTriggerRef.current?.focus());
+    }
+  }
+
+  function runSettingsSourceAction(action: () => void | Promise<void>, keyboardInitiated = false) {
+    closeSettings(keyboardInitiated);
+    runSourceAction(action);
   }
 
   function editSearchMetadata() {
@@ -374,7 +457,8 @@ export function LyricsStage({
     }
   }
 
-  function chooseOnlineSource(candidate: LyricsCandidate) {
+  function chooseOnlineSource(candidate: LyricsCandidate, keyboardInitiated: boolean) {
+    setSourceBrowserKeyboardTransition(keyboardInitiated);
     onInteraction();
     void Promise.resolve(onSelectOnlineSource(candidate)).then(() => setSourceBrowserOpen(false));
   }
@@ -391,19 +475,33 @@ export function LyricsStage({
           : `${onlineSearch.candidates.length} 个候选，来自 ${providerCount} 个来源，按匹配度排列`;
     return (
       <section
-        className={`lyrics-source-browser ${onlineSearch.status === "loading" ? "is-searching" : ""}`}
+        ref={sourceBrowserRef}
+        className={`lyrics-source-browser ${onlineSearch.status === "loading" ? "is-searching" : ""} ${
+          sourceBrowserKeyboardTransition ? "is-keyboard-transition" : ""
+        }`}
         aria-label="在线歌词候选"
         aria-busy={onlineSearch.status === "loading"}
         onWheel={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Escape") {
+            event.preventDefault();
+            closeSourceBrowser(true);
+          }
+        }}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          setSourceBrowserKeyboardTransition(false);
+        }}
       >
         <header>
           <div>
             <span>歌词来源</span>
             <h2>在线搜索</h2>
           </div>
-          <button type="button" onClick={() => setSourceBrowserOpen(false)}>关闭</button>
+          <button type="button" onClick={(event) => closeSourceBrowser(event.detail === 0)}>
+            {sourceBrowserOrigin === "settings" ? "返回" : "关闭"}
+          </button>
         </header>
         {searchMetadataEditing ? (
           <form className="lyrics-search-metadata-form" onSubmit={submitSearchMetadata}>
@@ -480,7 +578,11 @@ export function LyricsStage({
         ) : null}
         <div className="lyrics-candidate-list" aria-live="polite">
           {onlineSearch.candidates.map((candidate) => (
-            <button type="button" key={candidate.id} onClick={() => chooseOnlineSource(candidate)}>
+            <button
+              type="button"
+              key={candidate.id}
+              onClick={(event) => chooseOnlineSource(candidate, event.detail === 0)}
+            >
               <span className="lyrics-candidate-score">{candidate.score.total}</span>
               <span className="lyrics-candidate-copy">
                 <strong>{candidate.title}</strong>
@@ -515,24 +617,293 @@ export function LyricsStage({
     );
   }
 
+  function settingsPanel() {
+    if (!settingsOpen) return null;
+    const displayToggle = (
+      option: "showTranslation" | "showTransliteration" | "showBackgroundVocals",
+      label: string,
+      available: boolean,
+      availableDescription: string,
+      unavailableDescription: string,
+    ) => (
+      <button
+        className="lyrics-settings-row lyrics-settings-switch-row"
+        type="button"
+        role="switch"
+        aria-checked={settings[option]}
+        data-unavailable={!available || undefined}
+        onClick={(event) => {
+          setSettingsKeyboardTransition(event.detail === 0);
+          setDisplayOption(option, !settings[option]);
+          onInteraction();
+        }}
+      >
+        <span>
+          <strong>{label}</strong>
+          <small>{available ? availableDescription : unavailableDescription}</small>
+        </span>
+        <span className="lyrics-settings-switch" aria-hidden="true" />
+      </button>
+    );
+
+    return (
+      <section
+        ref={settingsPanelRef}
+        id="lyrics-settings-panel"
+        className={`lyrics-settings-panel ${settingsKeyboardTransition ? "is-keyboard-transition" : ""}`}
+        role="dialog"
+        aria-labelledby="lyrics-settings-title"
+        onWheel={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Escape") {
+            event.preventDefault();
+            closeSettings(true);
+          }
+        }}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          setSettingsKeyboardTransition(false);
+        }}
+      >
+        <header>
+          <div>
+            <span>歌词</span>
+            <h2 id="lyrics-settings-title">设置</h2>
+          </div>
+          <button
+            type="button"
+            onClick={(event) => closeSettings(event.detail === 0)}
+          >
+            关闭
+          </button>
+        </header>
+
+        <div className="lyrics-settings-content">
+          <section className="lyrics-settings-section" aria-labelledby="lyrics-display-settings">
+            <h3 id="lyrics-display-settings">显示</h3>
+            <div className="lyrics-settings-row lyrics-font-size-row">
+              <span>
+                <strong>歌词大小</strong>
+                <small>只调整歌词舞台，不影响应用界面</small>
+              </span>
+              <div className="lyrics-font-size-options" role="group" aria-label="歌词大小">
+                {LYRICS_FONT_SIZE_OPTIONS.map((fontSize) => (
+                  <button
+                    type="button"
+                    key={fontSize}
+                    aria-pressed={settings.fontSize === fontSize}
+                    onClick={(event) => {
+                      setSettingsKeyboardTransition(event.detail === 0);
+                      setFontSize(fontSize);
+                      onInteraction();
+                    }}
+                  >
+                    {fontSizeLabel(fontSize)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {displayToggle(
+              "showTranslation",
+              "翻译",
+              displayAvailability.translation,
+              "显示原文下方的翻译",
+              "当前歌词不包含翻译",
+            )}
+            {displayToggle(
+              "showTransliteration",
+              "音译",
+              displayAvailability.transliteration,
+              "显示罗马字或读音辅助",
+              "当前歌词不包含音译",
+            )}
+            {displayToggle(
+              "showBackgroundVocals",
+              "背景人声",
+              displayAvailability.backgroundVocals,
+              "显示独立时间轴上的和声与伴唱",
+              "当前歌词不包含背景人声",
+            )}
+          </section>
+
+          {!isPlain && !isDemoSource ? (
+            <section className="lyrics-settings-section" aria-labelledby="lyrics-sync-settings">
+              <h3 id="lyrics-sync-settings">同步</h3>
+              <div className="lyrics-settings-row lyrics-settings-timing">
+                <span>
+                  <strong>歌词时间</strong>
+                  <small>正值表示歌词延后</small>
+                </span>
+                <div>
+                  <button
+                    type="button"
+                    title="歌词出现得太晚"
+                    onClick={(event) => {
+                      setSettingsKeyboardTransition(event.detail === 0);
+                      onAdjustTimingOffset(-LYRICS_TIMING_STEP_MS);
+                      onInteraction();
+                    }}
+                  >
+                    提前
+                  </button>
+                  <output aria-live="polite">{formatLyricsTimingOffset(timingOffsetMs)}</output>
+                  <button
+                    type="button"
+                    title="歌词出现得太早"
+                    onClick={(event) => {
+                      setSettingsKeyboardTransition(event.detail === 0);
+                      onAdjustTimingOffset(LYRICS_TIMING_STEP_MS);
+                      onInteraction();
+                    }}
+                  >
+                    延后
+                  </button>
+                  <button
+                    className="lyrics-settings-reset"
+                    type="button"
+                    disabled={timingOffsetMs === 0}
+                    onClick={(event) => {
+                      setSettingsKeyboardTransition(event.detail === 0);
+                      onResetTimingOffset();
+                      onInteraction();
+                    }}
+                  >
+                    重置
+                  </button>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="lyrics-settings-section" aria-labelledby="lyrics-source-settings">
+            <h3 id="lyrics-source-settings">来源</h3>
+            <div className="lyrics-settings-current-source">
+              <span>当前</span>
+              <strong title={sourceLabel}>{sourceLabel ?? "本地歌词"}</strong>
+              {isManualSource ? <em>已手动选择</em> : null}
+            </div>
+            <div className="lyrics-settings-actions">
+              {hasOnlineProviders ? (
+                <button
+                  type="button"
+                  onClick={(event) => openOnlineSearch(event.detail === 0, "settings")}
+                >
+                  <strong>在线搜索</strong>
+                  <small>同时查询所有已启用的来源</small>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={(event) => runSettingsSourceAction(onSelectSource, event.detail === 0)}
+              >
+                <strong>{isDemoSource ? "选择本地歌词" : "更换本地文件"}</strong>
+                <small>支持 TTML、LRC 和纯文本</small>
+              </button>
+              {isManualSource ? (
+                <button
+                  type="button"
+                  onClick={(event) => runSettingsSourceAction(onClearManualSource, event.detail === 0)}
+                >
+                  <strong>恢复自动查找</strong>
+                  <small>移除当前曲目的手动来源</small>
+                </button>
+              ) : null}
+            </div>
+          </section>
+
+          {!isDemoSource ? (
+            <section className="lyrics-settings-section lyrics-settings-export" aria-labelledby="lyrics-export-settings">
+              <h3 id="lyrics-export-settings">导出</h3>
+              <div className="lyrics-settings-actions">
+                <button
+                  type="button"
+                  disabled={exportState.status === "saving"}
+                  onClick={(event) => {
+                    setSettingsKeyboardTransition(event.detail === 0);
+                    void exportLyrics("ttml");
+                  }}
+                >
+                  <strong>TTML</strong>
+                  <small>完整保留逐词、翻译、音译和背景人声</small>
+                </button>
+                <button
+                  type="button"
+                  disabled={exportState.status === "saving"}
+                  onClick={(event) => {
+                    setSettingsKeyboardTransition(event.detail === 0);
+                    void exportLyrics("lrc");
+                  }}
+                >
+                  <strong>LRC</strong>
+                  <small>兼容逐行、逐词起点和翻译；不含音译、背景人声</small>
+                </button>
+              </div>
+              {exportState.message ? (
+                <output className={`is-${exportState.status}`} aria-live="polite">
+                  {exportState.message}
+                </output>
+              ) : null}
+            </section>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
   useEffect(() => {
     if (status === "loading" || !visible) {
       setSourceBrowserOpen(false);
-      setTimingControlOpen(false);
-      setExportControlOpen(false);
+      setSettingsOpen(false);
     }
   }, [status, visible]);
 
   useEffect(() => {
-    setTimingControlOpen(false);
-    setExportControlOpen(false);
+    setSettingsOpen(false);
     setExportState({ status: "idle", message: "" });
   }, [document?.trackId, document?.sourceId]);
+
+  useEffect(() => {
+    if (!settingsOpen || !settingsKeyboardTransition) return;
+    const frame = window.requestAnimationFrame(() => {
+      settingsPanelRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [settingsKeyboardTransition, settingsOpen]);
+
+  useEffect(() => {
+    if (!sourceBrowserOpen || !sourceBrowserKeyboardTransition) return;
+    const frame = window.requestAnimationFrame(() => {
+      sourceBrowserRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [sourceBrowserKeyboardTransition, sourceBrowserOpen]);
 
   useEffect(() => {
     setSearchMetadataEditing(false);
     if (searchMetadata) setSearchMetadataDraft({ ...searchMetadata });
   }, [searchMetadata?.album, searchMetadata?.artist, searchMetadata?.title]);
+
+  const sourceBrowserElement = sourceBrowser();
+  const lastSourceBrowserElement = useLastNonNull(sourceBrowserElement);
+  const settingsPanelElement = settingsPanel();
+  const lastSettingsPanelElement = useLastNonNull(settingsPanelElement);
+  const sourceBrowserSurface = (
+    <Presence
+      show={sourceBrowserOpen}
+      exitDurationMs={sourceBrowserKeyboardTransition ? 0 : MOTION_DURATIONS.micro}
+    >
+      {sourceBrowserElement ?? lastSourceBrowserElement ?? <span aria-hidden="true" style={{ display: "none" }} />}
+    </Presence>
+  );
+  const settingsPanelSurface = (
+    <Presence
+      show={settingsOpen}
+      exitDurationMs={settingsKeyboardTransition ? 0 : MOTION_DURATIONS.micro}
+    >
+      {settingsPanelElement ?? lastSettingsPanelElement ?? <span aria-hidden="true" style={{ display: "none" }} />}
+    </Presence>
+  );
 
   if (!document) {
     const emptyLabel = status === "loading"
@@ -547,7 +918,12 @@ export function LyricsStage({
           {status !== "loading" && status !== "idle" ? (
             <div className="lyrics-empty-actions">
               {hasOnlineProviders ? (
-                <button type="button" onClick={openOnlineSearch}>在线搜索</button>
+                <button
+                  type="button"
+                  onClick={(event) => openOnlineSearch(event.detail === 0)}
+                >
+                  在线搜索
+                </button>
               ) : null}
               <button type="button" onClick={() => runSourceAction(onSelectSource)}>选择本地歌词</button>
               {status === "error" ? <button type="button" onClick={() => runSourceAction(onRetry)}>重试</button> : null}
@@ -557,7 +933,7 @@ export function LyricsStage({
             </div>
           ) : null}
         </div>
-        {sourceBrowser()}
+        {sourceBrowserSurface}
       </section>
     );
   }
@@ -569,133 +945,38 @@ export function LyricsStage({
       } ${
         navigationInput === "keyboard" ? "is-keyboard-browsing" : ""
       }`}
+      data-lyrics-font-size={settings.fontSize}
       aria-hidden={!visible}
       aria-label="歌词"
       onWheel={handleWheel}
       onKeyDown={handleKeyDown}
-      onPointerDown={() => setNavigationInput("pointer")}
+      onPointerDown={() => {
+        setNavigationInput("pointer");
+        if (settingsOpen) closeSettings();
+      }}
     >
-      <div className="lyrics-source-control">
-        <span title={sourceLabel}>{sourceLabel ?? "本地歌词"}</span>
-        {!isPlain && !isDemoSource ? (
-          <div className={`lyrics-timing-control ${timingControlOpen ? "is-open" : ""}`}>
-            <button
-              className="lyrics-timing-toggle"
-              type="button"
-              aria-expanded={timingControlOpen}
-              onClick={() => {
-                onInteraction();
-                setExportControlOpen(false);
-                setTimingControlOpen((open) => !open);
-              }}
-            >
-              {timingOffsetMs === 0 ? "校准" : formatLyricsTimingOffset(timingOffsetMs)}
-            </button>
-            {timingControlOpen ? (
-              <div
-                className="lyrics-timing-popover"
-                role="group"
-                aria-label="歌词时间校准"
-                onWheel={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-                onPointerDown={(event) => event.stopPropagation()}
-              >
-                <span>歌词时间</span>
-                <button
-                  type="button"
-                  title="歌词出现得太晚"
-                  onClick={() => {
-                    onInteraction();
-                    onAdjustTimingOffset(-LYRICS_TIMING_STEP_MS);
-                  }}
-                >
-                  提前
-                </button>
-                <output aria-live="polite">{formatLyricsTimingOffset(timingOffsetMs)}</output>
-                <button
-                  type="button"
-                  title="歌词出现得太早"
-                  onClick={() => {
-                    onInteraction();
-                    onAdjustTimingOffset(LYRICS_TIMING_STEP_MS);
-                  }}
-                >
-                  延后
-                </button>
-                <button
-                  className="lyrics-timing-reset"
-                  type="button"
-                  disabled={timingOffsetMs === 0}
-                  onClick={() => {
-                    onInteraction();
-                    onResetTimingOffset();
-                  }}
-                >
-                  重置
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {!isDemoSource ? (
-          <div className={`lyrics-export-control ${exportControlOpen ? "is-open" : ""}`}>
-            <button
-              className="lyrics-export-toggle"
-              type="button"
-              aria-expanded={exportControlOpen}
-              onClick={() => {
-                onInteraction();
-                setTimingControlOpen(false);
-                setExportControlOpen((open) => !open);
-                setExportState({ status: "idle", message: "" });
-              }}
-            >
-              导出
-            </button>
-            {exportControlOpen ? (
-              <div
-                className="lyrics-export-popover"
-                role="group"
-                aria-label="歌词导出格式"
-                onWheel={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-                onPointerDown={(event) => event.stopPropagation()}
-              >
-                <span>导出歌词</span>
-                <button
-                  type="button"
-                  disabled={exportState.status === "saving"}
-                  onClick={() => void exportLyrics("ttml")}
-                >
-                  <strong>TTML</strong>
-                  <small>完整保留逐词、翻译、音译和背景人声</small>
-                </button>
-                <button
-                  type="button"
-                  disabled={exportState.status === "saving"}
-                  onClick={() => void exportLyrics("lrc")}
-                >
-                  <strong>LRC</strong>
-                  <small>兼容逐行、逐词起点和翻译；不含音译、背景人声</small>
-                </button>
-                {exportState.message ? (
-                  <output className={`is-${exportState.status}`} aria-live="polite">
-                    {exportState.message}
-                  </output>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {hasOnlineProviders ? <button type="button" onClick={openOnlineSearch}>在线搜索</button> : null}
-        <button type="button" onClick={() => runSourceAction(onSelectSource)}>
-          {isDemoSource ? "选择本地歌词" : "更换文件"}
+      <div
+        className="lyrics-source-control"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <span className="lyrics-source-label" title={sourceLabel}>
+          {sourceLabel ?? "本地歌词"}
+        </span>
+        <button
+          ref={settingsTriggerRef}
+          className={`lyrics-settings-toggle ${settingsOpen ? "is-open" : ""}`}
+          type="button"
+          aria-expanded={settingsOpen}
+          aria-controls="lyrics-settings-panel"
+          onClick={toggleSettings}
+        >
+          <SlidersHorizontal size={14} strokeWidth={1.9} aria-hidden="true" />
+          <span>歌词设置</span>
+          {timingOffsetMs !== 0 ? <em aria-label={`已校准 ${formatLyricsTimingOffset(timingOffsetMs)}`} /> : null}
         </button>
-        {isManualSource ? (
-          <button type="button" onClick={() => runSourceAction(onClearManualSource)}>恢复自动</button>
-        ) : null}
       </div>
-      {sourceBrowser()}
+      {settingsPanelSurface}
+      {sourceBrowserSurface}
       <div className="lyrics-lines">
         {lines.map((line, index) => {
           const offset = index - focusIndex;
@@ -714,7 +995,7 @@ export function LyricsStage({
               onClick={isPlain ? undefined : (event) => seekToLine(line, event.detail === 0)}
               onFocus={onInteraction}
               aria-current={isPlaybackLine ? "true" : undefined}
-              aria-label={lineAriaLabel(line, isPlain)}
+              aria-label={lineAriaLabel(line, isPlain, settings)}
               tabIndex={visible && (isPlain || distance <= 3) ? 0 : -1}
             >
               <span className="lyrics-line-copy">
@@ -756,11 +1037,13 @@ export function LyricsStage({
                   );
                 })}
               </span>
-              {line.translation ? <span className="lyrics-translation">{line.translation}</span> : null}
-              {line.transliteration ? (
+              {settings.showTranslation && line.translation ? (
+                <span className="lyrics-translation">{line.translation}</span>
+              ) : null}
+              {settings.showTransliteration && line.transliteration ? (
                 <span className="lyrics-transliteration">{line.transliteration}</span>
               ) : null}
-              {line.background?.length ? (
+              {settings.showBackgroundVocals && line.background?.length ? (
                 <span className="lyrics-backgrounds" aria-hidden="true">
                   {line.background.map((background, backgroundIndex) => (
                     <span
@@ -796,10 +1079,10 @@ export function LyricsStage({
                           </span>
                         ))}
                       </span>
-                      {background.translation ? (
+                      {settings.showTranslation && background.translation ? (
                         <span className="lyrics-background-translation">{background.translation}</span>
                       ) : null}
-                      {background.transliteration ? (
+                      {settings.showTransliteration && background.transliteration ? (
                         <span className="lyrics-background-transliteration">{background.transliteration}</span>
                       ) : null}
                     </span>
@@ -823,6 +1106,12 @@ function providerOutcomeLabel(status: LyricsOnlineSearchState["providers"][numbe
   if (status === "ready") return "有结果";
   if (status === "empty") return "未找到";
   return "失败";
+}
+
+function fontSizeLabel(fontSize: LyricsFontSize) {
+  if (fontSize === "small") return "小";
+  if (fontSize === "large") return "大";
+  return "标准";
 }
 
 function fileName(path: string) {

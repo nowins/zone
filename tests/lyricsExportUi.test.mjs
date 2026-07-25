@@ -12,7 +12,7 @@ test("lyrics export presents lossless TTML and explicit LRC tradeoffs", () => {
   assert.ok(stageSource.includes("不含音译、背景人声"));
   assert.ok(stageSource.includes('exportLyrics("ttml")'));
   assert.ok(stageSource.includes('exportLyrics("lrc")'));
-  assert.ok(lyricsCss.includes(".lyrics-export-popover"));
+  assert.ok(lyricsCss.includes(".lyrics-settings-export"));
 });
 
 test("lyrics export bakes calibration and writes only through a save dialog", () => {

@@ -19,6 +19,7 @@
     "src/utils/playback.ts",
     "src/utils/music.ts",
     "src/utils/lyrics.ts",
+    "src/utils/lyricsDisplay.ts",
     "src/utils/lyricsTiming.ts",
     "src/utils/lyricsSearch.ts",
     "src/utils/lyricsExport.ts",

@@ -66,6 +66,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - `src/hooks/`：
   - `useLibraryWatcher.ts`：配置 Rust 目录监听、接收文件变化事件并在 800ms 防抖后触发曲库刷新。
   - `useLyrics.ts`：歌词加载/缓存/在线搜索状态机（本地缓存键 `zone-local-lyrics-v1`）。
+  - `useLyricsDisplaySettings.ts`：歌词翻译/音译/背景人声显隐与字号偏好（键 `zone-lyrics-display-v1`）。
   - `useLyricsProviderSettings.ts`：歌词 provider 启用与优先级（键 `zone-lyrics-providers-v1`）。
   - `useSystemMedia.ts`：与 Rust 端 SMTC 集成（`update_system_media*` 命令与媒体按键事件）。
 - `src/lyrics/providers.ts`：AMLL TTML DB、QQ 音乐、网易云音乐、LRCLIB 四个在线歌词 provider 的定义与编排。自动查找按优先级回退并在高置信命中后停止；手动在线搜索并行查询全部已启用来源。请求统一经 Rust 命令 `request_lyrics_provider` 中转。
@@ -136,6 +137,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 
 ### 同步、动效与交互
 
+- 歌词顶栏只保留当前来源与“歌词设置”入口；显示、同步、来源和导出统一收进可扩展的右侧设置面板。设置面板与在线来源搜索都必须使用 `Presence` 保留退场，不要重新把功能平铺回歌词舞台。
 - `LyricsStage` 的逐词填充由 `requestAnimationFrame` 直接读取真实媒体时钟，并通过 DOM/CSS 变量更新；不要用 React state 做逐帧进度，以免重新引入卡顿。
 - 当前行居中，相邻行按距离降低透明度、缩小和轻微模糊；滚轮进入临时浏览态，约 3 秒后回到播放行，点击歌词行需按同一时间映射跳转。
 - 长音细节只由真实逐词起止时间计算，普通短词不触发；进入手动浏览或 `prefers-reduced-motion` 时应收敛或关闭。
@@ -146,7 +148,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - TTML 是保真导出：保留逐词时间、翻译、音译、背景人声和当前校准。
 - LRC 导出优先兼容性：逐词文档输出增强 LRC，保留逐词起点与翻译；音译和背景人声无法无歧义表达时不写入。界面必须继续明确这一损失边界。
 - 导出时会把当前校准烘焙进时间戳；写文件只经 Rust `export_lyrics_file` 的保存对话框完成，不在前端直接写路径。
-- `zone-local-lyrics-v1` 保存本地/在线手动绑定、解析缓存、远程候选缓存和按曲目搜索信息；`zone-lyrics-providers-v1` 保存 Provider 开关与优先级；`zone-lyrics-timing-v1` 保存每首曲目、每个来源的校准。迁移或清理任一存储时不能误删另外两类状态。
+- `zone-local-lyrics-v1` 保存本地/在线手动绑定、解析缓存、远程候选缓存和按曲目搜索信息；`zone-lyrics-display-v1` 保存显示偏好；`zone-lyrics-providers-v1` 保存 Provider 开关与优先级；`zone-lyrics-timing-v1` 保存每首曲目、每个来源的校准。迁移或清理任一存储时不能误删其他类别的状态。
 
 ### 修改歌词功能时的最低验证
 
@@ -160,7 +162,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - 曲库 schema 版本为 `LIBRARY_SCHEMA_VERSION`（当前 6）。
 - 收藏是 id 为 `DEFAULT_PLAYLIST_ID`（`favorites`）的默认播放列表；读取播放列表状态时必须用 `normalizePlaylists`，让旧状态补齐默认收藏列表。
 - home pins 用 `normalizeHomePins`/`reconcileHomePins` 做归一化与对账。
-- 歌词缓存、手动绑定与按曲目保存的在线搜索信息映射在 `zone-local-lyrics-v1`；歌词 provider 设置在 `zone-lyrics-providers-v1`；按曲目与歌词来源保存的时间校准在 `zone-lyrics-timing-v1`。
+- 歌词缓存、手动绑定与按曲目保存的在线搜索信息映射在 `zone-local-lyrics-v1`；歌词显示偏好在 `zone-lyrics-display-v1`；歌词 provider 设置在 `zone-lyrics-providers-v1`；按曲目与歌词来源保存的时间校准在 `zone-lyrics-timing-v1`。
 
 ## 播放与 Web Audio
 

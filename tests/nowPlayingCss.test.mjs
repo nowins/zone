@@ -190,7 +190,7 @@ test("lyrics calibration uses one reversible clock mapping per track and source"
   assert.ok(lyricsSource.includes("lyricsTimeToMediaTime(line.start, timingOffsetMs, duration)"));
   assert.ok(lyricsHookSource.includes('const LYRICS_TIMING_STORAGE_KEY = "zone-lyrics-timing-v1"'));
   assert.ok(lyricsHookSource.includes("lyricsTimingKey(track.id, state.document.sourceId)"));
-  assert.ok(lyricsCss.includes(".lyrics-timing-popover"));
+  assert.ok(lyricsCss.includes(".lyrics-settings-timing"));
 });
 
 test("lyrics provider retry keeps an explicit loading state and hit area", () => {
