@@ -44,12 +44,12 @@ test("settings separate primary, secondary, and destructive actions", () => {
 });
 
 test("search and settings live in the correct top chrome layers", () => {
-  const utilitiesRule = cssRule(baseCss, ".app-utilities");
   const settingsControlRule = cssRule(baseCss, ".window-controls .titlebar-settings");
 
-  assert.ok(utilitiesRule.includes("margin-top: 0"));
-  assert.ok(!utilitiesRule.includes("padding-right"));
-  assert.ok(!responsiveCss.includes("padding-right: 134px"));
+  assert.ok(!appHeader.includes("app-utilities"));
+  assert.ok(titlebar.includes("titlebar-search"));
+  assert.ok(appSource.includes('searchActive={page === "collection"}'));
+  assert.ok(appSource.includes('onOpenSearch={() => navigatePage("collection")}'));
   assert.ok(!appHeader.includes('onNavigate("settings")'));
   assert.ok(titlebar.includes('className={isSettings ? "titlebar-settings active" : "titlebar-settings"}'));
   assert.ok(appSource.includes('onOpenSettings={() => navigatePage("settings")}'));
