@@ -1,3 +1,5 @@
+import { clamp, clampInt } from "../motion/math.js";
+
 export type VisualizerFrame = {
   samples: number[];
   energy: number;
@@ -101,12 +103,4 @@ function calculateRms(data: Uint8Array) {
 function gaussian(value: number, center: number, width: number) {
   const distance = (value - center) / width;
   return Math.exp(-distance * distance);
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function clampInt(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.floor(value)));
 }

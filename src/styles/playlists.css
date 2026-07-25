@@ -887,28 +887,8 @@
   pointer-events: none;
 }
 
-.playlist-dialog-overlay,
-.smart-playlist-overlay {
-  opacity: 1;
-  transition: opacity var(--motion-micro) var(--motion-ease-standard);
-
-  @starting-style { opacity: 0; }
-}
-
-.playlist-dialog,
-.smart-playlist-dialog {
-  opacity: 1;
-  transform: perspective(1000px) translate3d(0, -4vh, 0) rotateX(0deg) scale(1);
-  transform-origin: center 42%;
-  transition:
-    opacity var(--motion-content) var(--motion-ease-standard),
-    transform var(--motion-content) var(--motion-ease-standard);
-
-  @starting-style {
-    opacity: 0;
-    transform: perspective(1000px) translate3d(0, calc(-4vh + 14px), 0) rotateX(-4deg) scale(0.985);
-  }
-}
+/* Overlay/dialog enter+exit transitions live in motion.css with the other
+   transient-surface primitives; this file keeps layout only. */
 
 @media (max-width: 760px) {
   .playlist-dialog {

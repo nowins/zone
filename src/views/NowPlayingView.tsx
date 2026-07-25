@@ -21,6 +21,10 @@ const COLLAPSED_UPCOMING_COUNT = 2;
 const IDLE_CHROME_DELAY = 5_000;
 const COVER_FLIP_CARD_ANIMATIONS = ["now-track-info-enter", "now-track-card-fade"];
 const COVER_FLIP_WAIT_TIMEOUT_MS = 2_500;
+// Total stage-entrance budget: the wall reveal plus the track card's delayed
+// entrance must settle before `stage-entering` clears (see
+// animations-responsive.css for the paired keyframes).
+const STAGE_ENTRANCE_MS = 1_250;
 
 /**
  * Resolves once the track card's entrance animation reaches the given phase
@@ -151,7 +155,7 @@ export function NowPlayingView({
   const handleInitialWallRevealStart = useCallback(() => {
     setWallRevealStarted(true);
     if (entranceTimer.current) window.clearTimeout(entranceTimer.current);
-    entranceTimer.current = window.setTimeout(() => setIsEntering(false), 1_250);
+    entranceTimer.current = window.setTimeout(() => setIsEntering(false), STAGE_ENTRANCE_MS);
   }, []);
 
   function openSaveDialog() {
@@ -244,7 +248,7 @@ export function NowPlayingView({
     setTextFading(true);
     const fadeInTimer = window.setTimeout(() => {
       setTextFading(false);
-    }, 220);
+    }, MOTION_DURATIONS.content);
     return () => window.clearTimeout(fadeInTimer);
   }, [track?.id]);
 

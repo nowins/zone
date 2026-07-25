@@ -1,4 +1,5 @@
 import type { PointerEvent } from "react";
+import { clamp } from "../motion/math.js";
 
 // Metro-style tile tilt: press tilts the tile around the pressed point.
 const TILT_DEGREES = 3.5;
@@ -13,9 +14,8 @@ export function tiltPressDown(event: PointerEvent<HTMLElement>, selector?: strin
   const tile = tiltTarget(event, selector);
   if (!tile) return;
   const rect = event.currentTarget.getBoundingClientRect();
-  const clamp = (value: number) => Math.min(1, Math.max(-1, value));
-  const percentX = clamp(((event.clientX - rect.left) / rect.width) * 2 - 1);
-  const percentY = clamp(((event.clientY - rect.top) / rect.height) * 2 - 1);
+  const percentX = clamp(((event.clientX - rect.left) / rect.width) * 2 - 1, -1, 1);
+  const percentY = clamp(((event.clientY - rect.top) / rect.height) * 2 - 1, -1, 1);
   tile.style.setProperty("--tilt-rx", `${(percentY * TILT_DEGREES).toFixed(2)}deg`);
   tile.style.setProperty("--tilt-ry", `${(-percentX * TILT_DEGREES).toFixed(2)}deg`);
   tile.classList.add("tilt-pressed");

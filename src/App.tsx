@@ -24,7 +24,7 @@ import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
 import { useSystemMedia } from "./hooks/useSystemMedia";
 import { useLibraryWatcher } from "./hooks/useLibraryWatcher";
 import { Presence, useLastNonNull } from "./motion/presence";
-import { MOTION_DURATIONS } from "./motion/tokens";
+import { MOTION_DURATIONS, MOTION_DRIFT } from "./motion/tokens";
 import { resolvePageTransition } from "./motion/pageTransition";
 import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, HomePin, MusicFolder, Playlist, RepeatMode, ScanResult, SmartPlaylist, Track, TrackActivityMap, ViewMode } from "./types";
 
@@ -72,9 +72,16 @@ export default function App() {
   const [page, setPage] = useState<AppPage>("quickplay");
   // Page-transition state: `navExit` is the in-flight exit direction (null when
   // idle), `navDir` persists the latest direction so the incoming page's enter
-  // keyframe reads the same `--motion-dir` after the exit window ends.
+  // keyframe reads the same `--motion-dir` after the exit window ends. `navDrift`
+  // carries the table's per-pair amplitudes onto the shell (`--motion-drift` for
+  // the enter keyframe, `--motion-exit-drift` for the exit one), so push/pop
+  // travel further than a peer pivot instead of sharing one hardcoded distance.
   const [navExit, setNavExit] = useState<1 | -1 | null>(null);
   const [navDir, setNavDir] = useState<1 | -1>(1);
+  const [navDrift, setNavDrift] = useState<{ enter: number; exit: number }>({
+    enter: MOTION_DRIFT.m,
+    exit: MOTION_DRIFT.s,
+  });
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [queue, setQueue] = useState<string[]>([]);
   const [playHistory, setPlayHistory] = useState<string[]>([]);
@@ -486,12 +493,15 @@ export default function App() {
       window.clearTimeout(navExitTimerRef.current);
       navExitTimerRef.current = null;
       setNavExit(null);
-      setNavDir(resolvePageTransition(page, next).direction);
+      const interrupted = resolvePageTransition(page, next);
+      setNavDir(interrupted.direction);
+      setNavDrift({ enter: interrupted.enterDriftPx, exit: interrupted.exitDriftPx });
       setPage(next);
       return;
     }
     const transition = resolvePageTransition(page, next);
     setNavDir(transition.direction);
+    setNavDrift({ enter: transition.enterDriftPx, exit: transition.exitDriftPx });
     if (transition.exitMs === 0) {
       setPage(next);
       return;
@@ -1159,7 +1169,13 @@ export default function App() {
     <div
       className={`shell ${page === "nowPlaying" ? "shell-now-playing" : ""}`}
       data-nav-state={navExit !== null ? "exiting" : undefined}
-      style={{ "--motion-dir": navDir } as CSSProperties}
+      style={
+        {
+          "--motion-dir": navDir,
+          "--motion-drift": `${navDrift.enter}px`,
+          "--motion-exit-drift": `${navDrift.exit}px`,
+        } as CSSProperties
+      }
       onClick={closeContextMenu}
       onContextMenu={(event) => {
         event.preventDefault();

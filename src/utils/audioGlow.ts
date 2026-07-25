@@ -1,3 +1,5 @@
+import { clamp, clampInt } from "../motion/math.js";
+
 export type ZuneGlowHotspot = {
   x: number;
   y: number;
@@ -214,12 +216,4 @@ function sampleWindow(samples: number[], ratio: number) {
 function seededNoise(seed: number) {
   const value = Math.sin(seed * 12.9898) * 43758.5453;
   return value - Math.floor(value);
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function clampInt(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.floor(value)));
 }

@@ -1,3 +1,5 @@
+import { clamp, clampInt } from "../motion/math.js";
+
 export type BeatSource = "idle" | "realtime" | "offline";
 
 export type BeatPeak = {
@@ -377,12 +379,4 @@ function statsFor(values: number[]) {
 
 function positiveModulo(value: number, divisor: number) {
   return ((value % divisor) + divisor) % divisor;
-}
-
-function clampInt(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.floor(value)));
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
 }

@@ -17,9 +17,13 @@ const PEER_PAGES: readonly MotionPage[] = ["quickplay", "collection", "settings"
 
 /**
  * Resolves the WP7-style choreography between two pages: peers pivot along
- * the navigation order (forward = 1), entering nowPlaying pushes on top
- * (with a cover FLIP), leaving it pops back. Same-page transitions are
- * zero-length. Durations come from the micro/page token tiers.
+ * the navigation order (forward = 1), entering nowPlaying pushes on top,
+ * leaving it pops back. Same-page transitions are zero-length. Durations
+ * come from the micro/page token tiers. The shell consumes direction/exitMs
+ * and writes the drift fields as `--motion-drift` / `--motion-exit-drift`;
+ * `coverFlip` marks pairs where the views run the shared-element cover
+ * flight (registered/consumed through the `cover:{trackId}` FLIP registry,
+ * not through the navigation timer path).
  */
 export function resolvePageTransition(from: MotionPage, to: MotionPage): PageTransition {
   if (from === to) {

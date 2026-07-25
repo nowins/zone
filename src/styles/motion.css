@@ -98,8 +98,9 @@
   animation: motion-exit var(--motion-micro) var(--motion-ease-exit) both;
 }
 
-/* Page-level enter/exit primitives. `--motion-dir` flips the travel
-   direction, `--motion-drift` enlarges the distance for hero content. */
+/* Page-level enter/exit primitives. `--motion-dir` flips the travel direction;
+   the shell writes `--motion-drift` / `--motion-exit-drift` per navigation pair
+   (see resolvePageTransition) so push/pop travel further than a peer pivot. */
 .motion-page-enter {
   animation: motion-page-enter var(--motion-page) var(--motion-ease-entrance) both;
 }
@@ -211,12 +212,15 @@
 .save-playlist-overlay,
 .save-playlist-dialog,
 .playlist-dialog-overlay,
-.playlist-dialog {
+.playlist-dialog,
+.smart-playlist-overlay,
+.smart-playlist-dialog {
   animation: none;
 }
 
 .save-playlist-overlay,
-.playlist-dialog-overlay {
+.playlist-dialog-overlay,
+.smart-playlist-overlay {
   opacity: 1;
   transition: opacity var(--motion-micro) var(--motion-ease-standard);
 
@@ -224,7 +228,8 @@
 }
 
 .save-playlist-dialog,
-.playlist-dialog {
+.playlist-dialog,
+.smart-playlist-dialog {
   opacity: 1;
   transform: perspective(1000px) translate3d(0, -4vh, 0) rotateX(0deg) scale(1);
   transform-origin: center 42%;
@@ -353,7 +358,7 @@
   }
   to {
     opacity: 0;
-    transform: translate3d(calc(var(--motion-dir, 1) * var(--motion-drift-s) * -1), 0, 0);
+    transform: translate3d(calc(var(--motion-dir, 1) * var(--motion-exit-drift, var(--motion-drift-s)) * -1), 0, 0);
   }
 }
 

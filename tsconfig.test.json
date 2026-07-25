@@ -36,6 +36,7 @@
     "src/motion/tween.ts",
     "src/motion/animate.ts",
     "src/motion/flip.ts",
+    "src/motion/coverFlip.ts",
     "src/motion/pageTransition.ts"
   ]
 }

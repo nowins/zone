@@ -3,6 +3,11 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Clamp `Math.floor(value)` into the inclusive [min, max] range. */
+export function clampInt(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
 /** Linear interpolation between `from` and `to`; `t` is left unclamped. */
 export function lerp(from: number, to: number, t: number): number {
   return from + (to - from) * t;
