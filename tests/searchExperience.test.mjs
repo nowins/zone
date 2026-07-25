@@ -5,12 +5,15 @@ import test from "node:test";
 const appSource = readFileSync("src/App.tsx", "utf8");
 const headerSource = readFileSync("src/components/AppHeader.tsx", "utf8");
 const titlebarSource = readFileSync("src/components/Titlebar.tsx", "utf8");
+const searchFieldSource = readFileSync("src/components/CollectionSearchField.tsx", "utf8");
 const searchSource = readFileSync("src/views/SearchResultsView.tsx", "utf8");
-const baseCss = readFileSync("src/styles/base.css", "utf8");
 const collectionCss = readFileSync("src/styles/collection.css", "utf8");
+const baseCss = readFileSync("src/styles/base.css", "utf8");
 
 test("collection search opens a dedicated grouped result state", () => {
   assert.ok(appSource.includes("<SearchResultsView"));
+  assert.ok(appSource.includes("showSearchResults"));
+  assert.ok(appSource.includes('resolveSearchSurface(query, searchMode) === "results"'));
   assert.ok(!appSource.includes("filteredTracks"));
   assert.ok(searchSource.includes('label="艺术家"'));
   assert.ok(searchSource.includes('label="专辑"'));
@@ -21,29 +24,50 @@ test("collection search opens a dedicated grouped result state", () => {
   assert.ok(collectionCss.includes("grid-template-columns: 176px minmax(0, 1fr)"));
 });
 
-test("search stays collapsed in the titlebar until invoked", () => {
-  const searchRule = cssRule(baseCss, ".titlebar-search");
-  const expandedRule = cssRule(baseCss, ".titlebar-search.expanded");
-
-  assert.ok(!appSource.includes("collection-search-slot"));
+test("search lives in the collection header as a always-visible field", () => {
+  assert.ok(appSource.includes("<CollectionSearchField"));
+  assert.ok(appSource.includes("collection-header-top"));
+  assert.ok(searchFieldSource.includes('placeholder="搜索音乐、艺术家、专辑…"'));
+  assert.ok(searchFieldSource.includes('aria-label="搜索音乐"'));
+  assert.ok(searchFieldSource.includes('aria-label="清除搜索"'));
+  assert.ok(searchFieldSource.includes("返回结果"));
+  assert.ok(searchFieldSource.includes("aria-controls={hasQuery ? resultsId : undefined}"));
+  assert.ok(searchFieldSource.includes('autoComplete="off"'));
+  assert.ok(collectionCss.includes(".collection-search-field"));
+  assert.ok(collectionCss.includes("border-bottom: 1px solid"));
+  assert.ok(!collectionCss.includes("width: clamp(210px"), "collection search must not use titlebar expand widths");
+  assert.ok(!baseCss.includes(".titlebar-search"), "titlebar search chrome is removed");
+  assert.ok(!titlebarSource.includes("titlebar-search"));
+  assert.ok(!titlebarSource.includes("onPointerLeave"));
+  assert.ok(!titlebarSource.includes("searchOpen"));
+  assert.ok(!titlebarSource.includes("onQuery"));
   assert.ok(!headerSource.includes("搜索音乐"));
   assert.ok(!headerSource.includes("app-utilities"));
-  assert.ok(titlebarSource.includes("const searchExpanded = searchActive && searchOpen"));
-  assert.ok(titlebarSource.includes('className={`titlebar-search${searchExpanded ? " expanded" : ""}${hasQuery ? " has-query" : ""}`}'));
-  assert.ok(titlebarSource.includes('event.key.toLowerCase() === "f"'));
-  assert.ok(titlebarSource.includes("event.ctrlKey || event.metaKey"));
-  assert.ok(titlebarSource.includes('window.addEventListener("keydown", handleSearchShortcut, true)'));
-  assert.ok(titlebarSource.includes('event.key === "Escape"'));
-  assert.ok(titlebarSource.includes("onPointerLeave={collapseSearch}"));
-  assert.ok(titlebarSource.includes('aria-label="关闭搜索"'));
-  assert.ok(titlebarSource.includes('aria-controls="collection-search-results"'));
-  assert.ok(titlebarSource.includes('autoComplete="off"'));
-  assert.ok(titlebarSource.includes('aria-autocomplete="none"'));
-  assert.ok(titlebarSource.includes('placeholder="搜索音乐、艺术家、专辑…"'));
-  assert.ok(appSource.includes('onOpenSearch={() => navigatePage("collection")}'));
-  assert.ok(searchRule.includes("width: 42px"));
-  assert.ok(expandedRule.includes("border-bottom-color"));
-  assert.ok(!expandedRule.includes("border: 1px solid"));
+});
+
+test("search session supports browse drill-in without clearing the query", () => {
+  assert.ok(appSource.includes('useState<CollectionSearchMode>("results")'));
+  assert.ok(appSource.includes('setSearchMode("browse")'));
+  assert.ok(appSource.includes('setSearchMode("results")'));
+  assert.ok(appSource.includes("showReturnToResults={query.trim().length > 0 && searchMode === \"browse\"}"));
+  assert.ok(!appSource.includes("setQuery(\"\")") || appSource.includes("clearCollectionSearch"));
+  // openSearch* must not clear the query on drill-in
+  const openArtist = appSource.slice(
+    appSource.indexOf("function openSearchArtist"),
+    appSource.indexOf("function openSearchAlbum"),
+  );
+  assert.ok(!openArtist.includes("setQuery"), "artist drill-in must keep the query");
+  assert.ok(openArtist.includes('setSearchMode("browse")'));
+});
+
+test("Ctrl/Cmd+F and Esc are owned by App collection search", () => {
+  assert.ok(appSource.includes('event.key.toLowerCase() === "f"'));
+  assert.ok(appSource.includes("event.ctrlKey || event.metaKey"));
+  assert.ok(appSource.includes("focusCollectionSearch"));
+  assert.ok(appSource.includes('event.key !== "Escape"'));
+  assert.ok(appSource.includes("clearCollectionSearch"));
+  assert.ok(titlebarSource.includes("onOpenSettings"));
+  assert.ok(!titlebarSource.includes("handleSearchShortcut"));
 });
 
 test("search results use a dark compact scrollbar without native arrow buttons", () => {
@@ -58,8 +82,9 @@ test("search results use a dark compact scrollbar without native arrow buttons",
 });
 
 test("search UI copy is consistently Chinese", () => {
-  for (const copy of ["筛选", "全部", "艺术家", "专辑", "歌曲", "播放列表", "查看全部", "没有找到"]) {
-    assert.ok(searchSource.includes(copy), `missing Chinese search copy: ${copy}`);
+  for (const copy of ["筛选", "全部", "艺术家", "专辑", "歌曲", "播放列表", "查看全部", "没有找到", "返回结果", "清除搜索"]) {
+    const haystack = `${searchSource}\n${searchFieldSource}`;
+    assert.ok(haystack.includes(copy), `missing Chinese search copy: ${copy}`);
   }
 });
 

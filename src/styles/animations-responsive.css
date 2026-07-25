@@ -299,10 +299,6 @@
     font-size: 24px;
   }
 
-  .titlebar-search.expanded {
-    width: 210px;
-  }
-
   .search-results-layout {
     grid-template-columns: 148px minmax(0, 1fr);
     gap: 26px;

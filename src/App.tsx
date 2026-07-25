@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Titlebar } from "./components/Titlebar";
 import { AppHeader } from "./components/AppHeader";
+import { CollectionSearchField } from "./components/CollectionSearchField";
 import { EmptyState } from "./components/EmptyState";
 import { PlayerBar } from "./components/PlayerBar";
 import { ContextMenu } from "./components/ContextMenu";
@@ -21,6 +22,10 @@ import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/v
 import { getVisualizerFrame, publishVisualizerFrame } from "./utils/visualizerBus";
 import { createShuffleOrder, haveSameQueueItems, playbackSourceKey, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
 import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
+import {
+  resolveSearchSurface,
+  type CollectionSearchMode,
+} from "./utils/collectionSearch";
 import { useSystemMedia } from "./hooks/useSystemMedia";
 import { useLibraryWatcher } from "./hooks/useLibraryWatcher";
 import { Presence, useLastNonNull } from "./motion/presence";
@@ -70,6 +75,9 @@ export default function App() {
   const foldersRef = useRef<MusicFolder[]>(folders);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [query, setQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<CollectionSearchMode>("results");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const focusSearchPendingRef = useRef(false);
   const [view, setView] = useState<ViewMode>("albums");
   const [page, setPage] = useState<AppPage>("quickplay");
   // Page-transition state: `navExit` is the in-flight exit direction (null when
@@ -120,6 +128,12 @@ export default function App() {
     if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
     if (navExitTimerRef.current !== null) window.clearTimeout(navExitTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (page !== "collection" || !focusSearchPendingRef.current) return;
+    focusSearchPendingRef.current = false;
+    window.requestAnimationFrame(() => searchInputRef.current?.focus());
+  }, [page]);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -522,8 +536,29 @@ export default function App() {
     }, resolveExitDurationMs(transition.exitMs, reducedMotion));
   }
 
+  function clearCollectionSearch() {
+    setQuery("");
+    setSearchMode("results");
+  }
+
+  function setCollectionSearchQuery(value: string) {
+    setQuery(value);
+    setSearchMode("results");
+  }
+
+  function focusCollectionSearch() {
+    if (page === "collection") {
+      window.requestAnimationFrame(() => searchInputRef.current?.focus());
+      return;
+    }
+    focusSearchPendingRef.current = true;
+    requestNavigation("collection");
+  }
+
   function navigatePage(nextPage: "quickplay" | "collection" | "settings") {
-    if (nextPage === "quickplay") setQuery("");
+    if (nextPage === "quickplay" || nextPage === "settings") {
+      clearCollectionSearch();
+    }
     requestNavigation(nextPage);
   }
 
@@ -535,20 +570,47 @@ export default function App() {
   function openSearchArtist(artist: string) {
     setSelectedArtistName(artist);
     setView("artists");
-    setQuery("");
+    setSearchMode("browse");
   }
 
   function openSearchAlbum(key: string) {
     setSelectedAlbumKey(key);
     setView("albums");
-    setQuery("");
+    setSearchMode("browse");
   }
 
   function openSearchPlaylist(playlistId: string) {
     setSelectedPlaylistId(playlistId);
     setView("playlists");
-    setQuery("");
+    setSearchMode("browse");
   }
+
+  useEffect(() => {
+    function handleCollectionSearchKeys(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        focusCollectionSearch();
+        return;
+      }
+
+      if (event.key !== "Escape") return;
+      if (contextMenu || infoTarget || playlistDialog || smartPlaylistDialog) return;
+
+      if (resolveSearchSurface(query, searchMode) === "results") {
+        event.preventDefault();
+        clearCollectionSearch();
+        return;
+      }
+
+      if (query.trim().length > 0 && searchMode === "browse") {
+        event.preventDefault();
+        setSearchMode("results");
+      }
+    }
+
+    window.addEventListener("keydown", handleCollectionSearchKeys, true);
+    return () => window.removeEventListener("keydown", handleCollectionSearchKeys, true);
+  }, [contextMenu, infoTarget, page, playlistDialog, query, searchMode, smartPlaylistDialog]);
 
   function toggleHomePin(payload: ContextPayload) {
     const pin = homePinForPayload(payload);
@@ -1168,6 +1230,7 @@ export default function App() {
   const actionToastElement = actionNotice ? (
     <div className="action-toast" role="status">{actionNotice}</div>
   ) : null;
+  const showSearchResults = resolveSearchSurface(query, searchMode) === "results";
   const lastAppHeaderElement = useLastNonNull(appHeaderElement);
   const lastPlayerBarElement = useLastNonNull(playerBarElement);
   const lastContextMenuElement = useLastNonNull(contextMenuElement);
@@ -1205,10 +1268,6 @@ export default function App() {
       <Titlebar
         isSettings={page === "settings"}
         onOpenSettings={() => navigatePage("settings")}
-        searchActive={page === "collection"}
-        onOpenSearch={() => navigatePage("collection")}
-        query={query}
-        onQuery={setQuery}
       />
 
       <main className="workspace">
@@ -1240,8 +1299,54 @@ export default function App() {
         ) : null}
 
         {page === "collection" && (
-          <section className={`content-band ${query.trim() ? "collection-searching" : ""}`}>
-            {query.trim() ? (
+          <section className={`content-band ${showSearchResults ? "collection-searching" : ""}`}>
+            <div className="collection-header">
+              <div className="collection-header-top">
+                <div className="collection-title">
+                  <h1>collection</h1>
+                  <p>
+                    {tracks.length === 0
+                      ? "选择一个文件夹开始"
+                      : showSearchResults
+                        ? "搜索收藏"
+                        : view === "albums"
+                          ? `${albums.length} 张专辑`
+                          : view === "artists"
+                            ? `${artists.length} 位艺术家`
+                            : view === "playlists"
+                              ? `${playlists.length} 个播放列表`
+                              : `${tracks.length} 首歌曲`}
+                    {scanNote ? ` · ${scanNote}` : ""}
+                  </p>
+                </div>
+                <CollectionSearchField
+                  ref={searchInputRef}
+                  query={query}
+                  onQuery={setCollectionSearchQuery}
+                  onClear={clearCollectionSearch}
+                  showReturnToResults={query.trim().length > 0 && searchMode === "browse"}
+                  onReturnToResults={() => setSearchMode("results")}
+                />
+              </div>
+              {!showSearchResults ? (
+                <div className="collection-navigation">
+                  <span>音乐</span>
+                  <div className="segmented">
+                    {(["artists", "albums", "songs", "playlists"] as ViewMode[]).map((item) => (
+                      <button
+                        key={item}
+                        className={view === item ? "selected" : ""}
+                        onClick={() => setView(item)}
+                      >
+                        {{ artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" }[item]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {showSearchResults ? (
               <SearchResultsView
                 query={query}
                 tracks={tracks}
@@ -1257,70 +1362,34 @@ export default function App() {
                 onOpenPlaylist={openSearchPlaylist}
                 onContextMenu={showContextMenu}
               />
+            ) : tracks.length === 0 ? (
+              <EmptyState onAddFolder={addFolder} isScanning={isScanning} />
             ) : (
-              <>
-                <div className="collection-header">
-                  <div className="collection-title">
-                    <h1>collection</h1>
-                    <p>
-                      {tracks.length === 0
-                        ? "选择一个文件夹开始"
-                        : view === "albums"
-                          ? `${albums.length} 张专辑`
-                          : view === "artists"
-                            ? `${artists.length} 位艺术家`
-                            : view === "playlists"
-                              ? `${playlists.length} 个播放列表`
-                              : `${tracks.length} 首歌曲`}
-                      {scanNote ? ` · ${scanNote}` : ""}
-                    </p>
-                  </div>
-                  <div className="collection-navigation">
-                    <span>音乐</span>
-                    <div className="segmented">
-                      {(["artists", "albums", "songs", "playlists"] as ViewMode[]).map((item) => (
-                        <button
-                          key={item}
-                          className={view === item ? "selected" : ""}
-                          onClick={() => setView(item)}
-                        >
-                          {{ artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" }[item]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {tracks.length === 0 ? (
-                  <EmptyState onAddFolder={addFolder} isScanning={isScanning} />
-                ) : (
-                  <LibraryView
-                    key={view}
-                    view={view}
-                    tracks={tracks}
-                    libraryTracks={tracks}
-                    albums={albums}
-                    artists={artists}
-                    queueIds={playbackQueueIds}
-                    activeTrackId={activeTrackId}
-                    selectedAlbumKey={selectedAlbumKey}
-                    onSelectAlbum={setSelectedAlbumKey}
-                    selectedArtistName={selectedArtistName}
-                    onPlay={playTrack}
-                    onPlayTracks={playTracks}
-                    onContextMenu={showContextMenu}
-                    playlists={playlists}
-                    selectedPlaylistId={selectedPlaylistId}
-                    onSelectPlaylist={setSelectedPlaylistId}
-                    onCreatePlaylist={openCreatePlaylistDialog}
-                    onEditSmartPlaylist={openSmartPlaylistEditor}
-                    onRefreshSmartPlaylist={refreshSmartPlaylist}
-                    trackActivity={trackActivity}
-                    favoriteTrackIds={favoriteTrackIds}
-                    onToggleFavorite={toggleFavoriteTrack}
-                  />
-                )}
-              </>
+              <LibraryView
+                key={view}
+                view={view}
+                tracks={tracks}
+                libraryTracks={tracks}
+                albums={albums}
+                artists={artists}
+                queueIds={playbackQueueIds}
+                activeTrackId={activeTrackId}
+                selectedAlbumKey={selectedAlbumKey}
+                onSelectAlbum={setSelectedAlbumKey}
+                selectedArtistName={selectedArtistName}
+                onPlay={playTrack}
+                onPlayTracks={playTracks}
+                onContextMenu={showContextMenu}
+                playlists={playlists}
+                selectedPlaylistId={selectedPlaylistId}
+                onSelectPlaylist={setSelectedPlaylistId}
+                onCreatePlaylist={openCreatePlaylistDialog}
+                onEditSmartPlaylist={openSmartPlaylistEditor}
+                onRefreshSmartPlaylist={refreshSmartPlaylist}
+                trackActivity={trackActivity}
+                favoriteTrackIds={favoriteTrackIds}
+                onToggleFavorite={toggleFavoriteTrack}
+              />
             )}
           </section>
         )}

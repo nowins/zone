@@ -30,6 +30,7 @@
     "src/utils/homePins.ts",
     "src/utils/smartPlaylist.ts",
     "src/utils/librarySearch.ts",
+    "src/utils/collectionSearch.ts",
     "src/motion/math.ts",
     "src/motion/tokens.ts",
     "src/motion/spring.ts",

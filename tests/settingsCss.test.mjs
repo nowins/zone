@@ -43,13 +43,12 @@ test("settings separate primary, secondary, and destructive actions", () => {
   assert.ok(settingsView.includes("重新扫描资料库"));
 });
 
-test("search and settings live in the correct top chrome layers", () => {
+test("settings live in the titlebar; collection owns search", () => {
   const settingsControlRule = cssRule(baseCss, ".window-controls .titlebar-settings");
 
   assert.ok(!appHeader.includes("app-utilities"));
-  assert.ok(titlebar.includes("titlebar-search"));
-  assert.ok(appSource.includes('searchActive={page === "collection"}'));
-  assert.ok(appSource.includes('onOpenSearch={() => navigatePage("collection")}'));
+  assert.ok(!titlebar.includes("titlebar-search"));
+  assert.ok(appSource.includes("<CollectionSearchField"));
   assert.ok(!appHeader.includes('onNavigate("settings")'));
   assert.ok(titlebar.includes('className={isSettings ? "titlebar-settings active" : "titlebar-settings"}'));
   assert.ok(appSource.includes('onOpenSettings={() => navigatePage("settings")}'));

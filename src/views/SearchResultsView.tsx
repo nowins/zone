@@ -84,16 +84,9 @@ export function SearchResultsView({
 
   return (
     <div className="search-results-view" id="collection-search-results">
-      <header className="search-results-heading">
-        <p>收藏 / 搜索</p>
-        <h1 title={query}>
-          <strong>“{query.trim()}”</strong>
-          <span>的结果</span>
-        </h1>
-        <p className="search-results-summary" role="status" aria-live="polite">
-          {results.total > 0 ? `共找到 ${results.total} 项内容` : "没有找到匹配的内容"}
-        </p>
-      </header>
+      <p className="search-results-summary" role="status" aria-live="polite">
+        {results.total > 0 ? `共找到 ${results.total} 项内容` : "没有找到匹配的内容"}
+      </p>
 
       <div className="search-results-layout">
         <aside className="search-filter" aria-label="搜索结果筛选">
