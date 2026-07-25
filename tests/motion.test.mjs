@@ -22,6 +22,7 @@ import {
   MOTION_DRIFT,
   MOTION_EASINGS,
   MOTION_STAGGER,
+  resolveExitDurationMs,
   SPRING_PRESETS,
 } from "../.tmp/visualizer-tests/motion/tokens.js";
 import { cubicBezier, MOTION_TWEENS } from "../.tmp/visualizer-tests/motion/tween.js";
@@ -85,6 +86,14 @@ test("tokens: six duration tiers in ascending order", () => {
     assert.equal(typeof preset.damping, "number");
     assert.equal(typeof preset.mass, "number");
   }
+});
+
+test("tokens: resolveExitDurationMs syncs JS lifecycles with reduced motion", () => {
+  assert.equal(resolveExitDurationMs(160, false), 160);
+  assert.equal(resolveExitDurationMs(160, true), MOTION_DURATIONS.instant);
+  // Zero-length transitions (same-page navigation) stay zero either way.
+  assert.equal(resolveExitDurationMs(0, true), 0);
+  assert.equal(resolveExitDurationMs(0, false), 0);
 });
 
 test("spring: snappy converges to the target and settles", () => {
@@ -211,6 +220,53 @@ test("animate: spring retarget preserves inertia", () => {
   handle.retarget(0);
   fake.step();
   assert.ok(values[values.length - 1] > beforeRetarget);
+  handle.cancel();
+});
+
+// A burst of retargets between two frames (wheel-tick cadence) must integrate
+// the full elapsed time: each retarget first folds the pending dt into the
+// spring, so a mid-frame burst tracks the same trajectory as the equivalent
+// plain spring integration. A clock-resetting retarget would stall instead.
+test("animate: retarget bursts between frames keep real elapsed time", () => {
+  let now = 0;
+  let pending = null;
+  _setAnimationClockForTesting(
+    () => now,
+    (callback) => {
+      pending = callback;
+    },
+  );
+  const frame = () => {
+    const callback = pending;
+    pending = null;
+    if (callback) callback(now);
+  };
+
+  const values = [];
+  const handle = animateValue({
+    from: 0,
+    to: 100,
+    spring: SPRING_PRESETS.snappy,
+    onUpdate: (value) => values.push(value),
+  });
+  now = 16;
+  frame(); // frame at 16ms
+  now = 20;
+  handle.retarget(200); // burst: three retargets before the next frame
+  now = 24;
+  handle.retarget(300);
+  now = 28;
+  handle.retarget(400);
+  now = 32;
+  frame(); // frame at 32ms
+
+  let reference = createSpring(0);
+  reference = advanceSpring(reference, SPRING_PRESETS.snappy, 100, 16);
+  reference = advanceSpring(reference, SPRING_PRESETS.snappy, 100, 4);
+  reference = advanceSpring(reference, SPRING_PRESETS.snappy, 200, 4);
+  reference = advanceSpring(reference, SPRING_PRESETS.snappy, 300, 4);
+  reference = advanceSpring(reference, SPRING_PRESETS.snappy, 400, 4);
+  assert.equal(values[values.length - 1], reference.value);
   handle.cancel();
 });
 

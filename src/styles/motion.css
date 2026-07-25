@@ -158,21 +158,16 @@
   pointer-events: none;
 }
 
-/* Chrome exits: both sit in `.shell` grid rows that `shell-now-playing`
-   collapses to 0, so they leave the flow and fade over the incoming stage
-   from their previous spot (header below the 28px titlebar row, player bar
-   in the 74px bottom row). */
+/* Chrome exits: the header and player bar start fading the moment a
+   navigation toward now playing begins, sharing the old page's exit window
+   and unmounting exactly as the stage flips in. They stay in flow so the
+   outgoing page never reflows underneath them. */
 .motion-exit .player {
-  position: absolute;
-  inset: auto 0 0;
-  height: 74px;
   animation: motion-exit var(--motion-micro) var(--motion-ease-exit) both;
   pointer-events: none;
 }
 
 .motion-exit .app-header {
-  position: absolute;
-  inset: 28px 48px auto;
   animation: motion-exit-fade var(--motion-micro) var(--motion-ease-exit) both;
   pointer-events: none;
 }
@@ -362,6 +357,12 @@
   }
 }
 
+/* Reduced-motion exit: opacity only, instant tier, no travel. */
+@keyframes motion-exit-reduced {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 @media (hover: none), (pointer: coarse) {
   .quick-cover-button:hover .cover,
   .quick-album > button:hover .cover,
@@ -374,7 +375,9 @@
 
 /* Single reduced-motion policy: entrance and feedback animations collapse to
    their final state, transitions compress to the instant tier, and spatial
-   transforms (tilt, lyric scale/blur, long-note stretch) settle. */
+   transforms (tilt, lyric scale/blur, long-note stretch) settle. Exits keep
+   an instant-tier opacity-only fade instead of a dead pause: the JS
+   lifecycles wait the same 80ms (see resolveExitDurationMs). */
 @media (prefers-reduced-motion: reduce) {
   .quick-group,
   .quick-album,
@@ -403,7 +406,10 @@
   .zune-play svg,
   .lyrics-source-browser.is-searching::after,
   .motion-page-enter,
-  .motion-page-exit,
+  .motion-page-exit {
+    animation: none;
+  }
+
   .shell[data-nav-state="exiting"] .quickplay,
   .shell[data-nav-state="exiting"] .content-band,
   .shell[data-nav-state="exiting"] .now-playing-stage,
@@ -420,7 +426,7 @@
   .motion-exit .action-toast,
   .motion-exit .player,
   .motion-exit .app-header {
-    animation: none;
+    animation: motion-exit-reduced var(--motion-instant) var(--motion-ease-standard) both;
   }
 
   .stage-entering .now-track-card {
@@ -437,7 +443,6 @@
   .playlist-dialog,
   .smart-playlist-overlay,
   .smart-playlist-dialog,
-  .titlebar-search,
   .quick-pin,
   .quick-pin-art,
   .quick-pin-play,

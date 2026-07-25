@@ -4,7 +4,15 @@ import {
   type ZuneMountainFrame,
   type ZuneMountainPoint,
 } from "../utils/audioGlow";
+import { createIdleVisualizerFrame } from "../utils/visualizer";
 import { getVisualizerFrame } from "../utils/visualizerBus";
+import { useReducedMotion } from "../motion/useReducedMotion";
+import { VISUALIZER_SAMPLE_COUNT } from "../constants";
+
+// Reduced-motion substitute for the live audio frame: a frozen idle frame at
+// t=0, so the glow settles into a static dim flame instead of pulsing.
+const REDUCED_GLOW_ENERGY = 0.055;
+const REDUCED_GLOW_SAMPLES = createIdleVisualizerFrame(VISUALIZER_SAMPLE_COUNT, 0, 0).samples;
 
 export function AudioGlowCanvas({
   isPlaying,
@@ -16,6 +24,8 @@ export function AudioGlowCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const isPlayingRef = useRef(isPlaying);
   const volumeRef = useRef(volume);
+  const reducedMotion = useReducedMotion();
+  const reducedMotionRef = useRef(reducedMotion);
   const bodyRef = useRef(0);
   const spreadRef = useRef(0);
   const crestRef = useRef(0);
@@ -32,6 +42,10 @@ export function AudioGlowCanvas({
   useEffect(() => {
     volumeRef.current = volume;
   }, [volume]);
+
+  useEffect(() => {
+    reducedMotionRef.current = reducedMotion;
+  }, [reducedMotion]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -65,9 +79,10 @@ export function AudioGlowCanvas({
 
       const frame = getVisualizerFrame();
       const playing = isPlayingRef.current;
-      const energyValue = playing ? Math.max(0, frame.energy) : 0;
-      const beatValue = playing ? frame.beatPulse : 0;
-      const onsetValue = playing ? frame.onsetStrength : 0;
+      const reduced = reducedMotionRef.current;
+      const energyValue = reduced ? (playing ? REDUCED_GLOW_ENERGY : 0) : playing ? Math.max(0, frame.energy) : 0;
+      const beatValue = reduced ? 0 : playing ? frame.beatPulse : 0;
+      const onsetValue = reduced ? 0 : playing ? frame.onsetStrength : 0;
       const hit = Math.max(beatValue, onsetValue);
 
       bodyRef.current = smoothTransient(bodyRef.current, playing ? energyValue * 0.84 + hit * 0.26 : 0, delta, 0.08, playing ? 0.62 : 0.12);
@@ -76,12 +91,12 @@ export function AudioGlowCanvas({
       hotspotRef.current = smoothTransient(hotspotRef.current, playing ? onsetValue * 0.84 + beatValue * 0.2 : 0, delta, 0.055, playing ? 0.3 : 0.08);
 
       const targetFrame = createZuneMountainFrame({
-        samples: frame.samples,
+        samples: reduced ? REDUCED_GLOW_SAMPLES : frame.samples,
         energy: energyValue,
         beatPulse: beatValue,
         onsetStrength: onsetValue,
-        beatPhase: playing ? frame.beatPhase : 1,
-        time: time / 1000,
+        beatPhase: reduced ? 1 : playing ? frame.beatPhase : 1,
+        time: reduced ? 0 : time / 1000,
         bodyLevel: bodyRef.current,
         spreadLevel: spreadRef.current,
         crestLevel: crestRef.current,

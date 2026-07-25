@@ -249,13 +249,15 @@
   top: 0;
   left: 0;
   width: 3px;
-  height: 0;
+  height: 100%;
   background: rgba(255, 255, 255, 0.92);
-  transition: height var(--motion-micro) var(--motion-ease-standard);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform var(--motion-micro) var(--motion-ease-standard);
 }
 
 .lyrics-source-browser.is-searching::after {
-  height: 100%;
+  transform: scaleY(1);
   animation: lyrics-source-search 1.1s ease-in-out infinite alternate;
 }
 

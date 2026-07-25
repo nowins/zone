@@ -24,8 +24,9 @@ import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
 import { useSystemMedia } from "./hooks/useSystemMedia";
 import { useLibraryWatcher } from "./hooks/useLibraryWatcher";
 import { Presence, useLastNonNull } from "./motion/presence";
-import { MOTION_DURATIONS, MOTION_DRIFT } from "./motion/tokens";
+import { MOTION_DURATIONS, MOTION_DRIFT, resolveExitDurationMs } from "./motion/tokens";
 import { resolvePageTransition } from "./motion/pageTransition";
+import { useReducedMotion } from "./motion/useReducedMotion";
 import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, HomePin, MusicFolder, Playlist, RepeatMode, ScanResult, SmartPlaylist, Track, TrackActivityMap, ViewMode } from "./types";
 
 type PlaybackSession = {
@@ -60,6 +61,7 @@ export default function App() {
   const beatAnalysisRequestRef = useRef(0);
   const actionNoticeTimerRef = useRef<number | null>(null);
   const navExitTimerRef = useRef<number | null>(null);
+  const navTargetRef = useRef<AppPage | null>(null);
   const playbackSessionRef = useRef<PlaybackSession | null>(null);
   const activityMigrationRef = useRef(false);
   const scanInFlightRef = useRef(false);
@@ -82,6 +84,7 @@ export default function App() {
     enter: MOTION_DRIFT.m,
     exit: MOTION_DRIFT.s,
   });
+  const reducedMotion = useReducedMotion();
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [queue, setQueue] = useState<string[]>([]);
   const [playHistory, setPlayHistory] = useState<string[]>([]);
@@ -487,6 +490,9 @@ export default function App() {
   // Page transitions play a short exit on the outgoing page before the new one
   // mounts (WP7 pivot/push/pop from `resolvePageTransition`). Navigating again
   // inside the exit window jumps straight to the latest target — no queueing.
+  // `navTargetRef` records where an in-flight exit is heading so chrome (app
+  // header, player bar) can start its own exit together with the old page
+  // instead of lingering until the new page flips in.
   function requestNavigation(next: AppPage) {
     if (next === page) return;
     if (navExitTimerRef.current !== null) {
@@ -496,12 +502,14 @@ export default function App() {
       const interrupted = resolvePageTransition(page, next);
       setNavDir(interrupted.direction);
       setNavDrift({ enter: interrupted.enterDriftPx, exit: interrupted.exitDriftPx });
+      navTargetRef.current = next;
       setPage(next);
       return;
     }
     const transition = resolvePageTransition(page, next);
     setNavDir(transition.direction);
     setNavDrift({ enter: transition.enterDriftPx, exit: transition.exitDriftPx });
+    navTargetRef.current = next;
     if (transition.exitMs === 0) {
       setPage(next);
       return;
@@ -511,7 +519,7 @@ export default function App() {
       navExitTimerRef.current = null;
       setNavExit(null);
       setPage(next);
-    }, transition.exitMs);
+    }, resolveExitDurationMs(transition.exitMs, reducedMotion));
   }
 
   function navigatePage(nextPage: "quickplay" | "collection" | "settings") {
@@ -1087,13 +1095,16 @@ export default function App() {
 
   // Overlays and chrome build their element ahead of the Presence wrapper so
   // `useLastNonNull` can freeze the closing snapshot for the exit window.
-  const appHeaderElement = page !== "nowPlaying" ? (
+  // Chrome fades out together with the outgoing page when a navigation targets
+  // now playing — not after the page flip, which read as a lingering flash.
+  const chromeVisible = page !== "nowPlaying" && !(navExit !== null && navTargetRef.current === "nowPlaying");
+  const appHeaderElement = chromeVisible ? (
     <AppHeader
       page={page}
       onNavigate={navigatePage}
     />
   ) : null;
-  const playerBarElement = page !== "nowPlaying" ? (
+  const playerBarElement = chromeVisible ? (
     <PlayerBar
       track={activeTrack}
       isPlaying={isPlaying}

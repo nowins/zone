@@ -51,6 +51,18 @@ export const cssVarName = {
   stagger: (name: keyof typeof MOTION_STAGGER): string => `--motion-stagger-${name}`,
 };
 
+/**
+ * How long JS-side lifecycles (navigation exit window, Presence unmount)
+ * should wait while an exit plays. Under reduced motion the CSS side swaps
+ * spatial exit animations for an 80ms opacity-only fade, so the JS wait
+ * must shrink to the same instant tier instead of leaving a dead pause.
+ * A zero-length transition stays zero (same-page navigation).
+ */
+export function resolveExitDurationMs(requestedMs: number, reducedMotion: boolean): number {
+  if (requestedMs <= 0) return 0;
+  return reducedMotion ? MOTION_DURATIONS.instant : requestedMs;
+}
+
 function cubicBezierCss(points: readonly [number, number, number, number]): string {
   const [x1, y1, x2, y2] = points;
   return `cubic-bezier(${x1}, ${y1}, ${x2}, ${y2})`;

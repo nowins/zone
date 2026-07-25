@@ -147,14 +147,19 @@ export function animateValue(options: AnimateValueOptions): AnimationHandle {
     },
     retarget(to: number) {
       if (!activeAnimations.has(entry)) return;
-      entry.target = to;
-      if (entry.springState) {
-        // The spring state (velocity included) is kept, so the new target is
-        // approached with the motion's current inertia. Only the frame clock
-        // is refreshed to avoid a dt spike while the animation was idle.
-        entry.lastFrameTime = activeClock();
+      if (entry.springState && entry.springPreset) {
+        // Fold the time since the last frame into the spring before changing
+        // targets: a burst of retargets between two frames (e.g. wheel ticks)
+        // must still integrate the full elapsed time, not discard it with a
+        // clock reset. The carried velocity keeps the inertia hand-off.
+        const now = activeClock();
+        entry.springState = advanceSpring(entry.springState, entry.springPreset, entry.target, now - entry.lastFrameTime);
+        entry.lastValue = entry.springState.value;
+        entry.lastFrameTime = now;
+        entry.target = to;
         return;
       }
+      entry.target = to;
       // Tweens cannot carry velocity; restart from the current value.
       entry.tweenFrom = entry.lastValue;
       entry.tweenStart = activeClock();

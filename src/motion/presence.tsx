@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import { resolveExitDurationMs } from "./tokens";
+import { useReducedMotion } from "./useReducedMotion";
 
 interface PresenceState {
   mounted: boolean;
@@ -10,9 +12,12 @@ interface PresenceState {
  * Keeps content mounted while `show` is false so a CSS exit transition can
  * finish: `exiting` flips true for `exitDurationMs`, then it unmounts.
  * Showing again mid-exit cancels the pending unmount. Any timer is cleared
- * when the component unmounts.
+ * when the component unmounts. Under reduced motion the wait collapses to
+ * the instant tier, matching the opacity-only fade the CSS side plays.
  */
 export function usePresence(show: boolean, exitDurationMs: number): PresenceState {
+  const reducedMotion = useReducedMotion();
+  const effectiveExitMs = resolveExitDurationMs(exitDurationMs, reducedMotion);
   const [state, setState] = useState<PresenceState>({ mounted: show, exiting: false });
   const mountedRef = useRef(show);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -33,14 +38,14 @@ export function usePresence(show: boolean, exitDurationMs: number): PresenceStat
       timerRef.current = null;
       mountedRef.current = false;
       setState({ mounted: false, exiting: false });
-    }, exitDurationMs);
+    }, effectiveExitMs);
     return () => {
       if (timerRef.current !== null) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [show, exitDurationMs]);
+  }, [show, effectiveExitMs]);
 
   return state;
 }

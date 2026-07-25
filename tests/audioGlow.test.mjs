@@ -166,6 +166,14 @@ test("AudioGlowCanvas renderer no longer uses a traditional path horizon", () =>
   assert.ok(source.includes("source-over"));
 });
 
+test("AudioGlowCanvas settles into a static dim glow under reduced motion", () => {
+  const source = readFileSync("src/components/AudioGlowCanvas.tsx", "utf8");
+
+  assert.ok(source.includes("useReducedMotion"), "the glow must honor prefers-reduced-motion");
+  assert.ok(source.includes("REDUCED_GLOW_SAMPLES"), "a frozen idle frame replaces live samples");
+  assert.ok(source.includes("time: reduced ? 0 : time / 1000"), "scene time freezes");
+});
+
 function createMountainSamples(count, peakAt) {
   return Array.from({ length: count }, (_, index) => {
     const ratio = index / Math.max(1, count - 1);
