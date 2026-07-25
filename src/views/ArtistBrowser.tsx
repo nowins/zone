@@ -102,7 +102,10 @@ export function ArtistBrowser({
 
       <section className="artist-albums">
         <p>{artistAlbums.length} 张专辑</p>
-        <div className="artist-album-grid">
+        <div
+          className="artist-album-grid"
+          data-count={artistAlbums.length}
+        >
           {artistAlbums.map((album, index) => (
             <div
               key={album.key}

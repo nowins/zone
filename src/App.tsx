@@ -1310,6 +1310,9 @@ export default function App() {
           <section
             className={`content-band collection-band${showSearchResults ? " collection-searching" : ""}`}
           >
+            <p className="collection-ghost" aria-hidden="true">
+              collection
+            </p>
             <div className="collection-header">
               <div className="collection-chrome">
                 <span className="collection-chrome-label">音乐</span>
@@ -1324,7 +1327,6 @@ export default function App() {
               </div>
               <div className="collection-header-main">
                 <div className="collection-title">
-                  <h1>collection</h1>
                   <p>
                     {tracks.length === 0
                       ? "选择一个文件夹开始"

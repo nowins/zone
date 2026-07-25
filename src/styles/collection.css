@@ -401,10 +401,23 @@
 
 .artist-album-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(124px, 156px));
   align-content: start;
-  gap: 18px;
+  gap: 14px;
   padding: 4px 8px 24px 0;
+  /* 3+: compact multi-column so the middle pane stays dense. */
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+}
+
+/* One album: slightly larger than multi-grid tiles — not a hero poster. */
+.artist-album-grid[data-count="1"] {
+  grid-template-columns: minmax(0, 168px);
+  gap: 10px;
+}
+
+/* Two albums: fixed compact pair, do not stretch across the whole pane. */
+.artist-album-grid[data-count="2"] {
+  grid-template-columns: repeat(2, minmax(0, 140px));
+  gap: 14px;
 }
 
 .artist-album-tile {
@@ -736,6 +749,7 @@
 .collection-band {
   position: relative;
   isolation: isolate;
+  overflow: hidden;
   background:
     radial-gradient(
       ellipse 42% 58% at 48% 18%,
@@ -751,17 +765,40 @@
     var(--app-bg);
 }
 
+/* Diagonal atmosphere mark — quickplay-scale type, not a layout title. */
+.collection-ghost {
+  position: absolute;
+  z-index: 0;
+  left: -6%;
+  bottom: 4%;
+  margin: 0;
+  color: rgba(128, 35, 76, 0.2);
+  font-size: clamp(150px, 18vw, 248px);
+  line-height: 0.8;
+  font-weight: 200;
+  letter-spacing: -0.07em;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  transform: rotate(-32deg);
+  transform-origin: left bottom;
+}
+
+.collection-band > :not(.collection-ghost) {
+  position: relative;
+  z-index: 1;
+}
+
 /* Zune collection composition:
    chrome row  — 音乐 (left) + search (right)
-   main row    — ghost title (left) + view tabs (right) */
+   main row    — count + view tabs; "collection" is atmosphere only */
 .collection-header {
   position: relative;
-  min-height: 96px;
   flex: none;
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 0 4px 10px;
+  padding: 0 4px 8px;
 }
 
 .collection-chrome {
@@ -861,22 +898,16 @@
   justify-content: space-between;
   gap: 36px;
   min-width: 0;
+  min-height: 36px;
+  padding-top: 6px;
 }
 
 .collection-title {
   min-width: 0;
 }
 
-.collection-title h1 {
-  margin-left: 24px;
-  color: rgba(247, 242, 246, 0.105);
-  font-size: clamp(60px, 6.8vw, 100px);
-  letter-spacing: -0.055em;
-  white-space: nowrap;
-}
-
 .collection-title p {
-  margin: 8px 0 0;
+  margin: 0;
   color: rgba(247, 242, 246, 0.72);
   font-size: 13px;
 }
