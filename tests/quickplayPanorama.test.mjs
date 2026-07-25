@@ -12,8 +12,11 @@ test("quickplay is a keyboard and mouse-wheel accessible horizontal panorama", (
   assert.ok(quickplayRule.includes("overflow-x: auto"));
   assert.ok(quickplayRule.includes("scroll-snap-type: none"));
   assert.ok(quickplaySource.includes('window.addEventListener("wheel", handleWheel, { passive: false, capture: true })'));
-  assert.ok(quickplaySource.includes("viewport.scrollLeft = nextScrollLeft"));
-  assert.ok(quickplaySource.includes('window.removeEventListener("wheel", handleWheel, true);\n    };\n  }, [tracks.length]);'));
+  assert.ok(quickplaySource.includes("viewport.scrollLeft = nextScrollLeft"), "reduced motion keeps the direct jump");
+  assert.ok(quickplaySource.includes("spring: SPRING_PRESETS.snappy"), "wheel pans ride the motion kernel spring for inertia");
+  assert.ok(quickplaySource.includes("running.retarget(nextScrollLeft)"), "consecutive wheel ticks retarget the in-flight spring");
+  assert.ok(quickplaySource.includes('window.removeEventListener("wheel", handleWheel, true);\n      scrollAnimRef.current.handle?.cancel();'));
+  assert.ok(quickplaySource.includes("}, [tracks.length, reducedMotion]);"));
   assert.ok(!quickplaySource.includes("handlePanoramaPointerDown"));
   assert.ok(!quickplaySource.includes("handlePanoramaPointerMove"));
   assert.ok(quickplaySource.includes("onKeyDown={handlePanoramaKey}"));

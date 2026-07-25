@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { AlbumGroup, Track } from "../types";
+import { useReducedMotion } from "../motion/useReducedMotion";
 import { buildNowPlayingWall } from "../utils/nowPlayingWall";
+import { getVisualizerFrame } from "../utils/visualizerBus";
 import {
   buildCanvasMosaicTiles,
   createMosaicColorPalette,
@@ -36,18 +38,11 @@ type MosaicColorFieldRenderer = {
 export function NowPlayingMosaicCanvas({
   tracks,
   activeTrack,
-  beatPulse,
-  beatPhase,
-  beatConfidence,
   isPlaying,
   onInitialRevealStart,
 }: {
   tracks: Track[];
   activeTrack: Track | null;
-  energy: number;
-  beatPulse: number;
-  beatPhase: number;
-  beatConfidence: number;
   isPlaying: boolean;
   onInitialRevealStart?: () => void;
 }) {
@@ -55,9 +50,6 @@ export function NowPlayingMosaicCanvas({
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
   const tilesRef = useRef<MosaicTile[]>([]);
   const albumsRef = useRef<AlbumGroup[]>([]);
-  const beatPulseRef = useRef(beatPulse);
-  const beatPhaseRef = useRef(beatPhase);
-  const beatConfidenceRef = useRef(beatConfidence);
   const isPlayingRef = useRef(isPlaying);
   const paletteRef = useRef<MosaicColorPalette>(clonePalette(FALLBACK_PALETTE));
   const targetPaletteRef = useRef<MosaicColorPalette>(clonePalette(FALLBACK_PALETTE));
@@ -68,19 +60,8 @@ export function NowPlayingMosaicCanvas({
   const sceneTimeRef = useRef(0);
   const wallRevealStartedAtRef = useRef(Number.NEGATIVE_INFINITY);
   const motionEnabledRef = useRef(true);
+  const reducedMotion = useReducedMotion();
   const wallAlbums = useMemo(() => buildNowPlayingWall(tracks, activeTrack), [tracks, activeTrack]);
-
-  useEffect(() => {
-    beatPulseRef.current = beatPulse;
-  }, [beatPulse]);
-
-  useEffect(() => {
-    beatPhaseRef.current = beatPhase;
-  }, [beatPhase]);
-
-  useEffect(() => {
-    beatConfidenceRef.current = beatConfidence;
-  }, [beatConfidence]);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -110,14 +91,8 @@ export function NowPlayingMosaicCanvas({
   }, [onInitialRevealStart, wallAlbums]);
 
   useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const sync = () => {
-      motionEnabledRef.current = !query.matches;
-    };
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
+    motionEnabledRef.current = !reducedMotion;
+  }, [reducedMotion]);
 
   useEffect(() => {
     if (!activeTrack?.cover_path) {
@@ -177,6 +152,7 @@ export function NowPlayingMosaicCanvas({
       const deltaSeconds = Math.min(0.08, Math.max(0.001, (time - previousTime) / 1000));
       lastTimeRef.current = time;
       const motionEnabled = motionEnabledRef.current;
+      const frame = getVisualizerFrame();
       sceneTimeRef.current += deltaSeconds * (motionEnabled ? (isPlayingRef.current ? 1 : 0.1) : 0);
       paletteRef.current = interpolateMosaicColorPalette(
         paletteRef.current,
@@ -189,9 +165,9 @@ export function NowPlayingMosaicCanvas({
         tilesRef.current,
         albumsRef.current,
         paletteRef.current,
-        beatPulseRef.current,
-        beatPhaseRef.current,
-        beatConfidenceRef.current,
+        frame.beatPulse,
+        frame.beatPhase,
+        frame.beatConfidence,
         isPlayingRef.current,
         flipRef.current,
         time,

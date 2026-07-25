@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Titlebar } from "./components/Titlebar";
 import { AppHeader } from "./components/AppHeader";
@@ -18,10 +18,14 @@ import { albumKey, bestAlbumArtist, compareTracksForAlbum, defaultPlaylists, nor
 import { homePinForPayload, homePinStateForPayload, moveHomePin, normalizeHomePins, reconcileHomePins, shiftHomePin } from "./utils/homePins";
 import { analyzePcmBeatGrid, createIdleBeatFrame, RealtimeBeatAnalyzer, type BeatFrame, type BeatGrid } from "./utils/beatAnalysis";
 import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/visualizer";
+import { getVisualizerFrame, publishVisualizerFrame } from "./utils/visualizerBus";
 import { createShuffleOrder, haveSameQueueItems, playbackSourceKey, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
 import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
 import { useSystemMedia } from "./hooks/useSystemMedia";
 import { useLibraryWatcher } from "./hooks/useLibraryWatcher";
+import { Presence, useLastNonNull } from "./motion/presence";
+import { MOTION_DURATIONS } from "./motion/tokens";
+import { resolvePageTransition } from "./motion/pageTransition";
 import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, HomePin, MusicFolder, Playlist, RepeatMode, ScanResult, SmartPlaylist, Track, TrackActivityMap, ViewMode } from "./types";
 
 type PlaybackSession = {
@@ -47,11 +51,15 @@ export default function App() {
   const visualizerFrameRef = useRef<number | null>(null);
   const visualizerSilenceFramesRef = useRef(0);
   const visualizerUnavailableRef = useRef(false);
+  const visualizerEnergyRef = useRef(0.055);
+  const visualizerSamplesRef = useRef<number[]>([]);
+  const beatFrameRef = useRef<BeatFrame>(createIdleBeatFrame());
   const realtimeBeatRef = useRef<RealtimeBeatAnalyzer | null>(null);
   const offlineBeatGridRef = useRef<BeatGrid | null>(null);
   const beatGridCacheRef = useRef(new Map<string, BeatGrid | null>());
   const beatAnalysisRequestRef = useRef(0);
   const actionNoticeTimerRef = useRef<number | null>(null);
+  const navExitTimerRef = useRef<number | null>(null);
   const playbackSessionRef = useRef<PlaybackSession | null>(null);
   const activityMigrationRef = useRef(false);
   const scanInFlightRef = useRef(false);
@@ -62,6 +70,11 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("albums");
   const [page, setPage] = useState<AppPage>("quickplay");
+  // Page-transition state: `navExit` is the in-flight exit direction (null when
+  // idle), `navDir` persists the latest direction so the incoming page's enter
+  // keyframe reads the same `--motion-dir` after the exit window ends.
+  const [navExit, setNavExit] = useState<1 | -1 | null>(null);
+  const [navDir, setNavDir] = useState<1 | -1>(1);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [queue, setQueue] = useState<string[]>([]);
   const [playHistory, setPlayHistory] = useState<string[]>([]);
@@ -75,11 +88,6 @@ export default function App() {
   const [shuffle, setShuffle] = useState(false);
   const [shuffleOrder, setShuffleOrder] = useState<string[]>([]);
   const [repeat, setRepeat] = useState<RepeatMode>("off");
-  const [visualizerSamples, setVisualizerSamples] = useState<number[]>(() =>
-    Array.from({ length: VISUALIZER_SAMPLE_COUNT }, () => 0.035),
-  );
-  const [visualizerEnergy, setVisualizerEnergy] = useState(0.055);
-  const [beatFrame, setBeatFrame] = useState<BeatFrame>(() => createIdleBeatFrame());
   const [restored, setRestored] = useState(false);
   const [needsMetadataRefresh, setNeedsMetadataRefresh] = useState(false);
   const [selectedAlbumKey, setSelectedAlbumKey] = useState<string | null>(null);
@@ -100,6 +108,7 @@ export default function App() {
 
   useEffect(() => () => {
     if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
+    if (navExitTimerRef.current !== null) window.clearTimeout(navExitTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -306,7 +315,8 @@ export default function App() {
   useEffect(() => {
     if (!isPlaying) {
       if (visualizerFrameRef.current) cancelAnimationFrame(visualizerFrameRef.current);
-      setBeatFrame(createIdleBeatFrame());
+      beatFrameRef.current = createIdleBeatFrame();
+      publishIdleBeatFrame();
       return;
     }
 
@@ -323,7 +333,8 @@ export default function App() {
     visualizerUnavailableRef.current = false;
     realtimeBeatRef.current = null;
     offlineBeatGridRef.current = beatGridCacheRef.current.get(activeTrack.id) ?? null;
-    setBeatFrame(createIdleBeatFrame());
+    beatFrameRef.current = createIdleBeatFrame();
+    publishIdleBeatFrame();
     audioRef.current.crossOrigin = "anonymous";
     audioRef.current.src = sourceUrl;
     audioRef.current.load();
@@ -466,14 +477,41 @@ export default function App() {
     }
   }
 
+  // Page transitions play a short exit on the outgoing page before the new one
+  // mounts (WP7 pivot/push/pop from `resolvePageTransition`). Navigating again
+  // inside the exit window jumps straight to the latest target — no queueing.
+  function requestNavigation(next: AppPage) {
+    if (next === page) return;
+    if (navExitTimerRef.current !== null) {
+      window.clearTimeout(navExitTimerRef.current);
+      navExitTimerRef.current = null;
+      setNavExit(null);
+      setNavDir(resolvePageTransition(page, next).direction);
+      setPage(next);
+      return;
+    }
+    const transition = resolvePageTransition(page, next);
+    setNavDir(transition.direction);
+    if (transition.exitMs === 0) {
+      setPage(next);
+      return;
+    }
+    setNavExit(transition.direction);
+    navExitTimerRef.current = window.setTimeout(() => {
+      navExitTimerRef.current = null;
+      setNavExit(null);
+      setPage(next);
+    }, transition.exitMs);
+  }
+
   function navigatePage(nextPage: "quickplay" | "collection" | "settings") {
     if (nextPage === "quickplay") setQuery("");
-    setPage(nextPage);
+    requestNavigation(nextPage);
   }
 
   function navigateCollection(nextView: ViewMode) {
     setView(nextView);
-    setPage("collection");
+    requestNavigation("collection");
   }
 
   function openSearchArtist(artist: string) {
@@ -532,7 +570,7 @@ export default function App() {
   function openNowPlaying() {
     if (!activeTrack) return;
     if (page !== "nowPlaying") previousPageRef.current = page;
-    setPage("nowPlaying");
+    requestNavigation("nowPlaying");
   }
 
   function createPlaylist(name: string) {
@@ -836,6 +874,19 @@ export default function App() {
     return mixed;
   }
 
+  // Keep the bus frame's beat fields at idle (samples/energy untouched) while
+  // playback is paused or switching tracks, mirroring the old beatFrame reset.
+  function publishIdleBeatFrame() {
+    const current = getVisualizerFrame();
+    publishVisualizerFrame({
+      ...current,
+      beatPulse: 0,
+      beatPhase: 0,
+      onsetStrength: 0,
+      beatConfidence: 0,
+    });
+  }
+
   function startVisualizer() {
     void resumeAudioGraph();
     const frequencyData = new Uint8Array(analyserRef.current?.frequencyBinCount ?? 512);
@@ -847,6 +898,7 @@ export default function App() {
         performance.now() * 0.001,
         audioRef.current?.currentTime ?? progress,
       );
+      let beat = beatFrameRef.current;
 
       if (analyser && !visualizerUnavailableRef.current) {
         analyser.getByteFrequencyData(frequencyData);
@@ -862,7 +914,7 @@ export default function App() {
         if (visualizerSilenceFramesRef.current < 28) frame = audioFrame;
 
         if (!realtimeBeatRef.current) realtimeBeatRef.current = new RealtimeBeatAnalyzer();
-        const beat = realtimeBeatRef.current.update(
+        beat = realtimeBeatRef.current.update(
           frequencyData,
           timeData,
           audioRef.current?.currentTime ?? progress,
@@ -870,20 +922,34 @@ export default function App() {
           analyser.fftSize,
           offlineBeatGridRef.current,
         );
-        setBeatFrame(beat);
+        beatFrameRef.current = beat;
       }
 
-      setVisualizerEnergy((current) =>
-        frame.energy > current ? current * 0.64 + frame.energy * 0.36 : current * 0.9 + frame.energy * 0.1,
-      );
-      setVisualizerSamples((current) =>
-        current.map((previous, index) => {
-          const next = frame.samples[index] ?? 0.035;
-          return next > previous
-            ? previous * 0.58 + next * 0.42
-            : previous * 0.9 + next * 0.1;
-        }),
-      );
+      const previousEnergy = visualizerEnergyRef.current;
+      const energy = frame.energy > previousEnergy
+        ? previousEnergy * 0.64 + frame.energy * 0.36
+        : previousEnergy * 0.9 + frame.energy * 0.1;
+      visualizerEnergyRef.current = energy;
+
+      if (visualizerSamplesRef.current.length !== VISUALIZER_SAMPLE_COUNT) {
+        visualizerSamplesRef.current = Array.from({ length: VISUALIZER_SAMPLE_COUNT }, () => 0.035);
+      }
+      const samples = visualizerSamplesRef.current.map((previous, index) => {
+        const next = frame.samples[index] ?? 0.035;
+        return next > previous
+          ? previous * 0.58 + next * 0.42
+          : previous * 0.9 + next * 0.1;
+      });
+      visualizerSamplesRef.current = samples;
+
+      publishVisualizerFrame({
+        samples,
+        energy,
+        beatPulse: beat.beatPulse,
+        beatPhase: beat.beatPhase,
+        onsetStrength: beat.onsetStrength,
+        beatConfidence: beat.confidence,
+      });
       visualizerFrameRef.current = requestAnimationFrame(sample);
     };
 
@@ -1009,9 +1075,91 @@ export default function App() {
     onFavorite: toggleFavorite,
   });
 
+  // Overlays and chrome build their element ahead of the Presence wrapper so
+  // `useLastNonNull` can freeze the closing snapshot for the exit window.
+  const appHeaderElement = page !== "nowPlaying" ? (
+    <AppHeader
+      page={page}
+      onNavigate={navigatePage}
+    />
+  ) : null;
+  const playerBarElement = page !== "nowPlaying" ? (
+    <PlayerBar
+      track={activeTrack}
+      isPlaying={isPlaying}
+      progress={progress}
+      duration={duration}
+      volume={volume}
+      shuffle={shuffle}
+      repeat={repeat}
+      isFavorite={isActiveTrackFavorite}
+      onPlayPause={togglePlay}
+      onPrevious={() => move(-1)}
+      onNext={() => move(1)}
+      onSeek={seek}
+      onVolume={setVolume}
+      onShuffle={() => setShuffle((value) => !value)}
+      onRepeat={() => setRepeat((value) => (value === "off" ? "all" : value === "all" ? "one" : "off"))}
+      onToggleFavorite={toggleFavorite}
+      onOpenNowPlaying={openNowPlaying}
+      onNavigateCollection={navigateCollection}
+    />
+  ) : null;
+  const contextMenuElement = contextMenu ? (
+    <ContextMenu
+      menu={contextMenu}
+      playlists={playlists}
+      onClose={closeContextMenu}
+      onPlay={() => playContextPayload(contextMenu.payload)}
+      onAddToQueue={() => appendToQueue(contextMenu.payload.tracks)}
+      onAddToPlaylist={(playlistId) => addToPlaylist(playlistId, contextMenu.payload.tracks)}
+      onRenamePlaylist={(playlistId) => openPlaylistDialog("rename", playlistId)}
+      onDeletePlaylist={(playlistId) => openPlaylistDialog("delete", playlistId)}
+      onExcludeFromSmartPlaylist={(playlistId) => excludeFromSmartPlaylist(playlistId, contextMenu.payload.tracks)}
+      homePinState={homePinStateForPayload(homePins, contextMenu.payload)}
+      onToggleHomePin={() => toggleHomePin(contextMenu.payload)}
+      onInfo={() => setInfoTarget(contextMenu.payload)}
+    />
+  ) : null;
+  const infoPanelElement = infoTarget ? (
+    <InfoPanel payload={infoTarget} onClose={() => setInfoTarget(null)} />
+  ) : null;
+  const playlistDialogElement = playlistDialog ? (
+    <PlaylistDialog
+      key={`${playlistDialog.mode}-${playlistDialog.playlistId ?? "new"}`}
+      dialog={playlistDialog}
+      onCancel={() => setPlaylistDialog(null)}
+      onSubmit={submitPlaylistDialog}
+      onCreateSmart={openCreateSmartPlaylist}
+    />
+  ) : null;
+  const smartPlaylistDialogElement = smartPlaylistDialog ? (
+    <SmartPlaylistDialog
+      key={smartPlaylistDialog === "create" ? "create-smart" : smartPlaylistDialog.id}
+      playlist={smartPlaylistDialog === "create" ? undefined : smartPlaylistDialog}
+      tracks={tracks}
+      favoriteTrackIds={favoriteTrackIds}
+      activity={trackActivity}
+      onCancel={() => setSmartPlaylistDialog(null)}
+      onSave={saveSmartPlaylist}
+    />
+  ) : null;
+  const actionToastElement = actionNotice ? (
+    <div className="action-toast" role="status">{actionNotice}</div>
+  ) : null;
+  const lastAppHeaderElement = useLastNonNull(appHeaderElement);
+  const lastPlayerBarElement = useLastNonNull(playerBarElement);
+  const lastContextMenuElement = useLastNonNull(contextMenuElement);
+  const lastInfoPanelElement = useLastNonNull(infoPanelElement);
+  const lastPlaylistDialogElement = useLastNonNull(playlistDialogElement);
+  const lastSmartPlaylistDialogElement = useLastNonNull(smartPlaylistDialogElement);
+  const lastActionToastElement = useLastNonNull(actionToastElement);
+
   return (
     <div
       className={`shell ${page === "nowPlaying" ? "shell-now-playing" : ""}`}
+      data-nav-state={navExit !== null ? "exiting" : undefined}
+      style={{ "--motion-dir": navDir } as CSSProperties}
       onClick={closeContextMenu}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -1030,17 +1178,16 @@ export default function App() {
       <Titlebar
         isSettings={page === "settings"}
         onOpenSettings={() => navigatePage("settings")}
+        searchActive={page === "collection"}
+        onOpenSearch={() => navigatePage("collection")}
+        query={query}
+        onQuery={setQuery}
       />
 
       <main className="workspace">
-        {page !== "nowPlaying" ? (
-          <AppHeader
-            page={page}
-            query={query}
-            onQuery={setQuery}
-            onNavigate={navigatePage}
-          />
-        ) : null}
+        <Presence show={appHeaderElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+          {appHeaderElement ?? lastAppHeaderElement ?? <span style={{ display: "none" }} />}
+        </Presence>
 
         {page === "quickplay" ? (
           <QuickplayView
@@ -1162,15 +1309,9 @@ export default function App() {
             duration={duration}
             shuffle={shuffle}
             repeat={repeat}
-            visualizerSamples={visualizerSamples}
-            visualizerEnergy={visualizerEnergy}
-            beatPulse={beatFrame.beatPulse}
-            beatPhase={beatFrame.beatPhase}
-            onsetStrength={beatFrame.onsetStrength}
-            beatConfidence={beatFrame.confidence}
             isFavorite={isActiveTrackFavorite}
             volume={volume}
-            onBack={() => setPage(previousPageRef.current)}
+            onBack={() => requestNavigation(previousPageRef.current)}
             onPlay={playTrack}
             onPlayPause={togglePlay}
             onToggleFavorite={toggleFavorite}
@@ -1204,68 +1345,29 @@ export default function App() {
         )}
       </main>
 
-      {page !== "nowPlaying" && (
-        <PlayerBar
-          track={activeTrack}
-          isPlaying={isPlaying}
-          progress={progress}
-          duration={duration}
-          volume={volume}
-          shuffle={shuffle}
-          repeat={repeat}
-          isFavorite={isActiveTrackFavorite}
-          onPlayPause={togglePlay}
-          onPrevious={() => move(-1)}
-          onNext={() => move(1)}
-          onSeek={seek}
-          onVolume={setVolume}
-          onShuffle={() => setShuffle((value) => !value)}
-          onRepeat={() => setRepeat((value) => (value === "off" ? "all" : value === "all" ? "one" : "off"))}
-          onToggleFavorite={toggleFavorite}
-          onOpenNowPlaying={openNowPlaying}
-          onNavigateCollection={navigateCollection}
-        />
-      )}
+      <Presence show={playerBarElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {playerBarElement ?? lastPlayerBarElement ?? <span style={{ display: "none" }} />}
+      </Presence>
 
-      {contextMenu && (
-        <ContextMenu
-          menu={contextMenu}
-          playlists={playlists}
-          onClose={closeContextMenu}
-          onPlay={() => playContextPayload(contextMenu.payload)}
-          onAddToQueue={() => appendToQueue(contextMenu.payload.tracks)}
-          onAddToPlaylist={(playlistId) => addToPlaylist(playlistId, contextMenu.payload.tracks)}
-          onRenamePlaylist={(playlistId) => openPlaylistDialog("rename", playlistId)}
-          onDeletePlaylist={(playlistId) => openPlaylistDialog("delete", playlistId)}
-          onExcludeFromSmartPlaylist={(playlistId) => excludeFromSmartPlaylist(playlistId, contextMenu.payload.tracks)}
-          homePinState={homePinStateForPayload(homePins, contextMenu.payload)}
-          onToggleHomePin={() => toggleHomePin(contextMenu.payload)}
-          onInfo={() => setInfoTarget(contextMenu.payload)}
-        />
-      )}
+      <Presence show={contextMenuElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {contextMenuElement ?? lastContextMenuElement ?? <span style={{ display: "none" }} />}
+      </Presence>
 
-      {infoTarget && <InfoPanel payload={infoTarget} onClose={() => setInfoTarget(null)} />}
-      {playlistDialog && (
-        <PlaylistDialog
-          key={`${playlistDialog.mode}-${playlistDialog.playlistId ?? "new"}`}
-          dialog={playlistDialog}
-          onCancel={() => setPlaylistDialog(null)}
-          onSubmit={submitPlaylistDialog}
-          onCreateSmart={openCreateSmartPlaylist}
-        />
-      )}
-      {smartPlaylistDialog && (
-        <SmartPlaylistDialog
-          key={smartPlaylistDialog === "create" ? "create-smart" : smartPlaylistDialog.id}
-          playlist={smartPlaylistDialog === "create" ? undefined : smartPlaylistDialog}
-          tracks={tracks}
-          favoriteTrackIds={favoriteTrackIds}
-          activity={trackActivity}
-          onCancel={() => setSmartPlaylistDialog(null)}
-          onSave={saveSmartPlaylist}
-        />
-      )}
-      {actionNotice && <div className="action-toast" role="status">{actionNotice}</div>}
+      <Presence show={infoPanelElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {infoPanelElement ?? lastInfoPanelElement ?? <span style={{ display: "none" }} />}
+      </Presence>
+
+      <Presence show={playlistDialogElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {playlistDialogElement ?? lastPlaylistDialogElement ?? <span style={{ display: "none" }} />}
+      </Presence>
+
+      <Presence show={smartPlaylistDialogElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {smartPlaylistDialogElement ?? lastSmartPlaylistDialogElement ?? <span style={{ display: "none" }} />}
+      </Presence>
+
+      <Presence show={actionToastElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {actionToastElement ?? lastActionToastElement ?? <span style={{ display: "none" }} />}
+      </Presence>
     </div>
   );
 }

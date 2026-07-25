@@ -1,4 +1,5 @@
 import type { LyricsWord } from "../types.js";
+import { smoothstep } from "../motion/math.js";
 
 export const LYRICS_LONG_NOTE_MIN_DURATION = 0.95;
 const LYRICS_LONG_NOTE_FULL_DURATION = 1.8;
@@ -20,9 +21,4 @@ export function lyricsLongNoteEnvelope(word: LyricsWord, progress: number) {
   const attack = smoothstep(0.34, 0.68, wordProgress);
   const release = 1 - smoothstep(0.86, 1, wordProgress);
   return Math.max(0, Math.min(1, durationWeight * attack * release));
-}
-
-function smoothstep(edge0: number, edge1: number, value: number) {
-  const amount = Math.max(0, Math.min(1, (value - edge0) / Math.max(0.001, edge1 - edge0)));
-  return amount * amount * (3 - 2 * amount);
 }

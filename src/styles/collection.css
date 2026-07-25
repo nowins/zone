@@ -65,31 +65,64 @@
 
 .album-rail::-webkit-scrollbar,
 .song-list::-webkit-scrollbar,
-.artist-list::-webkit-scrollbar {
-  height: 7px;
-  width: 7px;
+.artist-list::-webkit-scrollbar,
+.album-track-list::-webkit-scrollbar,
+.search-results-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.album-rail::-webkit-scrollbar-track,
+.song-list::-webkit-scrollbar-track,
+.artist-list::-webkit-scrollbar-track,
+.album-track-list::-webkit-scrollbar-track,
+.search-results-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .album-rail::-webkit-scrollbar-thumb,
 .song-list::-webkit-scrollbar-thumb,
-.artist-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.22);
+.artist-list::-webkit-scrollbar-thumb,
+.album-track-list::-webkit-scrollbar-thumb,
+.search-results-scroll::-webkit-scrollbar-thumb {
+  min-height: 34px;
+  background: rgba(247, 242, 246, 0.18);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.album-rail::-webkit-scrollbar-thumb:hover,
+.song-list::-webkit-scrollbar-thumb:hover,
+.artist-list::-webkit-scrollbar-thumb:hover,
+.album-track-list::-webkit-scrollbar-thumb:hover,
+.search-results-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(247, 242, 246, 0.34);
+  background-clip: content-box;
+}
+
+.album-rail::-webkit-scrollbar-button,
+.song-list::-webkit-scrollbar-button,
+.artist-list::-webkit-scrollbar-button,
+.album-track-list::-webkit-scrollbar-button,
+.search-results-scroll::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .album-tile {
   width: 100%;
   min-width: 0;
   text-align: left;
-  animation: zune-enter 360ms cubic-bezier(0.18, 0.88, 0.24, 1) backwards;
-  animation-delay: var(--stagger, 0ms);
   cursor: default;
-  transition: transform var(--motion-content) var(--motion-ease-back);
+  transition: transform var(--motion-content) var(--motion-ease-emphasis);
 }
 
 .album-tile.tilt-pressed {
   transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
   transition-duration: var(--motion-press);
-  transition-timing-function: var(--motion-ease-direct);
+  transition-timing-function: var(--motion-ease-standard);
 }
 
 .album-tile.selected .cover {
@@ -103,7 +136,7 @@
 }
 
 .album-cover-wrap:hover .cover {
-  transform: scale(1.03);
+  transform: scale(1.02);
   filter: brightness(1.13);
 }
 
@@ -121,7 +154,7 @@
   border-radius: 50%;
   opacity: 0;
   transform: translateX(-50%) scale(0.92);
-  transition: opacity 120ms ease, transform 120ms ease, background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition: opacity var(--motion-press) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard), background var(--motion-press) var(--motion-ease-standard), border-color var(--motion-press) var(--motion-ease-standard), color var(--motion-press) var(--motion-ease-standard);
 }
 
 .album-cover-wrap:hover .album-play,
@@ -166,7 +199,7 @@
   aspect-ratio: 1;
   margin-bottom: 12px;
   overflow: hidden;
-  transition: transform 180ms ease, filter 180ms ease;
+  transition: transform var(--motion-content) var(--motion-ease-standard), filter var(--motion-micro) var(--motion-ease-standard);
 }
 
 .cover[style*="1"] {
@@ -355,8 +388,6 @@
   white-space: nowrap;
   color: rgba(255, 255, 255, 0.82);
   font-size: 20px;
-  animation: zune-enter 320ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
-  animation-delay: var(--stagger, 0ms);
 }
 
 .artist-picker button:hover,
@@ -380,15 +411,13 @@
 .artist-album-tile {
   min-width: 0;
   cursor: default;
-  animation: zune-enter 350ms cubic-bezier(0.18, 0.88, 0.24, 1) backwards;
-  animation-delay: var(--stagger, 0ms);
-  transition: transform var(--motion-content) var(--motion-ease-back);
+  transition: transform var(--motion-content) var(--motion-ease-emphasis);
 }
 
 .artist-album-tile.tilt-pressed {
   transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
   transition-duration: var(--motion-press);
-  transition-timing-function: var(--motion-ease-direct);
+  transition-timing-function: var(--motion-ease-standard);
 }
 
 .artist-album-tile .cover {
@@ -434,8 +463,6 @@
   gap: 12px;
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  animation: zune-enter 320ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
-  animation-delay: var(--stagger, 0ms);
   will-change: transform, opacity;
 }
 
@@ -488,7 +515,7 @@
   color: rgba(255, 255, 255, 0.78);
   text-align: left;
   border-left: 2px solid transparent;
-  transition: color 150ms ease, background 150ms ease, border-color 150ms ease;
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard);
 }
 
 .playlist-create-button:hover {
@@ -503,8 +530,6 @@
   display: block;
   padding: 8px 12px;
   text-align: left;
-  animation: zune-enter 330ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
-  animation-delay: var(--stagger, 0ms);
 }
 
 .playlist-list > button:hover,
@@ -568,8 +593,6 @@
   min-height: 44px;
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  animation: zune-enter 320ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
-  animation-delay: var(--stagger, 0ms);
   will-change: transform, opacity;
 }
 
@@ -681,8 +704,6 @@
   align-items: center;
   gap: 16px;
   color: rgba(255, 255, 255, 0.82);
-  animation: zune-enter 320ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
-  animation-delay: var(--stagger, 0ms);
   will-change: transform, opacity;
 }
 
@@ -788,7 +809,7 @@
   height: 2px;
   content: "";
   background: var(--accent);
-  animation: pivot-in 240ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
+  animation: pivot-in var(--motion-content) var(--motion-ease-entrance) both;
 }
 
 .empty-state {
@@ -815,7 +836,7 @@
   grid-template-columns: minmax(520px, 1.48fr) minmax(350px, 1fr);
   gap: 0;
   overflow: hidden;
-  animation: page-arrive 330ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
+  animation: motion-page-enter var(--motion-page) var(--motion-ease-entrance) both;
 }
 
 .album-rail {
@@ -924,7 +945,7 @@
   background: rgba(9, 5, 10, 0.36);
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 50%;
-  transition: color 150ms ease, background 150ms ease, border-color 150ms ease, transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-standard);
 }
 
 .album-detail-head > button:hover {
@@ -1234,6 +1255,9 @@
   padding: 4px 14px 74px 0;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(247, 242, 246, 0.18) transparent;
+  scrollbar-gutter: stable;
 }
 
 .search-result-section + .search-result-section {
@@ -1338,7 +1362,7 @@
   width: 100%;
   aspect-ratio: 1;
   height: auto;
-  transition: opacity 150ms ease;
+  transition: opacity var(--motion-micro) var(--motion-ease-standard);
 }
 
 .search-album-result:hover .cover {

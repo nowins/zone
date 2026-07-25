@@ -11,6 +11,7 @@
   },
   "include": [
     "src/utils/visualizer.ts",
+    "src/utils/visualizerBus.ts",
     "src/utils/nowPlayingWall.ts",
     "src/utils/nowPlayingCanvas.ts",
     "src/utils/beatAnalysis.ts",
@@ -28,6 +29,13 @@
     "src/utils/qrc.ts",
     "src/utils/homePins.ts",
     "src/utils/smartPlaylist.ts",
-    "src/utils/librarySearch.ts"
+    "src/utils/librarySearch.ts",
+    "src/motion/math.ts",
+    "src/motion/tokens.ts",
+    "src/motion/spring.ts",
+    "src/motion/tween.ts",
+    "src/motion/animate.ts",
+    "src/motion/flip.ts",
+    "src/motion/pageTransition.ts"
   ]
 }

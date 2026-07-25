@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { ArrowLeft, AudioLines, ChevronDown, Heart } from "lucide-react";
 import { AudioGlowCanvas } from "../components/AudioGlowCanvas";
 import { Cover } from "../components/Cover";
@@ -7,11 +8,41 @@ import { NowPlayingMosaicCanvas } from "../components/NowPlayingMosaicCanvas";
 import { PlaybackProgress } from "../components/PlaybackProgress";
 import { TransportControls, VolumeControl } from "../components/TransportControls";
 import { useLyrics } from "../hooks/useLyrics";
+import { playCoverFlip } from "../motion/coverFlip";
+import { registerFlipElement, takeFlipSource } from "../motion/flip";
+import type { FlipRect } from "../motion/flip";
+import { Presence, useLastNonNull } from "../motion/presence";
+import { MOTION_DURATIONS } from "../motion/tokens";
+import { useReducedMotion } from "../motion/useReducedMotion";
 import { queueAfterCurrent } from "../utils/playback";
 import type { RepeatMode, Track } from "../types";
 
 const COLLAPSED_UPCOMING_COUNT = 2;
 const IDLE_CHROME_DELAY = 5_000;
+const COVER_FLIP_CARD_ANIMATIONS = ["now-track-info-enter", "now-track-card-fade"];
+const COVER_FLIP_WAIT_TIMEOUT_MS = 2_500;
+
+/**
+ * Resolves once the track card's entrance animation reaches the given phase
+ * (`animationstart` / `animationend`), or after a fallback timeout so a
+ * missing entrance can never strand the shared-element clone.
+ */
+function waitForCardAnimation(card: HTMLElement, phase: "start" | "end"): Promise<void> {
+  const type = phase === "start" ? "animationstart" : "animationend";
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(done, COVER_FLIP_WAIT_TIMEOUT_MS);
+    function onAnimation(event: AnimationEvent) {
+      if (event.target !== card || !COVER_FLIP_CARD_ANIMATIONS.includes(event.animationName)) return;
+      done();
+    }
+    function done() {
+      window.clearTimeout(timer);
+      card.removeEventListener(type, onAnimation as EventListener);
+      resolve();
+    }
+    card.addEventListener(type, onAnimation as EventListener);
+  });
+}
 
 export function NowPlayingView({
   track,
@@ -23,12 +54,6 @@ export function NowPlayingView({
   duration,
   shuffle,
   repeat,
-  visualizerSamples,
-  visualizerEnergy,
-  beatPulse,
-  beatPhase,
-  onsetStrength,
-  beatConfidence,
   isFavorite,
   volume,
   onBack,
@@ -52,12 +77,6 @@ export function NowPlayingView({
   duration: number;
   shuffle: boolean;
   repeat: RepeatMode;
-  visualizerSamples: number[];
-  visualizerEnergy: number;
-  beatPulse: number;
-  beatPhase: number;
-  onsetStrength: number;
-  beatConfidence: number;
   isFavorite: boolean;
   volume: number;
   onBack: () => void;
@@ -77,6 +96,8 @@ export function NowPlayingView({
   const [keyboardSurfaceChange, setKeyboardSurfaceChange] = useState(false);
   const [isEntering, setIsEntering] = useState(true);
   const [wallRevealStarted, setWallRevealStarted] = useState(false);
+  const [flipCoverActive, setFlipCoverActive] = useState(false);
+  const [flipDocked, setFlipDocked] = useState(false);
   const [queueExpanded, setQueueExpanded] = useState(true);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [playlistNameDraft, setPlaylistNameDraft] = useState("正在播放");
@@ -94,6 +115,12 @@ export function NowPlayingView({
   }, [orderedQueue, queueOpen]);
   const hiddenQueueCount = Math.max(0, orderedQueue.length - COLLAPSED_UPCOMING_COUNT);
   const [textFading, setTextFading] = useState(false);
+  const reducedMotion = useReducedMotion();
+  const trackCardRef = useRef<HTMLElement | null>(null);
+  // StrictMode re-runs mount effects; keep the consumed source on the
+  // instance so the second run replays the flight instead of missing.
+  const flipSourceRef = useRef<FlipRect | null>(null);
+  const flipConsumedRef = useRef(false);
 
   function scheduleChromeFade() {
     if (idleTimer.current) window.clearTimeout(idleTimer.current);
@@ -154,6 +181,62 @@ export function NowPlayingView({
     };
   }, []);
 
+  // Shared-element cover hand-off (push in): the player bar or the quickplay
+  // feature cover registered where this track's art was; fly a clone from
+  // there, dock it through the card's delayed entrance, then hand off to the
+  // real cover. Mount-only — track changes inside now playing must not fly.
+  // While a flight is live the flight IS the cover's entrance: flipCoverActive
+  // keeps the card at its rest position (no 12px press) so the clone docks on
+  // the final spot, and the card only fades in instead of rising afterwards.
+  useLayoutEffect(() => {
+    if (!flipConsumedRef.current) {
+      flipConsumedRef.current = true;
+      const coverPath = track?.cover_path;
+      flipSourceRef.current =
+        reducedMotion || !track || !coverPath ? null : takeFlipSource(`cover:${track.id}`);
+    }
+    const source = flipSourceRef.current;
+    const coverPath = track?.cover_path;
+    if (!source || !coverPath) return;
+    const card = trackCardRef.current;
+    const target = card?.querySelector<HTMLElement>(".mini-cover");
+    if (!card || !target) return;
+    // Sync re-render before paint: the card switches to its at-rest flip
+    // choreography (see .flip-cover-active) before the clone is measured.
+    setFlipCoverActive(true);
+    // The card's own entrance (outline + track info) is docked-driven: it
+    // starts only once the clone truly rests (.flip-docked), so the outline
+    // never frames a cover that is still settling. The fallback keeps the
+    // card from being stranded if the spring completion is ever missed; it
+    // must outlast the clone image decode gate plus the flight itself.
+    const dockFallback = window.setTimeout(() => setFlipDocked(true), 1_500);
+    const flip = playCoverFlip({
+      source,
+      target,
+      imageSrc: convertFileSrc(coverPath),
+      holdUntil: () => waitForCardAnimation(card, "end"),
+      revealTargetWhen: () => waitForCardAnimation(card, "start"),
+      onDocked: () => {
+        window.clearTimeout(dockFallback);
+        setFlipDocked(true);
+      },
+    });
+    return () => {
+      window.clearTimeout(dockFallback);
+      flip.cancel();
+    };
+  }, []);
+
+  // Registering side of the pop back out: remember the card cover's spot so
+  // the player bar can fly a clone from here when it remounts.
+  function handleBack() {
+    if (!reducedMotion && track?.cover_path) {
+      const target = trackCardRef.current?.querySelector<HTMLElement>(".mini-cover");
+      if (target) registerFlipElement(`cover:${track.id}`, target);
+    }
+    onBack();
+  }
+
   useEffect(() => {
     if (track?.id === previousTrackIdRef.current) return;
     previousTrackIdRef.current = track?.id ?? null;
@@ -200,13 +283,46 @@ export function NowPlayingView({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [saveDialogOpen]);
 
+  const saveDialogElement = saveDialogOpen ? (
+    <div className="save-playlist-overlay" role="presentation">
+      <form
+        className="save-playlist-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="保存播放列表"
+        onSubmit={submitSaveDialog}
+      >
+        <div className="dialog-accent" aria-hidden="true" />
+        <label>
+          <span>播放列表</span>
+          <input
+            autoFocus
+            value={playlistNameDraft}
+            onChange={(event) => setPlaylistNameDraft(event.target.value)}
+          />
+        </label>
+        <div className="dialog-actions">
+          <button type="submit" disabled={!playlistNameDraft.trim()}>
+            确定
+          </button>
+          <button type="button" onClick={closeSaveDialog}>
+            取消
+          </button>
+        </div>
+      </form>
+    </div>
+  ) : null;
+  const lastSaveDialogElement = useLastNonNull(saveDialogElement);
+
   return (
     <section
       className={`now-playing-stage chrome-${chromeMode} ${isEntering ? "stage-entering" : ""} ${
         wallRevealStarted ? "wall-reveal-started" : ""
       } ${
         isPlaying ? "wall-playing" : "wall-paused"
-      } ${lyricsOpen ? "lyrics-mode" : "ambient-mode"} ${keyboardSurfaceChange ? "keyboard-surface-change" : ""}`}
+      } ${lyricsOpen ? "lyrics-mode" : "ambient-mode"} ${keyboardSurfaceChange ? "keyboard-surface-change" : ""} ${
+        flipCoverActive ? "flip-cover-active" : ""
+      } ${flipDocked ? "flip-docked" : ""}`}
       onMouseMove={wakeChrome}
       onMouseDown={wakeChrome}
       onMouseEnter={wakeChrome}
@@ -215,10 +331,6 @@ export function NowPlayingView({
       <NowPlayingMosaicCanvas
         tracks={tracks}
         activeTrack={track}
-        energy={visualizerEnergy}
-        beatPulse={beatPulse}
-        beatPhase={beatPhase}
-        beatConfidence={beatConfidence}
         isPlaying={isPlaying}
         onInitialRevealStart={handleInitialWallRevealStart}
       />
@@ -253,7 +365,7 @@ export function NowPlayingView({
         onResetTimingOffset={lyrics.resetTimingOffset}
         onInteraction={wakeChrome}
       />
-      <button className="now-back" onClick={onBack} title="返回收藏">
+      <button className="now-back" onClick={handleBack} title="返回收藏">
         <ArrowLeft size={40} strokeWidth={2.55} />
       </button>
 
@@ -301,7 +413,7 @@ export function NowPlayingView({
 
       </aside>
 
-      <section className={`now-track-card ${textFading ? "card-fading" : ""}`}>
+      <section ref={trackCardRef} className={`now-track-card ${textFading ? "card-fading" : ""}`}>
         <Cover artPath={track?.cover_path} label={track?.album ?? "正在播放"} size="mini" />
         <div className="now-track-copy">
           <strong>{track?.artist ?? "Zone"}</strong>
@@ -319,12 +431,6 @@ export function NowPlayingView({
       </section>
 
       <AudioGlowCanvas
-        samples={visualizerSamples}
-        energy={visualizerEnergy}
-        beatPulse={beatPulse}
-        beatPhase={beatPhase}
-        onsetStrength={onsetStrength}
-        beatConfidence={beatConfidence}
         isPlaying={isPlaying}
         volume={volume}
       />
@@ -359,35 +465,9 @@ export function NowPlayingView({
         </div>
       </div>
 
-      {saveDialogOpen && (
-        <div className="save-playlist-overlay" role="presentation">
-          <form
-            className="save-playlist-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="保存播放列表"
-            onSubmit={submitSaveDialog}
-          >
-            <div className="dialog-accent" aria-hidden="true" />
-            <label>
-              <span>播放列表</span>
-              <input
-                autoFocus
-                value={playlistNameDraft}
-                onChange={(event) => setPlaylistNameDraft(event.target.value)}
-              />
-            </label>
-            <div className="dialog-actions">
-              <button type="submit" disabled={!playlistNameDraft.trim()}>
-                确定
-              </button>
-              <button type="button" onClick={closeSaveDialog}>
-                取消
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      <Presence show={saveDialogElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {saveDialogElement ?? lastSaveDialogElement ?? <span style={{ display: "none" }} />}
+      </Presence>
     </section>
   );
 }

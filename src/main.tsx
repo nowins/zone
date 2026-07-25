@@ -1,6 +1,7 @@
 import React, { Component, ReactNode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { applyMotionTokens } from "./motion/tokens";
 import "./styles.css";
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -27,6 +28,8 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
     return this.props.children;
   }
 }
+
+applyMotionTokens();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -4,33 +4,16 @@ import {
   type ZuneMountainFrame,
   type ZuneMountainPoint,
 } from "../utils/audioGlow";
+import { getVisualizerFrame } from "../utils/visualizerBus";
 
 export function AudioGlowCanvas({
-  samples,
-  energy,
-  beatPulse,
-  beatPhase,
-  onsetStrength,
-  beatConfidence,
   isPlaying,
   volume,
 }: {
-  samples: number[];
-  energy: number;
-  beatPulse: number;
-  beatPhase: number;
-  onsetStrength: number;
-  beatConfidence: number;
   isPlaying: boolean;
   volume: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const samplesRef = useRef(samples);
-  const energyRef = useRef(energy);
-  const beatPulseRef = useRef(beatPulse);
-  const beatPhaseRef = useRef(beatPhase);
-  const onsetStrengthRef = useRef(onsetStrength);
-  const beatConfidenceRef = useRef(beatConfidence);
   const isPlayingRef = useRef(isPlaying);
   const volumeRef = useRef(volume);
   const bodyRef = useRef(0);
@@ -41,30 +24,6 @@ export function AudioGlowCanvas({
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
   const frameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    samplesRef.current = samples;
-  }, [samples]);
-
-  useEffect(() => {
-    energyRef.current = energy;
-  }, [energy]);
-
-  useEffect(() => {
-    beatPulseRef.current = beatPulse;
-  }, [beatPulse]);
-
-  useEffect(() => {
-    beatPhaseRef.current = beatPhase;
-  }, [beatPhase]);
-
-  useEffect(() => {
-    onsetStrengthRef.current = onsetStrength;
-  }, [onsetStrength]);
-
-  useEffect(() => {
-    beatConfidenceRef.current = beatConfidence;
-  }, [beatConfidence]);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -104,10 +63,11 @@ export function AudioGlowCanvas({
       const delta = Math.min(0.08, Math.max(0.001, (time - previous) / 1000));
       lastTimeRef.current = time;
 
+      const frame = getVisualizerFrame();
       const playing = isPlayingRef.current;
-      const energyValue = playing ? Math.max(0, energyRef.current) : 0;
-      const beatValue = playing ? beatPulseRef.current : 0;
-      const onsetValue = playing ? onsetStrengthRef.current : 0;
+      const energyValue = playing ? Math.max(0, frame.energy) : 0;
+      const beatValue = playing ? frame.beatPulse : 0;
+      const onsetValue = playing ? frame.onsetStrength : 0;
       const hit = Math.max(beatValue, onsetValue);
 
       bodyRef.current = smoothTransient(bodyRef.current, playing ? energyValue * 0.84 + hit * 0.26 : 0, delta, 0.08, playing ? 0.62 : 0.12);
@@ -116,11 +76,11 @@ export function AudioGlowCanvas({
       hotspotRef.current = smoothTransient(hotspotRef.current, playing ? onsetValue * 0.84 + beatValue * 0.2 : 0, delta, 0.055, playing ? 0.3 : 0.08);
 
       const targetFrame = createZuneMountainFrame({
-        samples: samplesRef.current,
+        samples: frame.samples,
         energy: energyValue,
         beatPulse: beatValue,
         onsetStrength: onsetValue,
-        beatPhase: playing ? beatPhaseRef.current : 1,
+        beatPhase: playing ? frame.beatPhase : 1,
         time: time / 1000,
         bodyLevel: bodyRef.current,
         spreadLevel: spreadRef.current,
@@ -136,7 +96,7 @@ export function AudioGlowCanvas({
         glowFrame,
         playing,
         volumeRef.current,
-        beatConfidenceRef.current,
+        frame.beatConfidence,
       );
       frameRef.current = window.requestAnimationFrame(draw);
     };

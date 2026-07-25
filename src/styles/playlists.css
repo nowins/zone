@@ -65,7 +65,7 @@
   text-align: left;
   color: rgba(255, 255, 255, 0.82);
   border-left: 3px solid transparent;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition: color var(--motion-press) var(--motion-ease-standard), background var(--motion-press) var(--motion-ease-standard), border-color var(--motion-press) var(--motion-ease-standard);
 }
 
 .context-menu button svg {
@@ -229,10 +229,10 @@
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-left: 2px solid transparent;
   transition:
-    color var(--motion-micro) var(--motion-ease-direct),
-    background var(--motion-micro) var(--motion-ease-direct),
-    border-color var(--motion-micro) var(--motion-ease-direct),
-    transform var(--motion-press) var(--motion-ease-direct);
+    color var(--motion-micro) var(--motion-ease-standard),
+    background var(--motion-micro) var(--motion-ease-standard),
+    border-color var(--motion-micro) var(--motion-ease-standard),
+    transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .playlist-kind-options > button:hover,
@@ -390,10 +390,10 @@
   text-align: left;
   border-left: 2px solid transparent;
   transition:
-    color var(--motion-micro) var(--motion-ease-direct),
-    background var(--motion-micro) var(--motion-ease-direct),
-    border-color var(--motion-micro) var(--motion-ease-direct),
-    transform var(--motion-press) var(--motion-ease-direct);
+    color var(--motion-micro) var(--motion-ease-standard),
+    background var(--motion-micro) var(--motion-ease-standard),
+    border-color var(--motion-micro) var(--motion-ease-standard),
+    transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .smart-presets button:hover,
@@ -460,7 +460,7 @@
   height: 27px;
   color: var(--muted);
   font-size: 11px;
-  transition: color var(--motion-micro) ease, background var(--motion-micro) ease;
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .smart-segmented button.selected {
@@ -552,7 +552,7 @@
   display: grid;
   place-items: center;
   color: var(--quiet);
-  transition: color var(--motion-micro) ease, background var(--motion-micro) ease, transform var(--motion-press) var(--motion-ease-direct);
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .smart-rule-remove:hover {
@@ -569,7 +569,7 @@
   padding: 0 8px;
   color: rgba(255, 255, 255, 0.64);
   border-left: 2px solid var(--accent);
-  transition: color var(--motion-micro) ease, background var(--motion-micro) ease, transform var(--motion-press) var(--motion-ease-direct);
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .smart-add-rule:hover {
@@ -631,7 +631,7 @@
   flex: none;
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.19);
-  transition: background var(--motion-micro) ease, border-color var(--motion-micro) ease;
+  transition: background var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard);
 }
 
 .smart-toggle > span::after {
@@ -642,7 +642,7 @@
   height: 9px;
   content: "";
   background: rgba(255, 255, 255, 0.65);
-  transition: transform var(--motion-micro) var(--motion-ease-direct), background var(--motion-micro) ease;
+  transition: transform var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .smart-toggle input:checked + span {
@@ -677,7 +677,7 @@
   place-items: center;
   color: var(--muted);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  transition: color var(--motion-micro) ease, background var(--motion-micro) ease, transform var(--motion-press) var(--motion-ease-direct);
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .smart-preview-heading button:hover {
@@ -700,7 +700,7 @@
   color: rgba(255, 255, 255, 0.56);
   font-size: 10px;
   border-bottom: 1px solid rgba(241, 36, 134, 0.42);
-  transition: color var(--motion-micro) ease, border-color var(--motion-micro) ease;
+  transition: color var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard);
 }
 
 .smart-restore-exclusions:hover {
@@ -802,7 +802,7 @@
   padding: 0 14px;
   color: rgba(255, 255, 255, 0.74);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  transition: color var(--motion-micro) ease, background var(--motion-micro) ease, border-color var(--motion-micro) ease, transform var(--motion-press) var(--motion-ease-direct);
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .smart-editor-footer button:hover:not(:disabled) {
@@ -834,7 +834,7 @@
   padding: 0 16px;
   color: rgba(255, 255, 255, 0.76);
   border: 1px solid rgba(255, 255, 255, 0.22);
-  transition: color 140ms ease, background 140ms ease, border-color 140ms ease, transform 120ms ease;
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .playlist-dialog-actions button:hover:not(:disabled),
@@ -890,7 +890,7 @@
 .playlist-dialog-overlay,
 .smart-playlist-overlay {
   opacity: 1;
-  transition: opacity var(--motion-micro) var(--motion-ease-direct);
+  transition: opacity var(--motion-micro) var(--motion-ease-standard);
 
   @starting-style { opacity: 0; }
 }
@@ -901,23 +901,12 @@
   transform: perspective(1000px) translate3d(0, -4vh, 0) rotateX(0deg) scale(1);
   transform-origin: center 42%;
   transition:
-    opacity var(--motion-content) var(--motion-ease-direct),
-    transform var(--motion-content) var(--motion-ease-direct);
+    opacity var(--motion-content) var(--motion-ease-standard),
+    transform var(--motion-content) var(--motion-ease-standard);
 
   @starting-style {
     opacity: 0;
     transform: perspective(1000px) translate3d(0, calc(-4vh + 14px), 0) rotateX(-4deg) scale(0.985);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .playlist-dialog-overlay,
-  .playlist-dialog,
-  .smart-playlist-overlay,
-  .smart-playlist-dialog {
-    animation: none;
-    transform: none;
-    transition-duration: var(--motion-instant);
   }
 }
 
@@ -976,10 +965,10 @@
   color: rgba(255, 255, 255, 0.74);
   border: 1px solid rgba(255, 255, 255, 0.2);
   transition:
-    color var(--motion-micro) var(--motion-ease-direct),
-    background var(--motion-micro) var(--motion-ease-direct),
-    border-color var(--motion-micro) var(--motion-ease-direct),
-    transform var(--motion-press) var(--motion-ease-direct);
+    color var(--motion-micro) var(--motion-ease-standard),
+    background var(--motion-micro) var(--motion-ease-standard),
+    border-color var(--motion-micro) var(--motion-ease-standard),
+    transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .playlist-detail-play {

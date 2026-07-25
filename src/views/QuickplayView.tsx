@@ -3,6 +3,11 @@ import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { GripVertical, Pin, PinOff, Play, Sparkles } from "lucide-react";
 import { Cover } from "../components/Cover";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
+import { animateValue } from "../motion/animate";
+import type { AnimationHandle } from "../motion/animate";
+import { registerFlipElement } from "../motion/flip";
+import { SPRING_PRESETS } from "../motion/tokens";
+import { useReducedMotion } from "../motion/useReducedMotion";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
 import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type {
@@ -94,8 +99,13 @@ export function QuickplayView({
 }) {
   const viewportRef = useRef<HTMLElement | null>(null);
   const ghostRef = useRef<HTMLDivElement | null>(null);
+  const scrollAnimRef = useRef<{ target: number | null; handle: AnimationHandle | null }>({
+    target: null,
+    handle: null,
+  });
   const [editingPins, setEditingPins] = useState(false);
   const [draggedPinId, setDraggedPinId] = useState<string | null>(null);
+  const reducedMotion = useReducedMotion();
   const continueAlbum = albumForTrack(albums, activeTrack);
   const recentAlbums = useMemo(
     () => [...albums]
@@ -257,17 +267,51 @@ export function QuickplayView({
       const delta = Math.abs(deltaY) >= Math.abs(deltaX) ? deltaY : deltaX;
       if (!delta) return;
 
-      const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, viewport.scrollLeft + delta));
-      if (nextScrollLeft === viewport.scrollLeft) return;
-      viewport.scrollLeft = nextScrollLeft;
+      // Wheel pans run through the motion kernel's spring so the panorama
+      // decelerates with WP7-like inertia; consecutive ticks retarget the
+      // in-flight spring, carrying its velocity instead of restarting. The
+      // near-critical snappy preset keeps tracking tight (a softer spring
+      // lags noticeably behind fast wheel input).
+      const base = scrollAnimRef.current.handle
+        ? (scrollAnimRef.current.target ?? viewport.scrollLeft)
+        : viewport.scrollLeft;
+      const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, base + delta));
+      if (nextScrollLeft === base) return;
       event.preventDefault();
+      if (reducedMotion) {
+        scrollAnimRef.current.handle?.cancel();
+        scrollAnimRef.current.handle = null;
+        scrollAnimRef.current.target = null;
+        viewport.scrollLeft = nextScrollLeft;
+        return;
+      }
+      scrollAnimRef.current.target = nextScrollLeft;
+      const running = scrollAnimRef.current.handle;
+      if (running) {
+        running.retarget(nextScrollLeft);
+      } else {
+        scrollAnimRef.current.handle = animateValue({
+          from: viewport.scrollLeft,
+          to: nextScrollLeft,
+          spring: SPRING_PRESETS.snappy,
+          onUpdate: (value) => {
+            viewport.scrollLeft = value;
+          },
+          onComplete: () => {
+            scrollAnimRef.current.handle = null;
+          },
+        });
+      }
     };
 
     window.addEventListener("wheel", handleWheel, { passive: false, capture: true });
     return () => {
       window.removeEventListener("wheel", handleWheel, true);
+      scrollAnimRef.current.handle?.cancel();
+      scrollAnimRef.current.handle = null;
+      scrollAnimRef.current.target = null;
     };
-  }, [tracks.length]);
+  }, [tracks.length, reducedMotion]);
 
   function handleScroll() {
     const viewport = viewportRef.current;
@@ -280,8 +324,13 @@ export function QuickplayView({
   function handlePanoramaKey(event: KeyboardEvent<HTMLElement>) {
     if (event.target !== event.currentTarget) return;
     const viewport = event.currentTarget;
+    // Keyboard paging owns the scroll position now; stop any in-flight
+    // wheel-inertia spring so the two never fight over scrollLeft.
+    scrollAnimRef.current.handle?.cancel();
+    scrollAnimRef.current.handle = null;
+    scrollAnimRef.current.target = null;
     const step = Math.max(320, viewport.clientWidth * 0.72);
-    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    const behavior = reducedMotion ? "auto" : "smooth";
     if (event.key === "ArrowRight" || event.key === "PageDown") {
       viewport.scrollBy({ left: step, behavior });
       event.preventDefault();
@@ -324,6 +373,20 @@ export function QuickplayView({
     const sourceId = event.dataTransfer.getData("text/plain") || draggedPinId;
     if (sourceId) onMovePin(sourceId, targetId);
     setDraggedPinId(null);
+  }
+
+  // The continue-feature cover shows the active track's art and opens now
+  // playing, so it doubles as a shared-element source for the cover flight.
+  function handleFeatureCoverClick(event: MouseEvent<HTMLButtonElement>) {
+    if (!activeTrack) {
+      if (continueAlbum) onPlayTracks(continueAlbum.tracks);
+      return;
+    }
+    if (!reducedMotion && activeTrack.cover_path) {
+      const cover = event.currentTarget.querySelector<HTMLElement>(".cover");
+      if (cover) registerFlipElement(`cover:${activeTrack.id}`, cover);
+    }
+    onOpenNowPlaying();
   }
 
   if (tracks.length === 0) {
@@ -446,7 +509,7 @@ export function QuickplayView({
             >
               <button
                 className="quick-cover-button"
-                onClick={activeTrack ? onOpenNowPlaying : () => onPlayTracks(continueAlbum.tracks)}
+                onClick={handleFeatureCoverClick}
                 title={activeTrack ? "打开正在播放" : `播放 ${continueAlbum.album}`}
               >
                 <Cover

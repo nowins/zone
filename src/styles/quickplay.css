@@ -15,7 +15,7 @@
   background:
     radial-gradient(ellipse 36% 76% at 55% 60%, rgba(112, 14, 61, 0.3) 0%, rgba(74, 8, 43, 0.17) 47%, rgba(11, 7, 12, 0) 82%),
     radial-gradient(ellipse 30% 60% at 78% 64%, rgba(92, 10, 52, 0.14) 0%, rgba(11, 7, 12, 0) 78%);
-  animation: page-arrive 380ms cubic-bezier(0.18, 0.88, 0.24, 1) both;
+  animation: motion-page-enter var(--motion-page) var(--motion-ease-entrance) both;
 }
 
 .quickplay::-webkit-scrollbar {
@@ -91,7 +91,7 @@
   font-size: 13px;
   border-bottom: 1px solid transparent;
   opacity: 0;
-  transition: color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+  transition: color var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), opacity var(--motion-micro) var(--motion-ease-standard);
 }
 
 .quick-pins:hover .quick-pins-edit,
@@ -120,7 +120,7 @@
 .quick-pin {
   position: relative;
   min-width: 0;
-  transition: opacity 150ms ease, transform var(--motion-content) var(--motion-ease-back);
+  transition: opacity var(--motion-micro) var(--motion-ease-standard), transform var(--motion-content) var(--motion-ease-emphasis);
 }
 
 .quick-pin.wide {
@@ -134,18 +134,18 @@
 
 .quick-pin.tilt-pressed {
   transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
-  transition: opacity 150ms ease, transform var(--motion-press) var(--motion-ease-direct);
+  transition: opacity var(--motion-micro) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .quick-album > button,
 .history-stack > button {
-  transition: transform var(--motion-content) var(--motion-ease-back);
+  transition: transform var(--motion-content) var(--motion-ease-emphasis);
 }
 
 .quick-album > button.tilt-pressed,
 .history-stack > button.tilt-pressed {
   transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
-  transition: transform var(--motion-press) var(--motion-ease-direct);
+  transition: transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .quick-pin-main {
@@ -164,6 +164,7 @@
   overflow: hidden;
   outline: 1px solid rgba(255, 255, 255, 0.05);
   background: rgba(255, 255, 255, 0.045);
+  transition: filter var(--motion-micro) var(--motion-ease-standard);
 }
 
 .quick-pin-art > .cover,
@@ -236,7 +237,7 @@
   border-radius: 50%;
   opacity: 0;
   transform: translateY(4px);
-  transition: opacity 140ms ease, transform 180ms cubic-bezier(0.18, 0.88, 0.24, 1), background 150ms ease;
+  transition: opacity var(--motion-micro) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-entrance), background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .quick-pin:hover .quick-pin-play,
@@ -364,7 +365,7 @@
 .history-stack .cover {
   margin: 0;
   outline: 1px solid rgba(255, 255, 255, 0.05);
-  transition: filter 180ms ease, transform 420ms cubic-bezier(0.18, 0.88, 0.24, 1);
+  transition: filter var(--motion-micro) var(--motion-ease-standard), transform var(--motion-content) var(--motion-ease-standard);
 }
 
 .quick-cover-button:hover .cover,
@@ -373,7 +374,7 @@
 .history-stack > button:hover .cover {
   z-index: 1;
   filter: brightness(1.08);
-  transform: scale(1.012);
+  transform: scale(1.02);
 }
 
 .quick-play-cue {
@@ -390,7 +391,7 @@
   border-radius: 50%;
   opacity: 0;
   transform: translateY(5px);
-  transition: opacity 160ms ease, transform 220ms cubic-bezier(0.18, 0.88, 0.24, 1), background 150ms ease;
+  transition: opacity var(--motion-micro) var(--motion-ease-standard), transform var(--motion-content) var(--motion-ease-entrance), background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .quick-play-cue:hover {
@@ -530,28 +531,4 @@
 
 .quickplay-empty button:hover {
   color: #fff;
-}
-
-@keyframes page-arrive {
-  from {
-    opacity: 0;
-    transform: translate3d(22px, 4px, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .quick-pin,
-  .quick-pin-art,
-  .quick-pin-play {
-    animation: none;
-    transition: none;
-  }
-
-  .quickplay-ghost {
-    transform: none !important;
-  }
 }

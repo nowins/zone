@@ -6,7 +6,7 @@
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.1) 28%, rgba(0, 0, 0, 0.52) 49%, rgba(0, 0, 0, 0.3) 100%),
     linear-gradient(0deg, rgba(0, 0, 0, 0.28), transparent 42%, rgba(0, 0, 0, 0.1));
-  transition: opacity var(--motion-content) var(--motion-ease-direct);
+  transition: opacity var(--motion-content) var(--motion-ease-standard);
 }
 
 .lyrics-mode .now-canvas-grade::after {
@@ -23,8 +23,8 @@
   pointer-events: none;
   transform: translate3d(2.2vw, 0, 0);
   transition:
-    opacity var(--motion-content) var(--motion-ease-direct),
-    transform var(--motion-page) var(--motion-ease-direct);
+    opacity var(--motion-content) var(--motion-ease-standard),
+    transform var(--motion-page) var(--motion-ease-standard);
 }
 
 .lyrics-stage.is-visible {
@@ -57,7 +57,7 @@
   font-size: 12px;
   letter-spacing: 0.025em;
   opacity: 0.72;
-  transition: opacity var(--motion-micro) var(--motion-ease-direct);
+  transition: opacity var(--motion-micro) var(--motion-ease-standard);
 }
 
 .lyrics-source-control:hover,
@@ -80,8 +80,8 @@
   color: rgba(255, 255, 255, 0.64);
   font-size: 12px;
   transition:
-    color var(--motion-micro) var(--motion-ease-direct),
-    border-color var(--motion-micro) var(--motion-ease-direct);
+    color var(--motion-micro) var(--motion-ease-standard),
+    border-color var(--motion-micro) var(--motion-ease-standard);
 }
 
 .lyrics-source-control button:hover,
@@ -185,12 +185,12 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.88);
   text-align: left;
-  transition: padding-left var(--motion-micro) var(--motion-ease-direct);
+  transition: background var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard);
 }
 
 .lyrics-source-control .lyrics-export-popover > button:hover,
 .lyrics-source-control .lyrics-export-popover > button:focus-visible {
-  padding-left: 6px;
+  background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.2);
 }
 
@@ -251,7 +251,7 @@
   width: 3px;
   height: 0;
   background: rgba(255, 255, 255, 0.92);
-  transition: height 180ms var(--motion-ease-direct);
+  transition: height var(--motion-micro) var(--motion-ease-standard);
 }
 
 .lyrics-source-browser.is-searching::after {
@@ -392,7 +392,7 @@
   color: rgba(255, 255, 255, 0.9);
   font: inherit;
   font-size: 13px;
-  transition: border-color var(--motion-micro) var(--motion-ease-direct);
+  transition: border-color var(--motion-micro) var(--motion-ease-standard);
 }
 
 .lyrics-search-metadata-form input:focus {
@@ -471,14 +471,13 @@
   padding: 12px 4px;
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.09);
-  transition: padding-left var(--motion-micro) var(--motion-ease-direct), background var(--motion-micro) var(--motion-ease-direct);
+  transition: background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .lyrics-candidate-list > button:hover,
 .lyrics-candidate-list > button:focus-visible {
   outline: none;
-  padding-left: 10px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .lyrics-candidate-score {
@@ -554,7 +553,7 @@
   transform: translate3d(0, var(--lyrics-y), 0) scale(var(--lyrics-scale));
   transform-origin: left center;
   transition:
-    opacity var(--motion-content) var(--motion-ease-direct),
+    opacity var(--motion-content) var(--motion-ease-standard),
     transform var(--motion-page) cubic-bezier(0.77, 0, 0.175, 1);
   will-change: transform, opacity;
 }
@@ -578,8 +577,8 @@
   background: var(--accent);
   transform: scaleY(0.35);
   transition:
-    opacity var(--motion-micro) var(--motion-ease-direct),
-    transform var(--motion-micro) var(--motion-ease-direct);
+    opacity var(--motion-micro) var(--motion-ease-standard),
+    transform var(--motion-micro) var(--motion-ease-standard);
 }
 
 .lyrics-stage.is-browsing .lyrics-line.is-focus::before {
@@ -772,7 +771,7 @@
   filter: none;
   transform: none;
   cursor: default;
-  transition: opacity var(--motion-micro) var(--motion-ease-direct);
+  transition: opacity var(--motion-micro) var(--motion-ease-standard);
 }
 
 .lyrics-stage.is-plain .lyrics-line:hover,
@@ -915,31 +914,5 @@
 
   .lyrics-background-copy {
     font-size: clamp(17px, 3.2vh, 24px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .now-canvas-grade::after,
-  .lyrics-stage,
-  .lyrics-line,
-  .lyrics-line::before,
-  .lyrics-word-progress,
-  .lyrics-background-line,
-  .lyrics-source-browser.is-searching::after {
-    transition: none;
-    animation: none;
-  }
-
-  .lyrics-stage {
-    transform: none;
-  }
-
-  .lyrics-line {
-    filter: none;
-    transform: translate3d(0, var(--lyrics-y), 0);
-  }
-
-  .lyrics-word.has-long-note {
-    transform: none !important;
   }
 }

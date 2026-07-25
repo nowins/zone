@@ -1,15 +1,6 @@
-:root {
-  --motion-instant: 83ms;
-  --motion-press: 110ms;
-  --motion-micro: 167ms;
-  --motion-content: 220ms;
-  --motion-page: 250ms;
-  --motion-chrome: 420ms;
-  --motion-ease-direct: cubic-bezier(0.23, 1, 0.32, 1);
-  --motion-ease-point: cubic-bezier(0.55, 0.55, 0, 1);
-  --motion-ease-back: cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  --motion-ease-linear: linear;
-}
+/* Motion primitives layer. Token values (`--motion-*`) are injected onto
+   `:root` by `applyMotionTokens()` at app start (see `src/motion/tokens.ts`);
+   this file only consumes them. */
 
 /* Feather: short, capped cascades. Content remains interactive throughout. */
 .quick-group,
@@ -26,7 +17,7 @@
 .folder-list > div,
 .settings-section-heading,
 .settings-sidebar > section {
-  animation: wp7-feather-in var(--motion-content) var(--motion-ease-direct) backwards;
+  animation: motion-feather-in var(--motion-content) var(--motion-ease-standard) backwards;
   animation-delay: var(--stagger, 0ms);
 }
 
@@ -102,8 +93,87 @@
 .playlist-rows button:nth-child(n + 7),
 .song-list .song-row:nth-child(n + 7) { --stagger: 144ms; }
 
-.song-list button {
-  animation: none;
+/* Generic exit primitive: quick fade with a small downward drift. */
+.motion-exit {
+  animation: motion-exit var(--motion-micro) var(--motion-ease-exit) both;
+}
+
+/* Page-level enter/exit primitives. `--motion-dir` flips the travel
+   direction, `--motion-drift` enlarges the distance for hero content. */
+.motion-page-enter {
+  animation: motion-page-enter var(--motion-page) var(--motion-ease-entrance) both;
+}
+
+.motion-page-exit {
+  animation: motion-page-exit var(--motion-micro) var(--motion-ease-exit) both;
+  pointer-events: none;
+}
+
+/* Navigation exits: while the shell carries `data-nav-state="exiting"`, the
+   outgoing page root plays the shared exit; `--motion-dir` on the shell picks
+   the travel side. Settings shares `.content-band` with collection, and
+   `.now-playing-stage` keeps its opacity-only dissolve on entry but still
+   travels on exit. */
+.shell[data-nav-state="exiting"] .quickplay,
+.shell[data-nav-state="exiting"] .content-band,
+.shell[data-nav-state="exiting"] .now-playing-stage {
+  animation: motion-page-exit var(--motion-micro) var(--motion-ease-exit) both;
+  pointer-events: none;
+}
+
+/* Overlay and chrome exits: faster and lighter than their entrances, each
+   returning the way it came at roughly half the travel. The `.motion-exit`
+   class sits on a display:contents wrapper, so these target descendants.
+   Everything is non-interactive while exiting. */
+.motion-exit .context-menu {
+  animation: motion-exit-menu var(--motion-micro) var(--motion-ease-exit) both;
+  pointer-events: none;
+}
+
+.motion-exit .info-panel {
+  animation: motion-exit-fade var(--motion-micro) var(--motion-ease-exit) both;
+  pointer-events: none;
+}
+
+.motion-exit .info-panel section {
+  animation: motion-exit-info-section var(--motion-micro) var(--motion-ease-exit) both;
+}
+
+.motion-exit .save-playlist-overlay,
+.motion-exit .playlist-dialog-overlay,
+.motion-exit .smart-playlist-overlay {
+  animation: motion-exit-fade var(--motion-micro) var(--motion-ease-exit) both;
+  pointer-events: none;
+}
+
+.motion-exit .save-playlist-dialog,
+.motion-exit .playlist-dialog,
+.motion-exit .smart-playlist-dialog {
+  animation: motion-exit-dialog var(--motion-micro) var(--motion-ease-exit) both;
+}
+
+.motion-exit .action-toast {
+  animation: motion-exit-toast var(--motion-micro) var(--motion-ease-exit) both;
+  pointer-events: none;
+}
+
+/* Chrome exits: both sit in `.shell` grid rows that `shell-now-playing`
+   collapses to 0, so they leave the flow and fade over the incoming stage
+   from their previous spot (header below the 28px titlebar row, player bar
+   in the 74px bottom row). */
+.motion-exit .player {
+  position: absolute;
+  inset: auto 0 0;
+  height: 74px;
+  animation: motion-exit var(--motion-micro) var(--motion-ease-exit) both;
+  pointer-events: none;
+}
+
+.motion-exit .app-header {
+  position: absolute;
+  inset: 28px 48px auto;
+  animation: motion-exit-fade var(--motion-micro) var(--motion-ease-exit) both;
+  pointer-events: none;
 }
 
 /* Transient surfaces: Swivel from the trigger or owning edge. */
@@ -112,8 +182,8 @@
   transform: perspective(900px) rotateY(0deg) translate3d(0, 0, 0);
   transform-origin: 12px 12px;
   transition:
-    opacity var(--motion-micro) var(--motion-ease-direct),
-    transform var(--motion-micro) var(--motion-ease-direct);
+    opacity var(--motion-micro) var(--motion-ease-standard),
+    transform var(--motion-micro) var(--motion-ease-standard);
 
   @starting-style {
     opacity: 0;
@@ -123,7 +193,7 @@
 
 .info-panel {
   opacity: 1;
-  transition: opacity var(--motion-micro) var(--motion-ease-direct);
+  transition: opacity var(--motion-micro) var(--motion-ease-standard);
 
   @starting-style { opacity: 0; }
 }
@@ -131,7 +201,7 @@
 .info-panel section {
   transform: perspective(1200px) rotateY(0deg) translate3d(0, 0, 0);
   transform-origin: right center;
-  transition: transform var(--motion-content) var(--motion-ease-direct);
+  transition: transform var(--motion-content) var(--motion-ease-standard);
 
   @starting-style {
     transform: perspective(1200px) rotateY(-4deg) translate3d(36px, 0, 0);
@@ -148,7 +218,7 @@
 .save-playlist-overlay,
 .playlist-dialog-overlay {
   opacity: 1;
-  transition: opacity var(--motion-micro) var(--motion-ease-direct);
+  transition: opacity var(--motion-micro) var(--motion-ease-standard);
 
   @starting-style { opacity: 0; }
 }
@@ -159,25 +229,12 @@
   transform: perspective(1000px) translate3d(0, -4vh, 0) rotateX(0deg) scale(1);
   transform-origin: center 42%;
   transition:
-    opacity var(--motion-content) var(--motion-ease-direct),
-    transform var(--motion-content) var(--motion-ease-direct);
+    opacity var(--motion-content) var(--motion-ease-standard),
+    transform var(--motion-content) var(--motion-ease-standard);
 
   @starting-style {
     opacity: 0;
     transform: perspective(1000px) translate3d(0, calc(-4vh + 14px), 0) rotateX(-4deg) scale(0.985);
-  }
-}
-
-.search-box {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-  transition:
-    opacity var(--motion-micro) var(--motion-ease-direct),
-    transform var(--motion-micro) var(--motion-ease-direct);
-
-  @starting-style {
-    opacity: 0;
-    transform: translate3d(14px, 0, 0);
   }
 }
 
@@ -193,15 +250,15 @@
 .info-close,
 .save-queue {
   transition:
-    color var(--motion-micro) var(--motion-ease-direct),
-    background-color var(--motion-micro) var(--motion-ease-direct),
-    border-color var(--motion-micro) var(--motion-ease-direct),
-    opacity var(--motion-micro) var(--motion-ease-direct),
-    transform var(--motion-press) var(--motion-ease-direct);
+    color var(--motion-micro) var(--motion-ease-standard),
+    background-color var(--motion-micro) var(--motion-ease-standard),
+    border-color var(--motion-micro) var(--motion-ease-standard),
+    opacity var(--motion-micro) var(--motion-ease-standard),
+    transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .action-toast {
-  animation: wp7-toast-in var(--motion-micro) var(--motion-ease-direct) both;
+  animation: motion-toast-in var(--motion-micro) var(--motion-ease-standard) both;
 }
 
 .player-shortcuts button:active:not(:disabled),
@@ -220,32 +277,84 @@
 .zune-progress-favorite.active svg,
 .track-favorite.active svg,
 .favorite-active svg {
-  animation: wp7-state-confirm var(--motion-micro) var(--motion-ease-direct) both;
+  animation: motion-confirm var(--motion-micro) var(--motion-ease-standard) both;
 }
 
 .zune-play svg {
-  animation: wp7-icon-swap var(--motion-press) var(--motion-ease-direct) both;
+  animation: motion-icon-swap var(--motion-press) var(--motion-ease-standard) both;
 }
 
-@keyframes wp7-feather-in {
-  from { opacity: 0; transform: translate3d(22px, 0, 0); }
+@keyframes motion-feather-in {
+  from { opacity: 0; transform: translate3d(var(--motion-drift, var(--motion-drift-m)), 0, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
-@keyframes wp7-state-confirm {
+@keyframes motion-confirm {
   0% { transform: scale(0.9); opacity: 0.62; }
   72% { transform: scale(1.06); opacity: 1; }
   100% { transform: scale(1); opacity: 1; }
 }
 
-@keyframes wp7-icon-swap {
+@keyframes motion-icon-swap {
   from { opacity: 0; transform: translate3d(0, 3px, 0) scale(0.94); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
-@keyframes wp7-toast-in {
+@keyframes motion-toast-in {
   from { opacity: 0; transform: translate3d(-50%, 8px, 0); }
   to { opacity: 1; transform: translate3d(-50%, 0, 0); }
+}
+
+@keyframes motion-exit {
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to { opacity: 0; transform: translate3d(0, var(--motion-drift-s), 0); }
+}
+
+@keyframes motion-exit-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes motion-exit-menu {
+  from { opacity: 1; transform: perspective(900px) rotateY(0deg) translate3d(0, 0, 0); }
+  to { opacity: 0; transform: perspective(900px) rotateY(-4deg) translate3d(6px, 2px, 0); }
+}
+
+@keyframes motion-exit-info-section {
+  from { transform: perspective(1200px) rotateY(0deg) translate3d(0, 0, 0); }
+  to { transform: perspective(1200px) rotateY(-2deg) translate3d(18px, 0, 0); }
+}
+
+@keyframes motion-exit-dialog {
+  from { opacity: 1; transform: perspective(1000px) translate3d(0, -4vh, 0) rotateX(0deg) scale(1); }
+  to { opacity: 0; transform: perspective(1000px) translate3d(0, calc(-4vh + 10px), 0) rotateX(0deg) scale(0.99); }
+}
+
+@keyframes motion-exit-toast {
+  from { opacity: 1; transform: translate3d(-50%, 0, 0); }
+  to { opacity: 0; transform: translate3d(-50%, 6px, 0); }
+}
+
+@keyframes motion-page-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(calc(var(--motion-dir, 1) * var(--motion-drift, var(--motion-drift-m))), 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes motion-page-exit {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(calc(var(--motion-dir, 1) * var(--motion-drift-s) * -1), 0, 0);
+  }
 }
 
 @media (hover: none), (pointer: coarse) {
@@ -258,6 +367,9 @@
   }
 }
 
+/* Single reduced-motion policy: entrance and feedback animations collapse to
+   their final state, transitions compress to the instant tier, and spatial
+   transforms (tilt, lyric scale/blur, long-note stretch) settle. */
 @media (prefers-reduced-motion: reduce) {
   .quick-group,
   .quick-album,
@@ -273,20 +385,41 @@
   .folder-list > div,
   .settings-section-heading,
   .settings-sidebar > section,
+  .quickplay,
+  .album-browser,
+  .content-band,
+  .now-playing-stage,
+  .now-side-panel,
   .now-track-card,
+  .action-toast,
   .zune-progress-favorite.active svg,
   .track-favorite.active svg,
   .favorite-active svg,
-  .zune-play svg {
+  .zune-play svg,
+  .lyrics-source-browser.is-searching::after,
+  .motion-page-enter,
+  .motion-page-exit,
+  .shell[data-nav-state="exiting"] .quickplay,
+  .shell[data-nav-state="exiting"] .content-band,
+  .shell[data-nav-state="exiting"] .now-playing-stage,
+  .motion-exit,
+  .motion-exit .context-menu,
+  .motion-exit .info-panel,
+  .motion-exit .info-panel section,
+  .motion-exit .save-playlist-overlay,
+  .motion-exit .playlist-dialog-overlay,
+  .motion-exit .smart-playlist-overlay,
+  .motion-exit .save-playlist-dialog,
+  .motion-exit .playlist-dialog,
+  .motion-exit .smart-playlist-dialog,
+  .motion-exit .action-toast,
+  .motion-exit .player,
+  .motion-exit .app-header {
     animation: none;
-    transform: none;
   }
 
-  .context-menu,
-  .info-panel section,
-  .save-playlist-dialog,
-  .playlist-dialog,
-  .search-box {
+  .stage-entering .now-track-card {
+    opacity: 1;
     transform: none;
   }
 
@@ -297,15 +430,53 @@
   .save-playlist-dialog,
   .playlist-dialog-overlay,
   .playlist-dialog,
-  .search-box {
+  .smart-playlist-overlay,
+  .smart-playlist-dialog,
+  .titlebar-search,
+  .quick-pin,
+  .quick-pin-art,
+  .quick-pin-play,
+  .quick-feature .cover,
+  .quick-album .cover,
+  .history-feature .cover,
+  .history-stack .cover,
+  .player-cover,
+  .zune-controls button,
+  .zune-volume,
+  .zune-volume-icon,
+  .zune-volume input,
+  .now-back,
+  .now-track-card,
+  .now-side-panel,
+  .now-transport,
+  .now-mosaic-canvas,
+  .audio-glow-canvas,
+  .now-canvas-grade::after,
+  .lyrics-stage,
+  .lyrics-line,
+  .lyrics-line::before,
+  .lyrics-word-progress,
+  .lyrics-background-line {
     transition-duration: var(--motion-instant);
   }
 
-  .action-toast {
-    animation: none;
+  .context-menu,
+  .info-panel section,
+  .save-playlist-dialog,
+  .playlist-dialog,
+  .smart-playlist-dialog,
+  .lyrics-stage {
+    transform: none;
   }
 
-  .tilt-pressed {
+  .lyrics-line {
+    filter: none;
+    transform: translate3d(0, var(--lyrics-y), 0);
+  }
+
+  .tilt-pressed,
+  .quickplay-ghost,
+  .lyrics-word.has-long-note {
     transform: none !important;
   }
 }

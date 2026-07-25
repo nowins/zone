@@ -160,7 +160,7 @@ h2 {
   gap: 9px;
   font-size: 13px;
   font-weight: 400;
-  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 180ms cubic-bezier(0.18, 0.88, 0.24, 1);
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-entrance);
 }
 
 .settings-add-folder {
@@ -199,12 +199,11 @@ h2 {
   gap: 14px;
   padding: 10px 8px 10px 2px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.085);
-  transition: background 160ms ease, padding-left 180ms cubic-bezier(0.18, 0.88, 0.24, 1);
+  transition: background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .folder-row:hover {
-  padding-left: 8px;
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .folder-row-icon {
@@ -276,12 +275,11 @@ h2 {
   padding: 13px 8px 13px 2px;
   color: rgba(255, 255, 255, 0.34);
   border-bottom: 1px solid rgba(255, 255, 255, 0.085);
-  transition: color 160ms ease, background 160ms ease, padding-left 180ms cubic-bezier(0.18, 0.88, 0.24, 1);
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .provider-row:hover {
-  padding-left: 8px;
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .provider-row.is-enabled {
@@ -365,7 +363,7 @@ h2 {
   width: 6px;
   height: 6px;
   background: rgba(255, 255, 255, 0.56);
-  transition: transform 160ms ease, background 160ms ease;
+  transition: transform var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .provider-toggle[aria-checked="true"] {
@@ -477,76 +475,6 @@ h2 {
   color: #fff;
   background: #9f3030;
   border-color: #9f3030;
-}
-
-.album-tile:nth-child(1),
-.artist-album-tile:nth-child(1),
-.artist-picker button:nth-child(1),
-.artist-song-list button:nth-child(1),
-.playlist-list button:nth-child(1),
-.playlist-rows button:nth-child(1),
-.song-list button:nth-child(1) {
-  --stagger: 0ms;
-}
-
-.album-tile:nth-child(2),
-.artist-album-tile:nth-child(2),
-.artist-picker button:nth-child(2),
-.artist-song-list button:nth-child(2),
-.playlist-list button:nth-child(2),
-.playlist-rows button:nth-child(2),
-.song-list button:nth-child(2) {
-  --stagger: 46ms;
-}
-
-.album-tile:nth-child(3),
-.artist-album-tile:nth-child(3),
-.artist-picker button:nth-child(3),
-.artist-song-list button:nth-child(3),
-.playlist-list button:nth-child(3),
-.playlist-rows button:nth-child(3),
-.song-list button:nth-child(3) {
-  --stagger: 92ms;
-}
-
-.album-tile:nth-child(4),
-.artist-album-tile:nth-child(4),
-.artist-picker button:nth-child(4),
-.artist-song-list button:nth-child(4),
-.playlist-list button:nth-child(4),
-.playlist-rows button:nth-child(4),
-.song-list button:nth-child(4) {
-  --stagger: 138ms;
-}
-
-.album-tile:nth-child(5),
-.artist-album-tile:nth-child(5),
-.artist-picker button:nth-child(5),
-.artist-song-list button:nth-child(5),
-.playlist-list button:nth-child(5),
-.playlist-rows button:nth-child(5),
-.song-list button:nth-child(5) {
-  --stagger: 184ms;
-}
-
-.album-tile:nth-child(6),
-.artist-album-tile:nth-child(6),
-.artist-picker button:nth-child(6),
-.artist-song-list button:nth-child(6),
-.playlist-list button:nth-child(6),
-.playlist-rows button:nth-child(6),
-.song-list button:nth-child(6) {
-  --stagger: 230ms;
-}
-
-.album-tile:nth-child(n + 7),
-.artist-album-tile:nth-child(n + 7),
-.artist-picker button:nth-child(n + 7),
-.artist-song-list button:nth-child(n + 7),
-.playlist-list button:nth-child(n + 7),
-.playlist-rows button:nth-child(n + 7),
-.song-list button:nth-child(n + 7) {
-  --stagger: 276ms;
 }
 
 .info-panel {

@@ -75,11 +75,19 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `smartPlaylist.ts`：智能播放列表规则求值与归一化。
   - `homePins.ts`：quickplay 固定项的归一化、移动、对账。
   - `visualizer.ts` / `beatAnalysis.ts` / `audioGlow.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格、Zune 光焰与封面拼贴的纯计算部分。
+  - `visualizerBus.ts`：可视化帧的单槽 latest-frame 总线（`publishVisualizerFrame` / `getVisualizerFrame`）。App 采样循环每帧发布一次，正在播放页两个 Canvas 在各自常驻 rAF 中拉取，不经 React state/props。
   - `lyrics.ts` / `amllTtml.ts` / `qrc.ts`：plain、LRC、增强 LRC、TTML、AMLL 元数据和 QQ QRC 的解析与归一化。
   - `lyricsProviders.ts` / `lyricsProviderSearch.ts` / `lyricsSearch.ts`：候选打分与多样性裁剪、多来源搜索策略、按曲目保存的搜索信息修正。
   - `lyricsTiming.ts` / `lyricsExport.ts` / `lyricsMotion.ts`：时间校准、TTML/LRC 导出与真实逐词时间驱动的长音包络。
   - `demoLyrics.ts`：仅动效原型用的演示歌词。
-- `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`collection`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`motion`、`animations-responsive`。
+- `src/motion/`：自研动效内核（完整说明见 `docs/motion-system.md`）。
+  - `tokens.ts`：动效 token 唯一事实源（时长/缓动/幅度/弹簧预设），`applyMotionTokens()` 启动时注入 `:root` CSS 变量，CSS 只消费不定义。
+  - `math.ts` / `spring.ts` / `tween.ts` / `animate.ts`：共享数学、半隐式欧拉弹簧、缓动求值与共享 rAF 动画器（`animateValue`，可 retarget 惯性接力）。
+  - `flip.ts` / `coverFlip.ts`：FLIP registry 与封面共享元素飞行编排（播放条 ↔ 正在播放曲目卡，`cover:{trackId}`）。
+  - `presence.tsx`：`<Presence>` 浮层退场存在组件与 `useLastNonNull`。
+  - `pageTransition.ts`：页面切换编排表（pivot/push/pop），由 App 的 `requestNavigation` 消费。
+  - `useReducedMotion.ts`：reduced-motion 统一 hook。
+- `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`collection`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`motion`（动效原语层：feather 入场、页面/浮层出入场、反馈动画、唯一 reduced-motion 块）、`animations-responsive`（正在播放入场编排与响应式）。
 - `src-tauri/src/lib.rs`（约 1000 行）：Tauri 命令与自定义协议。
   - 命令：`select_music_folder`、`select_lyrics_file`、`export_lyrics_file`、`scan_library`、`watch_music_folders`、`load_local_lyrics`、`request_lyrics_provider`、`update_system_media`、`update_system_media_timeline`。
   - `zone-audio` 自定义协议（`serve_audio_protocol`）：CORS 安全的本地音频播放与 Web Audio 分析，含字节范围（`Accept-Ranges`/`Content-Range`）与正确的音频 content type。
@@ -93,7 +101,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 
 ### 模块导入约定
 
-`src/utils/` 中被 node 测试覆盖的模块之间互相引用时，相对导入必须带显式 `.js` 后缀（例如 `music.ts` 中 `from "./smartPlaylist.js"`、`from "../constants.js"`），因为测试直接运行 `tsconfig.test.json` 编译出的 ESM 产物。React 侧（`.tsx` 及 `App.tsx`）的导入不带后缀。向被测 util 新增跨模块导入时遵守带 `.js` 后缀的写法。
+`src/utils/` 与 `src/motion/` 中被 node 测试覆盖的模块之间互相引用时，相对导入必须带显式 `.js` 后缀（例如 `music.ts` 中 `from "./smartPlaylist.js"`、`nowPlayingCanvas.ts` 中 `from "../motion/math.js"`），因为测试直接运行 `tsconfig.test.json` 编译出的 ESM 产物。React 侧（`.tsx` 及 `App.tsx`）的导入不带后缀。向被测模块新增跨模块导入时遵守带 `.js` 后缀的写法。
 
 ## 歌词子系统基线
 
@@ -186,7 +194,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 背景：
   - 视觉层为 Canvas 实现（`NowPlayingMosaicCanvas` + `AudioGlowCanvas`，测试 `tests/nowPlayingCss.test.mjs` 断言其为 canvas 而非旧 SVG 分层）。
   - 用本地专辑/艺术家封面做拼贴，优先当前艺术家的专辑。
-  - 从当前封面派生柔和色彩罩染；另有一盏「游动灯光」（`createMosaicColorSweep` 的径向光斑）沿非固定轨迹漂移，色相随位置变化，光斑对侧区域相应压暗。
+  - 从当前封面派生柔和色彩罩染；另有动态色彩场（`createMosaicColorFieldSampler`，`globalCompositeOperation = "color"`）沿多角度慢变轨迹漂移，色相随位置变化。
   - 只做缓慢的平移/缩放，动效像呼吸而不是幻灯片；磁贴随机翻面稀少且缓慢。
 - 入场：
   - 页面以 `now-stage-dissolve`（280ms 纯透明度溶解）进入，无位移/缩放。
@@ -207,6 +215,18 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
   - 当前行是空间中心，相邻行随距离降低透明度、缩小并轻微模糊；逐词进度由 `requestAnimationFrame` 直接读音频时钟驱动。
   - 详细设计与动效审查见 `docs/lyrics-experience-plan.md` 与 `docs/lyrics-motion-review.md`。
 
+## 动效系统
+
+动效系统已统一为自研内核 + CSS 原语层，完整说明书见 `docs/motion-system.md`（原则、token 表、内核 API、新组件接入指南）。核心约定：
+
+- 六条原则：短（≤260ms）、物理感（惯性/减速、可打断接力）、页面间延续、内容分级幅度（`--motion-drift-s/m/l`）、服务内容、目的明确（反馈/引导/解释关系）。
+- token 唯一事实源是 `src/motion/tokens.ts`，启动时注入 CSS 变量；CSS 与 TS 都不得硬编码时长/缓动。
+- 页面导航走 `requestNavigation`（退场 160ms + 方向感 + 可打断），不要裸 `setPage`。
+- 浮层入场用 `@starting-style`，退场用 `<Presence>` + `motion.css` 的 `.motion-exit` 后代规则；不允许「状态置 null 立即消失」。
+- 逐帧动画用 `animateValue` 弹簧/补间并直写 DOM，禁止 React state 驱动逐帧进度；每帧可视化数据走 `visualizerBus.ts`。
+- 共享元素连续用 FLIP（`flip.ts` + `coverFlip.ts` 模式），两侧都要 `useReducedMotion()` gate。
+- reduced-motion 只有 `motion.css` 末尾一个媒体查询块，新组件动效要同步补进清单。
+
 ## 已实现的用户体验
 
 - `quickplay`、`collection`、`now playing`、`settings` 导航可用。
@@ -219,6 +239,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 可创建手动播放列表与规则驱动的智能播放列表。
 - 正在播放页的收藏按钮切换当前曲目在收藏列表中的状态。
 - 歌词模式：本地（内嵌/sidecar/手动绑定）与在线歌词，支持逐行/逐词同步、音译、TTML 背景人声、长音细节、滚轮浏览、点按跳转、在线搜索信息映射、手动选词与 TTML/LRC 导出。
+- 统一动效系统：页面 pivot/push/pop 成对过渡、浮层成对出入场、封面在播放条与正在播放页之间 FLIP 飞行、feather 错峰入场、reduced-motion 统一收敛（见 `docs/motion-system.md`）。
 - Windows 系统媒体控制（SMTC）：媒体信息、时间线、媒体按键与收藏同步。
 
 ## 测试策略
@@ -228,6 +249,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
   - 纯逻辑测试：从 `.tmp/visualizer-tests/`（由 `tsconfig.test.json` 编译）导入 util 函数做行为断言。被编译的 util 清单维护在 `tsconfig.test.json` 的 `include` 中——新增被测 util 时要同步加入。
   - 源码/CSS 守卫测试：用 `readFileSync` 读取 `src/` 下的源码与 CSS，做字符串包含/排除断言（如 `localization.test.mjs`、`nowPlayingCss.test.mjs`、`settingsCss.test.mjs`）。修改 UI 结构、CSS 类名或文案时这些测试可能失败，需同步更新。
 - Rust 单元测试在 `src-tauri/src/lib.rs` 的 `#[cfg(test)]` 模块中（`cargo test` 可运行）。
+- 动效内核（`src/motion/`）的行为测试在 `tests/motion.test.mjs`；封面 FLIP 接线守卫在 `tests/coverFlip.test.mjs`；可视化总线在 `tests/visualizerBus.test.mjs`。动效系统的原则与接入约定见 `docs/motion-system.md`。
 - 视觉/动效类改动同时参考 `docs/lyrics-motion-review.md` 的审查基线（Emil Kowalski 动效规范：动效有目的、时长 ≤300ms、可打断、transform/opacity、尊重减少动态效果）。
 
 ## 安全约束

@@ -5,11 +5,13 @@ import test from "node:test";
 const nowPlayingCss = readFileSync("src/styles/now-playing.css", "utf8");
 const playerCss = readFileSync("src/styles/player.css", "utf8");
 const animationCss = readFileSync("src/styles/animations-responsive.css", "utf8");
+const motionCss = readFileSync("src/styles/motion.css", "utf8");
 const baseCss = readFileSync("src/styles/base.css", "utf8");
 const nowPlayingView = readFileSync("src/views/NowPlayingView.tsx", "utf8");
 const playerBarView = readFileSync("src/components/PlayerBar.tsx", "utf8");
 const playbackProgressView = readFileSync("src/components/PlaybackProgress.tsx", "utf8");
 const mosaicCanvasSource = readFileSync("src/components/NowPlayingMosaicCanvas.tsx", "utf8");
+const audioGlowCanvasSource = readFileSync("src/components/AudioGlowCanvas.tsx", "utf8");
 const lyricsSource = readFileSync("src/components/LyricsStage.tsx", "utf8");
 const lyricsHookSource = readFileSync("src/hooks/useLyrics.ts", "utf8");
 const lyricsCss = readFileSync("src/styles/lyrics.css", "utf8");
@@ -17,9 +19,11 @@ const lyricsCss = readFileSync("src/styles/lyrics.css", "utf8");
 test("now playing visual layers are canvas based", () => {
   assert.ok(nowPlayingView.includes("<NowPlayingMosaicCanvas"));
   assert.ok(nowPlayingView.includes("<AudioGlowCanvas"));
-  assert.ok(nowPlayingView.includes("beatPulse={beatPulse}"));
-  assert.ok(nowPlayingView.includes("onsetStrength={onsetStrength}"));
-  assert.ok(nowPlayingView.includes("beatConfidence={beatConfidence}"));
+  assert.ok(mosaicCanvasSource.includes("getVisualizerFrame"), "mosaic canvas should pull frames from the visualizer bus");
+  assert.ok(audioGlowCanvasSource.includes("getVisualizerFrame"), "glow canvas should pull frames from the visualizer bus");
+  assert.ok(!nowPlayingView.includes("beatPulse={beatPulse}"), "per-frame beat props should not flow through React");
+  assert.ok(!nowPlayingView.includes("onsetStrength={onsetStrength}"), "per-frame beat props should not flow through React");
+  assert.ok(!nowPlayingView.includes("beatConfidence={beatConfidence}"), "per-frame beat props should not flow through React");
   assert.ok(!nowPlayingView.includes("wallTilePatternForIndex"), "DOM wall tile mapping should be removed from the view");
   assert.ok(!nowPlayingView.includes("visualizer-wave-svg"), "SVG visualizer should be removed from the view");
 
@@ -178,7 +182,7 @@ test("long-note detail is real-timeline driven, restrained, and browsing safe", 
   assert.ok(lyricsSource.includes("sustainElement.style.opacity"));
   assert.ok(lyricsCss.includes(".lyrics-stage.is-browsing .lyrics-word-sustain"));
   assert.ok(lyricsCss.includes(".lyrics-line.is-active .lyrics-word.has-long-note"));
-  assert.match(lyricsCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.lyrics-word\.has-long-note\s*\{[\s\S]*?transform: none !important/);
+  assert.match(motionCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.lyrics-word\.has-long-note\s*\{[\s\S]*?transform: none !important/);
 });
 
 test("lyrics calibration uses one reversible clock mapping per track and source", () => {
@@ -275,8 +279,8 @@ test("both pages share Zune's collapsed and hover-expanded volume pattern", () =
 });
 
 test("responsive rules no longer reference removed visualizer structures", () => {
-  assert.ok(animationCss.includes(".now-mosaic-canvas"));
-  assert.ok(animationCss.includes(".audio-glow-canvas"));
+  assert.ok(motionCss.includes(".now-mosaic-canvas"));
+  assert.ok(motionCss.includes(".audio-glow-canvas"));
   assert.ok(!animationCss.includes(".wall-tile"));
   assert.ok(!animationCss.includes(".visualizer-wave-svg"));
 });

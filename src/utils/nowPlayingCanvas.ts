@@ -1,4 +1,5 @@
 import type { AlbumGroup } from "../types";
+import { clamp, smoothstep } from "../motion/math.js";
 
 export type RgbColor = {
   r: number;
@@ -480,13 +481,4 @@ function lerpHsl(
     s: from.s + (to.s - from.s) * progress,
     l: from.l + (to.l - from.l) * progress,
   };
-}
-
-function smoothstep(edge0: number, edge1: number, value: number) {
-  const progress = clamp((value - edge0) / Math.max(0.0001, edge1 - edge0), 0, 1);
-  return progress * progress * (3 - 2 * progress);
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
 }
