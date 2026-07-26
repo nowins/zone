@@ -555,6 +555,35 @@ test("podcast detail, menus, and full-screen layout cover keyboard and minimum-w
   );
   excludes(baseCss, /min-width:\s*1024px/, "the old 1024px clipping floor must be removed");
   includes(
+    podcastCss,
+    /@media\s*\(max-width:\s*960px\)\s*\{[\s\S]*?\.podcast-continue-grid\s*\{\s*grid-template-columns:\s*1fr;/,
+    "podcast layout must adapt before reaching the supported 920px minimum width",
+  );
+  excludes(
+    podcastCss,
+    /@media\s*\(max-width:\s*880px\)/,
+    "podcast minimum-window rules must not sit below the app's reachable width",
+  );
+  for (const selector of [".podcast-play-action", ".podcast-download-action"]) {
+    includes(
+      podcastCss,
+      new RegExp(
+        `${selector.replace(".", "\\.")}\\s*\\{(?=[^}]*width:\\s*44px)(?=[^}]*height:\\s*44px)[^}]*\\}`,
+      ),
+      `${selector} must retain a full-size pointer target`,
+    );
+  }
+  includes(
+    podcastCss,
+    /\.podcast-episode-copy p\s*\{(?=[^}]*font-size:\s*12px)(?=[^}]*color:\s*rgba\(247,\s*242,\s*246,\s*0\.54\))[^}]*\}/,
+    "episode summaries must remain readable against the dark surface",
+  );
+  includes(
+    podcastCss,
+    /\.podcast-detail-meta\s*\{(?=[^}]*font-size:\s*11px)(?=[^}]*color:\s*rgba\(247,\s*242,\s*246,\s*0\.52\))[^}]*\}/,
+    "episode detail metadata must not fall back to micro-copy contrast",
+  );
+  includes(
     podcastViewSource,
     /window\.addEventListener\("keydown",\s*handleEscape\)/,
     "show and episode screens must support Escape navigation",
