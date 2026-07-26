@@ -1734,6 +1734,7 @@ pub fn run() {
       podcast::podcast_browse_apple,
       podcast::podcast_subscribe,
       podcast::podcast_preview_feed,
+      podcast::podcast_refresh_feeds,
       podcast::podcast_list_feeds,
       podcast::podcast_set_following,
       podcast::podcast_list_home,

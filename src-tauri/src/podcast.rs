@@ -3,7 +3,7 @@ use encoding_rs::{Encoding, UTF_16BE, UTF_16LE, UTF_8};
 use feed_rs::model::{Entry as ParsedEntry, Feed as ParsedFeed};
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
-use reqwest::header::{self, HeaderMap};
+use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::{StatusCode, Url};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -37,6 +37,8 @@ const PODCAST_HOME_LATEST_LIMIT: usize = 40;
 const PODCAST_HOME_DOWNLOADED_LIMIT: usize = 40;
 const PODCAST_HOME_SAVED_LIMIT: usize = 40;
 const PODCAST_QUEUE_LIMIT: usize = 500;
+const PODCAST_REFRESH_CONCURRENCY: usize = 3;
+const PODCAST_REFRESH_INTERVAL: i64 = 30 * 60 * 1_000;
 const PODCAST_SYNTHETIC_ID_PREFIX: &str = "zone-generated:";
 const USER_AGENT: &str = "Zone/0.1 (local podcast player)";
 
@@ -45,6 +47,8 @@ pub struct PodcastState {
   db_path: PathBuf,
   downloads_dir: PathBuf,
   active_downloads: Arc<Mutex<HashSet<String>>>,
+  active_refreshes: Arc<Mutex<HashSet<String>>>,
+  refresh_semaphore: Arc<tokio::sync::Semaphore>,
   initialization_error: Option<String>,
 }
 
@@ -82,6 +86,9 @@ pub struct PodcastFeed {
   artwork_url: Option<String>,
   last_fetched_at: i64,
   subscribed: bool,
+  subscribed_at: Option<i64>,
+  last_checked_at: Option<i64>,
+  last_refresh_error: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -105,6 +112,8 @@ pub struct PodcastEpisode {
   feed_title: Option<String>,
   feed_artwork_url: Option<String>,
   saved: bool,
+  first_seen_at: i64,
+  webpage_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -142,6 +151,25 @@ pub struct PodcastSubscribeResult {
   feed: PodcastFeed,
   episode_count: usize,
   inserted_count: usize,
+  updated_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastRefreshFailure {
+  feed_id: String,
+  title: String,
+  message: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastRefreshReport {
+  checked: usize,
+  not_modified: usize,
+  inserted: usize,
+  updated: usize,
+  failures: Vec<PodcastRefreshFailure>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -219,6 +247,29 @@ struct ParsedPodcastEpisode {
   enclosure_type: Option<String>,
   artwork_url: Option<String>,
   expected_bytes: Option<u64>,
+  webpage_url: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PodcastRefreshTarget {
+  id: String,
+  feed_url: String,
+  title: String,
+  author: Option<String>,
+  artwork_url: Option<String>,
+  etag: Option<String>,
+  last_modified: Option<String>,
+}
+
+#[derive(Debug)]
+enum PodcastRefreshOutcome {
+  Skipped,
+  NotModified,
+  Updated {
+    inserted: usize,
+    updated: usize,
+  },
+  Failed(PodcastRefreshFailure),
 }
 
 #[derive(Debug)]
@@ -263,6 +314,38 @@ impl Drop for EpisodeFileGuard {
   }
 }
 
+struct FeedRefreshGuard {
+  feed_id: String,
+  active_refreshes: Arc<Mutex<HashSet<String>>>,
+}
+
+impl FeedRefreshGuard {
+  fn acquire(
+    active_refreshes: &Arc<Mutex<HashSet<String>>>,
+    feed_id: &str,
+  ) -> Result<Option<Self>, String> {
+    let mut active = active_refreshes
+      .lock()
+      .map_err(|_| "播客刷新状态不可用".to_string())?;
+    if !active.insert(feed_id.to_string()) {
+      return Ok(None);
+    }
+    drop(active);
+    Ok(Some(Self {
+      feed_id: feed_id.to_string(),
+      active_refreshes: active_refreshes.clone(),
+    }))
+  }
+}
+
+impl Drop for FeedRefreshGuard {
+  fn drop(&mut self) {
+    if let Ok(mut active) = self.active_refreshes.lock() {
+      active.remove(&self.feed_id);
+    }
+  }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PodcastStreamRange {
   Bounded { start: u64, end: u64 },
@@ -288,6 +371,8 @@ impl PodcastState {
       db_path,
       downloads_dir,
       active_downloads: Arc::new(Mutex::new(HashSet::new())),
+      active_refreshes: Arc::new(Mutex::new(HashSet::new())),
+      refresh_semaphore: Arc::new(tokio::sync::Semaphore::new(PODCAST_REFRESH_CONCURRENCY)),
       initialization_error: None,
     })
   }
@@ -297,6 +382,8 @@ impl PodcastState {
       db_path: PathBuf::new(),
       downloads_dir: PathBuf::new(),
       active_downloads: Arc::new(Mutex::new(HashSet::new())),
+      active_refreshes: Arc::new(Mutex::new(HashSet::new())),
+      refresh_semaphore: Arc::new(tokio::sync::Semaphore::new(PODCAST_REFRESH_CONCURRENCY)),
       initialization_error: Some(error),
     }
   }
@@ -362,6 +449,100 @@ pub async fn podcast_preview_feed(
   tauri::async_runtime::spawn_blocking(move || store_preview(&db_path, parsed))
     .await
     .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+}
+
+#[tauri::command]
+pub async fn podcast_refresh_feeds(
+  state: State<'_, PodcastState>,
+  feed_id: Option<String>,
+  force: bool,
+) -> Result<PodcastRefreshReport, String> {
+  state.ensure_ready()?;
+  if let Some(feed_id) = feed_id.as_deref() {
+    validate_identifier(feed_id)?;
+  }
+  let db_path = state.db_path.clone();
+  let target_feed_id = feed_id.clone();
+  let targets = tauri::async_runtime::spawn_blocking(move || {
+    list_refresh_targets(&db_path, target_feed_id.as_deref(), force, unix_time_millis())
+  })
+  .await
+  .map_err(|error| format!("播客数据任务异常结束：{error}"))??;
+
+  let mut report = PodcastRefreshReport::default();
+  for chunk in targets.chunks(PODCAST_REFRESH_CONCURRENCY) {
+    let outcomes = match chunk {
+      [first] => vec![
+          refresh_feed_target(
+            state.db_path.clone(),
+            state.active_refreshes.clone(),
+            state.refresh_semaphore.clone(),
+            first.clone(),
+            false,
+          )
+        .await,
+      ],
+      [first, second] => {
+        let (first, second) = tokio::join!(
+          refresh_feed_target(
+            state.db_path.clone(),
+            state.active_refreshes.clone(),
+            state.refresh_semaphore.clone(),
+            first.clone(),
+            false,
+          ),
+          refresh_feed_target(
+            state.db_path.clone(),
+            state.active_refreshes.clone(),
+            state.refresh_semaphore.clone(),
+            second.clone(),
+            false,
+          ),
+        );
+        vec![first, second]
+      }
+      [first, second, third] => {
+        let (first, second, third) = tokio::join!(
+          refresh_feed_target(
+            state.db_path.clone(),
+            state.active_refreshes.clone(),
+            state.refresh_semaphore.clone(),
+            first.clone(),
+            false,
+          ),
+          refresh_feed_target(
+            state.db_path.clone(),
+            state.active_refreshes.clone(),
+            state.refresh_semaphore.clone(),
+            second.clone(),
+            false,
+          ),
+          refresh_feed_target(
+            state.db_path.clone(),
+            state.active_refreshes.clone(),
+            state.refresh_semaphore.clone(),
+            third.clone(),
+            false,
+          ),
+        );
+        vec![first, second, third]
+      }
+      _ => unreachable!("refresh chunks are limited to three feeds"),
+    };
+    for outcome in outcomes {
+      match outcome {
+        PodcastRefreshOutcome::Skipped => continue,
+        PodcastRefreshOutcome::NotModified => report.not_modified += 1,
+        PodcastRefreshOutcome::Updated { inserted, updated } => {
+          report.inserted += inserted;
+          report.updated += updated;
+        }
+        PodcastRefreshOutcome::Failed(failure) => report.failures.push(failure),
+      }
+      report.checked += 1;
+    }
+  }
+  Ok(report)
 }
 
 #[tauri::command]
@@ -1317,6 +1498,153 @@ async fn fetch_and_parse_feed(
   )
 }
 
+async fn refresh_feed_target(
+  db_path: PathBuf,
+  active_refreshes: Arc<Mutex<HashSet<String>>>,
+  refresh_semaphore: Arc<tokio::sync::Semaphore>,
+  target: PodcastRefreshTarget,
+  allow_private_network: bool,
+) -> PodcastRefreshOutcome {
+  let _refresh_guard = match FeedRefreshGuard::acquire(&active_refreshes, &target.id) {
+    Ok(Some(guard)) => guard,
+    Ok(None) => return PodcastRefreshOutcome::Skipped,
+    Err(message) => {
+      return PodcastRefreshOutcome::Failed(PodcastRefreshFailure {
+        feed_id: target.id,
+        title: target.title,
+        message,
+      })
+    }
+  };
+  let _refresh_permit = match refresh_semaphore.acquire_owned().await {
+    Ok(permit) => permit,
+    Err(_) => {
+      return PodcastRefreshOutcome::Failed(PodcastRefreshFailure {
+        feed_id: target.id,
+        title: target.title,
+        message: "播客刷新调度已停止".to_string(),
+      })
+    }
+  };
+  let checked_at = unix_time_millis();
+  let result = async {
+    let url = validate_url_shape_with_policy(&target.feed_url, allow_private_network)?;
+    let mut request_headers = HeaderMap::new();
+    if let Some(value) = target.etag.as_deref().and_then(|value| HeaderValue::from_str(value).ok()) {
+      request_headers.insert(header::IF_NONE_MATCH, value);
+    }
+    if let Some(value) = target
+      .last_modified
+      .as_deref()
+      .and_then(|value| HeaderValue::from_str(value).ok())
+    {
+      request_headers.insert(header::IF_MODIFIED_SINCE, value);
+    }
+    let public_response = send_public_get_with_headers(
+      url,
+      Duration::from_secs(30),
+      None,
+      allow_private_network,
+      &request_headers,
+    )
+    .await?;
+    let response_etag = header_text(public_response.response.headers(), header::ETAG);
+    let response_last_modified =
+      header_text(public_response.response.headers(), header::LAST_MODIFIED);
+    if public_response.response.status() == StatusCode::NOT_MODIFIED {
+      let db_path = db_path.clone();
+      let feed_id = target.id.clone();
+      tauri::async_runtime::spawn_blocking(move || {
+        mark_refresh_not_modified(
+          &db_path,
+          &feed_id,
+          checked_at,
+          response_etag,
+          response_last_modified,
+        )
+      })
+      .await
+      .map_err(|error| format!("播客数据任务异常结束：{error}"))??;
+      return Ok(PodcastRefreshOutcome::NotModified);
+    }
+    if !public_response.response.status().is_success() {
+      return Err(format!(
+        "播客订阅源返回错误 {}",
+        public_response.response.status().as_u16()
+      ));
+    }
+    let bytes = read_limited(
+      public_response.response,
+      PODCAST_FEED_RESPONSE_LIMIT,
+      "播客订阅源",
+    )
+    .await?;
+    let mut parsed = parse_feed_bytes_with_network_policy(
+      &bytes,
+      public_response.final_url.as_str(),
+      Some(&target.title),
+      target.author.as_deref(),
+      target.artwork_url.as_deref(),
+      response_etag,
+      response_last_modified,
+      allow_private_network,
+    )?;
+    retain_refresh_identifiers(&mut parsed, &target.id);
+    parsed.feed.last_checked_at = Some(checked_at);
+    let db_path = db_path.clone();
+    let stored = tauri::async_runtime::spawn_blocking(move || store_preview(&db_path, parsed))
+      .await
+      .map_err(|error| format!("播客数据任务异常结束：{error}"))??;
+    Ok(PodcastRefreshOutcome::Updated {
+      inserted: stored.inserted_count,
+      updated: stored.updated_count,
+    })
+  }
+  .await;
+
+  match result {
+    Ok(outcome) => outcome,
+    Err(message) => {
+      let stored_message = truncate_chars(&message, 2_000);
+      let error_db_path = db_path.clone();
+      let error_feed_id = target.id.clone();
+      let stored_message_for_db = stored_message.clone();
+      let database_error = tauri::async_runtime::spawn_blocking(move || {
+        mark_refresh_failed(
+          &error_db_path,
+          &error_feed_id,
+          checked_at,
+          &stored_message_for_db,
+        )
+      })
+      .await
+      .map_err(|error| format!("播客数据任务异常结束：{error}"))
+      .and_then(|result| result);
+      let message = match database_error {
+        Ok(()) => stored_message,
+        Err(database_error) => format!("{stored_message}；{database_error}"),
+      };
+      PodcastRefreshOutcome::Failed(PodcastRefreshFailure {
+        feed_id: target.id,
+        title: target.title,
+        message,
+      })
+    }
+  }
+}
+
+fn retain_refresh_identifiers(parsed: &mut ParsedPodcast, feed_id: &str) {
+  parsed.feed.id = feed_id.to_string();
+  remap_episode_identifiers(&mut parsed.episodes, feed_id);
+}
+
+fn remap_episode_identifiers(episodes: &mut [ParsedPodcastEpisode], feed_id: &str) {
+  for episode in episodes {
+    episode.feed_id = feed_id.to_string();
+    episode.id = hash_identifier("episode", &[feed_id, &episode.identity_key]);
+  }
+}
+
 fn parse_feed_bytes(
   bytes: &[u8],
   final_url: &str,
@@ -1325,6 +1653,28 @@ fn parse_feed_bytes(
   artwork_hint: Option<&str>,
   etag: Option<String>,
   last_modified: Option<String>,
+) -> Result<ParsedPodcast, String> {
+  parse_feed_bytes_with_network_policy(
+    bytes,
+    final_url,
+    title_hint,
+    author_hint,
+    artwork_hint,
+    etag,
+    last_modified,
+    false,
+  )
+}
+
+fn parse_feed_bytes_with_network_policy(
+  bytes: &[u8],
+  final_url: &str,
+  title_hint: Option<&str>,
+  author_hint: Option<&str>,
+  artwork_hint: Option<&str>,
+  etag: Option<String>,
+  last_modified: Option<String>,
+  allow_private_network: bool,
 ) -> Result<ParsedPodcast, String> {
   if bytes.len() > PODCAST_FEED_RESPONSE_LIMIT {
     return Err("播客订阅源超过大小限制".to_string());
@@ -1356,6 +1706,7 @@ fn parse_feed_bytes(
     etag,
     last_modified,
     &rss_enclosures,
+    allow_private_network,
   )
 }
 
@@ -1710,8 +2061,9 @@ fn normalize_feed(
   etag: Option<String>,
   last_modified: Option<String>,
   rss_enclosures: &[Option<Enclosure>],
+  allow_private_network: bool,
 ) -> Result<ParsedPodcast, String> {
-  let normalized_url = normalize_url(final_url)?;
+  let normalized_url = normalize_url(final_url, allow_private_network)?;
   let feed_id = hash_identifier("feed", &[&normalized_url]);
   let title = parsed
     .title
@@ -1759,6 +2111,9 @@ fn normalize_feed(
     artwork_url: artwork_url.clone(),
     last_fetched_at: fetched_at,
     subscribed: false,
+    subscribed_at: None,
+    last_checked_at: Some(fetched_at),
+    last_refresh_error: None,
   };
 
   let mut episodes = Vec::new();
@@ -1828,6 +2183,17 @@ fn normalize_episode(
     .flat_map(|media| media.thumbnails.iter())
     .find_map(|thumbnail| clean_url_string(thumbnail.image.uri.as_str()))
     .or_else(|| feed_artwork.map(str::to_string));
+  let webpage_url = entry.links.iter().find_map(|link| {
+    if link.rel.as_deref() == Some("enclosure")
+      || link
+        .media_type
+        .as_deref()
+        .is_some_and(|content_type| content_type.to_ascii_lowercase().starts_with("audio/"))
+    {
+      return None;
+    }
+    clean_url_string(&link.href)
+  });
 
   Some(ParsedPodcastEpisode {
     id,
@@ -1845,6 +2211,7 @@ fn normalize_episode(
     enclosure_type: enclosure.content_type,
     artwork_url,
     expected_bytes: enclosure.length,
+    webpage_url,
   })
 }
 
@@ -1961,7 +2328,10 @@ fn open_database(path: &Path) -> Result<Connection, String> {
         etag TEXT,
         last_modified TEXT,
         last_fetched_at INTEGER NOT NULL,
-        subscribed INTEGER NOT NULL DEFAULT 1
+        subscribed INTEGER NOT NULL DEFAULT 1,
+        subscribed_at INTEGER,
+        last_checked_at INTEGER,
+        last_refresh_error TEXT
       );
 
       CREATE TABLE IF NOT EXISTS podcast_episodes (
@@ -1977,6 +2347,8 @@ fn open_database(path: &Path) -> Result<Connection, String> {
         enclosure_type TEXT,
         artwork_url TEXT,
         expected_bytes INTEGER,
+        first_seen_at INTEGER NOT NULL,
+        webpage_url TEXT,
         UNIQUE(feed_id, identity_key)
       );
 
@@ -2018,39 +2390,94 @@ fn open_database(path: &Path) -> Result<Connection, String> {
       ",
     )
     .map_err(|error| format!("无法初始化播客数据库：{error}"))?;
-  let has_subscribed = {
-    let mut statement = connection
-      .prepare("PRAGMA table_info(podcast_feeds)")
-      .map_err(|error| format!("无法检查播客数据库结构：{error}"))?;
-    let columns = statement
-      .query_map([], |row| row.get::<_, String>(1))
-      .map_err(|error| format!("无法检查播客数据库结构：{error}"))?;
-    let mut found = false;
-    for column in columns {
-      if column.map_err(|error| format!("无法检查播客数据库结构：{error}"))? == "subscribed" {
-        found = true;
-        break;
-      }
-    }
-    found
-  };
-  if !has_subscribed {
-    connection
-      .execute(
-        "ALTER TABLE podcast_feeds ADD COLUMN subscribed INTEGER NOT NULL DEFAULT 1",
-        [],
-      )
-      .map_err(|error| format!("无法迁移播客数据库：{error}"))?;
-  }
+  ensure_database_column(
+    &connection,
+    "podcast_feeds",
+    "subscribed",
+    "subscribed INTEGER NOT NULL DEFAULT 1",
+  )?;
+  ensure_database_column(
+    &connection,
+    "podcast_feeds",
+    "subscribed_at",
+    "subscribed_at INTEGER",
+  )?;
+  ensure_database_column(
+    &connection,
+    "podcast_feeds",
+    "last_checked_at",
+    "last_checked_at INTEGER",
+  )?;
+  ensure_database_column(
+    &connection,
+    "podcast_feeds",
+    "last_refresh_error",
+    "last_refresh_error TEXT",
+  )?;
+  ensure_database_column(
+    &connection,
+    "podcast_episodes",
+    "first_seen_at",
+    "first_seen_at INTEGER NOT NULL DEFAULT 0",
+  )?;
+  ensure_database_column(
+    &connection,
+    "podcast_episodes",
+    "webpage_url",
+    "webpage_url TEXT",
+  )?;
   connection
     .execute_batch(
       "
+      UPDATE podcast_feeds SET
+        subscribed_at = CASE
+          WHEN subscribed = 1 THEN COALESCE(subscribed_at, last_fetched_at)
+          ELSE NULL
+        END,
+        last_checked_at = COALESCE(last_checked_at, last_fetched_at);
+
+      UPDATE podcast_episodes SET
+        first_seen_at = COALESCE(
+          NULLIF(first_seen_at, 0),
+          (SELECT last_fetched_at FROM podcast_feeds WHERE id = podcast_episodes.feed_id),
+          published_at,
+          0
+        )
+      WHERE first_seen_at = 0;
+
       CREATE INDEX IF NOT EXISTS podcast_feeds_subscribed_title
         ON podcast_feeds(subscribed, title COLLATE NOCASE);
+      CREATE INDEX IF NOT EXISTS podcast_feeds_refresh
+        ON podcast_feeds(subscribed, last_checked_at);
+      CREATE INDEX IF NOT EXISTS podcast_episodes_first_seen
+        ON podcast_episodes(feed_id, first_seen_at DESC);
       ",
     )
     .map_err(|error| format!("无法初始化播客数据库索引：{error}"))?;
   Ok(connection)
+}
+
+fn ensure_database_column(
+  connection: &Connection,
+  table: &str,
+  column: &str,
+  definition: &str,
+) -> Result<(), String> {
+  let mut statement = connection
+    .prepare(&format!("PRAGMA table_info({table})"))
+    .map_err(|error| format!("无法检查播客数据库结构：{error}"))?;
+  let columns = statement
+    .query_map([], |row| row.get::<_, String>(1))
+    .map_err(|error| format!("无法检查播客数据库结构：{error}"))?;
+  for existing in columns {
+    if existing.map_err(|error| format!("无法检查播客数据库结构：{error}"))? == column {
+      return Ok(());
+    }
+  }
+  connection
+    .execute(&format!("ALTER TABLE {table} ADD COLUMN {definition}"), [])
+    .map_err(|error| format!("无法迁移播客数据库：{error}"))?;
+  Ok(())
 }
 
 fn store_subscription(db_path: &Path, parsed: ParsedPodcast) -> Result<PodcastSubscribeResult, String> {
@@ -2068,31 +2495,69 @@ fn store_feed(
 ) -> Result<PodcastSubscribeResult, String> {
   let mut connection = open_database(db_path)?;
   let transaction = connection
-    .transaction()
+    .transaction_with_behavior(TransactionBehavior::Immediate)
     .map_err(|error| format!("无法更新播客订阅：{error}"))?;
   let ParsedPodcast {
     mut feed,
-    episodes,
+    mut episodes,
     etag,
     last_modified,
   } = parsed;
-  let existing_subscribed = transaction
+  let current_feed_url = transaction
     .query_row(
-      "SELECT subscribed FROM podcast_feeds WHERE id = ?1",
+      "SELECT feed_url FROM podcast_feeds WHERE id = ?1",
       [&feed.id],
-      |row| row.get::<_, i64>(0),
+      |row| row.get::<_, String>(0),
     )
     .optional()
-    .map_err(|error| format!("无法读取播客关注状态：{error}"))?
-    .is_some_and(|value| value != 0);
+    .map_err(|error| format!("无法读取播客订阅地址：{error}"))?;
+  let url_owner_id = transaction
+    .query_row(
+      "SELECT id FROM podcast_feeds WHERE feed_url = ?1",
+      [&feed.feed_url],
+      |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|error| format!("无法读取播客订阅地址：{error}"))?;
+  match (current_feed_url, url_owner_id) {
+    (Some(current_feed_url), Some(url_owner_id)) if url_owner_id != feed.id => {
+      feed.feed_url = current_feed_url;
+    }
+    (None, Some(url_owner_id)) => {
+      feed.id = url_owner_id;
+      remap_episode_identifiers(&mut episodes, &feed.id);
+    }
+    _ => {}
+  }
+  let existing_subscription = transaction
+    .query_row(
+      "SELECT subscribed, subscribed_at FROM podcast_feeds WHERE id = ?1",
+      [&feed.id],
+      |row| Ok((row.get::<_, i64>(0)? != 0, row.get::<_, Option<i64>>(1)?)),
+    )
+    .optional()
+    .map_err(|error| format!("无法读取播客关注状态：{error}"))?;
+  let existing_subscribed = existing_subscription
+    .as_ref()
+    .is_some_and(|(subscribed, _)| *subscribed);
   feed.subscribed = requested_subscribed || existing_subscribed;
+  feed.subscribed_at = if feed.subscribed {
+    existing_subscription
+      .and_then(|(_, subscribed_at)| subscribed_at)
+      .or(Some(feed.last_fetched_at))
+  } else {
+    None
+  };
+  feed.last_checked_at = Some(feed.last_checked_at.unwrap_or(feed.last_fetched_at));
+  feed.last_refresh_error = None;
   transaction
     .execute(
       "
       INSERT INTO podcast_feeds (
         id, feed_url, title, author, description, artwork_url,
-        etag, last_modified, last_fetched_at, subscribed
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        etag, last_modified, last_fetched_at, subscribed,
+        subscribed_at, last_checked_at, last_refresh_error
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
       ON CONFLICT(id) DO UPDATE SET
         feed_url = excluded.feed_url,
         title = excluded.title,
@@ -2102,7 +2567,10 @@ fn store_feed(
         etag = excluded.etag,
         last_modified = excluded.last_modified,
         last_fetched_at = excluded.last_fetched_at,
-        subscribed = excluded.subscribed
+        subscribed = excluded.subscribed,
+        subscribed_at = excluded.subscribed_at,
+        last_checked_at = excluded.last_checked_at,
+        last_refresh_error = excluded.last_refresh_error
       ",
       params![
         feed.id,
@@ -2115,19 +2583,24 @@ fn store_feed(
         last_modified,
         feed.last_fetched_at,
         i64::from(feed.subscribed),
+        feed.subscribed_at,
+        feed.last_checked_at,
+        feed.last_refresh_error,
       ],
     )
     .map_err(|error| format!("无法保存播客订阅：{error}"))?;
 
   let mut inserted_count = 0usize;
+  let mut updated_count = 0usize;
   {
     let mut insert = transaction
       .prepare(
         "
         INSERT INTO podcast_episodes (
           id, feed_id, identity_key, guid, title, description, published_at,
-          duration_seconds, enclosure_url, enclosure_type, artwork_url, expected_bytes
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+          duration_seconds, enclosure_url, enclosure_type, artwork_url, expected_bytes,
+          first_seen_at, webpage_url
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
         ON CONFLICT(id) DO NOTHING
         ",
       )
@@ -2145,8 +2618,22 @@ fn store_feed(
           enclosure_url = ?9,
           enclosure_type = ?10,
           artwork_url = ?11,
-          expected_bytes = ?12
+          expected_bytes = ?12,
+          webpage_url = ?14
         WHERE id = ?1 AND feed_id = ?2
+          AND (
+            identity_key IS NOT ?3
+            OR guid IS NOT ?4
+            OR title IS NOT ?5
+            OR description IS NOT ?6
+            OR published_at IS NOT ?7
+            OR duration_seconds IS NOT ?8
+            OR enclosure_url IS NOT ?9
+            OR enclosure_type IS NOT ?10
+            OR artwork_url IS NOT ?11
+            OR expected_bytes IS NOT ?12
+            OR webpage_url IS NOT ?14
+          )
         ",
       )
       .map_err(|error| format!("无法准备播客单集更新：{error}"))?;
@@ -2164,12 +2651,16 @@ fn store_feed(
         episode.enclosure_type,
         episode.artwork_url,
         episode.expected_bytes.and_then(|value| i64::try_from(value).ok()),
+        feed.last_fetched_at,
+        episode.webpage_url,
       ];
-      inserted_count += insert
+      let inserted = insert
         .execute(values)
         .map_err(|error| format!("无法保存播客单集：{error}"))?;
-      update
-        .execute(params![
+      inserted_count += inserted;
+      if inserted == 0 {
+        updated_count += update
+          .execute(params![
           episode.id,
           episode.feed_id,
           episode.identity_key,
@@ -2182,8 +2673,11 @@ fn store_feed(
           episode.enclosure_type,
           episode.artwork_url,
           episode.expected_bytes.and_then(|value| i64::try_from(value).ok()),
+          feed.last_fetched_at,
+          episode.webpage_url,
         ])
-        .map_err(|error| format!("无法更新播客单集：{error}"))?;
+          .map_err(|error| format!("无法更新播客单集：{error}"))?;
+      }
     }
   }
   transaction
@@ -2194,7 +2688,113 @@ fn store_feed(
     feed,
     episode_count: episodes.len(),
     inserted_count,
+    updated_count,
   })
+}
+
+fn list_refresh_targets(
+  db_path: &Path,
+  feed_id: Option<&str>,
+  force: bool,
+  now: i64,
+) -> Result<Vec<PodcastRefreshTarget>, String> {
+  let connection = open_database(db_path)?;
+  if let Some(feed_id) = feed_id {
+    let exists = connection
+      .query_row(
+        "SELECT 1 FROM podcast_feeds WHERE id = ?1",
+        [feed_id],
+        |_| Ok(()),
+      )
+      .optional()
+      .map_err(|error| format!("无法读取播客订阅：{error}"))?
+      .is_some();
+    if !exists {
+      return Err("播客节目不存在".to_string());
+    }
+  }
+  let cutoff = now.saturating_sub(PODCAST_REFRESH_INTERVAL);
+  let mut statement = connection
+    .prepare(
+      "
+      SELECT id, feed_url, title, author, artwork_url, etag, last_modified
+      FROM podcast_feeds
+      WHERE ((?1 IS NULL AND subscribed = 1) OR id = ?1)
+        AND (?2 = 1 OR last_checked_at IS NULL OR last_checked_at <= ?3)
+      ORDER BY COALESCE(last_checked_at, 0), title COLLATE NOCASE
+      ",
+    )
+    .map_err(|error| format!("无法读取播客刷新列表：{error}"))?;
+  let rows = statement
+    .query_map(
+      params![feed_id, i64::from(force), cutoff],
+      |row| {
+        Ok(PodcastRefreshTarget {
+          id: row.get(0)?,
+          feed_url: row.get(1)?,
+          title: row.get(2)?,
+          author: row.get(3)?,
+          artwork_url: row.get(4)?,
+          etag: row.get(5)?,
+          last_modified: row.get(6)?,
+        })
+      },
+    )
+    .map_err(|error| format!("无法读取播客刷新列表：{error}"))?;
+  rows
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|error| format!("无法读取播客刷新列表：{error}"))
+}
+
+fn mark_refresh_not_modified(
+  db_path: &Path,
+  feed_id: &str,
+  checked_at: i64,
+  etag: Option<String>,
+  last_modified: Option<String>,
+) -> Result<(), String> {
+  let connection = open_database(db_path)?;
+  let changed = connection
+    .execute(
+      "
+      UPDATE podcast_feeds SET
+        etag = COALESCE(?3, etag),
+        last_modified = COALESCE(?4, last_modified),
+        last_checked_at = ?2,
+        last_refresh_error = NULL
+      WHERE id = ?1
+      ",
+      params![feed_id, checked_at, etag, last_modified],
+    )
+    .map_err(|error| format!("无法保存播客刷新状态：{error}"))?;
+  if changed == 0 {
+    return Err("播客节目不存在".to_string());
+  }
+  Ok(())
+}
+
+fn mark_refresh_failed(
+  db_path: &Path,
+  feed_id: &str,
+  checked_at: i64,
+  message: &str,
+) -> Result<(), String> {
+  let connection = open_database(db_path)?;
+  let changed = connection
+    .execute(
+      "
+      UPDATE podcast_feeds SET
+        last_checked_at = ?2,
+        last_refresh_error = ?3
+      WHERE id = ?1
+      ",
+      params![feed_id, checked_at, message],
+    )
+    .map_err(|error| format!("无法保存播客刷新错误：{error}"))?;
+  if changed == 0 {
+    return Err("播客节目不存在".to_string());
+  }
+  Ok(())
 }
 
 fn list_feeds(db_path: &Path) -> Result<Vec<PodcastFeed>, String> {
@@ -2202,7 +2802,9 @@ fn list_feeds(db_path: &Path) -> Result<Vec<PodcastFeed>, String> {
   let mut statement = connection
     .prepare(
       "
-      SELECT id, feed_url, title, author, description, artwork_url, last_fetched_at, subscribed
+      SELECT
+        id, feed_url, title, author, description, artwork_url,
+        last_fetched_at, subscribed, subscribed_at, last_checked_at, last_refresh_error
       FROM podcast_feeds
       WHERE subscribed = 1
       ORDER BY title COLLATE NOCASE
@@ -2220,6 +2822,9 @@ fn list_feeds(db_path: &Path) -> Result<Vec<PodcastFeed>, String> {
         artwork_url: row.get(5)?,
         last_fetched_at: row.get(6)?,
         subscribed: row.get::<_, i64>(7)? != 0,
+        subscribed_at: row.get(8)?,
+        last_checked_at: row.get(9)?,
+        last_refresh_error: row.get(10)?,
       })
     })
     .map_err(|error| format!("无法读取播客订阅：{error}"))?;
@@ -2232,8 +2837,17 @@ fn set_following(db_path: &Path, feed_id: &str, following: bool) -> Result<(), S
   let connection = open_database(db_path)?;
   let changed = connection
     .execute(
-      "UPDATE podcast_feeds SET subscribed = ?2 WHERE id = ?1",
-      params![feed_id, i64::from(following)],
+      "
+      UPDATE podcast_feeds SET
+        subscribed = ?2,
+        subscribed_at = CASE
+          WHEN ?2 = 0 THEN NULL
+          WHEN subscribed = 0 OR subscribed_at IS NULL THEN ?3
+          ELSE subscribed_at
+        END
+      WHERE id = ?1
+      ",
+      params![feed_id, i64::from(following), unix_time_millis()],
     )
     .map_err(|error| format!("无法更新播客关注状态：{error}"))?;
   if changed == 0 {
@@ -2258,7 +2872,8 @@ fn list_episodes(
         COALESCE(d.downloaded_bytes, 0), d.total_bytes,
         COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
         f.title, f.artwork_url,
-        CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END
+        CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
+        e.first_seen_at, e.webpage_url
       FROM podcast_episodes e
       JOIN podcast_feeds f ON f.id = e.feed_id
       LEFT JOIN podcast_downloads d ON d.episode_id = e.id
@@ -2291,7 +2906,8 @@ fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastHome, String
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
-      CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END
+      CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
+      e.first_seen_at, e.webpage_url
     FROM podcast_episodes e
     JOIN podcast_feeds f ON f.id = e.feed_id
     JOIN podcast_progress p ON p.episode_id = e.id
@@ -2314,7 +2930,8 @@ fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastHome, String
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
-      CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END
+      CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
+      e.first_seen_at, e.webpage_url
     FROM podcast_episodes e
     JOIN podcast_feeds f ON f.id = e.feed_id
     LEFT JOIN podcast_downloads d ON d.episode_id = e.id
@@ -2337,7 +2954,8 @@ fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastHome, String
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
-      CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END
+      CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
+      e.first_seen_at, e.webpage_url
     FROM podcast_episodes e
     JOIN podcast_feeds f ON f.id = e.feed_id
     JOIN podcast_downloads d ON d.episode_id = e.id
@@ -2364,7 +2982,8 @@ fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastHome, String
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
-      1
+      1,
+      e.first_seen_at, e.webpage_url
     FROM podcast_saved_episodes s
     JOIN podcast_episodes e ON e.id = s.episode_id
     JOIN podcast_feeds f ON f.id = e.feed_id
@@ -2444,6 +3063,8 @@ fn podcast_episode_from_row(
     feed_title: row.get(15)?,
     feed_artwork_url: row.get(16)?,
     saved: row.get::<_, i64>(17)? != 0,
+    first_seen_at: row.get(18)?,
+    webpage_url: row.get(19)?,
   })
 }
 
@@ -2456,8 +3077,10 @@ const PODCAST_EPISODE_DETAIL_SELECT: &str = "
     COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
     f.title, f.artwork_url,
     CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
+    e.first_seen_at, e.webpage_url,
     e.expected_bytes, d.error_message, s.saved_at, q.position,
-    f.feed_url, f.author, f.description, f.last_fetched_at, f.subscribed
+    f.feed_url, f.author, f.description, f.last_fetched_at, f.subscribed,
+    f.subscribed_at, f.last_checked_at, f.last_refresh_error
   FROM podcast_episodes e
   JOIN podcast_feeds f ON f.id = e.feed_id
   LEFT JOIN podcast_downloads d ON d.episode_id = e.id
@@ -2472,27 +3095,30 @@ fn podcast_episode_detail_from_row(
 ) -> rusqlite::Result<PodcastEpisodeDetail> {
   let episode = podcast_episode_from_row(row, downloads_dir)?;
   let expected_bytes = row
-    .get::<_, Option<i64>>(18)?
+    .get::<_, Option<i64>>(20)?
     .and_then(|value| u64::try_from(value).ok());
   let queue_position = row
-    .get::<_, Option<i64>>(21)?
+    .get::<_, Option<i64>>(23)?
     .and_then(|value| u32::try_from(value).ok());
   Ok(PodcastEpisodeDetail {
     saved: episode.saved,
     episode,
     feed: PodcastFeed {
       id: row.get(1)?,
-      feed_url: row.get(22)?,
+      feed_url: row.get(24)?,
       title: row.get(15)?,
-      author: row.get(23)?,
-      description: row.get(24)?,
+      author: row.get(25)?,
+      description: row.get(26)?,
       artwork_url: row.get(16)?,
-      last_fetched_at: row.get(25)?,
-      subscribed: row.get::<_, i64>(26)? != 0,
+      last_fetched_at: row.get(27)?,
+      subscribed: row.get::<_, i64>(28)? != 0,
+      subscribed_at: row.get(29)?,
+      last_checked_at: row.get(30)?,
+      last_refresh_error: row.get(31)?,
     },
     expected_bytes,
-    download_error: row.get(19)?,
-    saved_at: row.get(20)?,
+    download_error: row.get(21)?,
+    saved_at: row.get(22)?,
     queue_position,
   })
 }
@@ -2801,6 +3427,7 @@ fn list_queue(db_path: &Path, downloads_dir: &Path) -> Result<Vec<PodcastQueueIt
         COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
         f.title, f.artwork_url,
         CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
+        e.first_seen_at, e.webpage_url,
         q.position, q.added_at
       FROM podcast_queue q
       JOIN podcast_episodes e ON e.id = q.episode_id
@@ -2817,11 +3444,11 @@ fn list_queue(db_path: &Path, downloads_dir: &Path) -> Result<Vec<PodcastQueueIt
       Ok(PodcastQueueItem {
         episode: podcast_episode_from_row(row, downloads_dir)?,
         position: row
-          .get::<_, i64>(18)
+          .get::<_, i64>(20)
           .ok()
           .and_then(|value| u32::try_from(value).ok())
           .unwrap_or(0),
-        added_at: row.get(19)?,
+        added_at: row.get(21)?,
       })
     })
     .map_err(|error| format!("无法读取播客待播列表：{error}"))?;
@@ -3221,11 +3848,30 @@ async fn send_public_get(url: Url, timeout: Duration, range: Option<&str>) -> Re
 }
 
 async fn send_public_get_with_policy(
-  mut url: Url,
+  url: Url,
   timeout: Duration,
   range: Option<&str>,
   allow_private_network: bool,
 ) -> Result<PublicResponse, String> {
+  let request_headers = HeaderMap::new();
+  send_public_get_with_headers(
+    url,
+    timeout,
+    range,
+    allow_private_network,
+    &request_headers,
+  )
+  .await
+}
+
+async fn send_public_get_with_headers(
+  mut url: Url,
+  timeout: Duration,
+  range: Option<&str>,
+  allow_private_network: bool,
+  request_headers: &HeaderMap,
+) -> Result<PublicResponse, String> {
+  let header_origin = url_origin(&url);
   for redirect_count in 0..=PODCAST_REDIRECT_LIMIT {
     validate_url_with_policy(&url, allow_private_network)?;
     let addresses = resolve_public_addresses(&url, allow_private_network).await?;
@@ -3244,6 +3890,9 @@ async fn send_public_get_with_policy(
       .build()
       .map_err(|error| format!("无法初始化播客网络请求：{error}"))?;
     let mut request = client.get(url.clone()).header(header::ACCEPT, "*/*");
+    if url_origin(&url) == header_origin {
+      request = request.headers(request_headers.clone());
+    }
     if let Some(range) = range {
       request = request
         .header(header::RANGE, range)
@@ -3256,7 +3905,7 @@ async fn send_public_get_with_policy(
         format!("无法连接播客来源：{error}")
       }
     })?;
-    if !response.status().is_redirection() {
+    if response.status() == StatusCode::NOT_MODIFIED || !response.status().is_redirection() {
       return Ok(PublicResponse {
         final_url: url,
         response,
@@ -3273,6 +3922,14 @@ async fn send_public_get_with_policy(
     url = validate_podcast_redirect(&url, location, allow_private_network)?;
   }
   Err("播客来源重定向次数过多".to_string())
+}
+
+fn url_origin(url: &Url) -> (String, Option<String>, Option<u16>) {
+  (
+    url.scheme().to_ascii_lowercase(),
+    url.host_str().map(str::to_ascii_lowercase),
+    url.port_or_known_default(),
+  )
 }
 
 fn validate_podcast_redirect(
@@ -3542,8 +4199,8 @@ fn hash_identifier(namespace: &str, values: &[&str]) -> String {
   hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn normalize_url(value: &str) -> Result<String, String> {
-  let mut url = validate_public_url_shape(value)?;
+fn normalize_url(value: &str, allow_private_network: bool) -> Result<String, String> {
+  let mut url = validate_url_shape_with_policy(value, allow_private_network)?;
   url.set_fragment(None);
   Ok(url.to_string())
 }
@@ -3645,6 +4302,7 @@ mod tests {
           <item>
             <guid isPermaLink="false">episode-one</guid>
             <title>第一集</title>
+            <link>https://www.example.test/episodes/one</link>
             <description><![CDATA[<p>第一集的 <em>简介</em></p>]]></description>
             <pubDate>Sat, 25 Jul 2026 08:00:00 +0000</pubDate>
             <itunes:duration>01:02:03</itunes:duration>
@@ -3735,9 +4393,16 @@ mod tests {
   }
 
   fn parsed_fixture(enclosure_url: &str) -> ParsedPodcast {
+    parsed_fixture_at(
+      enclosure_url,
+      "https://feeds.example.test/show.xml",
+    )
+  }
+
+  fn parsed_fixture_at(enclosure_url: &str, feed_url: &str) -> ParsedPodcast {
     parse_feed_bytes(
       &rss_fixture(enclosure_url),
-      "https://feeds.example.test/show.xml",
+      feed_url,
       Some("提示标题"),
       Some("提示作者"),
       Some("https://cdn.example.test/hint.jpg"),
@@ -3953,6 +4618,10 @@ mod tests {
     assert_eq!(episode.duration_seconds, Some(3_723.0));
     assert_eq!(episode.enclosure_type.as_deref(), Some("audio/mpeg"));
     assert_eq!(episode.expected_bytes, Some(23));
+    assert_eq!(
+      episode.webpage_url.as_deref(),
+      Some("https://www.example.test/episodes/one")
+    );
     assert_eq!(episode.id.len(), 64);
   }
 
@@ -4314,6 +4983,38 @@ mod tests {
             '旧版节目',
             NULL, NULL, NULL, NULL, NULL, 1
           );
+          CREATE TABLE podcast_episodes (
+            id TEXT PRIMARY KEY,
+            feed_id TEXT NOT NULL REFERENCES podcast_feeds(id) ON DELETE CASCADE,
+            identity_key TEXT NOT NULL,
+            guid TEXT,
+            title TEXT NOT NULL,
+            description TEXT,
+            published_at INTEGER,
+            duration_seconds REAL,
+            enclosure_url TEXT NOT NULL,
+            enclosure_type TEXT,
+            artwork_url TEXT,
+            expected_bytes INTEGER,
+            UNIQUE(feed_id, identity_key)
+          );
+          INSERT INTO podcast_episodes (
+            id, feed_id, identity_key, guid, title, description, published_at,
+            duration_seconds, enclosure_url, enclosure_type, artwork_url, expected_bytes
+          ) VALUES (
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'guid:legacy-episode',
+            'legacy-episode',
+            '旧版单集',
+            NULL,
+            0,
+            60,
+            'https://media.example.test/legacy.mp3',
+            'audio/mpeg',
+            NULL,
+            100
+          );
           ",
         )
         .expect("create legacy schema");
@@ -4329,6 +5030,39 @@ mod tests {
         )
         .expect("read migrated subscription");
       assert_eq!(subscribed, 1);
+      let (subscribed_at, last_checked_at, last_refresh_error) = connection
+        .query_row(
+          "
+          SELECT subscribed_at, last_checked_at, last_refresh_error
+          FROM podcast_feeds
+          WHERE title = '旧版节目'
+          ",
+          [],
+          |row| {
+            Ok((
+              row.get::<_, Option<i64>>(0)?,
+              row.get::<_, Option<i64>>(1)?,
+              row.get::<_, Option<String>>(2)?,
+            ))
+          },
+        )
+        .expect("read migrated refresh state");
+      assert_eq!(subscribed_at, Some(1));
+      assert_eq!(last_checked_at, Some(1));
+      assert!(last_refresh_error.is_none());
+      let (first_seen_at, webpage_url) = connection
+        .query_row(
+          "
+          SELECT first_seen_at, webpage_url
+          FROM podcast_episodes
+          WHERE title = '旧版单集'
+          ",
+          [],
+          |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?)),
+        )
+        .expect("read migrated episode discovery state");
+      assert_eq!(first_seen_at, 1);
+      assert!(webpage_url.is_none());
       for table in ["podcast_saved_episodes", "podcast_queue"] {
         let exists = connection
           .query_row(
@@ -4345,6 +5079,8 @@ mod tests {
     let feeds = list_feeds(&db_path).expect("list migrated feeds");
     assert_eq!(feeds.len(), 1);
     assert!(feeds[0].subscribed);
+    assert_eq!(feeds[0].subscribed_at, Some(1));
+    assert_eq!(feeds[0].last_checked_at, Some(1));
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }
@@ -4359,6 +5095,13 @@ mod tests {
 
     let preview = store_preview(&state.db_path, parsed.clone()).expect("store preview");
     assert!(!preview.feed.subscribed);
+    assert!(preview.feed.subscribed_at.is_none());
+    assert_eq!(preview.inserted_count, 1);
+    assert_eq!(preview.updated_count, 0);
+    let preview_first_seen = get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id)
+      .expect("preview episode")
+      .episode
+      .first_seen_at;
     assert!(list_feeds(&state.db_path).expect("list preview feeds").is_empty());
     let preview_home = list_home(&state.db_path, &state.downloads_dir).expect("preview home");
     assert!(preview_home.continue_listening.is_empty());
@@ -4368,8 +5111,20 @@ mod tests {
 
     let followed = store_subscription(&state.db_path, parsed.clone()).expect("follow preview");
     assert!(followed.feed.subscribed);
+    assert!(followed.feed.subscribed_at.is_some());
+    assert!(preview_first_seen <= followed.feed.subscribed_at.expect("subscription time"));
+    assert_eq!(followed.inserted_count, 0);
+    assert_eq!(followed.updated_count, 0);
     let refreshed = store_preview(&state.db_path, parsed).expect("refresh followed preview");
     assert!(refreshed.feed.subscribed);
+    assert_eq!(refreshed.updated_count, 0);
+    assert_eq!(
+      get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id)
+        .expect("refreshed episode")
+        .episode
+        .first_seen_at,
+      preview_first_seen,
+    );
     assert_eq!(list_feeds(&state.db_path).expect("list followed feeds").len(), 1);
     let followed_home = list_home(&state.db_path, &state.downloads_dir).expect("followed home");
     assert_eq!(followed_home.latest_episodes.len(), 1);
@@ -4390,6 +5145,15 @@ mod tests {
     )
     .expect("save managed download");
     set_following(&state.db_path, &feed_id, false).expect("unfollow feed");
+    let subscribed_at = open_database(&state.db_path)
+      .expect("open unfollowed feed")
+      .query_row(
+        "SELECT subscribed_at FROM podcast_feeds WHERE id = ?1",
+        [&feed_id],
+        |row| row.get::<_, Option<i64>>(0),
+      )
+      .expect("read unfollow timestamp");
+    assert!(subscribed_at.is_none());
 
     assert!(list_feeds(&state.db_path).expect("list unfollowed feeds").is_empty());
     let unfollowed_home = list_home(&state.db_path, &state.downloads_dir).expect("unfollowed home");
@@ -4475,6 +5239,249 @@ mod tests {
     assert!(episodes[0].completed);
     assert_eq!(episodes[0].download_state, "downloaded");
     assert_eq!(episodes[0].downloaded_bytes, 23);
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn refresh_selection_throttles_recent_checks_and_rejects_unknown_ids() {
+    let directory = test_directory("refresh-selection");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let feed_id = parsed.feed.id.clone();
+    let checked_at = parsed.feed.last_checked_at.expect("initial checked timestamp");
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    assert!(
+      list_refresh_targets(&state.db_path, None, false, checked_at)
+        .expect("throttled global refresh")
+        .is_empty()
+    );
+    assert_eq!(
+      list_refresh_targets(&state.db_path, Some(&feed_id), true, checked_at)
+        .expect("forced selected refresh")
+        .len(),
+      1,
+    );
+    open_database(&state.db_path)
+      .expect("open refresh database")
+      .execute(
+        "UPDATE podcast_feeds SET last_checked_at = ?2 WHERE id = ?1",
+        params![feed_id, checked_at.saturating_sub(PODCAST_REFRESH_INTERVAL + 1)],
+      )
+      .expect("age refresh timestamp");
+    assert_eq!(
+      list_refresh_targets(&state.db_path, None, false, checked_at)
+        .expect("eligible global refresh")
+        .len(),
+      1,
+    );
+    assert!(
+      list_refresh_targets(&state.db_path, Some(&"f".repeat(64)), true, checked_at)
+        .expect_err("unknown selected feed")
+        .contains("不存在")
+    );
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn successful_feed_store_clears_missing_validators_and_counts_only_changes() {
+    let directory = test_directory("refresh-store-outcome");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let feed_id = parsed.feed.id.clone();
+    let episode_id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed.clone()).expect("store initial subscription");
+
+    let mut changed = parsed;
+    changed.etag = None;
+    changed.last_modified = None;
+    changed.feed.last_fetched_at = changed.feed.last_fetched_at.saturating_add(1);
+    changed.feed.last_checked_at = Some(changed.feed.last_fetched_at);
+    changed.episodes[0].title = "第一集（修订）".to_string();
+    let result = store_preview(&state.db_path, changed.clone()).expect("store changed refresh");
+    assert_eq!(result.inserted_count, 0);
+    assert_eq!(result.updated_count, 1);
+    let (etag, last_modified) = open_database(&state.db_path)
+      .expect("open refreshed database")
+      .query_row(
+        "SELECT etag, last_modified FROM podcast_feeds WHERE id = ?1",
+        [&feed_id],
+        |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
+      )
+      .expect("read cleared validators");
+    assert!(etag.is_none());
+    assert!(last_modified.is_none());
+    let episode =
+      get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id).expect("updated episode");
+    assert_eq!(episode.episode.title, "第一集（修订）");
+
+    let unchanged = store_preview(&state.db_path, changed).expect("store unchanged refresh");
+    assert_eq!(unchanged.inserted_count, 0);
+    assert_eq!(unchanged.updated_count, 0);
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn refresh_keeps_its_existing_url_when_the_canonical_url_has_another_owner() {
+    let directory = test_directory("refresh-url-owner-conflict");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let source_url = "https://feeds.example.test/source.xml";
+    let canonical_url = "https://feeds.example.test/canonical.xml";
+    let source = parsed_fixture_at(
+      "https://media.example.test/episode-1.mp3",
+      source_url,
+    );
+    let canonical = parsed_fixture_at(
+      "https://media.example.test/episode-1.mp3",
+      canonical_url,
+    );
+    let source_id = source.feed.id.clone();
+    let canonical_id = canonical.feed.id.clone();
+    assert_ne!(source_id, canonical_id);
+    store_subscription(&state.db_path, source).expect("store source subscription");
+    store_preview(&state.db_path, canonical.clone()).expect("store canonical preview");
+
+    let mut redirected_refresh = canonical;
+    retain_refresh_identifiers(&mut redirected_refresh, &source_id);
+    let refreshed =
+      store_preview(&state.db_path, redirected_refresh).expect("store conflicting redirect refresh");
+    assert_eq!(refreshed.feed.id, source_id);
+    assert_eq!(refreshed.feed.feed_url, source_url);
+    assert!(refreshed.feed.subscribed);
+
+    let connection = open_database(&state.db_path).expect("open conflicted database");
+    let mut statement = connection
+      .prepare("SELECT id, feed_url, subscribed FROM podcast_feeds ORDER BY id")
+      .expect("prepare feed identities");
+    let rows = statement
+      .query_map([], |row| {
+        Ok((
+          row.get::<_, String>(0)?,
+          row.get::<_, String>(1)?,
+          row.get::<_, i64>(2)? != 0,
+        ))
+      })
+      .expect("read feed identities")
+      .collect::<Result<Vec<_>, _>>()
+      .expect("collect feed identities");
+    assert_eq!(rows.len(), 2);
+    assert!(
+      rows
+        .iter()
+        .any(|row| row.0 == source_id && row.1 == source_url && row.2)
+    );
+    assert!(
+      rows
+        .iter()
+        .any(|row| row.0 == canonical_id && row.1 == canonical_url && !row.2)
+    );
+    drop(statement);
+    drop(connection);
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn preview_reuses_the_url_owner_and_preserves_all_episode_state() {
+    let directory = test_directory("preview-url-owner-reuse");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let source_url = "https://feeds.example.test/source.xml";
+    let canonical_url = "https://feeds.example.test/canonical.xml";
+    let source = parsed_fixture_at(
+      "https://media.example.test/episode-1.mp3",
+      source_url,
+    );
+    let owner_feed_id = source.feed.id.clone();
+    let owner_episode_id = source.episodes[0].id.clone();
+    store_subscription(&state.db_path, source).expect("store source subscription");
+
+    let mut canonical_refresh = parsed_fixture_at(
+      "https://media.example.test/episode-1.mp3",
+      canonical_url,
+    );
+    retain_refresh_identifiers(&mut canonical_refresh, &owner_feed_id);
+    let canonical_owner =
+      store_preview(&state.db_path, canonical_refresh).expect("store canonical redirect");
+    assert_eq!(canonical_owner.feed.id, owner_feed_id);
+    assert_eq!(canonical_owner.feed.feed_url, canonical_url);
+
+    save_progress(&state.db_path, &owner_episode_id, 30.0, 100.0).expect("save episode progress");
+    set_episode_saved(&state.db_path, &owner_episode_id, true).expect("save episode");
+    queue_add(&state.db_path, &owner_episode_id, false).expect("queue episode");
+    let local_path = state.downloads_dir.join(format!("{owner_episode_id}.mp3"));
+    fs::write(&local_path, b"ID3-url-owner").expect("write managed download");
+    mark_download_complete(
+      &state.db_path,
+      &owner_episode_id,
+      &local_path.to_string_lossy(),
+      13,
+      Some(13),
+    )
+    .expect("save managed download");
+
+    let mut incoming = parsed_fixture_at(
+      "https://media.example.test/episode-1.mp3",
+      canonical_url,
+    );
+    let discarded_feed_id = incoming.feed.id.clone();
+    let discarded_episode_id = incoming.episodes[0].id.clone();
+    assert_ne!(discarded_feed_id, owner_feed_id);
+    assert_ne!(discarded_episode_id, owner_episode_id);
+    incoming.episodes[0].title = "第一集（目录更新）".to_string();
+    let reused = store_preview(&state.db_path, incoming).expect("reuse canonical URL owner");
+    assert_eq!(reused.feed.id, owner_feed_id);
+    assert_eq!(reused.feed.feed_url, canonical_url);
+    assert!(reused.feed.subscribed);
+    assert_eq!(reused.inserted_count, 0);
+    assert_eq!(reused.updated_count, 1);
+
+    let connection = open_database(&state.db_path).expect("open reused database");
+    let feed_count = connection
+      .query_row("SELECT COUNT(*) FROM podcast_feeds", [], |row| row.get::<_, i64>(0))
+      .expect("count feeds");
+    assert_eq!(feed_count, 1);
+    assert!(
+      connection
+        .query_row(
+          "SELECT 1 FROM podcast_feeds WHERE id = ?1",
+          [&discarded_feed_id],
+          |_| Ok(()),
+        )
+        .optional()
+        .expect("inspect discarded feed identity")
+        .is_none()
+    );
+    assert!(
+      connection
+        .query_row(
+          "SELECT 1 FROM podcast_episodes WHERE id = ?1",
+          [&discarded_episode_id],
+          |_| Ok(()),
+        )
+        .optional()
+        .expect("inspect discarded episode identity")
+        .is_none()
+    );
+    drop(connection);
+
+    let detail = get_episode_detail(
+      &state.db_path,
+      &state.downloads_dir,
+      &owner_episode_id,
+    )
+    .expect("read preserved episode state");
+    assert_eq!(detail.episode.title, "第一集（目录更新）");
+    assert_eq!(detail.episode.progress_seconds, 30.0);
+    assert_eq!(detail.episode.download_state, "downloaded");
+    assert_eq!(
+      detail.episode.local_path.as_deref(),
+      Some(local_path.to_string_lossy().as_ref())
+    );
+    assert!(detail.saved);
+    assert_eq!(detail.queue_position, Some(0));
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }
@@ -4769,6 +5776,54 @@ mod tests {
   }
 
   #[test]
+  fn feed_refresh_guard_deduplicates_the_same_feed_only() {
+    let active = Arc::new(Mutex::new(HashSet::new()));
+    let first_id = "a".repeat(64);
+    let second_id = "b".repeat(64);
+    let first = FeedRefreshGuard::acquire(&active, &first_id)
+      .expect("acquire first feed")
+      .expect("first feed should be available");
+    assert!(
+      FeedRefreshGuard::acquire(&active, &first_id)
+        .expect("inspect duplicate feed")
+        .is_none()
+    );
+    let second = FeedRefreshGuard::acquire(&active, &second_id)
+      .expect("acquire second feed")
+      .expect("different feed should refresh concurrently");
+    drop(first);
+    assert!(
+      FeedRefreshGuard::acquire(&active, &first_id)
+        .expect("reacquire released feed")
+        .is_some()
+    );
+    drop(second);
+  }
+
+  #[test]
+  fn refresh_semaphore_caps_work_across_shared_state_clones() {
+    let directory = test_directory("refresh-semaphore");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let cloned = state.clone();
+    let mut permits = (0..PODCAST_REFRESH_CONCURRENCY)
+      .map(|_| {
+        state
+          .refresh_semaphore
+          .clone()
+          .try_acquire_owned()
+          .expect("acquire refresh permit")
+      })
+      .collect::<Vec<_>>();
+    assert_eq!(cloned.refresh_semaphore.available_permits(), 0);
+    assert!(cloned.refresh_semaphore.clone().try_acquire_owned().is_err());
+    permits.pop();
+    assert_eq!(cloned.refresh_semaphore.available_permits(), 1);
+    assert!(cloned.refresh_semaphore.clone().try_acquire_owned().is_ok());
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
   fn content_range_parser_rejects_inconsistent_ranges() {
     assert_eq!(parse_content_range("bytes 10-19/100"), Some((10, 19, Some(100))));
     assert_eq!(parse_content_range("bytes 0-9/*"), Some((0, 9, None)));
@@ -4777,6 +5832,282 @@ mod tests {
     assert_eq!(parse_content_range("items 0-9/100"), None);
     assert_eq!(parse_unsatisfied_content_range("bytes */100"), Some(100));
     assert_eq!(parse_unsatisfied_content_range("bytes 0-9/100"), None);
+  }
+
+  #[tokio::test]
+  async fn conditional_refresh_handles_not_modified_without_advancing_fetch_time() {
+    let directory = test_directory("refresh-not-modified");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let feed_id = parsed.feed.id.clone();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind refresh server");
+    let address = listener.local_addr().expect("refresh server address");
+    let server = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.expect("accept refresh request");
+      let mut request = vec![0u8; 8_192];
+      let read = stream.read(&mut request).await.expect("read refresh request");
+      let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+      assert!(request.contains("if-none-match: \"etag-one\""), "{request}");
+      assert!(
+        request.contains("if-modified-since: sat, 25 jul 2026 08:00:00 gmt"),
+        "{request}"
+      );
+      stream
+        .write_all(
+          b"HTTP/1.1 304 Not Modified\r\nETag: \"etag-two\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        )
+        .await
+        .expect("write not-modified response");
+      stream.shutdown().await.expect("shutdown refresh response");
+    });
+    let feed_url = format!("http://{address}/feed.xml");
+    open_database(&state.db_path)
+      .expect("open refresh database")
+      .execute(
+        "
+        UPDATE podcast_feeds SET
+          feed_url = ?2,
+          last_fetched_at = 123,
+          last_checked_at = 0,
+          last_refresh_error = '旧错误'
+        WHERE id = ?1
+        ",
+        params![feed_id, feed_url],
+      )
+      .expect("point feed at refresh server");
+    let target = list_refresh_targets(&state.db_path, Some(&feed_id), true, unix_time_millis())
+      .expect("load refresh target")
+      .pop()
+      .expect("refresh target");
+    let outcome = refresh_feed_target(
+      state.db_path.clone(),
+      state.active_refreshes.clone(),
+      state.refresh_semaphore.clone(),
+      target,
+      true,
+    )
+    .await;
+    server.await.expect("refresh server task");
+    assert!(matches!(outcome, PodcastRefreshOutcome::NotModified));
+    let (etag, last_fetched_at, last_checked_at, last_refresh_error) = open_database(&state.db_path)
+      .expect("open refreshed database")
+      .query_row(
+        "
+        SELECT etag, last_fetched_at, last_checked_at, last_refresh_error
+        FROM podcast_feeds
+        WHERE id = ?1
+        ",
+        [&feed_id],
+        |row| {
+          Ok((
+            row.get::<_, Option<String>>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, Option<i64>>(2)?,
+            row.get::<_, Option<String>>(3)?,
+          ))
+        },
+      )
+      .expect("read not-modified state");
+    assert_eq!(etag.as_deref(), Some("\"etag-two\""));
+    assert_eq!(last_fetched_at, 123);
+    assert!(last_checked_at.is_some_and(|value| value > 0));
+    assert!(last_refresh_error.is_none());
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[tokio::test]
+  async fn successful_refresh_preserves_ids_and_reports_inserted_and_changed_episodes() {
+    let directory = test_directory("refresh-updated");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let feed_id = parsed.feed.id.clone();
+    let original_episode_id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+    let original_first_seen =
+      get_episode_detail(&state.db_path, &state.downloads_dir, &original_episode_id)
+        .expect("initial episode")
+        .episode
+        .first_seen_at;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind refresh server");
+    let address = listener.local_addr().expect("refresh server address");
+    let body = r#"<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0">
+        <channel>
+          <title>Zone 测试播客</title>
+          <description>刷新后的节目简介</description>
+          <item>
+            <guid isPermaLink="false">episode-one</guid>
+            <title>第一集（修订）</title>
+            <link>https://www.example.test/episodes/one-updated</link>
+            <enclosure url="https://media.example.test/episode-1.mp3" type="audio/mpeg" />
+          </item>
+          <item>
+            <guid isPermaLink="false">episode-two</guid>
+            <title>第二集</title>
+            <link>https://www.example.test/episodes/two</link>
+            <enclosure url="https://media.example.test/episode-2.mp3" type="audio/mpeg" />
+          </item>
+        </channel>
+      </rss>"#
+      .as_bytes()
+      .to_vec();
+    let server_body = body.clone();
+    let server = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.expect("accept refresh request");
+      let mut request = vec![0u8; 8_192];
+      let read = stream.read(&mut request).await.expect("read refresh request");
+      let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+      assert!(request.contains("if-none-match: \"etag-one\""), "{request}");
+      let headers = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/rss+xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        server_body.len(),
+      );
+      stream.write_all(headers.as_bytes()).await.expect("write refresh headers");
+      stream.write_all(&server_body).await.expect("write refresh body");
+      stream.shutdown().await.expect("shutdown refresh response");
+    });
+    let feed_url = format!("http://{address}/feed.xml");
+    open_database(&state.db_path)
+      .expect("open refresh database")
+      .execute(
+        "
+        UPDATE podcast_feeds SET
+          feed_url = ?2,
+          last_checked_at = 0,
+          last_refresh_error = '旧错误'
+        WHERE id = ?1
+        ",
+        params![feed_id, feed_url],
+      )
+      .expect("point feed at refresh server");
+    let target = list_refresh_targets(&state.db_path, Some(&feed_id), true, unix_time_millis())
+      .expect("load refresh target")
+      .pop()
+      .expect("refresh target");
+    let outcome = refresh_feed_target(
+      state.db_path.clone(),
+      state.active_refreshes.clone(),
+      state.refresh_semaphore.clone(),
+      target,
+      true,
+    )
+    .await;
+    server.await.expect("refresh server task");
+    assert!(matches!(
+      &outcome,
+      PodcastRefreshOutcome::Updated {
+        inserted: 1,
+        updated: 1,
+      }
+    ), "{outcome:?}");
+    let episodes =
+      list_episodes(&state.db_path, &state.downloads_dir, &feed_id).expect("list refreshed episodes");
+    assert_eq!(episodes.len(), 2);
+    let updated = episodes
+      .iter()
+      .find(|episode| episode.id == original_episode_id)
+      .expect("stable existing episode");
+    assert_eq!(updated.title, "第一集（修订）");
+    assert_eq!(updated.first_seen_at, original_first_seen);
+    assert_eq!(
+      updated.webpage_url.as_deref(),
+      Some("https://www.example.test/episodes/one-updated")
+    );
+    let inserted = episodes
+      .iter()
+      .find(|episode| episode.title == "第二集")
+      .expect("inserted episode");
+    assert_eq!(
+      inserted.id,
+      hash_identifier("episode", &[&feed_id, "guid:episode-two"])
+    );
+    assert!(inserted.first_seen_at >= original_first_seen);
+    let feed = list_feeds(&state.db_path)
+      .expect("list refreshed feeds")
+      .pop()
+      .expect("refreshed feed");
+    assert_eq!(feed.id, feed_id);
+    assert!(feed.last_refresh_error.is_none());
+    let validators = open_database(&state.db_path)
+      .expect("open refreshed database")
+      .query_row(
+        "SELECT etag, last_modified FROM podcast_feeds WHERE id = ?1",
+        [&feed.id],
+        |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
+      )
+      .expect("read refreshed validators");
+    assert_eq!(validators, (None, None));
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[tokio::test]
+  async fn conditional_headers_are_not_forwarded_across_origins() {
+    let redirect_listener = TcpListener::bind("127.0.0.1:0")
+      .await
+      .expect("bind redirect server");
+    let redirect_address = redirect_listener.local_addr().expect("redirect address");
+    let destination_listener = TcpListener::bind("127.0.0.1:0")
+      .await
+      .expect("bind destination server");
+    let destination_address = destination_listener.local_addr().expect("destination address");
+    let destination = tokio::spawn(async move {
+      let (mut stream, _) = destination_listener
+        .accept()
+        .await
+        .expect("accept redirected request");
+      let mut request = vec![0u8; 8_192];
+      let read = stream.read(&mut request).await.expect("read redirected request");
+      let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+      assert!(!request.contains("if-none-match:"), "{request}");
+      assert!(!request.contains("if-modified-since:"), "{request}");
+      stream
+        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
+        .await
+        .expect("write destination response");
+      stream.shutdown().await.expect("shutdown destination response");
+    });
+    let redirect = tokio::spawn(async move {
+      let (mut stream, _) = redirect_listener.accept().await.expect("accept initial request");
+      let mut request = vec![0u8; 8_192];
+      let read = stream.read(&mut request).await.expect("read initial request");
+      let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+      assert!(request.contains("if-none-match: \"private-validator\""), "{request}");
+      let response = format!(
+        "HTTP/1.1 302 Found\r\nLocation: http://{destination_address}/final.xml\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+      );
+      stream
+        .write_all(response.as_bytes())
+        .await
+        .expect("write redirect response");
+      stream.shutdown().await.expect("shutdown redirect response");
+    });
+    let mut headers = HeaderMap::new();
+    headers.insert(
+      header::IF_NONE_MATCH,
+      HeaderValue::from_static("\"private-validator\""),
+    );
+    headers.insert(
+      header::IF_MODIFIED_SINCE,
+      HeaderValue::from_static("Sat, 25 Jul 2026 08:00:00 GMT"),
+    );
+    let response = send_public_get_with_headers(
+      Url::parse(&format!("http://localhost:{}/start.xml", redirect_address.port()))
+        .expect("initial URL"),
+      Duration::from_secs(5),
+      None,
+      true,
+      &headers,
+    )
+    .await
+    .expect("follow safe test redirect");
+    assert_eq!(response.response.status(), StatusCode::OK);
+    redirect.await.expect("redirect server task");
+    destination.await.expect("destination server task");
   }
 
   #[tokio::test]

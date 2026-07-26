@@ -40,6 +40,7 @@ import type {
   PodcastHome,
   PodcastPlayback,
   PodcastQueueItem,
+  PodcastRefreshReport,
   PodcastSearchResult,
   PodcastSubscribeResult,
 } from "../types";
@@ -200,10 +201,14 @@ export function PodcastView({
   const initialized = useRef(false);
   const handledEpisodeRequestNonce = useRef<number | null>(null);
   const handledLibraryRevision = useRef(libraryRevision);
+  const episodeListRequestRef = useRef(0);
   const episodeDetailRequestRef = useRef(0);
   const discoveryRequestActive = useRef(false);
+  const feedRefreshActive = useRef(false);
+  const selectedFeedRef = useRef(selectedFeed);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const episodeReturnSessionRef = useRef<PodcastSessionSnapshot | null>(null);
+  selectedFeedRef.current = selectedFeed;
 
   const currentEpisodeId = activeEpisode?.episodeId ?? activeEpisodeId;
   const feedById = useMemo(
@@ -278,20 +283,54 @@ export function PodcastView({
   }, []);
 
   const loadEpisodes = useCallback(async (feed: PodcastFeed) => {
+    const requestId = episodeListRequestRef.current + 1;
+    episodeListRequestRef.current = requestId;
     setEpisodeState("loading");
     try {
       const nextEpisodes = await invoke<PodcastEpisode[]>(
         "podcast_list_episodes",
         { feedId: feed.id },
       );
+      if (episodeListRequestRef.current !== requestId) return null;
       setEpisodes(nextEpisodes);
       setEpisodeState("ready");
+      return nextEpisodes;
     } catch (reason) {
+      if (episodeListRequestRef.current !== requestId) return null;
       setEpisodes([]);
       setEpisodeState("error");
       setError(errorMessage(reason, "读取单集失败"));
+      return null;
     }
   }, []);
+
+  const refreshSubscribedFeeds = useCallback(async () => {
+    if (feedRefreshActive.current) return;
+    feedRefreshActive.current = true;
+    try {
+      const report = await invoke<PodcastRefreshReport>(
+        "podcast_refresh_feeds",
+        { force: false },
+      );
+      const refreshed = Math.max(
+        0,
+        report.checked - report.notModified - report.failures.length,
+      );
+      if (refreshed === 0) return;
+      const [nextFeeds] = await Promise.all([loadFeeds(), loadHome()]);
+      const currentFeed = selectedFeedRef.current;
+      const refreshedFeed = currentFeed
+        ? nextFeeds.find((feed) => feed.id === currentFeed.id)
+        : null;
+      if (refreshedFeed) {
+        await loadEpisodes(refreshedFeed);
+      }
+    } catch {
+      // Cached podcast content remains usable when a background refresh fails.
+    } finally {
+      feedRefreshActive.current = false;
+    }
+  }, [loadEpisodes, loadFeeds, loadHome]);
 
   const loadEpisodeDetail = useCallback(
     async (episodeId: string, preserveCurrent = false) => {
@@ -361,8 +400,9 @@ export function PodcastView({
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
-    void loadFeeds();
-    void loadHome();
+    void Promise.all([loadFeeds(), loadHome()]).then(() =>
+      refreshSubscribedFeeds()
+    );
     if (
       restoredSession?.screen === "show"
       && restoredSession.selectedFeed
@@ -385,6 +425,7 @@ export function PodcastView({
     loadEpisodes,
     loadFeeds,
     loadHome,
+    refreshSubscribedFeeds,
     restoredSession,
   ]);
 
@@ -635,22 +676,43 @@ export function PodcastView({
     setError(null);
     setNotice(`正在刷新“${selectedFeed.title}”`);
     try {
-      const result = await invoke<PodcastSubscribeResult>(
-        "podcast_preview_feed",
-        {
-          feedUrl: selectedFeed.feedUrl,
-          titleHint: selectedFeed.title,
-          authorHint: selectedFeed.author ?? undefined,
-          artworkUrl: selectedFeed.artworkUrl ?? undefined,
-        },
+      const report = await invoke<PodcastRefreshReport>(
+        "podcast_refresh_feeds",
+        { feedId: selectedFeed.id, force: true },
       );
-      setSelectedFeed(result.feed);
-      await loadEpisodes(result.feed);
-      await loadHome();
+      const failure = report.failures.find(
+        (item) => item.feedId === selectedFeed.id,
+      );
+      if (failure) throw new Error(failure.message);
+      const nextFeeds = await loadFeeds();
+      const listedFeed = nextFeeds.find(
+        (feed) => feed.id === selectedFeed.id,
+      );
+      const refreshedFeed = listedFeed ?? selectedFeed;
+      setSelectedFeed(refreshedFeed);
+      const [nextEpisodes] = await Promise.all([
+        loadEpisodes(refreshedFeed),
+        loadHome(),
+      ]);
+      if (!listedFeed && nextEpisodes?.[0]) {
+        try {
+          const detail = await invoke<PodcastEpisodeDetail>(
+            "podcast_get_episode_detail",
+            { episodeId: nextEpisodes[0].id },
+          );
+          if (selectedFeedRef.current?.id === selectedFeed.id) {
+            setSelectedFeed(detail.feed);
+          }
+        } catch {
+          // Refreshed episodes remain usable if preview metadata cannot be reloaded.
+        }
+      }
       setNotice(
-        result.insertedCount > 0
-          ? `已更新，新增 ${result.insertedCount} 集`
-          : "节目已是最新",
+        report.inserted > 0
+          ? `已更新，新增 ${report.inserted} 集`
+          : report.updated > 0
+            ? `已更新 ${report.updated} 集信息`
+            : "节目已是最新",
       );
     } catch (reason) {
       setNotice(null);

@@ -172,6 +172,9 @@ export type PodcastFeed = {
   artworkUrl?: string | null;
   lastFetchedAt: number;
   subscribed: boolean;
+  subscribedAt?: number | null;
+  lastCheckedAt?: number | null;
+  lastRefreshError?: string | null;
 };
 
 export type PodcastDownloadState = "none" | "downloading" | "downloaded" | "failed";
@@ -195,12 +198,27 @@ export type PodcastEpisode = {
   saved: boolean;
   feedTitle?: string | null;
   feedArtworkUrl?: string | null;
+  firstSeenAt: number;
+  webpageUrl?: string | null;
 };
 
 export type PodcastSubscribeResult = {
   feed: PodcastFeed;
   episodeCount: number;
   insertedCount: number;
+  updatedCount?: number;
+};
+
+export type PodcastRefreshReport = {
+  checked: number;
+  notModified: number;
+  inserted: number;
+  updated: number;
+  failures: Array<{
+    feedId: string;
+    title: string;
+    message: string;
+  }>;
 };
 
 export type PodcastDownloadResult = {

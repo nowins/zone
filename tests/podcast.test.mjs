@@ -43,6 +43,7 @@ const PODCAST_COMMANDS = [
   "podcast_queue_remove",
   "podcast_queue_reorder",
   "podcast_queue_clear",
+  "podcast_refresh_feeds",
   "podcast_download_episode",
   "podcast_delete_episode_download",
   "podcast_save_progress",
@@ -182,6 +183,72 @@ test("continue listening cards reserve circular styling for the play action", ()
     podcastCss,
     /\.podcast-play-action\s*\{/,
     "the explicit podcast play action must own the circular control styling",
+  );
+});
+
+test("podcast feeds refresh conditionally while cached content stays usable", () => {
+  includes(
+    typesSource,
+    /export type PodcastRefreshReport\s*=[\s\S]{0,300}notModified:\s*number;[\s\S]{0,300}failures:/,
+    "the frontend must share the conditional refresh report",
+  );
+  for (const field of [
+    "subscribedAt",
+    "lastCheckedAt",
+    "lastRefreshError",
+    "firstSeenAt",
+    "webpageUrl",
+  ]) {
+    includes(typesSource, new RegExp(`\\b${field}\\b`), `missing podcast refresh field: ${field}`);
+  }
+  includes(
+    podcastViewSource,
+    /invoke<PodcastRefreshReport>\(\s*"podcast_refresh_feeds",\s*\{\s*force:\s*false\s*\}/,
+    "the podcast surface must start a throttled background refresh after loading cache",
+  );
+  includes(
+    declaredFunctionSource(podcastViewSource, "refreshSelectedFeed"),
+    /"podcast_refresh_feeds"[\s\S]{0,120}feedId:\s*selectedFeed\.id,\s*force:\s*true/,
+    "manual show refresh must bypass the interval for the selected feed",
+  );
+  excludes(
+    declaredFunctionSource(podcastViewSource, "refreshSelectedFeed"),
+    /podcast_preview_feed/,
+    "manual refresh must use validators instead of re-running the preview path",
+  );
+  includes(
+    podcastViewSource,
+    /catch\s*\{\s*\/\/ Cached podcast content remains usable when a background refresh fails\./,
+    "background refresh failures must preserve cached podcast content",
+  );
+  includes(
+    podcastViewSource,
+    /const loadEpisodes\s*=\s*useCallback[\s\S]{0,220}episodeListRequestRef\.current\s*=\s*requestId[\s\S]{0,320}episodeListRequestRef\.current\s*!==\s*requestId\)\s*return null/,
+    "late episode-list responses must not overwrite a newer selected feed",
+  );
+  includes(
+    declaredFunctionSource(podcastViewSource, "refreshSelectedFeed"),
+    /!listedFeed\s*&&\s*nextEpisodes\?\.\[0\][\s\S]{0,240}"podcast_get_episode_detail"[\s\S]{0,260}selectedFeedRef\.current\?\.id\s*===\s*selectedFeed\.id/,
+    "manual refresh must reload metadata for an unsubscribed preview without racing navigation",
+  );
+  for (const column of [
+    "subscribed_at",
+    "last_checked_at",
+    "last_refresh_error",
+    "first_seen_at",
+    "webpage_url",
+  ]) {
+    includes(podcastRustSource, new RegExp(`\\b${column}\\b`), `missing SQLite refresh column: ${column}`);
+  }
+  includes(
+    podcastRustSource,
+    /IF_NONE_MATCH|If-None-Match/,
+    "conditional refresh must send the stored ETag",
+  );
+  includes(
+    podcastRustSource,
+    /StatusCode::NOT_MODIFIED/,
+    "conditional refresh must handle HTTP 304 without parsing a body",
   );
 });
 
