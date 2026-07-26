@@ -92,3 +92,19 @@ test("podcast queue movement is bounded, immutable, and reindexes positions", ()
   assert.equal(movePodcastQueueItem(queue, "one", -1), queue);
   assert.equal(movePodcastQueueItem(queue, "missing", 1), queue);
 });
+
+test("podcast queue movement skips the active episode hidden from queue views", () => {
+  const queue = ["before", "active", "after"].map((id, position) => ({
+    episode: episode(id),
+    position,
+    addedAt: position + 10,
+  }));
+
+  const moved = movePodcastQueueItem(queue, "before", 1, "active");
+  assert.deepEqual(
+    moved.map((item) => item.episode.id),
+    ["after", "active", "before"],
+  );
+  assert.deepEqual(moved.map((item) => item.position), [0, 1, 2]);
+  assert.equal(movePodcastQueueItem(queue, "active", 1, "active"), queue);
+});

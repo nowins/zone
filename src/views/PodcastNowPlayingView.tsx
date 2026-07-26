@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
@@ -13,6 +14,7 @@ import {
   ChevronUp,
   Clock3,
   Gauge,
+  GripVertical,
   ListMusic,
   LoaderCircle,
   Pause,
@@ -40,6 +42,12 @@ const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
 const SLEEP_MINUTES = [15, 30, 45, 60] as const;
 
 type PodcastNowMenu = "rate" | "sleep" | null;
+type PodcastQueueDropPlacement = "before" | "after";
+
+type PodcastQueueDropTarget = {
+  episodeId: string;
+  placement: PodcastQueueDropPlacement;
+};
 
 export function PodcastNowPlayingView({
   episode,
@@ -60,6 +68,7 @@ export function PodcastNowPlayingView({
   onPlayQueueItem,
   onRemoveQueueItem,
   onMoveQueueItem,
+  onReorderQueueItem,
   onClearQueue,
   onOpenEpisode,
   onToggleSaved,
@@ -84,6 +93,11 @@ export function PodcastNowPlayingView({
   onPlayQueueItem: (episodeId: string) => void;
   onRemoveQueueItem: (episodeId: string) => void;
   onMoveQueueItem: (episodeId: string, direction: -1 | 1) => void;
+  onReorderQueueItem: (
+    episodeId: string,
+    targetEpisodeId: string,
+    placement: PodcastQueueDropPlacement,
+  ) => void;
   onClearQueue: () => void;
   onOpenEpisode: () => void;
   onToggleSaved: () => void;
@@ -94,6 +108,9 @@ export function PodcastNowPlayingView({
   const [queueOpen, setQueueOpen] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const [draggedQueueEpisodeId, setDraggedQueueEpisodeId] = useState<string | null>(null);
+  const [queueDropTarget, setQueueDropTarget] = useState<PodcastQueueDropTarget | null>(null);
+  const [queueAnnouncement, setQueueAnnouncement] = useState("");
   const rateTriggerRef = useRef<HTMLButtonElement | null>(null);
   const sleepTriggerRef = useRef<HTMLButtonElement | null>(null);
   const queueTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -124,6 +141,8 @@ export function PodcastNowPlayingView({
   useEffect(() => {
     setDescriptionExpanded(false);
     setActiveMenu(null);
+    setDraggedQueueEpisodeId(null);
+    setQueueDropTarget(null);
   }, [episode.episodeId]);
 
   useEffect(() => {
@@ -189,8 +208,91 @@ export function PodcastNowPlayingView({
 
   function closeQueue(restoreFocus = false) {
     setQueueOpen(false);
+    setDraggedQueueEpisodeId(null);
+    setQueueDropTarget(null);
     if (!restoreFocus) return;
     window.requestAnimationFrame(() => queueTriggerRef.current?.focus());
+  }
+
+  function resetQueueDrag() {
+    setDraggedQueueEpisodeId(null);
+    setQueueDropTarget(null);
+  }
+
+  function handleQueueDragStart(
+    event: ReactDragEvent<HTMLSpanElement>,
+    episodeId: string,
+  ) {
+    const row = event.currentTarget.closest("li");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", episodeId);
+    if (row) {
+      event.dataTransfer.setDragImage(
+        row,
+        Math.min(24, row.clientWidth / 2),
+        row.clientHeight / 2,
+      );
+    }
+    setDraggedQueueEpisodeId(episodeId);
+    setQueueDropTarget(null);
+    setQueueAnnouncement("");
+  }
+
+  function queueDropPlacement(
+    event: ReactDragEvent<HTMLLIElement>,
+  ): PodcastQueueDropPlacement {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+  }
+
+  function handleQueueDragOver(
+    event: ReactDragEvent<HTMLLIElement>,
+    targetEpisodeId: string,
+  ) {
+    if (!draggedQueueEpisodeId || draggedQueueEpisodeId === targetEpisodeId) {
+      setQueueDropTarget(null);
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const placement = queueDropPlacement(event);
+    setQueueDropTarget((current) => (
+      current?.episodeId === targetEpisodeId && current.placement === placement
+        ? current
+        : { episodeId: targetEpisodeId, placement }
+    ));
+  }
+
+  function handleQueueDrop(
+    event: ReactDragEvent<HTMLLIElement>,
+    targetEpisodeId: string,
+  ) {
+    event.preventDefault();
+    const sourceEpisodeId = draggedQueueEpisodeId
+      ?? event.dataTransfer.getData("text/plain");
+    const placement = queueDropPlacement(event);
+    const sourceIndex = orderedQueue.findIndex(
+      (item) => item.episode.id === sourceEpisodeId,
+    );
+    const targetIndex = orderedQueue.findIndex(
+      (item) => item.episode.id === targetEpisodeId,
+    );
+    if (
+      sourceIndex >= 0
+      && targetIndex >= 0
+      && sourceEpisodeId !== targetEpisodeId
+    ) {
+      let destinationIndex = targetIndex + (placement === "after" ? 1 : 0);
+      if (sourceIndex < destinationIndex) destinationIndex -= 1;
+      if (destinationIndex !== sourceIndex) {
+        onReorderQueueItem(sourceEpisodeId, targetEpisodeId, placement);
+        const draggedEpisode = orderedQueue[sourceIndex]?.episode;
+        setQueueAnnouncement(
+          `已将“${draggedEpisode?.title ?? "单集"}”移到第 ${destinationIndex + 1} 位`,
+        );
+      }
+    }
+    resetQueueDrag();
   }
 
   function handleMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -346,60 +448,113 @@ export function PodcastNowPlayingView({
       </header>
 
       {orderedQueue.length > 0 ? (
-        <ol className="podcast-now-queue-list">
-          {orderedQueue.map((item, index) => {
-            const queuedEpisode = item.episode;
-            return (
-              <li key={queuedEpisode.id}>
-                <button
-                  type="button"
-                  className="podcast-now-queue-select"
-                  onClick={() => {
-                    onPlayQueueItem(queuedEpisode.id);
-                    closeQueue(true);
-                  }}
-                  title={`播放“${queuedEpisode.title}”`}
+        <>
+          <p
+            id="podcast-now-queue-reorder-help"
+            className="podcast-now-queue-reorder-help"
+          >
+            拖动把手调整顺序，也可使用上移和下移按钮。
+          </p>
+          <output
+            className="podcast-now-queue-announcement"
+            aria-live="polite"
+          >
+            {queueAnnouncement}
+          </output>
+          <ol
+            className="podcast-now-queue-list"
+            aria-describedby="podcast-now-queue-reorder-help"
+          >
+            {orderedQueue.map((item, index) => {
+              const queuedEpisode = item.episode;
+              const dropPlacement = queueDropTarget?.episodeId === queuedEpisode.id
+                ? queueDropTarget.placement
+                : undefined;
+              return (
+                <li
+                  key={queuedEpisode.id}
+                  className={[
+                    draggedQueueEpisodeId === queuedEpisode.id ? "is-dragging" : "",
+                    dropPlacement ? "is-drop-target" : "",
+                  ].filter(Boolean).join(" ")}
+                  data-drop-position={dropPlacement}
+                  onDragOver={(event) => handleQueueDragOver(event, queuedEpisode.id)}
+                  onDrop={(event) => handleQueueDrop(event, queuedEpisode.id)}
                 >
-                  <span>{index + 1}</span>
-                  <span>
-                    <strong>{queuedEpisode.title}</strong>
-                    <small>
-                      {queuedEpisode.feedTitle || "播客"}
-                      {queuedEpisode.durationSeconds
-                        ? ` · ${formatTime(queuedEpisode.durationSeconds)}`
-                        : ""}
-                    </small>
+                  <span
+                    className="podcast-now-queue-drag"
+                    draggable={orderedQueue.length > 1}
+                    aria-hidden="true"
+                    data-disabled={orderedQueue.length < 2}
+                    title="拖动排序"
+                    onDragStart={(event) => handleQueueDragStart(event, queuedEpisode.id)}
+                    onDragEnd={resetQueueDrag}
+                  >
+                    <GripVertical size={15} aria-hidden="true" />
                   </span>
-                </button>
-                <div className="podcast-now-queue-actions">
                   <button
                     type="button"
-                    onClick={() => onMoveQueueItem(queuedEpisode.id, -1)}
-                    disabled={index === 0}
-                    title="上移"
+                    className="podcast-now-queue-select"
+                    onClick={() => {
+                      onPlayQueueItem(queuedEpisode.id);
+                      closeQueue(true);
+                    }}
+                    title={`播放“${queuedEpisode.title}”`}
                   >
-                    <ChevronUp size={14} />
+                    <span>{index + 1}</span>
+                    <span>
+                      <strong>{queuedEpisode.title}</strong>
+                      <small>
+                        {queuedEpisode.feedTitle || "播客"}
+                        {queuedEpisode.durationSeconds
+                          ? ` · ${formatTime(queuedEpisode.durationSeconds)}`
+                          : ""}
+                      </small>
+                    </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onMoveQueueItem(queuedEpisode.id, 1)}
-                    disabled={index === orderedQueue.length - 1}
-                    title="下移"
-                  >
-                    <ChevronDown size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveQueueItem(queuedEpisode.id)}
-                    title="从待播移除"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
+                  <div className="podcast-now-queue-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onMoveQueueItem(queuedEpisode.id, -1);
+                        setQueueAnnouncement(
+                          `已将“${queuedEpisode.title}”移到第 ${index} 位`,
+                        );
+                      }}
+                      disabled={index === 0}
+                      aria-label={`上移“${queuedEpisode.title}”`}
+                      title="上移"
+                    >
+                      <ChevronUp size={14} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onMoveQueueItem(queuedEpisode.id, 1);
+                        setQueueAnnouncement(
+                          `已将“${queuedEpisode.title}”移到第 ${index + 2} 位`,
+                        );
+                      }}
+                      disabled={index === orderedQueue.length - 1}
+                      aria-label={`下移“${queuedEpisode.title}”`}
+                      title="下移"
+                    >
+                      <ChevronDown size={14} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveQueueItem(queuedEpisode.id)}
+                      aria-label={`从待播移除“${queuedEpisode.title}”`}
+                      title="从待播移除"
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </>
       ) : (
         <div className="podcast-now-queue-empty">
           <span>待播列表为空</span>

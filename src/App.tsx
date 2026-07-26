@@ -976,7 +976,12 @@ export default function App() {
   }
 
   function movePodcastQueueEpisode(episodeId: string, direction: -1 | 1) {
-    const next = movePodcastQueueItem(podcastQueueRef.current, episodeId, direction);
+    const next = movePodcastQueueItem(
+      podcastQueueRef.current,
+      episodeId,
+      direction,
+      activePodcastEpisodeRef.current?.episodeId,
+    );
     if (next === podcastQueueRef.current) return;
     const revision = beginPodcastQueueMutation(next);
     return serializePodcastQueueMutation(async () => {
@@ -989,6 +994,42 @@ export default function App() {
         await reloadPodcastQueue(revision);
         showActionNotice("无法调整待播顺序");
         if (import.meta.env.DEV) console.warn("[podcast] queue reorder failed", reason);
+      }
+    });
+  }
+
+  function reorderPodcastQueueEpisode(
+    episodeId: string,
+    targetEpisodeId: string,
+    placement: "before" | "after",
+  ) {
+    const current = podcastQueueRef.current;
+    const sourceIndex = current.findIndex((item) => item.episode.id === episodeId);
+    const targetIndex = current.findIndex((item) => item.episode.id === targetEpisodeId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
+    const next = [...current];
+    const [moved] = next.splice(sourceIndex, 1);
+    if (!moved) return;
+    const remainingTargetIndex = next.findIndex(
+      (item) => item.episode.id === targetEpisodeId,
+    );
+    const insertionIndex = remainingTargetIndex + (placement === "after" ? 1 : 0);
+    next.splice(insertionIndex, 0, moved);
+    const reordered = next.map((item, position) => ({ ...item, position }));
+    if (reordered.every((item, index) => item.episode.id === current[index]?.episode.id)) {
+      return;
+    }
+    const revision = beginPodcastQueueMutation(reordered);
+    return serializePodcastQueueMutation(async () => {
+      try {
+        const items = await invoke<PodcastQueueItem[]>("podcast_queue_reorder", {
+          episodeIds: reordered.map((item) => item.episode.id),
+        });
+        applyPodcastQueueResult(items, revision);
+      } catch (reason) {
+        await reloadPodcastQueue(revision);
+        showActionNotice("无法调整待播顺序");
+        if (import.meta.env.DEV) console.warn("[podcast] queue drag reorder failed", reason);
       }
     });
   }
@@ -2370,6 +2411,7 @@ export default function App() {
               }}
               onRemoveQueueItem={removePodcastQueueEpisode}
               onMoveQueueItem={movePodcastQueueEpisode}
+              onReorderQueueItem={reorderPodcastQueueEpisode}
               onClearQueue={clearPodcastQueue}
               onOpenEpisode={openActivePodcastEpisode}
               onToggleSaved={toggleActivePodcastSaved}

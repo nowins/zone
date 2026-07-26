@@ -41,10 +41,22 @@ export function movePodcastQueueItem(
   queue: PodcastQueueItem[],
   episodeId: string,
   direction: -1 | 1,
+  excludedEpisodeId?: string | null,
 ): PodcastQueueItem[] {
-  const index = queue.findIndex((item) => item.episode.id === episodeId);
-  const target = index + direction;
-  if (index < 0 || target < 0 || target >= queue.length) return queue;
+  const movableIndices = queue
+    .map((item, index) => ({ id: item.episode.id, index }))
+    .filter(({ id }) => id !== excludedEpisodeId);
+  const visibleIndex = movableIndices.findIndex(({ id }) => id === episodeId);
+  const targetVisibleIndex = visibleIndex + direction;
+  if (
+    visibleIndex < 0
+    || targetVisibleIndex < 0
+    || targetVisibleIndex >= movableIndices.length
+  ) {
+    return queue;
+  }
+  const index = movableIndices[visibleIndex].index;
+  const target = movableIndices[targetVisibleIndex].index;
   const next = [...queue];
   [next[index], next[target]] = [next[target], next[index]];
   return next.map((item, position) => ({ ...item, position }));
