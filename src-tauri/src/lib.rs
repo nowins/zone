@@ -17,6 +17,7 @@ use tauri::http::{header, Method, Request, Response, StatusCode};
 use tauri::{Emitter, Manager, State};
 use walkdir::WalkDir;
 
+mod podcast;
 mod qrc;
 mod system_media;
 
@@ -1616,6 +1617,50 @@ mod lyrics_tests {
   }
 }
 
+#[cfg(test)]
+mod audio_protocol_tests {
+  use super::*;
+  use std::time::SystemTime;
+
+  #[test]
+  fn downloaded_podcast_audio_is_served_with_range_and_cors() {
+    let stamp = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("clock")
+      .as_nanos();
+    let directory = std::env::temp_dir().join(format!(
+      "zone-podcast-audio-{}-{stamp}",
+      std::process::id(),
+    ));
+    fs::create_dir_all(&directory).expect("create test directory");
+    let path = directory.join("episode.mp3");
+    let audio = b"ID3-zone-podcast-audio";
+    fs::write(&path, audio).expect("write audio fixture");
+
+    let protocol_path = path.to_string_lossy().replace('\\', "/").replace(' ', "%20");
+    let request = Request::builder()
+      .method(Method::GET)
+      .uri(format!("zone-audio://localhost/{protocol_path}"))
+      .header(header::RANGE, "bytes=4-8")
+      .body(Vec::new())
+      .expect("build range request");
+    let response = serve_audio_protocol(request);
+
+    assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(
+      response.headers().get(header::CONTENT_RANGE).and_then(|value| value.to_str().ok()),
+      Some("bytes 4-8/22"),
+    );
+    assert_eq!(
+      response.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).and_then(|value| value.to_str().ok()),
+      Some("*"),
+    );
+    assert_eq!(response.body(), &audio[4..=8]);
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+}
+
 pub fn run() {
   #[cfg(target_os = "windows")]
   if let Err(error) = system_media::set_process_app_id() {
@@ -1627,6 +1672,15 @@ pub fn run() {
     .manage(LibraryWatcherState::default())
     .register_uri_scheme_protocol("zone-audio", |_ctx, request| serve_audio_protocol(request))
     .setup(|app| {
+      let podcast_state = match podcast::PodcastState::initialize(app.handle()) {
+        Ok(state) => state,
+        Err(error) => {
+          eprintln!("[podcast] initialization failed: {error}");
+          podcast::PodcastState::unavailable(error)
+        }
+      };
+      app.manage(podcast_state);
+
       #[cfg(target_os = "windows")]
       if let Some(window) = app.get_webview_window("main") {
         match window.hwnd() {
@@ -1652,6 +1706,12 @@ pub fn run() {
       decrypt_qrc_lyrics,
       update_system_media,
       update_system_media_timeline,
+      podcast::podcast_search_apple,
+      podcast::podcast_subscribe,
+      podcast::podcast_list_feeds,
+      podcast::podcast_list_episodes,
+      podcast::podcast_download_episode,
+      podcast::podcast_save_progress,
     ])
     .run(tauri::generate_context!())
     .expect("error while running Zone");

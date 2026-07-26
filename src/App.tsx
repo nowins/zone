@@ -5,6 +5,7 @@ import { AppHeader } from "./components/AppHeader";
 import { CollectionSearchField } from "./components/CollectionSearchField";
 import { EmptyState } from "./components/EmptyState";
 import { PlayerBar } from "./components/PlayerBar";
+import { PodcastProbePlayerBar } from "./components/PodcastProbePlayerBar";
 import { ContextMenu } from "./components/ContextMenu";
 import { InfoPanel } from "./components/InfoPanel";
 import { PlaylistDialog, type PlaylistDialogState } from "./components/PlaylistDialog";
@@ -14,6 +15,7 @@ import { SearchResultsView } from "./views/SearchResultsView";
 import { QuickplayView } from "./views/QuickplayView";
 import { NowPlayingView } from "./views/NowPlayingView";
 import { SettingsView } from "./views/SettingsView";
+import { PodcastProbeView } from "./views/PodcastProbeView";
 import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, MAX_HOME_PINS, STORAGE_KEY, VISUALIZER_SAMPLE_COUNT } from "./constants";
 import {
   albumKey,
@@ -40,7 +42,7 @@ import { Presence, useLastNonNull } from "./motion/presence";
 import { MOTION_DURATIONS, MOTION_DRIFT, resolveExitDurationMs } from "./motion/tokens";
 import { resolvePageTransition } from "./motion/pageTransition";
 import { useReducedMotion } from "./motion/useReducedMotion";
-import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, HomePin, MusicFolder, Playlist, RepeatMode, ScanResult, SmartPlaylist, Track, TrackActivityMap, ViewMode } from "./types";
+import type { AlbumGroup, AppPage, ArtistGroup, ContextMenuState, ContextPayload, HomePin, MusicFolder, Playlist, PodcastProbePlayback, RepeatMode, ScanResult, SmartPlaylist, Track, TrackActivityMap, ViewMode } from "./types";
 
 type PlaybackSession = {
   trackId: string;
@@ -48,6 +50,8 @@ type PlaybackSession = {
   countedPlay: boolean;
   countedComplete: boolean;
 };
+
+const PODCAST_PROGRESS_SAVE_INTERVAL_MS = 5_000;
 
 declare global {
   interface Window {
@@ -57,7 +61,7 @@ declare global {
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const previousPageRef = useRef<"quickplay" | "collection" | "settings">("quickplay");
+  const previousPageRef = useRef<"quickplay" | "collection" | "podcasts" | "settings">("quickplay");
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
@@ -76,6 +80,9 @@ export default function App() {
   const navExitTimerRef = useRef<number | null>(null);
   const navTargetRef = useRef<AppPage | null>(null);
   const playbackSessionRef = useRef<PlaybackSession | null>(null);
+  const activePodcastEpisodeRef = useRef<PodcastProbePlayback | null>(null);
+  const pendingPodcastResumeRef = useRef<{ episodeId: string; position: number } | null>(null);
+  const podcastProgressSaveRef = useRef<{ episodeId: string; savedAt: number; position: number } | null>(null);
   const activityMigrationRef = useRef(false);
   const scanInFlightRef = useRef(false);
   const queuedScanRef = useRef<{ folders: MusicFolder[]; automatic: boolean } | null>(null);
@@ -102,6 +109,7 @@ export default function App() {
   });
   const reducedMotion = useReducedMotion();
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+  const [activePodcastEpisode, setActivePodcastEpisode] = useState<PodcastProbePlayback | null>(null);
   const [queue, setQueue] = useState<string[]>([]);
   const [playHistory, setPlayHistory] = useState<string[]>([]);
   const [trackActivity, setTrackActivity] = useState<TrackActivityMap>({});
@@ -127,6 +135,7 @@ export default function App() {
   const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   foldersRef.current = folders;
+  activePodcastEpisodeRef.current = activePodcastEpisode;
 
   useLibraryWatcher(folders, restored, () => {
     void rescan(folders, true);
@@ -135,6 +144,8 @@ export default function App() {
   useEffect(() => () => {
     if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
     if (navExitTimerRef.current !== null) window.clearTimeout(navExitTimerRef.current);
+    const audio = audioRef.current;
+    if (audio) persistPodcastProgress(audio.currentTime, audio.duration, true);
   }, []);
 
   useEffect(() => {
@@ -229,16 +240,25 @@ export default function App() {
   }, [needsMetadataRefresh, restored, tracks]);
 
   useEffect(() => {
-    playbackSessionRef.current = activeTrackId
+    playbackSessionRef.current = !activePodcastEpisode && activeTrackId
       ? { trackId: activeTrackId, maxProgress: 0, countedPlay: false, countedComplete: false }
       : null;
-  }, [activeTrackId]);
+  }, [activePodcastEpisode?.episodeId, activeTrackId]);
 
   const activeTrack = useMemo(
     () => tracks.find((track) => track.id === activeTrackId) ?? null,
     [tracks, activeTrackId],
   );
-  const activePlaybackSourceKey = playbackSourceKey(activeTrack);
+  const activePlayback = useMemo(() => {
+    if (activePodcastEpisode) return { kind: "podcast" as const, episode: activePodcastEpisode };
+    if (activeTrack) return { kind: "music" as const, track: activeTrack };
+    return null;
+  }, [activePodcastEpisode, activeTrack]);
+  const activePlaybackSourceKey = activePlayback?.kind === "podcast"
+    ? `podcast\0${activePlayback.episode.episodeId}\0${activePlayback.episode.downloadedPath}`
+    : activePlayback
+      ? `music\0${playbackSourceKey(activePlayback.track)}`
+      : null;
 
   const baseQueueIds = useMemo(
     () => (queue.length > 0 ? queue : tracks.map((track) => track.id)),
@@ -251,10 +271,10 @@ export default function App() {
   );
 
   const activePlaybackIndex = playbackQueueIds.indexOf(activeTrackId ?? "");
-  const canMovePrevious = Boolean(activeTrack) && (
+  const canMovePrevious = !activePodcastEpisode && Boolean(activeTrack) && (
     repeat === "all" ? playbackQueueIds.length > 1 : activePlaybackIndex > 0
   );
-  const canMoveNext = Boolean(activeTrack) && (
+  const canMoveNext = !activePodcastEpisode && Boolean(activeTrack) && (
     repeat === "all"
       ? playbackQueueIds.length > 1
       : activePlaybackIndex >= 0 && activePlaybackIndex < playbackQueueIds.length - 1
@@ -345,34 +365,67 @@ export default function App() {
   }, [volume]);
 
   useEffect(() => {
-    if (!isPlaying) {
-      if (visualizerFrameRef.current) cancelAnimationFrame(visualizerFrameRef.current);
+    if (!isPlaying || activePlayback?.kind !== "music") {
+      if (visualizerFrameRef.current) {
+        cancelAnimationFrame(visualizerFrameRef.current);
+        visualizerFrameRef.current = null;
+      }
       beatFrameRef.current = createIdleBeatFrame();
-      publishIdleBeatFrame();
+      if (activePlayback?.kind === "podcast") publishPodcastVisualizerReset();
+      else publishIdleBeatFrame();
       return;
     }
 
     startVisualizer();
     return () => {
-      if (visualizerFrameRef.current) cancelAnimationFrame(visualizerFrameRef.current);
+      if (visualizerFrameRef.current) {
+        cancelAnimationFrame(visualizerFrameRef.current);
+        visualizerFrameRef.current = null;
+      }
     };
-  }, [isPlaying, activeTrackId]);
+  }, [activePlaybackSourceKey, isPlaying]);
 
   useEffect(() => {
-    if (!audioRef.current || !activeTrack) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!activePlayback) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      setProgress(0);
+      setDuration(0);
+      setIsPlaying(false);
+      return;
+    }
 
-    const sourceUrl = convertFileSrc(activeTrack.path, "zone-audio");
+    const sourceUrl = activePlayback.kind === "podcast"
+      ? convertFileSrc(activePlayback.episode.downloadedPath, "zone-audio")
+      : convertFileSrc(activePlayback.track.path, "zone-audio");
     visualizerUnavailableRef.current = false;
     realtimeBeatRef.current = null;
-    offlineBeatGridRef.current = beatGridCacheRef.current.get(activeTrack.id) ?? null;
+    offlineBeatGridRef.current = activePlayback.kind === "music"
+      ? beatGridCacheRef.current.get(activePlayback.track.id) ?? null
+      : null;
     beatFrameRef.current = createIdleBeatFrame();
-    publishIdleBeatFrame();
-    audioRef.current.crossOrigin = "anonymous";
-    audioRef.current.src = sourceUrl;
-    audioRef.current.load();
-    void preAnalyzeBeatGrid(activeTrack);
+    if (activePlayback.kind === "music") {
+      publishIdleBeatFrame();
+      pendingPodcastResumeRef.current = null;
+      void preAnalyzeBeatGrid(activePlayback.track);
+    } else {
+      beatAnalysisRequestRef.current += 1;
+      publishPodcastVisualizerReset();
+      pendingPodcastResumeRef.current = {
+        episodeId: activePlayback.episode.episodeId,
+        position: activePlayback.episode.savedProgressSeconds,
+      };
+    }
+    setProgress(0);
+    setDuration(0);
+    audio.crossOrigin = "anonymous";
+    audio.src = sourceUrl;
+    audio.load();
 
-    void audioRef.current
+    void audio
       .play()
       .then(() => {
         setIsPlaying(true);
@@ -433,6 +486,12 @@ export default function App() {
 
   function playTrack(track: Track, sourceTracks = tracks) {
     setQueue(sourceTracks.map((item) => item.id));
+    if (activePodcastEpisode) {
+      flushPodcastProgress();
+      setActivePodcastEpisode(null);
+      setActiveTrackId(track.id);
+      return;
+    }
     if (track.id === activeTrackId) {
       recordSkipIfEligible();
       restartCurrentPlayback();
@@ -446,6 +505,12 @@ export default function App() {
   function playTracks(targetTracks: Track[]) {
     if (targetTracks.length === 0) return;
     setQueue(targetTracks.map((track) => track.id));
+    if (activePodcastEpisode) {
+      flushPodcastProgress();
+      setActivePodcastEpisode(null);
+      setActiveTrackId(targetTracks[0].id);
+      return;
+    }
     if (targetTracks[0].id === activeTrackId) {
       recordSkipIfEligible();
       restartCurrentPlayback();
@@ -454,6 +519,31 @@ export default function App() {
       recordSkipIfEligible();
       setActiveTrackId(targetTracks[0].id);
     }
+  }
+
+  function playPodcastEpisode(episode: PodcastProbePlayback) {
+    const current = activePodcastEpisode;
+    if (
+      current?.episodeId === episode.episodeId
+      && current.downloadedPath === episode.downloadedPath
+    ) {
+      const audio = audioRef.current;
+      if (audio?.paused) {
+        void audio
+          .play()
+          .then(() => {
+            setIsPlaying(true);
+            void resumeAudioGraph();
+          })
+          .catch(() => setIsPlaying(false));
+      }
+      return;
+    }
+
+    flushPodcastProgress();
+    playbackSessionRef.current = null;
+    audioRef.current?.pause();
+    setActivePodcastEpisode(episode);
   }
 
   function appendToQueue(targetTracks: Track[]) {
@@ -497,7 +587,7 @@ export default function App() {
   }
 
   function toggleFavorite() {
-    if (!activeTrack) return;
+    if (activePodcastEpisode || !activeTrack) return;
     toggleFavoriteTrack(activeTrack);
   }
 
@@ -563,8 +653,8 @@ export default function App() {
     requestNavigation("collection");
   }
 
-  function navigatePage(nextPage: "quickplay" | "collection" | "settings") {
-    if (nextPage === "quickplay" || nextPage === "settings") {
+  function navigatePage(nextPage: "quickplay" | "collection" | "podcasts" | "settings") {
+    if (nextPage !== "collection") {
       clearCollectionSearch();
     }
     requestNavigation(nextPage);
@@ -656,7 +746,7 @@ export default function App() {
   }
 
   function openNowPlaying() {
-    if (!activeTrack) return;
+    if (activePodcastEpisode || !activeTrack) return;
     if (page !== "nowPlaying") previousPageRef.current = page;
     requestNavigation("nowPlaying");
   }
@@ -825,16 +915,80 @@ export default function App() {
     setContextMenu(null);
   }
 
+  function persistPodcastProgress(currentTime: number, trackDuration: number, force = false) {
+    const episode = activePodcastEpisodeRef.current;
+    if (!episode) return;
+    const positionSeconds = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
+    const durationSeconds = Number.isFinite(trackDuration) ? Math.max(0, trackDuration) : 0;
+    const now = Date.now();
+    const previous = podcastProgressSaveRef.current;
+    if (
+      !force
+      && previous?.episodeId === episode.episodeId
+      && now - previous.savedAt < PODCAST_PROGRESS_SAVE_INTERVAL_MS
+    ) {
+      return;
+    }
+    if (
+      force
+      && previous?.episodeId === episode.episodeId
+      && Math.abs(previous.position - positionSeconds) < 0.25
+    ) {
+      return;
+    }
+
+    podcastProgressSaveRef.current = {
+      episodeId: episode.episodeId,
+      savedAt: now,
+      position: positionSeconds,
+    };
+    void invoke("podcast_save_progress", {
+      episodeId: episode.episodeId,
+      positionSeconds,
+      durationSeconds,
+    }).catch((reason) => {
+      if (import.meta.env.DEV) console.warn("[podcast] progress save failed", reason);
+    });
+  }
+
+  function flushPodcastProgress() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    persistPodcastProgress(audio.currentTime, audio.duration, true);
+  }
+
+  function handleLoadedMetadata(audio: HTMLAudioElement) {
+    const nextDuration = Number.isFinite(audio.duration) ? Math.max(0, audio.duration) : 0;
+    setDuration(nextDuration);
+    const pending = pendingPodcastResumeRef.current;
+    const episode = activePodcastEpisodeRef.current;
+    if (!pending || !episode || pending.episodeId !== episode.episodeId) return;
+    pendingPodcastResumeRef.current = null;
+    const resumePosition = pending.position > 0 && (
+      nextDuration <= 0 || pending.position < Math.max(0, nextDuration - 5)
+    )
+      ? Math.min(pending.position, nextDuration || pending.position)
+      : 0;
+    if (resumePosition <= 0) return;
+    audio.currentTime = resumePosition;
+    setProgress(resumePosition);
+  }
+
+  function handleAudioPause() {
+    setIsPlaying(false);
+  }
+
   function togglePlay() {
     const audio = audioRef.current;
-    if (!audio || !activeTrack) return;
+    if (!audio || !activePlayback) return;
 
     if (audio.paused) {
       void audio.play().then(() => {
         setIsPlaying(true);
         void resumeAudioGraph();
-      });
+      }).catch(() => setIsPlaying(false));
     } else {
+      flushPodcastProgress();
       audio.pause();
       setIsPlaying(false);
     }
@@ -842,7 +996,7 @@ export default function App() {
 
   function restartCurrentPlayback() {
     const audio = audioRef.current;
-    if (!audio || !activeTrack) return;
+    if (!audio || activePodcastEpisode || !activeTrack) return;
     audio.currentTime = 0;
     setProgress(0);
     playbackSessionRef.current = {
@@ -975,6 +1129,17 @@ export default function App() {
     });
   }
 
+  function publishPodcastVisualizerReset() {
+    publishVisualizerFrame({
+      samples: Array.from({ length: VISUALIZER_SAMPLE_COUNT }, () => 0.035),
+      energy: 0.055,
+      beatPulse: 0,
+      beatPhase: 0,
+      onsetStrength: 0,
+      beatConfidence: 0,
+    });
+  }
+
   function startVisualizer() {
     void resumeAudioGraph();
     const frequencyData = new Uint8Array(analyserRef.current?.frequencyBinCount ?? 512);
@@ -1089,6 +1254,10 @@ export default function App() {
 
   function handleTimeUpdate(currentTime: number, trackDuration: number) {
     setProgress(currentTime);
+    if (activePodcastEpisodeRef.current) {
+      persistPodcastProgress(currentTime, trackDuration);
+      return;
+    }
     const session = playbackSessionRef.current;
     if (!session || session.trackId !== activeTrackId) return;
     session.maxProgress = Math.max(session.maxProgress, currentTime);
@@ -1099,6 +1268,7 @@ export default function App() {
   }
 
   function move(delta: 1 | -1, reason: "user" | "ended" = "user"): QueueMoveResult {
+    if (activePodcastEpisode) return { kind: "boundary" };
     if (baseQueueIds.length === 0) return { kind: "empty" };
     if (delta === 1 && reason === "user") recordSkipIfEligible();
 
@@ -1120,6 +1290,12 @@ export default function App() {
   }
 
   function onEnded() {
+    if (activePodcastEpisodeRef.current) {
+      const audio = audioRef.current;
+      if (audio) persistPodcastProgress(audio.duration, audio.duration, true);
+      setIsPlaying(false);
+      return;
+    }
     markCompletedPlayback();
     if (repeat === "one" && audioRef.current) {
       restartCurrentPlayback();
@@ -1139,13 +1315,13 @@ export default function App() {
   }
 
   useSystemMedia({
-    track: activeTrack,
+    track: activePodcastEpisode ? null : activeTrack,
     isPlaying,
     canPrevious: canMovePrevious,
     canNext: canMoveNext,
     duration,
     position: progress,
-    isFavorite: isActiveTrackFavorite,
+    isFavorite: activePodcastEpisode ? false : isActiveTrackFavorite,
     onPlay: () => {
       if (audioRef.current?.paused) togglePlay();
     },
@@ -1154,13 +1330,15 @@ export default function App() {
     },
     onToggle: togglePlay,
     onPrevious: () => {
-      move(-1);
+      if (!activePodcastEpisode) move(-1);
     },
     onNext: () => {
-      move(1);
+      if (!activePodcastEpisode) move(1);
     },
     onSeek: seek,
-    onFavorite: toggleFavorite,
+    onFavorite: () => {
+      if (!activePodcastEpisode) toggleFavorite();
+    },
   });
 
   // Overlays and chrome build their element ahead of the Presence wrapper so
@@ -1175,26 +1353,40 @@ export default function App() {
     />
   ) : null;
   const playerBarElement = chromeVisible ? (
-    <PlayerBar
-      track={activeTrack}
-      isPlaying={isPlaying}
-      progress={progress}
-      duration={duration}
-      volume={volume}
-      shuffle={shuffle}
-      repeat={repeat}
-      isFavorite={isActiveTrackFavorite}
-      onPlayPause={togglePlay}
-      onPrevious={() => move(-1)}
-      onNext={() => move(1)}
-      onSeek={seek}
-      onVolume={setVolume}
-      onShuffle={() => setShuffle((value) => !value)}
-      onRepeat={() => setRepeat((value) => (value === "off" ? "all" : value === "all" ? "one" : "off"))}
-      onToggleFavorite={toggleFavorite}
-      onOpenNowPlaying={openNowPlaying}
-      onNavigateCollection={navigateCollection}
-    />
+    activePodcastEpisode ? (
+      <PodcastProbePlayerBar
+        episode={activePodcastEpisode}
+        isPlaying={isPlaying}
+        progress={progress}
+        duration={duration}
+        volume={volume}
+        onPlayPause={togglePlay}
+        onSeek={seek}
+        onVolume={setVolume}
+        onOpenPodcasts={() => navigatePage("podcasts")}
+      />
+    ) : (
+      <PlayerBar
+        track={activeTrack}
+        isPlaying={isPlaying}
+        progress={progress}
+        duration={duration}
+        volume={volume}
+        shuffle={shuffle}
+        repeat={repeat}
+        isFavorite={isActiveTrackFavorite}
+        onPlayPause={togglePlay}
+        onPrevious={() => move(-1)}
+        onNext={() => move(1)}
+        onSeek={seek}
+        onVolume={setVolume}
+        onShuffle={() => setShuffle((value) => !value)}
+        onRepeat={() => setRepeat((value) => (value === "off" ? "all" : value === "all" ? "one" : "off"))}
+        onToggleFavorite={toggleFavorite}
+        onOpenNowPlaying={openNowPlaying}
+        onNavigateCollection={navigateCollection}
+      />
+    )
   ) : null;
   const contextMenuElement = contextMenu ? (
     <ContextMenu
@@ -1268,9 +1460,9 @@ export default function App() {
         ref={audioRef}
         crossOrigin="anonymous"
         onTimeUpdate={(event) => handleTimeUpdate(event.currentTarget.currentTime, event.currentTarget.duration || duration)}
-        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || 0)}
+        onLoadedMetadata={(event) => handleLoadedMetadata(event.currentTarget)}
         onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onPause={handleAudioPause}
         onEnded={onEnded}
       />
       <Titlebar
@@ -1406,6 +1598,14 @@ export default function App() {
               />
             )}
           </section>
+        )}
+
+        {page === "podcasts" && (
+          <PodcastProbeView
+            activeEpisodeId={activePodcastEpisode?.episodeId ?? null}
+            isPlaying={isPlaying && Boolean(activePodcastEpisode)}
+            onPlayDownloaded={playPodcastEpisode}
+          />
         )}
 
         {page === "nowPlaying" && (

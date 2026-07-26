@@ -1,5 +1,6 @@
 @import "./styles/base.css";
 @import "./styles/collection.css";
+@import "./styles/podcasts.css";
 @import "./styles/quickplay.css";
 @import "./styles/player.css";
 @import "./styles/now-playing.css";

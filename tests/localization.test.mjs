@@ -8,7 +8,10 @@ const librarySource = readFileSync("src/views/LibraryView.tsx", "utf8");
 const nowPlayingSource = readFileSync("src/views/NowPlayingView.tsx", "utf8");
 const settingsSource = readFileSync("src/views/SettingsView.tsx", "utf8");
 const playlistSource = readFileSync("src/views/PlaylistBrowser.tsx", "utf8");
+const podcastSource = readFileSync("src/views/PodcastProbeView.tsx", "utf8");
 const emptySource = readFileSync("src/components/EmptyState.tsx", "utf8");
+const playerBarSource = readFileSync("src/components/PlayerBar.tsx", "utf8");
+const podcastPlayerBarSource = readFileSync("src/components/PodcastProbePlayerBar.tsx", "utf8");
 const titlebarSource = readFileSync("src/components/Titlebar.tsx", "utf8");
 
 test("collection totals are shown once and use Chinese units", () => {
@@ -29,7 +32,10 @@ test("functional UI copy does not fall back to English", () => {
     artistSource,
     librarySource,
     nowPlayingSource,
+    podcastSource,
     emptySource,
+    playerBarSource,
+    podcastPlayerBarSource,
     titlebarSource,
   ].join("\n");
 
@@ -47,6 +53,12 @@ test("functional UI copy does not fall back to English", () => {
     'title="Maximize"',
     'title="Close"',
     "songs indexed",
+    "Search podcasts",
+    "Add RSS",
+    "Download and play",
+    "Back to podcasts",
+    "Unknown author",
+    "No episodes",
   ]) {
     assert.ok(!source.includes(englishCopy), `unexpected English UI copy: ${englishCopy}`);
   }

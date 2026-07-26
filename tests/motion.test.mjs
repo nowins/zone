@@ -334,6 +334,18 @@ test("pageTransition: peer pages pivot along the navigation order", () => {
   assert.equal(backward.kind, "pivot");
   assert.equal(backward.direction, -1);
 
+  const intoPodcasts = resolvePageTransition("collection", "podcasts");
+  assert.equal(intoPodcasts.kind, "pivot");
+  assert.equal(intoPodcasts.direction, 1);
+
+  const outOfPodcasts = resolvePageTransition("podcasts", "collection");
+  assert.equal(outOfPodcasts.kind, "pivot");
+  assert.equal(outOfPodcasts.direction, -1);
+
+  const podcastsToSettings = resolvePageTransition("podcasts", "settings");
+  assert.equal(podcastsToSettings.kind, "pivot");
+  assert.equal(podcastsToSettings.direction, 1);
+
   const skip = resolvePageTransition("quickplay", "settings");
   assert.equal(skip.kind, "pivot");
   assert.equal(skip.direction, 1);

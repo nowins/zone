@@ -1,6 +1,6 @@
 import { MOTION_DURATIONS, MOTION_DRIFT } from "./tokens.js";
 
-export type MotionPage = "quickplay" | "collection" | "nowPlaying" | "settings";
+export type MotionPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings";
 
 export interface PageTransition {
   kind: "pivot" | "push" | "pop";
@@ -13,7 +13,7 @@ export interface PageTransition {
 }
 
 // Peer pages in left-to-right navigation order; nowPlaying sits above them.
-const PEER_PAGES: readonly MotionPage[] = ["quickplay", "collection", "settings"];
+const PEER_PAGES: readonly MotionPage[] = ["quickplay", "collection", "podcasts", "settings"];
 
 /**
  * Resolves the WP7-style choreography between two pages: peers pivot along

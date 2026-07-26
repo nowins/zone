@@ -141,8 +141,69 @@ export type ScanResult = {
 };
 
 export type ViewMode = "songs" | "albums" | "artists" | "playlists";
-export type AppPage = "quickplay" | "collection" | "nowPlaying" | "settings";
+export type AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings";
 export type RepeatMode = "off" | "one" | "all";
+
+export type PodcastSearchResult = {
+  id: string;
+  title: string;
+  author: string;
+  feedUrl: string;
+  artworkUrl?: string | null;
+  episodeCount?: number | null;
+};
+
+export type PodcastFeed = {
+  id: string;
+  feedUrl: string;
+  title: string;
+  author?: string | null;
+  description?: string | null;
+  artworkUrl?: string | null;
+  lastFetchedAt: number;
+};
+
+export type PodcastDownloadState = "none" | "downloading" | "downloaded" | "failed";
+
+export type PodcastEpisode = {
+  id: string;
+  feedId: string;
+  title: string;
+  description?: string | null;
+  publishedAt?: number | null;
+  durationSeconds?: number | null;
+  enclosureUrl: string;
+  enclosureType?: string | null;
+  artworkUrl?: string | null;
+  downloadState: PodcastDownloadState;
+  localPath?: string | null;
+  downloadedBytes: number;
+  totalBytes?: number | null;
+  progressSeconds: number;
+  completed: boolean;
+};
+
+export type PodcastSubscribeResult = {
+  feed: PodcastFeed;
+  episodeCount: number;
+  insertedCount: number;
+};
+
+export type PodcastDownloadResult = {
+  episodeId: string;
+  localPath: string;
+  downloadedBytes: number;
+  resumed: boolean;
+};
+
+export type PodcastProbePlayback = {
+  episodeId: string;
+  title: string;
+  podcastTitle: string;
+  downloadedPath: string;
+  artworkUrl?: string | null;
+  savedProgressSeconds: number;
+};
 
 export type LyricsWord = {
   text: string;

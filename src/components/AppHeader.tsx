@@ -5,7 +5,7 @@ export function AppHeader({
   onNavigate,
 }: {
   page: Exclude<AppPage, "nowPlaying">;
-  onNavigate: (page: "quickplay" | "collection" | "settings") => void;
+  onNavigate: (page: "quickplay" | "collection" | "podcasts" | "settings") => void;
 }) {
   return (
     <header className="app-header">
@@ -23,6 +23,12 @@ export function AppHeader({
             onClick={() => onNavigate("collection")}
           >
             收藏
+          </button>
+          <button
+            className={page === "podcasts" ? "active" : ""}
+            onClick={() => onNavigate("podcasts")}
+          >
+            播客
           </button>
         </nav>
       </div>

@@ -22,7 +22,8 @@ test("automatic scans serialize bursts and ignore results for stale folder sets"
 });
 
 test("automatic scans do not reload an unchanged active audio file", () => {
-  assert.ok(appSource.includes("const activePlaybackSourceKey = playbackSourceKey(activeTrack)"));
+  assert.ok(appSource.includes("playbackSourceKey(activePlayback.track)"));
   assert.ok(appSource.includes("}, [activePlaybackSourceKey]);"));
+  assert.ok(!appSource.includes("}, [activePlayback]);"));
   assert.ok(!appSource.includes("}, [activeTrack]);"));
 });

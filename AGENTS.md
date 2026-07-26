@@ -11,6 +11,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - 本地音乐播放优先。支持格式：`mp3`、`flac`、`m4a`、`aac`、`wav`、`ogg`（见 `src-tauri/src/lib.rs` 的 `is_supported_audio`）。
 - Zune 风格的收藏导航：专辑、艺术家、歌曲、播放列表。
 - Zune 风格的 quickplay 首页：固定（pin）的曲目/专辑/艺术家/播放列表磁贴。
+- 播客实验页：优先验证大陆用户可用的 Apple 中国区检索、公开 RSS、下载后播放与断点保存；播客与本地音乐的队列/收藏/播放统计保持独立。
 - 丰富的「正在播放」页面：封面拼贴背景、克制的控制区、细腻排版、音频响应式底部光焰。
 - 内嵌歌词模式：同一空间内的第二种状态，支持逐行/逐词同步（参考 `docs/lyrics-experience-plan.md`）。
 - 平滑、克制的动效。避免浮夸或明显现代的效果，不破坏 Zune 参照。
@@ -25,7 +26,9 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `encoding_rs`：修复老旧中文元数据的 GBK 乱码。
   - `walkdir`：曲库扫描。
   - `rfd`：文件夹/歌词文件选择对话框。
-  - `reqwest`（rustls）：在线歌词请求（经 Rust 端中转，见下文安全约束）。
+  - `reqwest`（rustls）：在线歌词、播客目录/RSS 与音频下载请求（均经 Rust 端中转，见下文安全约束）。
+  - `feed-rs`：RSS/Atom 播客订阅源解析。
+  - `rusqlite`（bundled SQLite）+ `sha2`：播客订阅、单集、下载与播放进度持久化及稳定标识。
   - `notify`：递归监听已添加的音乐目录，驱动防抖后的曲库自动刷新。
   - `windows` 0.61（仅 Windows）：系统媒体传输控制（SMTC）集成。
 
@@ -52,17 +55,18 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 
 ## 代码结构
 
-- `src/App.tsx`：顶层应用状态（约 1200 行）。负责曲库扫描编排、播放队列、当前曲目、随机/重复、进度、音量、播放活动统计（playCount/skip）、播放列表持久化、home pins、Web Audio 分析器搭建与可视化采样、节拍分析。
-- `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "nowPlaying" | "settings"`。
+- `src/App.tsx`：顶层应用状态（约 1650 行）。负责曲库扫描编排、播放队列、当前曲目、播客播放所有权、随机/重复、进度、音量、播放活动统计（playCount/skip）、播放列表持久化、home pins、Web Audio 分析器搭建与可视化采样、节拍分析。
+- `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。
 - `src/constants.ts`：`STORAGE_KEY = "zone-player-state-v1"`、`LIBRARY_SCHEMA_VERSION = 6`、`DEFAULT_PLAYLIST_ID = "favorites"`、`MAX_HOME_PINS = 12`、`VISUALIZER_SAMPLE_COUNT = 180`。
 - `src/views/`：页面级视图。
   - `QuickplayView.tsx`：Zune quickplay 首页，可固定/排序磁贴。
   - `LibraryView.tsx`：收藏页标签切换（专辑/艺术家/歌曲/播放列表），保持轻薄并向下委托。
   - `ArtistBrowser.tsx`：Zune 风格艺术家导航（艺术家 → 专辑 → 歌曲）。
   - `PlaylistBrowser.tsx`：当前队列与已存播放列表（含智能播放列表）。
+  - `PodcastProbeView.tsx`：播客纵向链路实验页，支持 Apple 中国区搜索、手动 RSS、订阅刷新、单集下载与播放。
   - `NowPlayingView.tsx`：全屏正在播放。Canvas 封面拼贴背景、队列浮层、曲目卡片、收藏按钮、进度/走带控制、歌词模式切换。
   - `SettingsView.tsx`：音乐文件夹管理与在线歌词来源（provider）启用/优先级设置。
-- `src/components/`：可复用 UI。包括 `Cover`、`PlayerBar`、`TransportControls`、`PlaybackProgress`、`ContextMenu`、`InfoPanel`、`Titlebar`、`EmptyState`、`PlaylistDialog`、`SmartPlaylistDialog`、`LyricsStage`（歌词舞台）、`NowPlayingMosaicCanvas` 与 `AudioGlowCanvas`（正在播放的两个 Canvas 视觉层）。
+- `src/components/`：可复用 UI。包括 `Cover`、`PlayerBar`、`PodcastProbePlayerBar`、`TransportControls`、`PlaybackProgress`、`ContextMenu`、`InfoPanel`、`Titlebar`、`EmptyState`、`PlaylistDialog`、`SmartPlaylistDialog`、`LyricsStage`（歌词舞台）、`NowPlayingMosaicCanvas` 与 `AudioGlowCanvas`（正在播放的两个 Canvas 视觉层）。
 - `src/hooks/`：
   - `useLibraryWatcher.ts`：配置 Rust 目录监听、接收文件变化事件并在 800ms 防抖后触发曲库刷新。
   - `useLyrics.ts`：歌词加载/缓存/在线搜索状态机（本地缓存键 `zone-local-lyrics-v1`）。
@@ -89,12 +93,13 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `pageTransition.ts`：页面切换编排表（pivot/push/pop），由 App 的 `requestNavigation` 消费。
   - `useReducedMotion.ts`：reduced-motion 统一 hook。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`collection`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`motion`（动效原语层：feather 入场、页面/浮层出入场、反馈动画、唯一 reduced-motion 块）、`animations-responsive`（正在播放入场编排与响应式）。
-- `src-tauri/src/lib.rs`（约 1000 行）：Tauri 命令与自定义协议。
-  - 命令：`select_music_folder`、`select_lyrics_file`、`export_lyrics_file`、`scan_library`、`watch_music_folders`、`load_local_lyrics`、`request_lyrics_provider`、`update_system_media`、`update_system_media_timeline`。
+- `src-tauri/src/lib.rs`（约 1700 行）：Tauri 命令、自定义协议与应用初始化接线。
+  - 命令：`select_music_folder`、`select_lyrics_file`、`export_lyrics_file`、`scan_library`、`watch_music_folders`、`load_local_lyrics`、`request_lyrics_provider`、`update_system_media`、`update_system_media_timeline`，以及 `podcast_*` 播客命令。
   - `zone-audio` 自定义协议（`serve_audio_protocol`）：CORS 安全的本地音频播放与 Web Audio 分析，含字节范围（`Accept-Ranges`/`Content-Range`）与正确的音频 content type。
   - 歌词：内嵌标签歌词、同目录 sidecar 歌词（`.ttml` → `.lrc` → `.txt`，文件名和扩展名大小写不敏感）、UTF-16/GBK 解码修复。
   - 封面提取与缓存（内嵌封面写入缓存目录）。
   - 文件内自带 Rust 单元测试（`#[cfg(test)]` 模块）。
+- `src-tauri/src/podcast.rs`：Apple 中国区播客搜索、公共 URL/DNS/重定向安全校验、20 MiB RSS 限流与解析、SQLite 存储、受控目录下载/Range 续传、音频魔数识别和播放进度；包含离线测试与显式启用的真实网络 smoke。
 - `src-tauri/src/qrc.rs`：有边界限制的 QQ QRC 解密/解压实现；解密后的逐词时间轴由前端 `src/utils/qrc.ts` 转换为统一 TTML 再进入通用解析器。
 - `src-tauri/src/system_media.rs`：Windows SMTC 集成（设置 AppUserModelID、媒体信息/时间线更新、媒体按键事件转发到前端）。
 - `docs/`：设计文档（`lyrics-experience-plan.md`、`lyrics-motion-review.md`）与视觉证据截图（`docs/evidence/`），整个目录为本地未跟踪。`docs/design-qa.md` 记录歌词模式的视觉 QA。
@@ -163,6 +168,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - 收藏是 id 为 `DEFAULT_PLAYLIST_ID`（`favorites`）的默认播放列表；读取播放列表状态时必须用 `normalizePlaylists`，让旧状态补齐默认收藏列表。
 - home pins 用 `normalizeHomePins`/`reconcileHomePins` 做归一化与对账。
 - 歌词缓存、手动绑定与按曲目保存的在线搜索信息映射在 `zone-local-lyrics-v1`；歌词显示偏好在 `zone-lyrics-display-v1`；歌词 provider 设置在 `zone-lyrics-providers-v1`；按曲目与歌词来源保存的时间校准在 `zone-lyrics-timing-v1`。
+- 播客状态不写入音乐 `localStorage` schema；订阅、单集、下载与进度存于应用数据目录的 `podcasts.sqlite`，音频位于同目录下的 `podcast-downloads/`。
 
 ## 播放与 Web Audio
 
@@ -182,6 +188,8 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 ```text
 audioRef -> MediaElementAudioSourceNode -> AnalyserNode -> GainNode -> destination
 ```
+
+- 播客下载完成后也经同一个 `zone-audio` 与主 `<audio>` 播放；播客不得进入音乐 queue、收藏或播放统计，也不得触发音乐的整文件节拍预分析。
 
 如果可视化看起来是假的或从不响应，先在 dev 控制台检查：
 
@@ -231,7 +239,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 
 ## 已实现的用户体验
 
-- `quickplay`、`collection`、`now playing`、`settings` 导航可用。
+- `quickplay`、`collection`、`podcasts`、`now playing`、`settings` 导航可用。
 - 已添加的音乐目录会被递归监听；音频文件或目录结构变化后，前端防抖并串行刷新曲库。
 - 专辑网格纵向滚动；选中专辑显示曲目列表而不是立即播放。
 - 专辑悬停播放按钮有延迟且低调。
@@ -243,6 +251,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 歌词模式：本地（内嵌/sidecar/手动绑定）与在线歌词，支持逐行/逐词同步、音译、TTML 背景人声、长音细节、滚轮浏览、点按跳转、在线搜索信息映射、手动选词与 TTML/LRC 导出。
 - 统一动效系统：页面 pivot/push/pop 成对过渡、浮层成对出入场、封面在播放条与正在播放页之间 FLIP 飞行、feather 错峰入场、reduced-motion 统一收敛（见 `docs/motion-system.md`）。
 - Windows 系统媒体控制（SMTC）：媒体信息、时间线、媒体按键与收藏同步。
+- 播客实验链路：Apple 中国区检索或手动 RSS → 订阅/单集入库 → 受控下载 → `zone-audio` 播放 → 5 秒节流的断点保存；使用独立播客底栏，不复用音乐队列和正在播放页。
 
 ## 测试策略
 
@@ -250,7 +259,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 两类测试：
   - 纯逻辑测试：从 `.tmp/visualizer-tests/`（由 `tsconfig.test.json` 编译）导入 util 函数做行为断言。被编译的 util 清单维护在 `tsconfig.test.json` 的 `include` 中——新增被测 util 时要同步加入。
   - 源码/CSS 守卫测试：用 `readFileSync` 读取 `src/` 下的源码与 CSS，做字符串包含/排除断言（如 `localization.test.mjs`、`nowPlayingCss.test.mjs`、`settingsCss.test.mjs`）。修改 UI 结构、CSS 类名或文案时这些测试可能失败，需同步更新。
-- Rust 单元测试在 `src-tauri/src/lib.rs` 的 `#[cfg(test)]` 模块中（`cargo test` 可运行）。
+- Rust 单元测试在 `src-tauri/src/lib.rs` 与 `src-tauri/src/podcast.rs` 的 `#[cfg(test)]` 模块中（`cargo test --lib` 可运行）。真实播客网络 smoke 默认忽略，仅在显式设置 `ZONE_PODCAST_LIVE=1` 后运行。
 - 动效内核（`src/motion/`）的行为测试在 `tests/motion.test.mjs`；封面 FLIP 接线守卫在 `tests/coverFlip.test.mjs`，其运行时行为回归（手写 DOM mock + 假动画时钟）在 `tests/coverFlipBehavior.test.mjs`；可视化总线在 `tests/visualizerBus.test.mjs`。动效系统的原则与接入约定见 `docs/motion-system.md`。
 - 视觉/动效类改动同时参考 `docs/lyrics-motion-review.md` 的审查基线（Emil Kowalski 动效规范：动效有目的、时长 ≤300ms、可打断、transform/opacity、尊重减少动态效果）。
 
@@ -259,6 +268,8 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 在线歌词请求一律经 Rust 命令 `request_lyrics_provider` 中转，前端不直接 fetch：
   - URL 白名单校验（`validate_lyrics_provider_url`）：只允许已注册的 LRCLIB、AMLL TTML DB、网易云音乐和 QQ 音乐 HTTPS 主机与固定 API 路径，无端口、禁重定向；QQ 回退搜索的查询参数也逐项校验。新增 provider 必须同时注册允许规则。
   - 超时钳制在 1.5s–20s；响应体大小有上限（`LYRICS_PROVIDER_RESPONSE_LIMIT`）；仅对 502/503/504 重试一次。
+- 播客网络请求由 `src-tauri/src/podcast.rs` 专用客户端处理：Apple 搜索固定 `country=CN`；RSS/音频只允许 HTTP(S)，每次重定向重新校验并固定解析地址，拒绝凭据、fragment、非 80/443 端口与内网/环回 IP。为兼容大陆常见 Clash fake-IP，仅允许“域名解析所得”的 `198.18.0.0/15`，直接输入该网段仍被拒绝。
+- RSS 响应上限 20 MiB，音频上限 2 GiB；下载目标只按数据库中的 episode ID 生成，先写 `.part` 并支持 Range 续传，通过音频魔数后再原子落盘。
 - `zone-audio` 协议：对协议路径做百分号解码与路径校验，范围请求做上限钳制，避免任意文件读取与超大响应。
 - `tauri.conf.json` 中 `csp: null` 且 `assetProtocol.scope: ["**"]`，改动配置时注意不要进一步扩大攻击面。
 - Tauri capabilities（`src-tauri/capabilities/default.json`）只授予窗口控制与 `opener:default` 最小权限。
