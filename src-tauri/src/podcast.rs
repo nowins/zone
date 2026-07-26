@@ -1,4 +1,5 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use encoding_rs::{Encoding, UTF_16BE, UTF_16LE, UTF_8};
 use feed_rs::model::{Entry as ParsedEntry, Feed as ParsedFeed};
 use reqwest::header::{self, HeaderMap};
 use reqwest::{StatusCode, Url};
@@ -34,6 +35,7 @@ const PODCAST_HOME_LATEST_LIMIT: usize = 40;
 const PODCAST_HOME_DOWNLOADED_LIMIT: usize = 40;
 const PODCAST_HOME_SAVED_LIMIT: usize = 40;
 const PODCAST_QUEUE_LIMIT: usize = 500;
+const PODCAST_SYNTHETIC_ID_PREFIX: &str = "zone-generated:";
 const USER_AGENT: &str = "Zone/0.1 (local podcast player)";
 
 #[derive(Clone, Debug)]
@@ -1322,7 +1324,20 @@ fn parse_feed_bytes(
   etag: Option<String>,
   last_modified: Option<String>,
 ) -> Result<ParsedPodcast, String> {
-  let parsed = feed_rs::parser::parse(bytes).map_err(|error| format!("无法解析播客订阅源：{error}"))?;
+  if bytes.len() > PODCAST_FEED_RESPONSE_LIMIT {
+    return Err("播客订阅源超过大小限制".to_string());
+  }
+  let parsed = match podcast_feed_parser(final_url).parse(bytes) {
+    Ok(parsed) => parsed,
+    Err(original_error) => {
+      let Some(repaired) = repair_feed_bytes(bytes) else {
+        return Err(format!("无法解析播客订阅源：{original_error}"));
+      };
+      podcast_feed_parser(final_url)
+        .parse(repaired.as_slice())
+        .map_err(|_| format!("无法解析播客订阅源：{original_error}"))?
+    }
+  };
   normalize_feed(
     parsed,
     final_url,
@@ -1332,6 +1347,226 @@ fn parse_feed_bytes(
     etag,
     last_modified,
   )
+}
+
+fn podcast_feed_parser(base_uri: &str) -> feed_rs::parser::Parser {
+  feed_rs::parser::Builder::new()
+    .base_uri(Some(base_uri))
+    .id_generator(|links, title, uri| {
+      let link = links.first().map(|value| value.href.as_str()).unwrap_or("");
+      let title = title.as_ref().map(|value| value.content.as_str()).unwrap_or("");
+      let uri = uri.unwrap_or("");
+      format!(
+        "{PODCAST_SYNTHETIC_ID_PREFIX}{}",
+        hash_identifier("feed-generated-id", &[uri, link, title])
+      )
+    })
+    .build()
+}
+
+fn repair_feed_bytes(bytes: &[u8]) -> Option<Vec<u8>> {
+  let encoding = detect_feed_encoding(bytes);
+  let (decoded, _, _) = encoding.decode(bytes);
+  let decoded = decoded.trim_start_matches(|character: char| {
+    character == '\u{feff}' || character == '\0' || character.is_ascii_whitespace()
+  });
+  let mut text = decoded
+    .chars()
+    .filter(|character| is_allowed_xml_character(*character))
+    .collect::<String>();
+  rewrite_xml_encoding_as_utf8(&mut text);
+  Some(repair_entities_outside_cdata(&text)?.into_bytes())
+}
+
+fn detect_feed_encoding(bytes: &[u8]) -> &'static Encoding {
+  if let Some((encoding, _)) = Encoding::for_bom(bytes) {
+    return encoding;
+  }
+  let head = &bytes[..bytes.len().min(512)];
+  let little_endian_marker = find_bytes(head, b"<\0?\0x\0m\0l\0");
+  let big_endian_marker = find_bytes(head, b"\0<\0?\0x\0m\0l");
+  match (little_endian_marker, big_endian_marker) {
+    (Some(little), Some(big)) => return if little < big { UTF_16LE } else { UTF_16BE },
+    (Some(_), None) => return UTF_16LE,
+    (None, Some(_)) => return UTF_16BE,
+    (None, None) => {}
+  }
+  declared_xml_encoding(head).unwrap_or(UTF_8)
+}
+
+fn declared_xml_encoding(head: &[u8]) -> Option<&'static Encoding> {
+  let lowered = head.iter().map(u8::to_ascii_lowercase).collect::<Vec<_>>();
+  let declaration_start = find_bytes(&lowered, b"<?xml")?;
+  let declaration_end = find_bytes(&lowered[declaration_start..], b"?>")? + declaration_start;
+  let encoding_start = find_bytes(&lowered[declaration_start..declaration_end], b"encoding")?
+    + declaration_start
+    + b"encoding".len();
+  let mut cursor = encoding_start;
+  while lowered.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+    cursor += 1;
+  }
+  if lowered.get(cursor) != Some(&b'=') {
+    return None;
+  }
+  cursor += 1;
+  while lowered.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+    cursor += 1;
+  }
+  let quote = *lowered.get(cursor)?;
+  if quote != b'"' && quote != b'\'' {
+    return None;
+  }
+  cursor += 1;
+  let end = lowered[cursor..declaration_end].iter().position(|byte| *byte == quote)? + cursor;
+  Encoding::for_label(&lowered[cursor..end])
+}
+
+fn rewrite_xml_encoding_as_utf8(text: &mut String) {
+  let Some(declaration_end) = text.find("?>") else {
+    return;
+  };
+  let declaration = &text[..declaration_end];
+  if !declaration.trim_start().starts_with("<?xml") {
+    return;
+  }
+  let lowered = declaration.to_ascii_lowercase();
+  let Some(name_start) = lowered.find("encoding") else {
+    return;
+  };
+  let Some(equals_offset) = lowered[name_start + b"encoding".len()..].find('=') else {
+    return;
+  };
+  let equals = name_start + b"encoding".len() + equals_offset;
+  let Some(quote_offset) = lowered[equals + 1..].find(['"', '\'']) else {
+    return;
+  };
+  let quote_start = equals + 1 + quote_offset;
+  let quote = lowered.as_bytes()[quote_start];
+  let Some(value_length) = lowered[quote_start + 1..].bytes().position(|byte| byte == quote) else {
+    return;
+  };
+  let value_start = quote_start + 1;
+  let value_end = value_start + value_length;
+  text.replace_range(value_start..value_end, "UTF-8");
+}
+
+fn repair_entities_outside_cdata(text: &str) -> Option<String> {
+  let mut output = String::with_capacity(text.len());
+  let mut remainder = text;
+  while let Some(cdata_start) = remainder.find("<![CDATA[") {
+    append_repaired_xml_entities(&mut output, &remainder[..cdata_start])?;
+    let cdata = &remainder[cdata_start..];
+    let Some(cdata_end) = cdata.find("]]>") else {
+      append_repair_fragment(&mut output, cdata)?;
+      return Some(output);
+    };
+    let cdata_end = cdata_end + b"]]>".len();
+    append_repair_fragment(&mut output, &cdata[..cdata_end])?;
+    remainder = &cdata[cdata_end..];
+  }
+  append_repaired_xml_entities(&mut output, remainder)?;
+  Some(output)
+}
+
+fn append_repaired_xml_entities(output: &mut String, text: &str) -> Option<()> {
+  let bytes = text.as_bytes();
+  let mut cursor = 0usize;
+  while cursor < bytes.len() {
+    if bytes[cursor] != b'&' {
+      let character = text[cursor..].chars().next().expect("valid UTF-8 character");
+      if output.len().saturating_add(character.len_utf8()) > PODCAST_FEED_RESPONSE_LIMIT {
+        return None;
+      }
+      output.push(character);
+      cursor += character.len_utf8();
+      continue;
+    }
+
+    let entity_end = bytes[cursor + 1..bytes.len().min(cursor + 35)]
+      .iter()
+      .position(|byte| *byte == b';')
+      .map(|offset| cursor + 1 + offset);
+    let Some(entity_end) = entity_end else {
+      append_repair_fragment(output, "&amp;")?;
+      cursor += 1;
+      continue;
+    };
+    let entity = &text[cursor + 1..entity_end];
+    if is_valid_xml_entity(entity) {
+      append_repair_fragment(output, &text[cursor..=entity_end])?;
+      cursor = entity_end + 1;
+      continue;
+    }
+    if is_named_entity(entity) {
+      if let Some(replacement) = html_entity_numeric_reference(entity) {
+        append_repair_fragment(output, replacement)?;
+      } else {
+        append_repair_fragment(output, "&amp;")?;
+        append_repair_fragment(output, entity)?;
+        append_repair_fragment(output, ";")?;
+      }
+      cursor = entity_end + 1;
+      continue;
+    }
+    append_repair_fragment(output, "&amp;")?;
+    cursor += 1;
+  }
+  Some(())
+}
+
+fn append_repair_fragment(output: &mut String, value: &str) -> Option<()> {
+  if output.len().saturating_add(value.len()) > PODCAST_FEED_RESPONSE_LIMIT {
+    return None;
+  }
+  output.push_str(value);
+  Some(())
+}
+
+fn is_valid_xml_entity(entity: &str) -> bool {
+  matches!(entity, "amp" | "lt" | "gt" | "quot" | "apos")
+    || entity
+      .strip_prefix('#')
+      .is_some_and(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+    || entity
+      .strip_prefix("#x")
+      .or_else(|| entity.strip_prefix("#X"))
+      .is_some_and(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+}
+
+fn is_named_entity(entity: &str) -> bool {
+  entity.len() <= 32
+    && entity.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+    && entity.bytes().all(|byte| byte.is_ascii_alphanumeric())
+}
+
+fn html_entity_numeric_reference(entity: &str) -> Option<&'static str> {
+  match entity {
+    "nbsp" => Some("&#160;"),
+    "copy" => Some("&#169;"),
+    "reg" => Some("&#174;"),
+    "middot" => Some("&#183;"),
+    "ndash" => Some("&#8211;"),
+    "mdash" => Some("&#8212;"),
+    "lsquo" => Some("&#8216;"),
+    "rsquo" => Some("&#8217;"),
+    "ldquo" => Some("&#8220;"),
+    "rdquo" => Some("&#8221;"),
+    "bull" => Some("&#8226;"),
+    "hellip" => Some("&#8230;"),
+    "trade" => Some("&#8482;"),
+    _ => None,
+  }
+}
+
+fn is_allowed_xml_character(character: char) -> bool {
+  matches!(character, '\t' | '\n' | '\r')
+    || (character >= '\u{20}' && character != '\u{fffe}' && character != '\u{ffff}')
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+  (!needle.is_empty() && needle.len() <= haystack.len())
+    .then(|| haystack.windows(needle.len()).position(|window| window == needle))
+    .flatten()
 }
 
 fn normalize_feed(
@@ -1357,6 +1592,17 @@ fn normalize_feed(
     .first()
     .map(|person| plain_text(&person.name, PODCAST_TITLE_LIMIT))
     .filter(|value| !value.is_empty())
+    .or_else(|| {
+      parsed.contributors.iter().find_map(|person| {
+        let value = if matches!(person.name.as_str(), "managingEditor" | "webMaster") {
+          person.email.as_deref().unwrap_or(&person.name)
+        } else {
+          &person.name
+        };
+        let value = plain_text(value, PODCAST_TITLE_LIMIT);
+        (!value.is_empty()).then_some(value)
+      })
+    })
     .or_else(|| clean_hint(author_hint, PODCAST_TITLE_LIMIT));
   let description = parsed
     .description
@@ -1402,7 +1648,7 @@ fn normalize_feed(
 
 fn normalize_episode(entry: &ParsedEntry, feed_id: &str, feed_artwork: Option<&str>) -> Option<ParsedPodcastEpisode> {
   let enclosure = find_enclosure(entry)?;
-  let guid = clean_text(&entry.id, 4_096);
+  let guid = clean_text(&entry.id, 4_096).filter(|value| !value.starts_with(PODCAST_SYNTHETIC_ID_PREFIX));
   let identity_key = if let Some(guid) = guid.as_deref() {
     format!("guid:{guid}")
   } else {
@@ -3657,6 +3903,135 @@ mod tests {
     );
     assert_eq!(parsed.episodes[1].expected_bytes, Some(200));
     assert_eq!(parsed.episodes[1].duration_seconds, Some(61.0));
+  }
+
+  #[test]
+  fn dirty_feed_repair_preserves_cdata_and_visible_unknown_entities() {
+    let dirty = r#"
+      <?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0">
+        <channel>
+          <title>研究&nbsp;电台</title>
+          <description>脏 XML 恢复测试</description>
+          <managingEditor>编辑部</managingEditor>
+          <item>
+            <title><![CDATA[AT&T 特别节目]]></title>
+            <description>A &bogus123; B{control}</description>
+            <enclosure
+              url="https://audio.example.test/dirty.mp3?source=rss&episode=1"
+              type="audio/mpeg" />
+          </item>
+        </channel>
+      </rss>"#
+      .replace("{control}", "\u{000b}");
+    let mut bytes = vec![0xff, 0xfe];
+    for unit in dirty.encode_utf16() {
+      bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    assert!(feed_rs::parser::parse(bytes.as_slice()).is_err());
+    let parsed = parse_feed_bytes(
+      &bytes,
+      "https://feeds.example.test/dirty.xml",
+      None,
+      None,
+      None,
+      None,
+      None,
+    )
+    .expect("repair dirty fixture");
+    assert_eq!(parsed.feed.title, "研究 电台");
+    assert_eq!(parsed.feed.author.as_deref(), Some("编辑部"));
+    assert_eq!(parsed.episodes[0].title, "AT&T 特别节目");
+    assert_eq!(parsed.episodes[0].description.as_deref(), Some("A &bogus123; B"));
+    assert_eq!(
+      parsed.episodes[0].enclosure_url,
+      "https://audio.example.test/dirty.mp3?source=rss&episode=1"
+    );
+  }
+
+  #[test]
+  fn utf16_feeds_and_relative_enclosures_have_stable_records() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-16"?>
+      <rss version="2.0">
+        <channel>
+          <title>清晨电台</title>
+          <description>编码兼容测试</description>
+          <item>
+            <title>第一期：你好</title>
+            <enclosure url="../audio/utf16-one.mp3" type="audio/mpeg" />
+          </item>
+        </channel>
+      </rss>"#;
+    let mut little_endian = vec![0xff, 0xfe];
+    let mut big_endian = Vec::new();
+    for unit in xml.encode_utf16() {
+      little_endian.extend_from_slice(&unit.to_le_bytes());
+      big_endian.extend_from_slice(&unit.to_be_bytes());
+    }
+
+    let parse = |bytes: &[u8], name: &str| {
+      parse_feed_bytes(
+        bytes,
+        "https://feeds.example.test/shows/feed.xml",
+        None,
+        None,
+        None,
+        None,
+        None,
+      )
+      .unwrap_or_else(|error| panic!("parse {name} UTF-16 fixture: {error}"))
+    };
+    let little = parse(&little_endian, "little-endian");
+    let big = parse(&big_endian, "big-endian");
+    assert_eq!(little.feed.title, "清晨电台");
+    assert_eq!(little.episodes[0].title, "第一期：你好");
+    assert_eq!(
+      little.episodes[0].enclosure_url,
+      "https://feeds.example.test/audio/utf16-one.mp3"
+    );
+    assert!(little.episodes[0].guid.is_none());
+    assert_eq!(little.episodes[0].id, big.episodes[0].id);
+  }
+
+  #[test]
+  fn unrecoverable_feed_reports_the_original_parse_error() {
+    let broken = br#"<?xml version="1.0"?><rss version="2.0"><channel><title>&bogus;</title>"#;
+    let original = feed_rs::parser::Builder::new()
+      .base_uri(Some("https://feeds.example.test/broken.xml"))
+      .build()
+      .parse(broken.as_slice())
+      .expect_err("fixture should fail")
+      .to_string();
+    let error = parse_feed_bytes(
+      broken,
+      "https://feeds.example.test/broken.xml",
+      None,
+      None,
+      None,
+      None,
+      None,
+    )
+    .expect_err("repair should still fail");
+    assert!(error.contains(&original), "{error}");
+  }
+
+  #[test]
+  fn feed_repair_keeps_input_and_output_within_the_response_limit() {
+    let oversized = vec![b' '; PODCAST_FEED_RESPONSE_LIMIT + 1];
+    let error = parse_feed_bytes(
+      &oversized,
+      "https://feeds.example.test/oversized.xml",
+      None,
+      None,
+      None,
+      None,
+      None,
+    )
+    .expect_err("oversized feed should fail before parsing");
+    assert_eq!(error, "播客订阅源超过大小限制");
+
+    let expanding = "&".repeat(PODCAST_FEED_RESPONSE_LIMIT / b"&amp;".len() + 1);
+    assert!(repair_feed_bytes(expanding.as_bytes()).is_none());
   }
 
   #[test]
