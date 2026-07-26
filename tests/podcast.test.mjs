@@ -186,6 +186,78 @@ test("continue listening cards reserve circular styling for the play action", ()
   );
 });
 
+test("listening home filters before truncation and surfaces new and played state on artwork", () => {
+  for (const label of ["最近更新", "未收听", "下载优先"]) {
+    includes(
+      podcastViewSource,
+      new RegExp(`label:\\s*"${label}"`),
+      `missing listening filter: ${label}`,
+    );
+  }
+  includes(
+    podcastViewSource,
+    /className="podcast-listen-filters"[\s\S]{0,120}aria-label="筛选来自你的节目"[\s\S]{0,320}aria-pressed=\{listenFilter\s*===\s*filter\.id\}/,
+    "listening filters must expose an accessible mutually exclusive state",
+  );
+  includes(
+    podcastViewSource,
+    /listenFilter\s*===\s*"unplayed"[\s\S]{0,160}home\.unplayedEpisodes[\s\S]{0,160}listenFilter\s*===\s*"download-first"[\s\S]{0,160}home\.downloadPriorityEpisodes/,
+    "bounded listening filters must select their database-filtered result sets",
+  );
+  includes(
+    podcastViewSource,
+    /filterPodcastListeningEpisodes\(\s*listeningFilterEpisodes,\s*listenFilter\s*\)/,
+    "the selected database result set must still use the shared stable sorter",
+  );
+  includes(
+    podcastViewSource,
+    /filteredLatestEpisodes\.slice\(0,\s*8\)/,
+    "the visible limit must be applied after filtering",
+  );
+  excludes(
+    podcastViewSource,
+    /latestEpisodes\.slice\(/,
+    "the raw latest feed must not be truncated before filtering",
+  );
+  includes(
+    podcastViewSource,
+    /isPodcastEpisodeNew\(\s*episode,\s*feedById\.get\(episode\.feedId\)\?\.subscribedAt,\s*listenNewReferenceTime/,
+    "new badges must combine discovery time with the feed subscription time",
+  );
+  includes(
+    podcastViewSource,
+    /listenFilter:\s*PodcastListenFilter/,
+    "the active listening filter must survive the podcast session snapshot",
+  );
+
+  const episodeRowSource = topLevelFunctionSource(podcastViewSource, "EpisodeRow");
+  includes(
+    episodeRowSource,
+    /showArtwork[\s\S]{0,900}podcast-episode-artwork[\s\S]{0,500}podcast-cover-progress/,
+    "listening rows must place played state on their artwork",
+  );
+  includes(
+    episodeRowSource,
+    /podcast-new-badge[^>]*>\s*新\s*</,
+    "new episodes must use a concise localized marker",
+  );
+  includes(
+    episodeRowSource,
+    /24 小时内更新/,
+    "new state must be announced without relying on color alone",
+  );
+  includes(
+    podcastCss,
+    /\.podcast-listen-filters button\[aria-pressed="true"\][\s\S]{0,180}var\(--accent\)/,
+    "the selected listening filter needs a restrained accent treatment",
+  );
+  includes(
+    podcastCss,
+    /\.podcast-episode\.with-artwork\s*\{[\s\S]{0,120}64px minmax\(0,\s*1fr\) 100px/,
+    "artwork rows must preserve a bounded action column",
+  );
+});
+
 test("podcast feeds refresh conditionally while cached content stays usable", () => {
   includes(
     typesSource,
@@ -268,7 +340,7 @@ test("episode detail exposes saved, played, queue, and offline lifecycle actions
   includes(podcastRustSource, /CREATE TABLE IF NOT EXISTS podcast_saved_episodes/, "saved episodes must persist in SQLite");
   includes(
     podcastViewSource,
-    /invoke<PodcastEpisodeDetail\[\]>\("podcast_list_saved_episodes"\)[\s\S]{0,320}savedEpisodeDetails\.map\(\(detail\)\s*=>\s*detail\.episode\)/,
+    /invoke<PodcastEpisodeDetail\[\]>\("podcast_list_saved_episodes"\)[\s\S]{0,520}savedEpisodeDetails\.map\(\(detail\)\s*=>\s*detail\.episode\)/,
     "the saved-detail command must be normalized back to episode rows before rendering",
   );
 

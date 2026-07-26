@@ -165,6 +165,35 @@
   color: #fff;
 }
 
+.podcast-listen-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: -3px 0 12px;
+}
+
+.podcast-listen-filters button {
+  min-height: 34px;
+  padding: 5px 10px;
+  color: rgba(247, 242, 246, 0.52);
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px solid rgba(247, 242, 246, 0.13);
+  font-size: 10px;
+  letter-spacing: 0.025em;
+}
+
+.podcast-listen-filters button:hover {
+  color: rgba(255, 255, 255, 0.88);
+  border-color: rgba(247, 242, 246, 0.3);
+}
+
+.podcast-listen-filters button[aria-pressed="true"] {
+  color: var(--accent);
+  background: rgba(241, 36, 134, 0.055);
+  border-color: rgba(241, 36, 134, 0.62);
+}
+
 .podcast-inline-state {
   min-height: 72px;
   display: flex;
@@ -201,6 +230,40 @@
 
 .podcast-continue-card.active {
   border-left-color: var(--accent);
+}
+
+.podcast-continue-artwork,
+.podcast-episode-artwork {
+  position: relative;
+  min-width: 0;
+}
+
+.podcast-continue-artwork {
+  width: 76px;
+  height: 76px;
+}
+
+.podcast-continue-artwork .podcast-artwork,
+.podcast-episode-artwork .podcast-artwork {
+  width: 100%;
+  height: 100%;
+}
+
+.podcast-cover-progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 4px;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(8, 5, 9, 0.88);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .podcast-continue-open {
@@ -388,6 +451,15 @@
   border-bottom: 1px solid rgba(247, 242, 246, 0.075);
 }
 
+.podcast-episode.with-artwork {
+  grid-template-columns: 64px minmax(0, 1fr) 100px;
+}
+
+.podcast-episode-artwork {
+  width: 64px;
+  height: 64px;
+}
+
 .podcast-episode.active {
   background: linear-gradient(90deg, rgba(216, 32, 121, 0.08), transparent 72%);
 }
@@ -413,9 +485,36 @@
   text-align: left;
 }
 
-.podcast-episode-copy > span {
+.podcast-episode-copy > .podcast-episode-feed,
+.podcast-episode-meta .podcast-episode-feed {
   color: var(--accent);
   font-size: 11px;
+}
+
+.podcast-episode-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  color: rgba(247, 242, 246, 0.44);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.podcast-episode-meta .podcast-episode-feed {
+  max-width: min(42%, 280px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.podcast-new-badge {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 650;
 }
 
 .podcast-episode-copy > strong {

@@ -30,6 +30,12 @@ import {
 } from "lucide-react";
 import { formatTime } from "../utils/music";
 import { podcastArtworkSrc } from "../utils/podcastArtwork";
+import {
+  filterPodcastListeningEpisodes,
+  isPodcastEpisodeNew,
+  podcastEpisodePlayedPercent,
+  type PodcastListenFilter,
+} from "../utils/podcastListening";
 import { mergePodcastEpisodePlayback } from "../utils/podcastPlayback";
 import type {
   PodcastDiscoveryShow,
@@ -98,6 +104,7 @@ type PodcastSessionSnapshot = {
   screen: PodcastScreen;
   returnScreen: RootPodcastScreen;
   query: string;
+  listenFilter: PodcastListenFilter;
   searchResults: PodcastSearchResult[];
   selectedFeed: PodcastFeed | null;
   episodes: PodcastEpisode[];
@@ -111,10 +118,20 @@ type PodcastSessionSnapshot = {
 const EMPTY_HOME: PodcastHome = {
   continueListening: [],
   latestEpisodes: [],
+  unplayedEpisodes: [],
+  downloadPriorityEpisodes: [],
   downloadedEpisodes: [],
   savedEpisodes: [],
 };
 const DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1_000;
+const PODCAST_LISTEN_FILTERS: Array<{
+  id: PodcastListenFilter;
+  label: string;
+}> = [
+  { id: "recent", label: "最近更新" },
+  { id: "unplayed", label: "未收听" },
+  { id: "download-first", label: "下载优先" },
+];
 let discoveryCache: { shows: PodcastDiscoveryShow[]; fetchedAt: number } | null = null;
 let podcastSessionSnapshot: PodcastSessionSnapshot | null = null;
 
@@ -145,6 +162,9 @@ export function PodcastView({
     restoredSession?.returnScreen ?? "listen",
   );
   const [query, setQuery] = useState(restoredSession?.query ?? "");
+  const [listenFilter, setListenFilter] = useState<PodcastListenFilter>(
+    restoredSession?.listenFilter ?? "recent",
+  );
   const [rssUrl, setRssUrl] = useState("");
   const [searchState, setSearchState] = useState<RequestState>(
     restoredSession?.searchResults.length ? "ready" : "idle",
@@ -244,6 +264,8 @@ export function PodcastView({
       setHome({
         continueListening: nextHome.continueListening ?? [],
         latestEpisodes: nextHome.latestEpisodes ?? [],
+        unplayedEpisodes: nextHome.unplayedEpisodes ?? [],
+        downloadPriorityEpisodes: nextHome.downloadPriorityEpisodes ?? [],
         downloadedEpisodes: nextHome.downloadedEpisodes ?? [],
         savedEpisodes: savedEpisodeDetails.map((detail) => detail.episode),
       });
@@ -370,6 +392,13 @@ export function PodcastView({
           )
           : current.continueListening.map(update),
         latestEpisodes: current.latestEpisodes.map(update),
+        unplayedEpisodes:
+          nextEpisode.completed || nextEpisode.progressSeconds > 0
+            ? current.unplayedEpisodes.filter(
+              (episode) => episode.id !== nextEpisode.id,
+            )
+            : current.unplayedEpisodes.map(update),
+        downloadPriorityEpisodes: current.downloadPriorityEpisodes.map(update),
         downloadedEpisodes: nextEpisode.localPath
           ? upsertEpisode(current.downloadedEpisodes, nextEpisode)
           : current.downloadedEpisodes.filter(
@@ -439,6 +468,7 @@ export function PodcastView({
       screen,
       returnScreen,
       query,
+      listenFilter,
       searchResults,
       selectedFeed,
       episodes,
@@ -453,6 +483,7 @@ export function PodcastView({
     episodeOriginScreen,
     episodes,
     lastPlayedEpisode,
+    listenFilter,
     query,
     returnScreen,
     screen,
@@ -475,6 +506,7 @@ export function PodcastView({
         screen,
         returnScreen,
         query,
+        listenFilter,
         searchResults,
         selectedFeed,
         episodes,
@@ -515,6 +547,7 @@ export function PodcastView({
     episodeOriginFeed,
     episodeOriginScreen,
     episodeRequest,
+    listenFilter,
     loadEpisodeDetail,
     onEpisodeRequestHandled,
     screen,
@@ -964,6 +997,26 @@ export function PodcastView({
     () => home.latestEpisodes.map(liveEpisode),
     [home.latestEpisodes, liveEpisode],
   );
+  const listeningFilterEpisodes = useMemo(() => {
+    const source =
+      listenFilter === "unplayed"
+        ? home.unplayedEpisodes
+        : listenFilter === "download-first"
+          ? home.downloadPriorityEpisodes
+          : home.latestEpisodes;
+    return source.map(liveEpisode);
+  }, [
+    home.downloadPriorityEpisodes,
+    home.latestEpisodes,
+    home.unplayedEpisodes,
+    listenFilter,
+    liveEpisode,
+  ]);
+  const filteredLatestEpisodes = useMemo(
+    () => filterPodcastListeningEpisodes(listeningFilterEpisodes, listenFilter),
+    [listenFilter, listeningFilterEpisodes],
+  );
+  const listenNewReferenceTime = Date.now();
   const hasListenContent =
     continueListeningEpisodes.length > 0 || latestEpisodes.length > 0;
   const savedEpisodes = useMemo(
@@ -1135,22 +1188,51 @@ export function PodcastView({
           ) : null}
 
           {latestEpisodes.length > 0 ? (
-            <PodcastSection title="来自你的节目" count={latestEpisodes.length}>
-              <div className="podcast-home-episodes">
-                {latestEpisodes.slice(0, 8).map((episode) => (
-                  <EpisodeRow
-                    key={episode.id}
-                    episode={episode}
-                    active={currentEpisodeId === episode.id}
-                    isPlaying={isPlaying}
-                    downloading={downloadingId === episode.id}
-                    showFeed
-                    onOpen={() => openEpisodeDetail(episode, "listen")}
-                    onPlay={() => playEpisode(episode)}
-                    onDownload={() => void downloadEpisode(episode)}
-                  />
+            <PodcastSection
+              title="来自你的节目"
+              count={filteredLatestEpisodes.length}
+            >
+              <div
+                className="podcast-listen-filters"
+                role="group"
+                aria-label="筛选来自你的节目"
+              >
+                {PODCAST_LISTEN_FILTERS.map((filter) => (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    aria-pressed={listenFilter === filter.id}
+                    onClick={() => setListenFilter(filter.id)}
+                  >
+                    {filter.label}
+                  </button>
                 ))}
               </div>
+              {filteredLatestEpisodes.length > 0 ? (
+                <div className="podcast-home-episodes">
+                  {filteredLatestEpisodes.slice(0, 8).map((episode) => (
+                    <EpisodeRow
+                      key={episode.id}
+                      episode={episode}
+                      active={currentEpisodeId === episode.id}
+                      isPlaying={isPlaying}
+                      downloading={downloadingId === episode.id}
+                      showFeed
+                      showArtwork
+                      isNew={isPodcastEpisodeNew(
+                        episode,
+                        feedById.get(episode.feedId)?.subscribedAt,
+                        listenNewReferenceTime,
+                      )}
+                      onOpen={() => openEpisodeDetail(episode, "listen")}
+                      onPlay={() => playEpisode(episode)}
+                      onDownload={() => void downloadEpisode(episode)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <PodcastEmpty label="没有未收听的单集" />
+              )}
             </PodcastSection>
           ) : null}
 
@@ -1593,6 +1675,13 @@ function ShowCard({
   );
 }
 
+function podcastPlayedLabel(episode: PodcastEpisode): string | null {
+  const percentage = podcastEpisodePlayedPercent(episode);
+  if (percentage === 100) return "已播完";
+  if (percentage !== null) return `已播 ${percentage}%`;
+  return episode.progressSeconds > 0 ? "收听中" : null;
+}
+
 function ContinueCard({
   episode,
   active,
@@ -1606,36 +1695,40 @@ function ContinueCard({
   onOpen: () => void;
   onPlay: () => void;
 }) {
-  const percentage =
-    episode.durationSeconds && episode.durationSeconds > 0
-      ? Math.min(
-        100,
-        Math.max(
-          0,
-          episode.progressSeconds / episode.durationSeconds * 100,
-        ),
-      )
-      : 0;
+  const percentage = podcastEpisodePlayedPercent(episode) ?? 0;
+  const progressLabel = podcastPlayedLabel(episode);
   return (
     <article className={`podcast-continue-card${active ? " active" : ""}`}>
-      <PodcastArtwork
-        url={episode.artworkUrl ?? episode.feedArtworkUrl}
-        title={episode.feedTitle ?? episode.title}
-      />
+      <div className="podcast-continue-artwork">
+        <PodcastArtwork
+          url={episode.artworkUrl ?? episode.feedArtworkUrl}
+          title={episode.feedTitle ?? episode.title}
+        />
+        {progressLabel ? (
+          <span className="podcast-cover-progress" aria-hidden="true">
+            {progressLabel}
+          </span>
+        ) : null}
+      </div>
       <button
         type="button"
         className="podcast-continue-open"
         onClick={onOpen}
+        aria-label={`查看单集：${episode.title}，${progressLabel ?? "继续收听"}`}
       >
         <span>{episode.feedTitle || "播客"}</span>
         <strong>{episode.title}</strong>
         <span
           className="podcast-card-progress"
-          aria-label={`已播放 ${Math.round(percentage)}%`}
+          aria-hidden="true"
         >
           <i style={{ width: `${percentage}%` }} />
         </span>
-        <small>继续从 {formatTime(episode.progressSeconds)} 收听</small>
+        <small>
+          {episode.durationSeconds
+            ? `共 ${formatTime(episode.durationSeconds)}`
+            : "继续收听"}
+        </small>
       </button>
       <button
         type="button"
@@ -1657,6 +1750,8 @@ function EpisodeRow({
   isPlaying,
   downloading,
   showFeed = false,
+  showArtwork = false,
+  isNew = false,
   onOpen,
   onPlay,
   onDownload,
@@ -1666,30 +1761,71 @@ function EpisodeRow({
   isPlaying: boolean;
   downloading: boolean;
   showFeed?: boolean;
+  showArtwork?: boolean;
+  isNew?: boolean;
   onOpen: () => void;
   onPlay: () => void;
   onDownload: () => void;
 }) {
+  const progressLabel = podcastPlayedLabel(episode);
+  const accessibilityLabel = [
+    `查看单集：${episode.title}`,
+    isNew ? "24 小时内更新" : null,
+    progressLabel,
+  ].filter(Boolean).join("，");
   return (
-    <article className={`podcast-episode${active ? " active" : ""}`}>
-      <div className="podcast-episode-date">
-        <span>{formatEpisodeDate(episode.publishedAt)}</span>
-        <small>
-          {episode.durationSeconds
-            ? formatTime(episode.durationSeconds)
-            : "时长未知"}
-        </small>
-      </div>
+    <article
+      className={`podcast-episode${showArtwork ? " with-artwork" : ""}${
+        active ? " active" : ""
+      }`}
+    >
+      {showArtwork ? (
+        <div className="podcast-episode-artwork">
+          <PodcastArtwork
+            url={episode.artworkUrl ?? episode.feedArtworkUrl}
+            title={episode.feedTitle ?? episode.title}
+          />
+          {progressLabel ? (
+            <span className="podcast-cover-progress" aria-hidden="true">
+              {progressLabel}
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <div className="podcast-episode-date">
+          <span>{formatEpisodeDate(episode.publishedAt)}</span>
+          <small>
+            {episode.durationSeconds
+              ? formatTime(episode.durationSeconds)
+              : "时长未知"}
+          </small>
+        </div>
+      )}
       <button
         type="button"
         className="podcast-episode-copy podcast-episode-open"
         onClick={onOpen}
-        aria-label={`查看单集：${episode.title}`}
+        aria-label={accessibilityLabel}
       >
-        {showFeed && episode.feedTitle ? <span>{episode.feedTitle}</span> : null}
+        {showArtwork ? (
+          <span className="podcast-episode-meta">
+            {showFeed && episode.feedTitle ? (
+              <span className="podcast-episode-feed">{episode.feedTitle}</span>
+            ) : null}
+            {isNew ? <em className="podcast-new-badge">新</em> : null}
+            <span>{formatEpisodeDate(episode.publishedAt)}</span>
+            <span>
+              {episode.durationSeconds
+                ? formatTime(episode.durationSeconds)
+                : "时长未知"}
+            </span>
+          </span>
+        ) : showFeed && episode.feedTitle ? (
+          <span className="podcast-episode-feed">{episode.feedTitle}</span>
+        ) : null}
         <strong>{episode.title}</strong>
         {episode.description ? <p>{plainText(episode.description)}</p> : null}
-        {episode.progressSeconds > 0 || episode.completed ? (
+        {!showArtwork && (episode.progressSeconds > 0 || episode.completed) ? (
           <small>
             {episode.completed
               ? "已播放"

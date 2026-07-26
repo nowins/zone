@@ -231,6 +231,8 @@ export type PodcastDownloadResult = {
 export type PodcastHome = {
   continueListening: PodcastEpisode[];
   latestEpisodes: PodcastEpisode[];
+  unplayedEpisodes: PodcastEpisode[];
+  downloadPriorityEpisodes: PodcastEpisode[];
   downloadedEpisodes: PodcastEpisode[];
   savedEpisodes: PodcastEpisode[];
 };
