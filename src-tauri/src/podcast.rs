@@ -1,6 +1,8 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use encoding_rs::{Encoding, UTF_16BE, UTF_16LE, UTF_8};
 use feed_rs::model::{Entry as ParsedEntry, Feed as ParsedFeed};
+use quick_xml::events::{BytesStart, Event};
+use quick_xml::Reader;
 use reqwest::header::{self, HeaderMap};
 use reqwest::{StatusCode, Url};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
@@ -1327,17 +1329,24 @@ fn parse_feed_bytes(
   if bytes.len() > PODCAST_FEED_RESPONSE_LIMIT {
     return Err("播客订阅源超过大小限制".to_string());
   }
+  let mut repaired_document = None;
   let parsed = match podcast_feed_parser(final_url).parse(bytes) {
     Ok(parsed) => parsed,
     Err(original_error) => {
       let Some(repaired) = repair_feed_bytes(bytes) else {
         return Err(format!("无法解析播客订阅源：{original_error}"));
       };
-      podcast_feed_parser(final_url)
+      let parsed = podcast_feed_parser(final_url)
         .parse(repaired.as_slice())
-        .map_err(|_| format!("无法解析播客订阅源：{original_error}"))?
+        .map_err(|_| format!("无法解析播客订阅源：{original_error}"))?;
+      repaired_document = Some(repaired);
+      parsed
     }
   };
+  let rss_enclosures = extract_rss_enclosures(
+    repaired_document.as_deref().unwrap_or(bytes),
+    final_url,
+  );
   normalize_feed(
     parsed,
     final_url,
@@ -1346,6 +1355,7 @@ fn parse_feed_bytes(
     artwork_hint,
     etag,
     last_modified,
+    &rss_enclosures,
   )
 }
 
@@ -1569,6 +1579,128 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     .flatten()
 }
 
+fn extract_rss_enclosures(bytes: &[u8], base_uri: &str) -> Vec<Option<Enclosure>> {
+  let mut reader = Reader::from_reader(bytes);
+  let mut enclosures = Vec::new();
+  let mut current_entry = None;
+  let mut base_stack = vec![Url::parse(base_uri).ok()];
+  loop {
+    match reader.read_event() {
+      Ok(Event::Start(element)) => {
+        let name = element.name();
+        let base_url = element_base_url(&element, reader.decoder(), base_stack.last().and_then(Option::as_ref));
+        base_stack.push(base_url);
+        if is_feed_entry_element(name.as_ref()) {
+          enclosures.push(None);
+          current_entry = Some(enclosures.len() - 1);
+        } else if is_rss_enclosure_element(name.as_ref()) {
+          if let Some(index) = current_entry {
+            if enclosures[index].is_none() {
+              enclosures[index] =
+                enclosure_from_xml(&element, reader.decoder(), base_stack.last().and_then(Option::as_ref));
+            }
+          }
+        }
+      }
+      Ok(Event::Empty(element)) => {
+        let name = element.name();
+        let base_url = element_base_url(&element, reader.decoder(), base_stack.last().and_then(Option::as_ref));
+        if is_feed_entry_element(name.as_ref()) {
+          enclosures.push(None);
+        } else if is_rss_enclosure_element(name.as_ref()) {
+          if let Some(index) = current_entry {
+            if enclosures[index].is_none() {
+              enclosures[index] = enclosure_from_xml(&element, reader.decoder(), base_url.as_ref());
+            }
+          }
+        }
+      }
+      Ok(Event::End(element)) => {
+        let name = element.name();
+        if is_feed_entry_element(name.as_ref()) {
+          current_entry = None;
+        }
+        if base_stack.len() > 1 {
+          base_stack.pop();
+        }
+      }
+      Ok(Event::Eof) => break,
+      Err(_) => return Vec::new(),
+      _ => {}
+    }
+  }
+  enclosures
+}
+
+fn is_feed_entry_element(name: &[u8]) -> bool {
+  name == b"item" || name == b"entry"
+}
+
+fn is_rss_enclosure_element(name: &[u8]) -> bool {
+  name == b"enclosure"
+    || (name.ends_with(b":enclosure") && !name.eq_ignore_ascii_case(b"media:enclosure"))
+}
+
+fn element_base_url(
+  element: &BytesStart<'_>,
+  decoder: quick_xml::Decoder,
+  inherited: Option<&Url>,
+) -> Option<Url> {
+  for attribute in element.attributes().with_checks(false) {
+    let Ok(attribute) = attribute else {
+      continue;
+    };
+    if attribute.key.as_ref() != b"xml:base" {
+      continue;
+    }
+    let value = attribute
+      .decoded_and_normalized_value(quick_xml::XmlVersion::Implicit1_0, decoder)
+      .ok()?;
+    return Url::parse(&value)
+      .ok()
+      .or_else(|| inherited.and_then(|base_url| base_url.join(&value).ok()));
+  }
+  inherited.cloned()
+}
+
+fn enclosure_from_xml(
+  element: &BytesStart<'_>,
+  decoder: quick_xml::Decoder,
+  base_url: Option<&Url>,
+) -> Option<Enclosure> {
+  let mut raw_url = None;
+  let mut content_type = None;
+  let mut length = None;
+  for attribute in element.attributes().with_checks(false) {
+    let Ok(attribute) = attribute else {
+      continue;
+    };
+    let Ok(value) = attribute.decoded_and_normalized_value(quick_xml::XmlVersion::Implicit1_0, decoder) else {
+      continue;
+    };
+    match attribute.key.local_name().as_ref() {
+      b"url" | b"resource" => raw_url = clean_text(&value, 4_096),
+      b"type" => content_type = clean_text(&value, 200),
+      b"length" => length = value.trim().parse::<u64>().ok(),
+      _ => {}
+    }
+  }
+  let raw_url = raw_url?;
+  let resolved = Url::parse(&raw_url)
+    .ok()
+    .or_else(|| base_url.and_then(|base_url| base_url.join(&raw_url).ok()))?;
+  let url = clean_url_string(resolved.as_str())?;
+  if !is_possible_audio_enclosure(content_type.as_deref(), &url) {
+    return None;
+  }
+  Some(Enclosure {
+    url,
+    content_type,
+    length,
+    duration_seconds: None,
+  })
+}
+
 fn normalize_feed(
   parsed: ParsedFeed,
   final_url: &str,
@@ -1577,6 +1709,7 @@ fn normalize_feed(
   artwork_hint: Option<&str>,
   etag: Option<String>,
   last_modified: Option<String>,
+  rss_enclosures: &[Option<Enclosure>],
 ) -> Result<ParsedPodcast, String> {
   let normalized_url = normalize_url(final_url)?;
   let feed_id = hash_identifier("feed", &[&normalized_url]);
@@ -1592,6 +1725,7 @@ fn normalize_feed(
     .first()
     .map(|person| plain_text(&person.name, PODCAST_TITLE_LIMIT))
     .filter(|value| !value.is_empty())
+    .or_else(|| clean_hint(author_hint, PODCAST_TITLE_LIMIT))
     .or_else(|| {
       parsed.contributors.iter().find_map(|person| {
         let value = if matches!(person.name.as_str(), "managingEditor" | "webMaster") {
@@ -1602,8 +1736,7 @@ fn normalize_feed(
         let value = plain_text(value, PODCAST_TITLE_LIMIT);
         (!value.is_empty()).then_some(value)
       })
-    })
-    .or_else(|| clean_hint(author_hint, PODCAST_TITLE_LIMIT));
+    });
   let description = parsed
     .description
     .as_ref()
@@ -1629,8 +1762,13 @@ fn normalize_feed(
   };
 
   let mut episodes = Vec::new();
-  for entry in &parsed.entries {
-    if let Some(episode) = normalize_episode(entry, &feed_id, artwork_url.as_deref()) {
+  for (index, entry) in parsed.entries.iter().enumerate() {
+    if let Some(episode) = normalize_episode(
+      entry,
+      &feed_id,
+      artwork_url.as_deref(),
+      rss_enclosures.get(index).and_then(Option::as_ref),
+    ) {
       episodes.push(episode);
     }
   }
@@ -1646,8 +1784,13 @@ fn normalize_feed(
   })
 }
 
-fn normalize_episode(entry: &ParsedEntry, feed_id: &str, feed_artwork: Option<&str>) -> Option<ParsedPodcastEpisode> {
-  let enclosure = find_enclosure(entry)?;
+fn normalize_episode(
+  entry: &ParsedEntry,
+  feed_id: &str,
+  feed_artwork: Option<&str>,
+  rss_enclosure: Option<&Enclosure>,
+) -> Option<ParsedPodcastEpisode> {
+  let enclosure = rss_enclosure.cloned().or_else(|| find_enclosure(entry))?;
   let guid = clean_text(&entry.id, 4_096).filter(|value| !value.starts_with(PODCAST_SYNTHETIC_ID_PREFIX));
   let identity_key = if let Some(guid) = guid.as_deref() {
     format!("guid:{guid}")
@@ -1705,6 +1848,7 @@ fn normalize_episode(entry: &ParsedEntry, feed_id: &str, feed_artwork: Option<&s
   })
 }
 
+#[derive(Clone)]
 struct Enclosure {
   url: String,
   content_type: Option<String>,
@@ -3879,9 +4023,9 @@ mod tests {
           <item>
             <guid>mixed-one</guid>
             <title>同时提供两种音频</title>
-            <enclosure url="https://audio.example.test/preferred.mp3" length="100" type="audio/mpeg" />
             <media:content url="https://img.example.test/cover.jpg" type="image/jpeg" />
             <media:content url="https://audio.example.test/fallback.m4a" type="audio/mp4" />
+            <enclosure url="https://audio.example.test/preferred.mp3" length="100" type="audio/mpeg" />
           </item>
           <item>
             <guid>media-only</guid>
@@ -3889,20 +4033,65 @@ mod tests {
             <media:content url="https://img.example.test/second-cover.jpg" type="image/jpeg" />
             <media:content url="https://audio.example.test/media-only.m4a" type="audio/mp4" fileSize="200" duration="61" />
           </item>
+          <item xml:base="https://cdn.example.test/show/">
+            <guid>xml-base</guid>
+            <title>使用 XML 基准地址</title>
+            <media:content url="https://audio.example.test/wrong-before-relative.m4a" type="audio/mp4" />
+            <enclosure url="relative.mp3" type="audio/mpeg" />
+          </item>
         </channel>
       </rss>"#;
     let parsed = parse_test_feed(xml, "mixed-enclosures");
-    assert_eq!(parsed.episodes.len(), 2);
+    assert_eq!(parsed.episodes.len(), 3);
     assert_eq!(
       parsed.episodes[0].enclosure_url,
       "https://audio.example.test/preferred.mp3"
     );
+    assert_eq!(parsed.episodes[0].enclosure_type.as_deref(), Some("audio/mpeg"));
+    assert_eq!(parsed.episodes[0].expected_bytes, Some(100));
     assert_eq!(
       parsed.episodes[1].enclosure_url,
       "https://audio.example.test/media-only.m4a"
     );
     assert_eq!(parsed.episodes[1].expected_bytes, Some(200));
     assert_eq!(parsed.episodes[1].duration_seconds, Some(61.0));
+    assert_eq!(
+      parsed.episodes[2].enclosure_url,
+      "https://cdn.example.test/show/relative.mp3"
+    );
+  }
+
+  #[test]
+  fn rss_one_rdf_enclosures_are_supported() {
+    let rdf = r#"<?xml version="1.0" encoding="UTF-8"?>
+      <rdf:RDF
+        xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+        xmlns="http://purl.org/rss/1.0/"
+        xmlns:enc="http://purl.oclc.org/net/rss_2.0/enc#">
+        <channel rdf:about="https://feeds.example.test/rdf.xml">
+          <title>RDF 节目</title>
+          <link>https://shows.example.test/rdf</link>
+          <description>RSS 1.0 测试</description>
+          <items><rdf:Seq><rdf:li resource="https://shows.example.test/rdf/1" /></rdf:Seq></items>
+        </channel>
+        <item rdf:about="https://shows.example.test/rdf/1">
+          <title>RDF 单集</title>
+          <link>https://shows.example.test/rdf/1</link>
+          <enc:enclosure
+            rdf:resource="https://audio.example.test/rdf-1.mp3"
+            enc:type="audio/mpeg"
+            enc:length="300" />
+        </item>
+      </rdf:RDF>"#;
+    let parsed = parse_test_feed(rdf, "rss-one");
+    assert_eq!(parsed.feed.title, "RDF 节目");
+    assert_eq!(parsed.episodes.len(), 1);
+    assert_eq!(parsed.episodes[0].title, "RDF 单集");
+    assert_eq!(
+      parsed.episodes[0].enclosure_url,
+      "https://audio.example.test/rdf-1.mp3"
+    );
+    assert_eq!(parsed.episodes[0].expected_bytes, Some(300));
   }
 
   #[test]
@@ -3947,6 +4136,17 @@ mod tests {
       parsed.episodes[0].enclosure_url,
       "https://audio.example.test/dirty.mp3?source=rss&episode=1"
     );
+    let hinted = parse_feed_bytes(
+      &bytes,
+      "https://feeds.example.test/dirty.xml",
+      None,
+      Some("目录中的节目作者"),
+      None,
+      None,
+      None,
+    )
+    .expect("parse dirty fixture with author hint");
+    assert_eq!(hinted.feed.author.as_deref(), Some("目录中的节目作者"));
   }
 
   #[test]
