@@ -97,7 +97,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - 文件内自带 Rust 单元测试（`#[cfg(test)]` 模块）。
 - `src-tauri/src/qrc.rs`：有边界限制的 QQ QRC 解密/解压实现；解密后的逐词时间轴由前端 `src/utils/qrc.ts` 转换为统一 TTML 再进入通用解析器。
 - `src-tauri/src/system_media.rs`：Windows SMTC 集成（设置 AppUserModelID、媒体信息/时间线更新、媒体按键事件转发到前端）。
-- `docs/`：设计文档（`lyrics-experience-plan.md`、`lyrics-motion-review.md`）与视觉证据截图（`docs/evidence/`）。`design-qa.md` 记录歌词模式的视觉 QA。
+- `docs/`：设计文档（`lyrics-experience-plan.md`、`lyrics-motion-review.md`）与视觉证据截图（`docs/evidence/`），整个目录为本地未跟踪。`docs/design-qa.md` 记录歌词模式的视觉 QA。
 - `scripts/`：目前为空。
 
 ### 模块导入约定
@@ -284,4 +284,4 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 
 - `Cargo.lock` 在 `.gitignore` 中被忽略（该文件对本二进制项目选择了不提交）。
 - `.tmp/` 是测试编译产物目录，已被 gitignore，不要手改。
-- 仓库中的文档（`docs/`、`design-qa.md`）与界面文案使用中文；代码注释使用英文。修改 `AGENTS.md` 中提到的结构、命令或约定时，请同步更新本文件。
+- 仓库中的文档（`docs/`，本地未跟踪）与界面文案使用中文；代码注释使用英文。修改 `AGENTS.md` 中提到的结构、命令或约定时，请同步更新本文件。
