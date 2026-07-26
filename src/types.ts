@@ -286,6 +286,8 @@ export type PodcastPlaybackStatus =
   | "buffering"
   | "error";
 
+export type PodcastAutoQueueMode = "off" | "same-feed" | "random-unplayed";
+
 export type PodcastSleepTimer =
   | { kind: "deadline"; deadlineAt: number }
   | { kind: "episodeEnd"; episodeId: string }

@@ -832,6 +832,25 @@ pub async fn podcast_queue_clear(state: State<'_, PodcastState>) -> Result<(), S
 }
 
 #[tauri::command]
+pub async fn podcast_queue_autofill(
+  state: State<'_, PodcastState>,
+  current_episode_id: String,
+  mode: String,
+) -> Result<Vec<PodcastQueueItem>, String> {
+  state.ensure_ready()?;
+  validate_identifier(&current_episode_id)?;
+  let mode = PodcastQueueAutofillMode::parse(&mode)?;
+  let db_path = state.db_path.clone();
+  let downloads_dir = state.downloads_dir.clone();
+  tauri::async_runtime::spawn_blocking(move || {
+    queue_autofill(&db_path, &current_episode_id, mode)?;
+    list_queue(&db_path, &downloads_dir)
+  })
+  .await
+  .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+}
+
+#[tauri::command]
 pub async fn podcast_download_episode(
   state: State<'_, PodcastState>,
   episode_id: String,
@@ -3766,6 +3785,22 @@ struct QueueRecord {
   added_at: i64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PodcastQueueAutofillMode {
+  SameFeed,
+  RandomUnplayed,
+}
+
+impl PodcastQueueAutofillMode {
+  fn parse(value: &str) -> Result<Self, String> {
+    match value {
+      "same-feed" => Ok(Self::SameFeed),
+      "random-unplayed" => Ok(Self::RandomUnplayed),
+      _ => Err("播客智能续播模式无效".to_string()),
+    }
+  }
+}
+
 fn ensure_episode_exists(connection: &Connection, episode_id: &str) -> Result<(), String> {
   let exists = connection
     .query_row(
@@ -3958,6 +3993,99 @@ fn queue_clear(db_path: &Path) -> Result<(), String> {
     .execute("DELETE FROM podcast_queue", [])
     .map_err(|error| format!("无法清空播客待播列表：{error}"))?;
   Ok(())
+}
+
+fn queue_autofill(
+  db_path: &Path,
+  current_episode_id: &str,
+  mode: PodcastQueueAutofillMode,
+) -> Result<Option<String>, String> {
+  validate_identifier(current_episode_id)?;
+  let mut connection = open_database(db_path)?;
+  let transaction = connection
+    .transaction_with_behavior(TransactionBehavior::Immediate)
+    .map_err(|error| format!("无法更新播客待播列表：{error}"))?;
+  ensure_episode_exists(&transaction, current_episode_id)?;
+  if !read_queue_records(&transaction)?.is_empty() {
+    transaction
+      .commit()
+      .map_err(|error| format!("无法提交播客待播列表：{error}"))?;
+    return Ok(None);
+  }
+
+  let candidate = match mode {
+    PodcastQueueAutofillMode::SameFeed => transaction
+      .query_row(
+        "
+        WITH current_episode AS (
+          SELECT
+            id AS episode_id,
+            feed_id,
+            COALESCE(published_at, first_seen_at) AS episode_time
+          FROM podcast_episodes
+          WHERE id = ?1
+        )
+        SELECT e.id
+        FROM podcast_episodes e
+        JOIN current_episode current ON current.feed_id = e.feed_id
+        LEFT JOIN podcast_progress p ON p.episode_id = e.id
+        WHERE e.id != ?1
+          AND COALESCE(p.completed, 0) = 0
+          AND TRIM(e.enclosure_url) != ''
+          AND (
+            COALESCE(e.published_at, e.first_seen_at) < current.episode_time
+            OR (
+              COALESCE(e.published_at, e.first_seen_at) = current.episode_time
+              AND e.id > current.episode_id
+            )
+          )
+        ORDER BY
+          COALESCE(e.published_at, e.first_seen_at) DESC,
+          e.id
+        LIMIT 1
+        ",
+        [current_episode_id],
+        |row| row.get::<_, String>(0),
+      )
+      .optional()
+      .map_err(|error| format!("无法选择同节目续播单集：{error}"))?,
+    PodcastQueueAutofillMode::RandomUnplayed => transaction
+      .query_row(
+        "
+        SELECT e.id
+        FROM podcast_episodes e
+        JOIN podcast_feeds f ON f.id = e.feed_id
+        LEFT JOIN podcast_progress p ON p.episode_id = e.id
+        WHERE f.subscribed = 1
+          AND e.id != ?1
+          AND COALESCE(p.completed, 0) = 0
+          AND COALESCE(p.position_seconds, 0) <= 0
+          AND TRIM(e.enclosure_url) != ''
+        ORDER BY RANDOM()
+        LIMIT 1
+        ",
+        [current_episode_id],
+        |row| row.get::<_, String>(0),
+      )
+      .optional()
+      .map_err(|error| format!("无法选择随机未听单集：{error}"))?,
+  };
+
+  if let Some(episode_id) = candidate.as_deref() {
+    transaction
+      .execute(
+        "
+        INSERT INTO podcast_queue (episode_id, position, added_at)
+        VALUES (?1, 0, ?2)
+        ",
+        params![episode_id, unix_time_millis()],
+      )
+      .map_err(|error| format!("无法更新播客待播列表：{error}"))?;
+  }
+  transaction
+    .commit()
+    .map_err(|error| format!("无法提交播客待播列表：{error}"))?;
+  Ok(candidate)
 }
 
 fn list_queue(db_path: &Path, downloads_dir: &Path) -> Result<Vec<PodcastQueueItem>, String> {
@@ -7125,6 +7253,153 @@ mod tests {
     assert!(list_queue(&reopened.db_path, &reopened.downloads_dir)
       .expect("list cleared queue")
       .is_empty());
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn queue_autofill_preserves_manual_queue_and_selects_nearest_older_unfinished_episode() {
+    let directory = test_directory("queue-autofill-same-feed");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(4);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+    set_episode_played(&state.db_path, &episode_ids[1], true).expect("complete nearest older episode");
+    save_progress(&state.db_path, &episode_ids[2], 30.0, 100.0).expect("partially play next older episode");
+
+    queue_add(&state.db_path, &episode_ids[3], false).expect("add manual queue item");
+    let skipped = queue_autofill(
+      &state.db_path,
+      &episode_ids[0],
+      PodcastQueueAutofillMode::SameFeed,
+    )
+    .expect("keep manual queue");
+    assert!(skipped.is_none());
+    let manual_queue = list_queue(&state.db_path, &state.downloads_dir).expect("list manual queue");
+    assert_eq!(manual_queue.len(), 1);
+    assert_eq!(manual_queue[0].episode.id, episode_ids[3]);
+
+    queue_clear(&state.db_path).expect("clear manual queue");
+    let selected = queue_autofill(
+      &state.db_path,
+      &episode_ids[0],
+      PodcastQueueAutofillMode::SameFeed,
+    )
+    .expect("autofill same feed");
+    assert_eq!(selected.as_deref(), Some(episode_ids[2].as_str()));
+    let automatic_queue = list_queue(&state.db_path, &state.downloads_dir).expect("list automatic queue");
+    assert_eq!(automatic_queue.len(), 1);
+    assert_eq!(automatic_queue[0].episode.id, episode_ids[2]);
+    assert_eq!(automatic_queue[0].position, 0);
+
+    queue_clear(&state.db_path).expect("clear automatic queue");
+    let no_older_episode = queue_autofill(
+      &state.db_path,
+      &episode_ids[3],
+      PodcastQueueAutofillMode::SameFeed,
+    )
+    .expect("find no older episode");
+    assert!(no_older_episode.is_none());
+    assert!(list_queue(&state.db_path, &state.downloads_dir)
+      .expect("list empty queue")
+      .is_empty());
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn same_feed_queue_autofill_uses_stable_id_order_for_equal_first_seen_times() {
+    let directory = test_directory("queue-autofill-same-time");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let mut parsed = parsed_fixture_with_episode_count(3);
+    for episode in &mut parsed.episodes {
+      episode.published_at = None;
+    }
+    let mut episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    episode_ids.sort();
+    store_subscription(&state.db_path, parsed).expect("store episodes without publish times");
+
+    let selected = queue_autofill(
+      &state.db_path,
+      &episode_ids[0],
+      PodcastQueueAutofillMode::SameFeed,
+    )
+    .expect("autofill equal-time episode");
+    assert_eq!(selected.as_deref(), Some(episode_ids[1].as_str()));
+    let queue = list_queue(&state.db_path, &state.downloads_dir).expect("list equal-time queue");
+    assert_eq!(queue.len(), 1);
+    assert_eq!(queue[0].episode.id, episode_ids[1]);
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn random_queue_autofill_only_uses_unplayed_episodes_from_followed_feeds() {
+    let directory = test_directory("queue-autofill-random");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(5);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store followed feed");
+    set_episode_played(&state.db_path, &episode_ids[1], true).expect("complete filtered episode");
+    save_progress(&state.db_path, &episode_ids[2], 20.0, 100.0).expect("partially play filtered episode");
+    open_database(&state.db_path)
+      .expect("open podcast database")
+      .execute(
+        "UPDATE podcast_episodes SET enclosure_url = '' WHERE id = ?1",
+        [&episode_ids[4]],
+      )
+      .expect("remove invalid enclosure");
+
+    let preview = parsed_fixture_at(
+      "https://media.example.test/preview-episode.mp3",
+      "https://feeds.example.test/preview-random.xml",
+    );
+    let preview_episode_id = preview.episodes[0].id.clone();
+    store_preview(&state.db_path, preview).expect("store unfollowed preview");
+
+    let selected = queue_autofill(
+      &state.db_path,
+      &episode_ids[0],
+      PodcastQueueAutofillMode::RandomUnplayed,
+    )
+    .expect("autofill random unplayed");
+    assert_eq!(selected.as_deref(), Some(episode_ids[3].as_str()));
+    assert_ne!(selected.as_deref(), Some(preview_episode_id.as_str()));
+
+    queue_clear(&state.db_path).expect("clear random queue");
+    save_progress(&state.db_path, &episode_ids[3], 1.0, 100.0).expect("partially play last candidate");
+    let no_candidate = queue_autofill(
+      &state.db_path,
+      &episode_ids[0],
+      PodcastQueueAutofillMode::RandomUnplayed,
+    )
+    .expect("find no random candidate");
+    assert!(no_candidate.is_none());
+    assert!(list_queue(&state.db_path, &state.downloads_dir)
+      .expect("list empty random queue")
+      .is_empty());
+
+    assert!(PodcastQueueAutofillMode::parse("unsupported").is_err());
+    assert!(
+      queue_autofill(
+        &state.db_path,
+        "invalid",
+        PodcastQueueAutofillMode::SameFeed,
+      )
+      .is_err()
+    );
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }

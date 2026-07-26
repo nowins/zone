@@ -380,6 +380,7 @@ test("podcast queue is independent, durable, reorderable, and advances after an 
     "podcast_queue_remove_many",
     "podcast_queue_reorder",
     "podcast_queue_clear",
+    "podcast_queue_autofill",
     "podcast_set_episodes_played",
   ]) {
     assert.ok(hasInvoke(appSource, command), `App does not wire durable queue command ${command}`);

@@ -53,6 +53,7 @@ import type {
   HomePin,
   MusicFolder,
   Playlist,
+  PodcastAutoQueueMode,
   PodcastEpisode,
   PodcastEpisodeDetail,
   PodcastPlayback,
@@ -77,6 +78,17 @@ type PlaybackSession = {
 const PODCAST_PROGRESS_SAVE_INTERVAL_MS = 5_000;
 const PODCAST_PLAYBACK_SETTINGS_KEY = "zone-podcast-playback-v1";
 const PODCAST_PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
+const PODCAST_AUTO_QUEUE_MODES: PodcastAutoQueueMode[] = [
+  "off",
+  "same-feed",
+  "random-unplayed",
+];
+
+type PodcastPlaybackSettings = {
+  playbackRate: number;
+  activeEpisodeId: string | null;
+  autoQueueMode: PodcastAutoQueueMode;
+};
 
 declare global {
   interface Window {
@@ -84,26 +96,54 @@ declare global {
   }
 }
 
-function readPodcastPlaybackRate(): number {
+function readPodcastPlaybackSettings(): PodcastPlaybackSettings {
+  const fallback: PodcastPlaybackSettings = {
+    playbackRate: 1,
+    activeEpisodeId: null,
+    autoQueueMode: "off",
+  };
   try {
     const stored = JSON.parse(localStorage.getItem(PODCAST_PLAYBACK_SETTINGS_KEY) ?? "{}");
-    return PODCAST_PLAYBACK_RATES.includes(stored.playbackRate)
-      ? stored.playbackRate
-      : 1;
+    return {
+      playbackRate: PODCAST_PLAYBACK_RATES.includes(stored.playbackRate)
+        ? stored.playbackRate
+        : fallback.playbackRate,
+      activeEpisodeId:
+        typeof stored.activeEpisodeId === "string" && stored.activeEpisodeId.trim()
+          ? stored.activeEpisodeId
+          : null,
+      autoQueueMode: PODCAST_AUTO_QUEUE_MODES.includes(stored.autoQueueMode)
+        ? stored.autoQueueMode
+        : fallback.autoQueueMode,
+    };
   } catch {
-    return 1;
+    return fallback;
   }
 }
 
-function readPodcastActiveEpisodeId(): string | null {
+function patchPodcastPlaybackSettings(
+  patch: Partial<PodcastPlaybackSettings>,
+) {
   try {
-    const stored = JSON.parse(localStorage.getItem(PODCAST_PLAYBACK_SETTINGS_KEY) ?? "{}");
-    return typeof stored.activeEpisodeId === "string" && stored.activeEpisodeId.trim()
-      ? stored.activeEpisodeId
-      : null;
+    localStorage.setItem(
+      PODCAST_PLAYBACK_SETTINGS_KEY,
+      JSON.stringify({ ...readPodcastPlaybackSettings(), ...patch }),
+    );
   } catch {
-    return null;
+    // Playback preferences remain usable for this session when storage is blocked.
   }
+}
+
+function readPodcastPlaybackRate(): number {
+  return readPodcastPlaybackSettings().playbackRate;
+}
+
+function readPodcastActiveEpisodeId(): string | null {
+  return readPodcastPlaybackSettings().activeEpisodeId;
+}
+
+function readPodcastAutoQueueMode(): PodcastAutoQueueMode {
+  return readPodcastPlaybackSettings().autoQueueMode;
 }
 
 export default function App() {
@@ -146,6 +186,7 @@ export default function App() {
   const podcastProgressMutationRef = useRef<Promise<void>>(Promise.resolve());
   const podcastProgressStartedRef = useRef(new Set<string>());
   const podcastPlaybackIntentRef = useRef(false);
+  const podcastAutoQueueAttemptRef = useRef(0);
   const podcastSessionHydratedRef = useRef(false);
   const podcastSessionRestoreCancelledRef = useRef(false);
   const podcastSleepTimerRef = useRef<number | null>(null);
@@ -184,6 +225,9 @@ export default function App() {
     returnToNowPlaying?: boolean;
   } | null>(null);
   const [podcastPlaybackRate, setPodcastPlaybackRate] = useState(readPodcastPlaybackRate);
+  const [podcastAutoQueueMode, setPodcastAutoQueueMode] =
+    useState<PodcastAutoQueueMode>(readPodcastAutoQueueMode);
+  const podcastAutoQueueModeRef = useRef(podcastAutoQueueMode);
   const [podcastSleepTimer, setPodcastSleepTimer] = useState<PodcastSleepTimer>(null);
   const [podcastPlaybackStatus, setPodcastPlaybackStatus] = useState<PodcastPlaybackStatus>("idle");
   const [podcastSessionHydrated, setPodcastSessionHydrated] = useState(false);
@@ -214,6 +258,7 @@ export default function App() {
   foldersRef.current = folders;
   activePodcastEpisodeRef.current = activePodcastEpisode;
   podcastQueueRef.current = podcastQueue;
+  podcastAutoQueueModeRef.current = podcastAutoQueueMode;
 
   useLibraryWatcher(folders, restored, () => {
     void rescan(folders, true);
@@ -297,13 +342,9 @@ export default function App() {
         podcastSessionHydratedRef.current = true;
         if (podcastSessionRestoreCancelledRef.current || activePodcastEpisodeRef.current) {
           setPodcastSessionHydrated(true);
-          localStorage.setItem(
-            PODCAST_PLAYBACK_SETTINGS_KEY,
-            JSON.stringify({
-              playbackRate: readPodcastPlaybackRate(),
-              activeEpisodeId: activePodcastEpisodeRef.current?.episodeId ?? null,
-            }),
-          );
+          patchPodcastPlaybackSettings({
+            activeEpisodeId: activePodcastEpisodeRef.current?.episodeId ?? null,
+          });
           return;
         }
         podcastPlaybackIntentRef.current = false;
@@ -316,19 +357,12 @@ export default function App() {
         podcastSessionHydratedRef.current = true;
         setPodcastSessionHydrated(true);
         if (podcastSessionRestoreCancelledRef.current || activePodcastEpisodeRef.current) {
-          localStorage.setItem(
-            PODCAST_PLAYBACK_SETTINGS_KEY,
-            JSON.stringify({
-              playbackRate: readPodcastPlaybackRate(),
-              activeEpisodeId: activePodcastEpisodeRef.current?.episodeId ?? null,
-            }),
-          );
+          patchPodcastPlaybackSettings({
+            activeEpisodeId: activePodcastEpisodeRef.current?.episodeId ?? null,
+          });
           return;
         }
-        localStorage.setItem(
-          PODCAST_PLAYBACK_SETTINGS_KEY,
-          JSON.stringify({ playbackRate: readPodcastPlaybackRate(), activeEpisodeId: null }),
-        );
+        patchPodcastPlaybackSettings({ activeEpisodeId: null });
         if (import.meta.env.DEV) {
           console.warn("[podcast] playback session restore failed", reason);
         }
@@ -340,17 +374,19 @@ export default function App() {
 
   useEffect(() => {
     if (!podcastSessionHydratedRef.current) return;
-    localStorage.setItem(
-      PODCAST_PLAYBACK_SETTINGS_KEY,
-      JSON.stringify({
-        playbackRate: podcastPlaybackRate,
-        activeEpisodeId: activePodcastEpisode?.episodeId ?? null,
-      }),
-    );
+    patchPodcastPlaybackSettings({
+      playbackRate: podcastPlaybackRate,
+      activeEpisodeId: activePodcastEpisode?.episodeId ?? null,
+      autoQueueMode: podcastAutoQueueMode,
+    });
     if (activePodcastEpisode && audioRef.current) {
       audioRef.current.playbackRate = podcastPlaybackRate;
     }
-  }, [activePodcastEpisode?.episodeId, podcastPlaybackRate]);
+  }, [
+    activePodcastEpisode?.episodeId,
+    podcastAutoQueueMode,
+    podcastPlaybackRate,
+  ]);
 
   useEffect(() => {
     const episodeId = activePodcastEpisode?.episodeId;
@@ -830,6 +866,7 @@ export default function App() {
 
   function playPodcastEpisode(episode: PodcastPlayback) {
     cancelPodcastSessionRestore();
+    podcastAutoQueueAttemptRef.current += 1;
     const current = activePodcastEpisode;
     if (
       current?.episodeId === episode.episodeId
@@ -1258,6 +1295,69 @@ export default function App() {
     }
     playPodcastQueueItem(next);
     return true;
+  }
+
+  function changePodcastAutoQueueMode(mode: PodcastAutoQueueMode) {
+    if (!PODCAST_AUTO_QUEUE_MODES.includes(mode)) return;
+    podcastAutoQueueAttemptRef.current += 1;
+    podcastAutoQueueModeRef.current = mode;
+    setPodcastAutoQueueMode(mode);
+    patchPodcastPlaybackSettings({ autoQueueMode: mode });
+    if (audioRef.current?.ended) {
+      podcastPlaybackIntentRef.current = false;
+      setPodcastPlaybackStatus("paused");
+    }
+  }
+
+  function autofillPodcastQueueAfter(endedEpisodeId: string) {
+    const mode = podcastAutoQueueModeRef.current;
+    if (mode === "off") return;
+    const attempt = podcastAutoQueueAttemptRef.current + 1;
+    podcastAutoQueueAttemptRef.current = attempt;
+    const isCurrentAttempt = () =>
+      podcastAutoQueueAttemptRef.current === attempt
+      && podcastAutoQueueModeRef.current === mode
+      && activePodcastEpisodeRef.current?.episodeId === endedEpisodeId;
+    const revision = beginPodcastQueueMutation(podcastQueueRef.current);
+    setPodcastPlaybackStatus("loading");
+    void serializePodcastQueueMutation(async () => {
+      try {
+        if (!isCurrentAttempt()) return;
+        const items = await invoke<PodcastQueueItem[]>(
+          "podcast_queue_autofill",
+          { currentEpisodeId: endedEpisodeId, mode },
+        );
+        const ownsRevision = podcastQueueRevisionRef.current === revision;
+        if (ownsRevision) applyPodcastQueueResult(items, revision);
+        if (!isCurrentAttempt()) return;
+        const next = (ownsRevision ? items : podcastQueueRef.current).find(
+          (item) => item.episode.id !== endedEpisodeId,
+        );
+        if (next) {
+          playPodcastQueueItem(next);
+          return;
+        }
+        podcastPlaybackIntentRef.current = false;
+        setPodcastPlaybackStatus("paused");
+        showActionNotice(
+          mode === "same-feed"
+            ? "这个节目没有更多可续播的单集"
+            : "没有可随机续播的未听单集",
+        );
+      } catch (reason) {
+        await reloadPodcastQueue(revision);
+        if (
+          podcastAutoQueueAttemptRef.current === attempt
+          && activePodcastEpisodeRef.current?.episodeId === endedEpisodeId
+        ) {
+          podcastPlaybackIntentRef.current = false;
+          setPodcastPlaybackStatus("paused");
+        }
+        if (import.meta.env.DEV) {
+          console.warn("[podcast] queue autofill failed", reason);
+        }
+      }
+    });
   }
 
   function appendToQueue(targetTracks: Track[]) {
@@ -2149,6 +2249,7 @@ export default function App() {
 
   function onEnded() {
     if (activePodcastEpisodeRef.current) {
+      const endedEpisodeId = activePodcastEpisodeRef.current.episodeId;
       const audio = audioRef.current;
       const progressSaved = audio
         ? persistPodcastProgress(audio.duration, audio.duration, true)
@@ -2167,7 +2268,7 @@ export default function App() {
       setIsPlaying(false);
       if (
         podcastSleepTimer?.kind === "episodeEnd"
-        && podcastSleepTimer.episodeId === activePodcastEpisodeRef.current.episodeId
+        && podcastSleepTimer.episodeId === endedEpisodeId
       ) {
         podcastPlaybackIntentRef.current = false;
         setPodcastSleepTimer(null);
@@ -2176,6 +2277,10 @@ export default function App() {
         return;
       }
       if (playNextPodcastEpisode(false)) return;
+      if (podcastAutoQueueModeRef.current !== "off") {
+        autofillPodcastQueueAfter(endedEpisodeId);
+        return;
+      }
       podcastPlaybackIntentRef.current = false;
       setPodcastPlaybackStatus("paused");
       return;
@@ -2515,6 +2620,7 @@ export default function App() {
             activeProgress={progress}
             activeDuration={duration}
             libraryRevision={podcastLibraryRevision}
+            autoQueueMode={podcastAutoQueueMode}
             isPlaying={isPlaying && Boolean(activePodcastEpisode)}
             queue={podcastQueue}
             episodeRequest={podcastEpisodeRequest}
@@ -2534,6 +2640,7 @@ export default function App() {
             onSetEpisodePlayed={setPodcastEpisodePlayed}
             onSetQueueEpisodesPlayed={setPodcastQueueEpisodesPlayed}
             onDownloadQueueEpisodes={downloadPodcastQueueEpisodes}
+            onAutoQueueMode={changePodcastAutoQueueMode}
             onDownloadsDeleted={reconcileDeletedPodcastDownloads}
             onReturnToNowPlaying={() => requestNavigation("nowPlaying")}
           />

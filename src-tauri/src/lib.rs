@@ -1751,6 +1751,7 @@ pub fn run() {
       podcast::podcast_queue_remove_many,
       podcast::podcast_queue_reorder,
       podcast::podcast_queue_clear,
+      podcast::podcast_queue_autofill,
       podcast::podcast_download_episode,
       podcast::podcast_delete_episode_download,
       podcast::podcast_delete_episode_downloads,

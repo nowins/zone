@@ -56,6 +56,7 @@ import {
 } from "../utils/podcastLibrary";
 import { mergePodcastEpisodePlayback } from "../utils/podcastPlayback";
 import type {
+  PodcastAutoQueueMode,
   PodcastDiscoveryShow,
   PodcastDownloadDeleteResult,
   PodcastDownloadPage,
@@ -110,6 +111,7 @@ type PodcastQueueRemovalIntent = {
 
 export type PodcastViewProps = {
   queue: PodcastQueueItem[];
+  autoQueueMode: PodcastAutoQueueMode;
   activeEpisode: PodcastPlayback | null;
   activeEpisodeId: string | null;
   activeProgress: number;
@@ -143,6 +145,7 @@ export type PodcastViewProps = {
     episodes: PodcastEpisode[],
   ) => Promise<{ downloadedCount: number; failedCount: number }>;
   onClearQueue: () => void | Promise<void>;
+  onAutoQueueMode: (mode: PodcastAutoQueueMode) => void;
   onEpisodeUpdated: (episode: PodcastEpisode) => void;
   onSetEpisodePlayed: (
     episodeId: string,
@@ -187,6 +190,14 @@ const PODCAST_LIBRARY_STORAGE_KEY = "zone-podcast-library-v1";
 const PODCAST_DOWNLOAD_PAGE_SIZE = 60;
 const PODCAST_DOWNLOAD_BATCH_LIMIT = 500;
 const PODCAST_QUEUE_BATCH_LIMIT = 500;
+const PODCAST_AUTO_QUEUE_MODES: Array<{
+  id: PodcastAutoQueueMode;
+  label: string;
+}> = [
+  { id: "off", label: "停止" },
+  { id: "same-feed", label: "同节目下一集" },
+  { id: "random-unplayed", label: "随机未听" },
+];
 const PODCAST_LISTEN_FILTERS: Array<{
   id: PodcastListenFilter;
   label: string;
@@ -208,6 +219,7 @@ let podcastSessionSnapshot: PodcastSessionSnapshot | null = null;
 
 export function PodcastView({
   queue,
+  autoQueueMode,
   activeEpisode,
   activeEpisodeId,
   activeProgress,
@@ -226,6 +238,7 @@ export function PodcastView({
   onSetQueueEpisodesPlayed,
   onDownloadQueueEpisodes,
   onClearQueue,
+  onAutoQueueMode,
   onEpisodeUpdated,
   onSetEpisodePlayed,
   onDownloadsDeleted,
@@ -2449,6 +2462,29 @@ export function PodcastView({
 
       {screen === "playlist" ? (
         <main className="podcast-screen podcast-playlist-screen">
+          <div className="podcast-auto-queue">
+            <span id="podcast-auto-queue-label">播完后</span>
+            <div
+              className="podcast-auto-queue-options"
+              role="group"
+              aria-labelledby="podcast-auto-queue-label"
+            >
+              {PODCAST_AUTO_QUEUE_MODES.map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  aria-pressed={autoQueueMode === mode.id}
+                  onClick={() => onAutoQueueMode(mode.id)}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+            {autoQueueMode !== "off" ? (
+              <small>手动待播优先</small>
+            ) : null}
+          </div>
+
           <PodcastSection title="正在播放">
             {knownActiveEpisode ? (
               <CurrentEpisodeRow
