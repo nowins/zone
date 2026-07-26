@@ -1,0 +1,285 @@
+import { createPortal } from "react-dom";
+import {
+  Check,
+  CheckCircle2,
+  Download,
+  ListPlus,
+  LoaderCircle,
+  Play,
+  RotateCcw,
+  Share2,
+} from "lucide-react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
+import { useLastNonNull, usePresence } from "../motion/presence";
+import { MOTION_DURATIONS } from "../motion/tokens";
+import type { PodcastEpisode } from "../types";
+
+export type PodcastEpisodeMenuState = {
+  x: number;
+  y: number;
+  episode: PodcastEpisode;
+  returnFocus: HTMLElement | null;
+};
+
+type PodcastEpisodeContextMenuProps = {
+  menu: PodcastEpisodeMenuState | null;
+  downloading: boolean;
+  updatingPlayed: boolean;
+  queueState: "available" | "queued" | "active";
+  onClose: () => void;
+  onPlay: (episode: PodcastEpisode) => void;
+  onQueue: (episode: PodcastEpisode) => void;
+  onTogglePlayed: (episode: PodcastEpisode) => void;
+  onDownload: (episode: PodcastEpisode) => void;
+  onShare: (episode: PodcastEpisode) => void;
+};
+
+export function PodcastEpisodeContextMenu(
+  props: PodcastEpisodeContextMenuProps,
+) {
+  const { mounted, exiting } = usePresence(
+    props.menu !== null,
+    MOTION_DURATIONS.micro,
+  );
+  const lastMenu = useLastNonNull(props.menu);
+
+  if (!mounted || !lastMenu || typeof document === "undefined") return null;
+
+  return createPortal(
+    <span
+      className={exiting ? "motion-exit" : undefined}
+      style={{ display: "contents" }}
+    >
+      <PodcastEpisodeMenuSurface
+        {...props}
+        menu={lastMenu}
+      />
+    </span>,
+    document.body,
+  );
+}
+
+function PodcastEpisodeMenuSurface({
+  menu,
+  downloading,
+  updatingPlayed,
+  queueState,
+  onClose,
+  onPlay,
+  onQueue,
+  onTogglePlayed,
+  onDownload,
+  onShare,
+}: Omit<PodcastEpisodeContextMenuProps, "menu"> & {
+  menu: PodcastEpisodeMenuState;
+}) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState({
+    left: menu.x,
+    top: menu.y,
+    ready: false,
+  });
+
+  useLayoutEffect(() => {
+    const element = menuRef.current;
+    if (!element) return;
+
+    const gutter = 12;
+    const rect = element.getBoundingClientRect();
+    const maxLeft = Math.max(gutter, window.innerWidth - rect.width - gutter);
+    const maxTop = Math.max(gutter, window.innerHeight - rect.height - gutter);
+    setPosition({
+      left: Math.min(Math.max(gutter, menu.x), maxLeft),
+      top: Math.min(Math.max(gutter, menu.y), maxTop),
+      ready: true,
+    });
+    const firstAction = element.querySelector<HTMLButtonElement>(
+      'button[role="menuitem"]:not(:disabled)',
+    );
+    firstAction?.focus({ preventScroll: true });
+  }, [menu.episode.id, menu.x, menu.y]);
+
+  useEffect(() => {
+    function closeFromOutside(event: PointerEvent) {
+      if (
+        event.target instanceof Node
+        && menuRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      onClose();
+    }
+
+    function closeOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close(true);
+    }
+
+    function closeOnScroll() {
+      onClose();
+    }
+
+    document.addEventListener("pointerdown", closeFromOutside, true);
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("scroll", closeOnScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromOutside, true);
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("scroll", closeOnScroll, true);
+    };
+  }, [menu.returnFocus, onClose]);
+
+  function close(restoreFocus = false) {
+    onClose();
+    if (!restoreFocus || !menu.returnFocus) return;
+    window.requestAnimationFrame(() => {
+      if (menu.returnFocus?.isConnected) {
+        menu.returnFocus.focus({ preventScroll: true });
+      }
+    });
+  }
+
+  function run(action: () => void) {
+    action();
+    close(true);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowDown", "ArrowUp", "Home", "End", "Tab"].includes(event.key)) {
+      return;
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      close(true);
+      return;
+    }
+
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>(
+        'button[role="menuitem"]:not(:disabled)',
+      ) ?? [],
+    );
+    if (items.length === 0) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowDown"
+          ? (currentIndex + 1 + items.length) % items.length
+          : (currentIndex - 1 + items.length) % items.length;
+    items[nextIndex]?.focus();
+  }
+
+  const downloaded = Boolean(menu.episode.localPath);
+  const queueUnavailable = queueState !== "available";
+
+  return (
+    <div
+      ref={menuRef}
+      className="context-menu podcast-episode-context-menu"
+      role="menu"
+      aria-label={`${menu.episode.title} 的单集操作`}
+      style={{
+        left: position.left,
+        top: position.top,
+        visibility: position.ready ? "visible" : "hidden",
+      }}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={handleKeyDown}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+    >
+      <div className="context-title">
+        <span className="context-title-kicker">播客单集</span>
+        <strong>{menu.episode.title}</strong>
+        <span>{menu.episode.feedTitle || "播客"}</span>
+      </div>
+      <div className="context-actions">
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run(() => onPlay(menu.episode))}
+        >
+          <Play size={17} />
+          <span>
+            {menu.episode.progressSeconds > 0 && !menu.episode.completed
+              ? "继续播放"
+              : "播放"}
+          </span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run(() => onQueue(menu.episode))}
+          disabled={queueUnavailable}
+        >
+          {queueUnavailable ? <Check size={17} /> : <ListPlus size={17} />}
+          <span>
+            {queueState === "active"
+              ? "正在播放"
+              : queueState === "queued"
+                ? "已在待播"
+                : "加入待播"}
+          </span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run(() => onTogglePlayed(menu.episode))}
+          disabled={updatingPlayed}
+        >
+          {updatingPlayed
+            ? <LoaderCircle className="podcast-spinner" size={17} />
+            : menu.episode.completed
+            ? <RotateCcw size={17} />
+            : <CheckCircle2 size={17} />}
+          <span>
+            {updatingPlayed
+              ? "正在更新播放状态"
+              : menu.episode.completed
+                ? "标记为未播放"
+                : "标记为已播放"}
+          </span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run(() => onDownload(menu.episode))}
+          disabled={downloading || downloaded}
+        >
+          {downloaded ? (
+            <Check size={17} />
+          ) : downloading ? (
+            <LoaderCircle className="podcast-spinner" size={17} />
+          ) : (
+            <Download size={17} />
+          )}
+          <span>
+            {downloaded ? "已下载" : downloading ? "正在下载" : "下载"}
+          </span>
+        </button>
+      </div>
+      <div className="context-actions context-actions-secondary">
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => run(() => onShare(menu.episode))}
+        >
+          <Share2 size={16} />
+          <span>分享</span>
+        </button>
+      </div>
+    </div>
+  );
+}

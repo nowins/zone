@@ -3,6 +3,14 @@
   overflow: hidden;
 }
 
+.context-menu.podcast-episode-context-menu {
+  width: 264px;
+}
+
+.motion-exit .podcast-episode-context-menu {
+  pointer-events: none;
+}
+
 .podcast-ghost {
   position: absolute;
   z-index: -1;

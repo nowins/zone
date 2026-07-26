@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -28,6 +29,10 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import {
+  PodcastEpisodeContextMenu,
+  type PodcastEpisodeMenuState,
+} from "../components/PodcastEpisodeContextMenu";
 import { formatTime } from "../utils/music";
 import { podcastArtworkSrc } from "../utils/podcastArtwork";
 import {
@@ -86,7 +91,7 @@ export type PodcastViewProps = {
   onQueueEpisode: (
     episode: PodcastEpisode,
     playNext: boolean,
-  ) => void | Promise<void>;
+  ) => boolean | Promise<boolean>;
   onRemoveQueueEpisode: (episodeId: string) => void | Promise<void>;
   onMoveQueueEpisode: (
     episodeId: string,
@@ -216,6 +221,9 @@ export function PodcastView({
   const [detailAction, setDetailAction] = useState<
     "save" | "played" | "delete" | null
   >(null);
+  const [updatingPlayedId, setUpdatingPlayedId] = useState<string | null>(null);
+  const [episodeMenu, setEpisodeMenu] =
+    useState<PodcastEpisodeMenuState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const initialized = useRef(false);
@@ -223,6 +231,7 @@ export function PodcastView({
   const handledLibraryRevision = useRef(libraryRevision);
   const episodeListRequestRef = useRef(0);
   const episodeDetailRequestRef = useRef(0);
+  const homeRequestRef = useRef(0);
   const discoveryRequestActive = useRef(false);
   const feedRefreshActive = useRef(false);
   const selectedFeedRef = useRef(selectedFeed);
@@ -255,22 +264,39 @@ export function PodcastView({
   }, []);
 
   const loadHome = useCallback(async () => {
+    const requestId = homeRequestRef.current + 1;
+    homeRequestRef.current = requestId;
     setHomeState("loading");
     try {
       const [nextHome, savedEpisodeDetails] = await Promise.all([
         invoke<PodcastHome>("podcast_list_home"),
         invoke<PodcastEpisodeDetail[]>("podcast_list_saved_episodes"),
       ]);
-      setHome({
+      if (homeRequestRef.current !== requestId) return;
+      const resolvedHome: PodcastHome = {
         continueListening: nextHome.continueListening ?? [],
         latestEpisodes: nextHome.latestEpisodes ?? [],
         unplayedEpisodes: nextHome.unplayedEpisodes ?? [],
         downloadPriorityEpisodes: nextHome.downloadPriorityEpisodes ?? [],
         downloadedEpisodes: nextHome.downloadedEpisodes ?? [],
         savedEpisodes: savedEpisodeDetails.map((detail) => detail.episode),
+      };
+      setHome(resolvedHome);
+      setEpisodeMenu((current) => {
+        if (!current) return current;
+        const nextEpisode = [
+          ...resolvedHome.continueListening,
+          ...resolvedHome.latestEpisodes,
+          ...resolvedHome.unplayedEpisodes,
+          ...resolvedHome.downloadPriorityEpisodes,
+          ...resolvedHome.downloadedEpisodes,
+          ...resolvedHome.savedEpisodes,
+        ].find((episode) => episode.id === current.episode.id);
+        return nextEpisode ? { ...current, episode: nextEpisode } : current;
       });
       setHomeState("ready");
     } catch {
+      if (homeRequestRef.current !== requestId) return;
       setHome(EMPTY_HOME);
       setHomeState("error");
     }
@@ -418,6 +444,11 @@ export function PodcastView({
           saved: nextEpisode.saved,
         };
       });
+      setEpisodeMenu((current) =>
+        current?.episode.id === nextEpisode.id
+          ? { ...current, episode: nextEpisode }
+          : current
+      );
       setLastPlayedEpisode((current) =>
         current?.id === nextEpisode.id ? nextEpisode : current
       );
@@ -792,13 +823,20 @@ export function PodcastView({
         "podcast_download_episode",
         { episodeId: episode.id },
       );
-      const nextEpisode: PodcastEpisode = {
-        ...episode,
-        downloadState: "downloaded",
-        localPath: result.localPath,
-        downloadedBytes: result.downloadedBytes,
-      };
-      applyEpisodeUpdate(nextEpisode);
+      try {
+        const nextDetail = await invoke<PodcastEpisodeDetail>(
+          "podcast_get_episode_detail",
+          { episodeId: episode.id },
+        );
+        applyEpisodeUpdate(nextDetail.episode);
+      } catch (refreshReason) {
+        if (import.meta.env.DEV) {
+          console.warn(
+            "[podcast] downloaded episode refresh failed",
+            refreshReason,
+          );
+        }
+      }
       setNotice(
         result.resumed
           ? "下载已续传完成，可离线收听"
@@ -806,7 +844,20 @@ export function PodcastView({
       );
       await loadHome();
     } catch (reason) {
-      applyEpisodeUpdate({ ...episode, downloadState: "failed" });
+      try {
+        const nextDetail = await invoke<PodcastEpisodeDetail>(
+          "podcast_get_episode_detail",
+          { episodeId: episode.id },
+        );
+        applyEpisodeUpdate(nextDetail.episode);
+      } catch (refreshReason) {
+        if (import.meta.env.DEV) {
+          console.warn(
+            "[podcast] failed download refresh failed",
+            refreshReason,
+          );
+        }
+      }
       setNotice(null);
       setError(errorMessage(reason, "下载单集失败"));
     } finally {
@@ -856,7 +907,7 @@ export function PodcastView({
   }
 
   async function toggleEpisodePlayed(detail: PodcastEpisodeDetail) {
-    if (detailAction) return;
+    if (detailAction || updatingPlayedId) return;
     const nextPlayed = !detail.episode.completed;
     setDetailAction("played");
     setError(null);
@@ -874,6 +925,116 @@ export function PodcastView({
     } finally {
       setDetailAction(null);
     }
+  }
+
+  async function toggleEpisodePlayedFromMenu(episode: PodcastEpisode) {
+    if (detailAction || updatingPlayedId) return;
+    const nextPlayed = !episode.completed;
+    setUpdatingPlayedId(episode.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const nextDetail = await onSetEpisodePlayed(episode.id, nextPlayed);
+      applyEpisodeUpdate(nextDetail.episode);
+      setNotice(nextPlayed ? "已标记为已播放" : "已标记为未播放");
+      await loadHome();
+    } catch (reason) {
+      setError(errorMessage(reason, "更新播放状态失败"));
+    } finally {
+      setUpdatingPlayedId(null);
+    }
+  }
+
+  async function queueEpisodeFromMenu(episode: PodcastEpisode) {
+    setError(null);
+    setNotice(null);
+    if (activeEpisodeId === episode.id) {
+      setNotice("本集正在播放");
+      return;
+    }
+    if (queue.some((item) => item.episode.id === episode.id)) {
+      setNotice("本集已在待播");
+      return;
+    }
+    try {
+      const added = await onQueueEpisode(episode, false);
+      if (!added) {
+        setError("加入待播失败");
+        return;
+      }
+      setNotice(`已将“${episode.title}”加入待播`);
+    } catch (reason) {
+      setError(errorMessage(reason, "加入待播失败"));
+    }
+  }
+
+  async function shareEpisode(episode: PodcastEpisode) {
+    const url = shareablePodcastEpisodeUrl(episode);
+    setError(null);
+    setNotice(null);
+    if (!url) {
+      setError("这集没有可分享的链接");
+      return;
+    }
+
+    const shareData = {
+      title: episode.title,
+      text: episode.feedTitle
+        ? `${episode.feedTitle} · ${episode.title}`
+        : episode.title,
+      url,
+    };
+
+    let canUseWebShare = typeof navigator.share === "function";
+    if (canUseWebShare && typeof navigator.canShare === "function") {
+      try {
+        canUseWebShare = navigator.canShare(shareData);
+      } catch {
+        canUseWebShare = false;
+      }
+    }
+
+    if (canUseWebShare) {
+      try {
+        await navigator.share(shareData);
+        setNotice("已分享单集");
+        return;
+      } catch (reason) {
+        if (reason instanceof Error && reason.name === "AbortError") return;
+        // Web Share may be exposed but unavailable in the current WebView.
+        // Continue with the clipboard path so the action still succeeds.
+      }
+    }
+
+    try {
+      await copyPodcastShareUrl(url);
+      setNotice("已复制单集链接");
+    } catch {
+      setNotice(null);
+      setError("无法分享这集，请稍后重试");
+    }
+  }
+
+  function showEpisodeMenu(
+    event: ReactMouseEvent<HTMLElement>,
+    episode: PodcastEpisode,
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const openedFromKeyboard = event.clientX === 0 && event.clientY === 0;
+    setEpisodeMenu({
+      x: openedFromKeyboard
+        ? rect.left + Math.min(rect.width, 120)
+        : event.clientX,
+      y: openedFromKeyboard
+        ? rect.top + Math.min(rect.height, 36)
+        : event.clientY,
+      episode,
+      returnFocus: event.target instanceof Element
+        ? event.target.closest<HTMLButtonElement>("button")
+        : null,
+    });
   }
 
   function playEpisode(episode: PodcastEpisode) {
@@ -1181,6 +1342,8 @@ export function PodcastView({
                     isPlaying={isPlaying}
                     onOpen={() => openEpisodeDetail(episode, "listen")}
                     onPlay={() => playEpisode(episode)}
+                    onContextMenu={(event) =>
+                      showEpisodeMenu(event, episode)}
                   />
                 ))}
               </div>
@@ -1227,6 +1390,8 @@ export function PodcastView({
                       onOpen={() => openEpisodeDetail(episode, "listen")}
                       onPlay={() => playEpisode(episode)}
                       onDownload={() => void downloadEpisode(episode)}
+                      onContextMenu={(event) =>
+                        showEpisodeMenu(event, episode)}
                     />
                   ))}
                 </div>
@@ -1376,6 +1541,8 @@ export function PodcastView({
                     onOpen={() => openEpisodeDetail(episode, "library")}
                     onPlay={() => playEpisode(episode)}
                     onDownload={() => void downloadEpisode(episode)}
+                    onContextMenu={(event) =>
+                      showEpisodeMenu(event, episode)}
                   />
                 ))}
               </div>
@@ -1399,6 +1566,8 @@ export function PodcastView({
                     onOpen={() => openEpisodeDetail(episode, "library")}
                     onPlay={() => playEpisode(episode)}
                     onDownload={() => undefined}
+                    onContextMenu={(event) =>
+                      showEpisodeMenu(event, episode)}
                   />
                 ))}
               </div>
@@ -1416,6 +1585,8 @@ export function PodcastView({
                 isPlaying={isPlaying}
                 onOpen={() => openEpisodeDetail(knownActiveEpisode, "playlist")}
                 onPlay={() => playEpisode(knownActiveEpisode)}
+                onContextMenu={(event) =>
+                  showEpisodeMenu(event, knownActiveEpisode)}
               />
             ) : currentEpisodeId ? (
               <div className="podcast-inline-state">
@@ -1447,6 +1618,8 @@ export function PodcastView({
                       void onMoveQueueEpisode(item.episode.id, direction)}
                     onRemove={() =>
                       void onRemoveQueueEpisode(item.episode.id)}
+                    onContextMenu={(event) =>
+                      showEpisodeMenu(event, item.episode)}
                   />
                 ))}
               </div>
@@ -1508,6 +1681,8 @@ export function PodcastView({
                   onOpen={() => openEpisodeDetail(episode, "show")}
                   onPlay={() => playEpisode(episode)}
                   onDownload={() => void downloadEpisode(episode)}
+                  onContextMenu={(event) =>
+                    showEpisodeMenu(event, episode)}
                 />
               ))
             ) : (
@@ -1562,6 +1737,29 @@ export function PodcastView({
           {error ?? notice}
         </div>
       ) : null}
+
+      <PodcastEpisodeContextMenu
+        menu={episodeMenu}
+        downloading={Boolean(downloadingId)}
+        updatingPlayed={Boolean(updatingPlayedId || detailAction === "played")}
+        queueState={
+          episodeMenu && activeEpisodeId === episodeMenu.episode.id
+            ? "active"
+            : episodeMenu
+              && queue.some(
+                (item) => item.episode.id === episodeMenu.episode.id,
+              )
+              ? "queued"
+              : "available"
+        }
+        onClose={() => setEpisodeMenu(null)}
+        onPlay={playEpisode}
+        onQueue={(episode) => void queueEpisodeFromMenu(episode)}
+        onTogglePlayed={(episode) =>
+          void toggleEpisodePlayedFromMenu(episode)}
+        onDownload={(episode) => void downloadEpisode(episode)}
+        onShare={(episode) => void shareEpisode(episode)}
+      />
     </section>
   );
 }
@@ -1688,17 +1886,22 @@ function ContinueCard({
   isPlaying,
   onOpen,
   onPlay,
+  onContextMenu,
 }: {
   episode: PodcastEpisode;
   active: boolean;
   isPlaying: boolean;
   onOpen: () => void;
   onPlay: () => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const percentage = podcastEpisodePlayedPercent(episode) ?? 0;
   const progressLabel = podcastPlayedLabel(episode);
   return (
-    <article className={`podcast-continue-card${active ? " active" : ""}`}>
+    <article
+      className={`podcast-continue-card${active ? " active" : ""}`}
+      onContextMenu={onContextMenu}
+    >
       <div className="podcast-continue-artwork">
         <PodcastArtwork
           url={episode.artworkUrl ?? episode.feedArtworkUrl}
@@ -1755,6 +1958,7 @@ function EpisodeRow({
   onOpen,
   onPlay,
   onDownload,
+  onContextMenu,
 }: {
   episode: PodcastEpisode;
   active: boolean;
@@ -1766,6 +1970,7 @@ function EpisodeRow({
   onOpen: () => void;
   onPlay: () => void;
   onDownload: () => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const progressLabel = podcastPlayedLabel(episode);
   const accessibilityLabel = [
@@ -1778,6 +1983,7 @@ function EpisodeRow({
       className={`podcast-episode${showArtwork ? " with-artwork" : ""}${
         active ? " active" : ""
       }`}
+      onContextMenu={onContextMenu}
     >
       {showArtwork ? (
         <div className="podcast-episode-artwork">
@@ -1881,14 +2087,19 @@ function CurrentEpisodeRow({
   isPlaying,
   onOpen,
   onPlay,
+  onContextMenu,
 }: {
   episode: PodcastEpisode;
   isPlaying: boolean;
   onOpen: () => void;
   onPlay: () => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   return (
-    <article className="podcast-current-episode">
+    <article
+      className="podcast-current-episode"
+      onContextMenu={onContextMenu}
+    >
       <PodcastArtwork
         url={episode.artworkUrl ?? episode.feedArtworkUrl}
         title={episode.feedTitle ?? episode.title}
@@ -1930,6 +2141,7 @@ function QueueEpisodeRow({
   onPlay,
   onMove,
   onRemove,
+  onContextMenu,
 }: {
   item: PodcastQueueItem;
   index: number;
@@ -1938,9 +2150,13 @@ function QueueEpisodeRow({
   onPlay: () => void;
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   return (
-    <article className="podcast-queue-episode">
+    <article
+      className="podcast-queue-episode"
+      onContextMenu={onContextMenu}
+    >
       <span className="podcast-queue-position">
         {String(index + 1).padStart(2, "0")}
       </span>
@@ -2245,6 +2461,54 @@ function plainText(value: string) {
     .replace(/&#39;/gi, "'")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function shareablePodcastEpisodeUrl(
+  episode: PodcastEpisode,
+): string | null {
+  for (const candidate of [episode.webpageUrl, episode.enclosureUrl]) {
+    if (!candidate?.trim()) continue;
+    try {
+      const parsed = new URL(candidate);
+      if (
+        (parsed.protocol === "https:" || parsed.protocol === "http:")
+        && !parsed.username
+        && !parsed.password
+      ) {
+        return parsed.toString();
+      }
+    } catch {
+      // Ignore malformed feed metadata and try the enclosure fallback.
+    }
+  }
+  return null;
+}
+
+async function copyPodcastShareUrl(url: string) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(url);
+      return;
+    } catch {
+      // Some WebView versions expose Clipboard API without granting access.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = url;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    if (!document.execCommand("copy")) {
+      throw new Error("clipboard unavailable");
+    }
+  } finally {
+    textarea.remove();
+  }
 }
 
 function errorMessage(reason: unknown, fallback: string) {

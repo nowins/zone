@@ -1006,7 +1006,9 @@ function declaredTypeBody(source, name) {
 }
 
 function declaredFunctionSource(source, name) {
-  const declaration = new RegExp(String.raw`\bfunction\s+${name}\s*\(`).exec(source);
+  const declaration = new RegExp(
+    String.raw`\bfunction\s+${name}(?:<[^>]+>)?\s*\(`,
+  ).exec(source);
   assert.ok(declaration, `missing ${name} function`);
   const tail = source.slice(declaration.index + declaration[0].length);
   const nextDeclaration = /\n {2}(?:async\s+)?function\s+\w/.exec(tail);

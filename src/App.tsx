@@ -870,9 +870,12 @@ export default function App() {
     }
   }
 
-  function serializePodcastQueueMutation(operation: () => Promise<void>) {
+  function serializePodcastQueueMutation<T>(operation: () => Promise<T>) {
     const next = podcastQueueMutationRef.current.then(operation, operation);
-    podcastQueueMutationRef.current = next.catch(() => undefined);
+    podcastQueueMutationRef.current = next.then(
+      () => undefined,
+      () => undefined,
+    );
     return next;
   }
 
@@ -910,7 +913,7 @@ export default function App() {
   function queuePodcastEpisode(episode: PodcastEpisode, playNext: boolean) {
     if (activePodcastEpisodeRef.current?.episodeId === episode.id) {
       showActionNotice("本集正在播放");
-      return;
+      return false;
     }
     const current = podcastQueueRef.current;
     const existing = current.find((item) => item.episode.id === episode.id);
@@ -935,10 +938,12 @@ export default function App() {
         });
         applyPodcastQueueResult(items, revision);
         showActionNotice(playNext ? "将在当前单集之后播放" : "已加入待播队列");
+        return true;
       } catch (reason) {
         await reloadPodcastQueue(revision);
         showActionNotice("无法更新待播队列");
         if (import.meta.env.DEV) console.warn("[podcast] queue add failed", reason);
+        return false;
       }
     });
   }
