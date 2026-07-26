@@ -3357,6 +3357,19 @@ mod tests {
     .expect("parse fixture")
   }
 
+  fn parse_test_feed(xml: &str, name: &str) -> ParsedPodcast {
+    parse_feed_bytes(
+      xml.as_bytes(),
+      &format!("https://feeds.example.test/{name}.xml"),
+      None,
+      None,
+      None,
+      None,
+      None,
+    )
+    .unwrap_or_else(|error| panic!("parse {name} fixture: {error}"))
+  }
+
   fn parsed_fixture_with_episode_count(count: usize) -> ParsedPodcast {
     let mut parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
     let template = parsed.episodes[0].clone();
@@ -3551,6 +3564,99 @@ mod tests {
     assert_eq!(episode.enclosure_type.as_deref(), Some("audio/mpeg"));
     assert_eq!(episode.expected_bytes, Some(23));
     assert_eq!(episode.id.len(), 64);
+  }
+
+  #[test]
+  fn chinese_hosting_feed_shapes_preserve_metadata_and_audio_urls() {
+    let cdata_feed = r#"<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0"
+        xmlns:content="http://purl.org/rss/1.0/modules/content/"
+        xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+        <channel>
+          <title><![CDATA[方向之间]]></title>
+          <description><![CDATA[<p>一档中文谈话节目</p>]]></description>
+          <pubDate>Mon, 01 Dec 2025 01:00:00 +0000</pubDate>
+          <itunes:author><![CDATA[测试播客厂牌]]></itunes:author>
+          <item>
+            <guid><![CDATA[episode-380]]></guid>
+            <title><![CDATA[380 城市与公共空间]]></title>
+            <pubDate><![CDATA[Sat, 04 Jul 2026 01:00:00 +0000]]></pubDate>
+            <content:encoded><![CDATA[<p>本期节目讨论城市生活。</p>]]></content:encoded>
+            <enclosure
+              url="https://tracking.example.test/audio.example.test/episodes/380.m4a?source=feed&amp;token=a%2Fb"
+              length="230000"
+              type="audio/mp4" />
+          </item>
+        </channel>
+      </rss>"#;
+    let parsed = parse_test_feed(cdata_feed, "cdata");
+    assert_eq!(parsed.feed.title, "方向之间");
+    assert_eq!(parsed.feed.author.as_deref(), Some("测试播客厂牌"));
+    assert_eq!(parsed.episodes[0].title, "380 城市与公共空间");
+    assert_eq!(parsed.episodes[0].published_at, Some(1_783_126_800_000));
+    assert_eq!(
+      parsed.episodes[0].enclosure_url,
+      "https://tracking.example.test/audio.example.test/episodes/380.m4a?source=feed&token=a%2Fb"
+    );
+
+    let nested_url_feed = r#"<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0">
+        <channel>
+          <title>山海晨间</title>
+          <description>通勤资讯</description>
+          <item>
+            <guid>episode-42</guid>
+            <title>第 42 期</title>
+            <pubDate>Sat, 4 Jul 2026 01:00:00 +0000</pubDate>
+            <enclosure
+              url="http://audio.example.test//group/42.m4a?source=rss&amp;jt=https%3A%2F%2Fjump.example.test%2F42"
+              length="420000"
+              type="audio/x-m4a" />
+          </item>
+        </channel>
+      </rss>"#;
+    let parsed = parse_test_feed(nested_url_feed, "nested-url");
+    assert_eq!(parsed.episodes[0].published_at, Some(1_783_126_800_000));
+    assert_eq!(
+      parsed.episodes[0].enclosure_url,
+      "http://audio.example.test//group/42.m4a?source=rss&jt=https%3A%2F%2Fjump.example.test%2F42"
+    );
+  }
+
+  #[test]
+  fn mixed_rss_and_media_enclosures_are_deduplicated() {
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+          <title>多媒体测试节目</title>
+          <description>验证音频选择</description>
+          <item>
+            <guid>mixed-one</guid>
+            <title>同时提供两种音频</title>
+            <enclosure url="https://audio.example.test/preferred.mp3" length="100" type="audio/mpeg" />
+            <media:content url="https://img.example.test/cover.jpg" type="image/jpeg" />
+            <media:content url="https://audio.example.test/fallback.m4a" type="audio/mp4" />
+          </item>
+          <item>
+            <guid>media-only</guid>
+            <title>只有 Media RSS 音频</title>
+            <media:content url="https://img.example.test/second-cover.jpg" type="image/jpeg" />
+            <media:content url="https://audio.example.test/media-only.m4a" type="audio/mp4" fileSize="200" duration="61" />
+          </item>
+        </channel>
+      </rss>"#;
+    let parsed = parse_test_feed(xml, "mixed-enclosures");
+    assert_eq!(parsed.episodes.len(), 2);
+    assert_eq!(
+      parsed.episodes[0].enclosure_url,
+      "https://audio.example.test/preferred.mp3"
+    );
+    assert_eq!(
+      parsed.episodes[1].enclosure_url,
+      "https://audio.example.test/media-only.m4a"
+    );
+    assert_eq!(parsed.episodes[1].expected_bytes, Some(200));
+    assert_eq!(parsed.episodes[1].duration_seconds, Some(61.0));
   }
 
   #[test]
