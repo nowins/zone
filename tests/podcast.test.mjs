@@ -96,6 +96,42 @@ test("podcasts open on content, keep search secondary, and separate play from do
   }
   excludes(podcastViewSource, /播客实验|下载并播放/, "probe copy must not remain in the formal experience");
 
+  const listenSurface = sourceBetween(
+    podcastViewSource,
+    '{screen === "listen" ? (',
+    '{screen === "discover" ? (',
+  );
+  const discoverSurface = sourceBetween(
+    podcastViewSource,
+    '{screen === "discover" ? (',
+    '{screen === "library" ? (',
+  );
+  excludes(
+    listenSurface,
+    /DiscoveryShelf|discoveryShows|中国区热门节目/,
+    "the listening home must not duplicate the discovery catalog",
+  );
+  includes(
+    listenSurface,
+    /!hasListenContent[\s\S]{0,520}<PodcastEmpty[\s\S]{0,180}actionLabel="去发现"[\s\S]{0,180}changeRootScreen\("discover"\)/,
+    "an empty listening home must guide new users into discovery",
+  );
+  assert.equal(
+    occurrences(podcastViewSource, /<DiscoveryShelf\b/g),
+    1,
+    "the full discovery shelf must have a single owner",
+  );
+  includes(
+    discoverSurface,
+    /title="中国区热门节目"[\s\S]{0,220}<DiscoveryShelf[\s\S]{0,180}shows=\{discoveryShows\}/,
+    "discovery must own the complete regional catalog",
+  );
+  includes(
+    podcastViewSource,
+    /useEffect\(\(\)\s*=>\s*\{\s*if\s*\(screen\s*!==\s*"discover"\s*\|\|\s*discoveryState\s*!==\s*"idle"\)\s*return;\s*void loadDiscovery\(\);/,
+    "regional discovery should load only when the user opens that surface",
+  );
+
   const playEpisodeSource = declaredFunctionSource(podcastViewSource, "playEpisode");
   const downloadEpisodeSource = declaredFunctionSource(podcastViewSource, "downloadEpisode");
   includes(playEpisodeSource, /onPlayEpisode\(/, "episode play must hand off immediately to the shared player");
@@ -778,4 +814,12 @@ function topLevelFunctionSource(source, name) {
     declaration.index,
     nextDeclaration ? bodyStart + nextDeclaration.index : source.length,
   );
+}
+
+function sourceBetween(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  assert.notEqual(start, -1, `missing source marker: ${startMarker}`);
+  assert.notEqual(end, -1, `missing source marker: ${endMarker}`);
+  return source.slice(start, end);
 }

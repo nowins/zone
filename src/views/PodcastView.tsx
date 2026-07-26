@@ -151,7 +151,7 @@ export function PodcastView({
   const [searchResults, setSearchResults] = useState<PodcastSearchResult[]>(
     restoredSession?.searchResults ?? [],
   );
-  const [discoveryState, setDiscoveryState] = useState<RequestState>("loading");
+  const [discoveryState, setDiscoveryState] = useState<RequestState>("idle");
   const [discoveryShows, setDiscoveryShows] = useState<PodcastDiscoveryShow[]>([]);
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
   const [libraryState, setLibraryState] = useState<RequestState>("loading");
@@ -201,6 +201,7 @@ export function PodcastView({
   const handledEpisodeRequestNonce = useRef<number | null>(null);
   const handledLibraryRevision = useRef(libraryRevision);
   const episodeDetailRequestRef = useRef(0);
+  const discoveryRequestActive = useRef(false);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const episodeReturnSessionRef = useRef<PodcastSessionSnapshot | null>(null);
 
@@ -257,6 +258,8 @@ export function PodcastView({
       setDiscoveryState("ready");
       return;
     }
+    if (discoveryRequestActive.current) return;
+    discoveryRequestActive.current = true;
     setDiscoveryState("loading");
     try {
       const shows = await invoke<PodcastDiscoveryShow[]>(
@@ -269,6 +272,8 @@ export function PodcastView({
     } catch {
       setDiscoveryShows([]);
       setDiscoveryState("error");
+    } finally {
+      discoveryRequestActive.current = false;
     }
   }, []);
 
@@ -358,7 +363,6 @@ export function PodcastView({
     initialized.current = true;
     void loadFeeds();
     void loadHome();
-    void loadDiscovery();
     if (
       restoredSession?.screen === "show"
       && restoredSession.selectedFeed
@@ -377,13 +381,17 @@ export function PodcastView({
     }
   }, [
     episodeRequest,
-    loadDiscovery,
     loadEpisodeDetail,
     loadEpisodes,
     loadFeeds,
     loadHome,
     restoredSession,
   ]);
+
+  useEffect(() => {
+    if (screen !== "discover" || discoveryState !== "idle") return;
+    void loadDiscovery();
+  }, [discoveryState, loadDiscovery, screen]);
 
   useEffect(() => {
     podcastSessionSnapshot = {
@@ -894,6 +902,8 @@ export function PodcastView({
     () => home.latestEpisodes.map(liveEpisode),
     [home.latestEpisodes, liveEpisode],
   );
+  const hasListenContent =
+    continueListeningEpisodes.length > 0 || latestEpisodes.length > 0;
   const savedEpisodes = useMemo(
     () => home.savedEpisodes.map(liveEpisode),
     [home.savedEpisodes, liveEpisode],
@@ -1080,24 +1090,26 @@ export function PodcastView({
                 ))}
               </div>
             </PodcastSection>
-          ) : homeState === "loading" ? (
-            <PodcastLoading label="正在整理你的节目" />
           ) : null}
 
-          <PodcastSection
-            title="中国区热门节目"
-            actionLabel="查看全部"
-            onAction={() => changeRootScreen("discover")}
-          >
-            <DiscoveryShelf
-              state={discoveryState}
-              shows={discoveryShows.slice(0, 8)}
-              feeds={feeds}
-              openingId={openingId}
-              onOpen={(show) => void previewFeed(show, "listen")}
-              onRetry={() => void loadDiscovery()}
-            />
-          </PodcastSection>
+          {!hasListenContent ? (
+            <PodcastSection title="开始收听">
+              {homeState === "loading" ? (
+                <PodcastLoading label="正在整理你的节目" />
+              ) : homeState === "error" ? (
+                <div className="podcast-inline-state">
+                  <span>暂时无法整理收听内容</span>
+                  <button type="button" onClick={() => void loadHome()}>重试</button>
+                </div>
+              ) : (
+                <PodcastEmpty
+                  label="关注节目后，新单集会出现在这里"
+                  actionLabel="去发现"
+                  onAction={() => changeRootScreen("discover")}
+                />
+              )}
+            </PodcastSection>
+          ) : null}
         </main>
       ) : null}
 
@@ -1147,7 +1159,7 @@ export function PodcastView({
               )}
             </PodcastSection>
           ) : (
-            <PodcastSection title="热门节目" count={discoveryShows.length}>
+            <PodcastSection title="中国区热门节目" count={discoveryShows.length}>
               <DiscoveryShelf
                 state={discoveryState}
                 shows={discoveryShows}
@@ -1452,7 +1464,7 @@ function DiscoveryShelf({
   onOpen: (show: PodcastDiscoveryShow) => void;
   onRetry: () => void;
 }) {
-  if (state === "loading") {
+  if (state === "idle" || state === "loading") {
     return <PodcastLoading label="正在读取中国区热门节目" />;
   }
   if (state === "error") {
@@ -1970,10 +1982,21 @@ function PodcastLoading({ label }: { label: string }) {
   );
 }
 
-function PodcastEmpty({ label }: { label: string }) {
+function PodcastEmpty({
+  label,
+  actionLabel,
+  onAction,
+}: {
+  label: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
   return (
     <div className="podcast-inline-state">
       <span>{label}</span>
+      {actionLabel && onAction ? (
+        <button type="button" onClick={onAction}>{actionLabel}</button>
+      ) : null}
     </div>
   );
 }
