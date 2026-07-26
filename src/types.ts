@@ -153,6 +153,16 @@ export type PodcastSearchResult = {
   episodeCount?: number | null;
 };
 
+export type PodcastDiscoveryShow = {
+  id: string;
+  title: string;
+  author: string;
+  feedUrl: string;
+  artworkUrl?: string | null;
+  genres: string[];
+  rank: number;
+};
+
 export type PodcastFeed = {
   id: string;
   feedUrl: string;
@@ -161,6 +171,7 @@ export type PodcastFeed = {
   description?: string | null;
   artworkUrl?: string | null;
   lastFetchedAt: number;
+  subscribed: boolean;
 };
 
 export type PodcastDownloadState = "none" | "downloading" | "downloaded" | "failed";
@@ -181,6 +192,9 @@ export type PodcastEpisode = {
   totalBytes?: number | null;
   progressSeconds: number;
   completed: boolean;
+  saved: boolean;
+  feedTitle?: string | null;
+  feedArtworkUrl?: string | null;
 };
 
 export type PodcastSubscribeResult = {
@@ -196,14 +210,48 @@ export type PodcastDownloadResult = {
   resumed: boolean;
 };
 
-export type PodcastProbePlayback = {
-  episodeId: string;
-  title: string;
-  podcastTitle: string;
-  downloadedPath: string;
-  artworkUrl?: string | null;
-  savedProgressSeconds: number;
+export type PodcastHome = {
+  continueListening: PodcastEpisode[];
+  latestEpisodes: PodcastEpisode[];
+  downloadedEpisodes: PodcastEpisode[];
+  savedEpisodes: PodcastEpisode[];
 };
+
+export type PodcastEpisodeDetail = {
+  episode: PodcastEpisode;
+  feed: PodcastFeed;
+  expectedBytes?: number | null;
+  downloadError?: string | null;
+  saved: boolean;
+  savedAt?: number | null;
+  queuePosition?: number | null;
+};
+
+export type PodcastQueueItem = {
+  episode: PodcastEpisode;
+  position: number;
+  addedAt: number;
+};
+
+export type PodcastPlayback = PodcastEpisode & {
+  episodeId: string;
+  podcastTitle: string;
+  savedProgressSeconds: number;
+  playbackLocalPath?: string | null;
+};
+
+export type PodcastPlaybackStatus =
+  | "idle"
+  | "loading"
+  | "playing"
+  | "paused"
+  | "buffering"
+  | "error";
+
+export type PodcastSleepTimer =
+  | { kind: "deadline"; deadlineAt: number }
+  | { kind: "episodeEnd"; episodeId: string }
+  | null;
 
 export type LyricsWord = {
   text: string;

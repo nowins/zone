@@ -6,11 +6,18 @@ import test from "node:test";
 const appSource = readFileSync("src/App.tsx", "utf8");
 const appHeaderSource = readFileSync("src/components/AppHeader.tsx", "utf8");
 const playerBarSource = readFileSync("src/components/PlayerBar.tsx", "utf8");
-const podcastPlayerBarSource = readFileSync("src/components/PodcastProbePlayerBar.tsx", "utf8");
-const podcastViewSource = readFileSync("src/views/PodcastProbeView.tsx", "utf8");
+const podcastPlayerBarSource = readFileSync("src/components/PodcastPlayerBar.tsx", "utf8");
+const podcastViewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
+const podcastNowPlayingSource = readFileSync("src/views/PodcastNowPlayingView.tsx", "utf8");
+const podcastArtworkSource = readFileSync("src/utils/podcastArtwork.ts", "utf8");
+const podcastPlaybackSource = readFileSync("src/utils/podcastPlayback.ts", "utf8");
+const baseCss = readFileSync("src/styles/base.css", "utf8");
+const podcastCss = readFileSync("src/styles/podcasts.css", "utf8");
+const podcastNowPlayingCss = readFileSync("src/styles/podcast-now-playing.css", "utf8");
 const nowPlayingSource = readFileSync("src/views/NowPlayingView.tsx", "utf8");
 const typesSource = readFileSync("src/types.ts", "utf8");
 const rustEntrySource = readFileSync("src-tauri/src/lib.rs", "utf8");
+const podcastRustSource = readFileSync("src-tauri/src/podcast.rs", "utf8");
 
 const frontendSources = sourceFiles("src", /\.(?:ts|tsx)$/);
 const allFrontendSource = frontendSources.map(({ source }) => source).join("\n");
@@ -18,11 +25,25 @@ const invokeHandlerSource =
   /generate_handler!\s*\[([\s\S]*?)\]\s*\)/.exec(rustEntrySource)?.[1] ?? "";
 
 const PODCAST_COMMANDS = [
+  "podcast_browse_apple",
+  "podcast_list_home",
+  "podcast_preview_feed",
   "podcast_search_apple",
+  "podcast_set_following",
   "podcast_subscribe",
   "podcast_list_feeds",
   "podcast_list_episodes",
+  "podcast_get_episode_detail",
+  "podcast_set_episode_saved",
+  "podcast_list_saved_episodes",
+  "podcast_set_episode_played",
+  "podcast_list_queue",
+  "podcast_queue_add",
+  "podcast_queue_remove",
+  "podcast_queue_reorder",
+  "podcast_queue_clear",
   "podcast_download_episode",
+  "podcast_delete_episode_download",
   "podcast_save_progress",
 ];
 
@@ -35,16 +56,16 @@ test("podcast playback reuses the app's single audio element", () => {
   assert.equal(occurrences(appSource, /<audio\b/g), 1);
   assert.equal(occurrences(allFrontendSource, /\bnew\s+Audio\s*\(/g), 0);
   includes(appSource, /ref=\{audioRef\}/, "the shared audio element must keep audioRef");
-  excludes(podcastViewSource, /<audio\b|\bnew\s+Audio\s*\(/, "PodcastProbeView must not own audio");
+  excludes(podcastViewSource, /<audio\b|\bnew\s+Audio\s*\(/, "PodcastView must not own audio");
   excludes(podcastPlayerBarSource, /<audio\b|\bnew\s+Audio\s*\(/, "the podcast bar must not own audio");
 });
 
-test("podcasts are a peer page wired to the complete probe command chain", () => {
+test("podcasts are a peer page wired to the formal discovery and library command chain", () => {
   includes(typesSource, /type AppPage\s*=[^;]*"podcasts"/, "AppPage must include podcasts");
   includes(appHeaderSource, /onNavigate\("podcasts"\)/, "the primary navigation must open podcasts");
   includes(appHeaderSource, />\s*播客\s*</, "the podcast navigation label must be Chinese");
   includes(appSource, /page\s*===\s*"podcasts"/, "App must render a podcasts page branch");
-  includes(appSource, /<PodcastProbeView\b/, "App must mount PodcastProbeView");
+  includes(appSource, /<PodcastView\b/, "App must mount PodcastView");
 
   for (const command of PODCAST_COMMANDS) {
     assert.ok(
@@ -59,17 +80,557 @@ test("podcasts are a peer page wired to the complete probe command chain", () =>
   }
 });
 
-test("podcast episodes remain outside music queue, Track, now playing, and beat analysis", () => {
+test("podcasts open on content, keep search secondary, and separate play from download", () => {
+  includes(
+    podcastViewSource,
+    /useState<PodcastScreen>\(\s*restoredSession\?\.screen\s*\?\?\s*"listen"/,
+    "podcasts must restore their prior surface and otherwise open on the listening home",
+  );
+  includes(
+    podcastViewSource,
+    /podcastSessionSnapshot\s*=\s*\{[\s\S]{0,420}\bscreen,[\s\S]{0,420}\bselectedEpisodeDetail,/,
+    "podcasts must preserve their navigation and episode context while full-screen playback is open",
+  );
+  for (const label of ["收听", "发现", "资料库", "继续收听", "中国区热门节目"]) {
+    includes(podcastViewSource, new RegExp(label), `missing formal podcast label: ${label}`);
+  }
+  excludes(podcastViewSource, /播客实验|下载并播放/, "probe copy must not remain in the formal experience");
+
+  const playEpisodeSource = declaredFunctionSource(podcastViewSource, "playEpisode");
+  const downloadEpisodeSource = declaredFunctionSource(podcastViewSource, "downloadEpisode");
+  includes(playEpisodeSource, /onPlayEpisode\(/, "episode play must hand off immediately to the shared player");
+  excludes(
+    playEpisodeSource,
+    /podcast_download_episode/,
+    "playing a podcast must not wait for a download command",
+  );
+  includes(
+    downloadEpisodeSource,
+    /podcast_download_episode/,
+    "offline download must remain an explicit secondary action",
+  );
+
+  includes(
+    appSource,
+    /convertFileSrc\(activePlayback\.episode\.episodeId,\s*"zone-podcast"\)/,
+    "undownloaded episodes must use the bounded podcast stream protocol",
+  );
+  includes(
+    appSource,
+    /activePlayback\.episode\.playbackLocalPath[\s\S]{0,160}convertFileSrc\(\s*activePlayback\.episode\.playbackLocalPath,\s*"zone-audio"\s*\)/,
+    "an episode whose playback source was selected as local must use the local audio protocol",
+  );
+  includes(
+    podcastPlaybackSource,
+    /playbackLocalPath:\s*episode\.localPath/,
+    "the playback snapshot must select a downloaded file without mutating the episode record",
+  );
+});
+
+test("continue listening cards reserve circular styling for the play action", () => {
+  const continueCardSource =
+    topLevelFunctionSource(podcastViewSource, "ContinueCard");
+
+  includes(
+    continueCardSource,
+    /<button\b(?=[^>]*\bclassName="podcast-play-action")(?=[^>]*\bonClick=\{onPlay\})[^>]*>/,
+    "ContinueCard play button must use the explicit podcast play-action class",
+  );
+  excludes(
+    podcastCss,
+    /\.podcast-continue-card\s*>\s*button\b/,
+    "continue-card styles must not target every direct child button",
+  );
+  includes(
+    podcastCss,
+    /\.podcast-play-action\s*\{/,
+    "the explicit podcast play action must own the circular control styling",
+  );
+});
+
+test("episode detail exposes saved, played, queue, and offline lifecycle actions", () => {
+  for (const command of [
+    "podcast_get_episode_detail",
+    "podcast_set_episode_saved",
+    "podcast_list_saved_episodes",
+    "podcast_set_episode_played",
+    "podcast_delete_episode_download",
+  ]) {
+    assert.ok(hasInvoke(allFrontendSource, command), `episode experience does not invoke ${command}`);
+  }
+
+  includes(typesSource, /export type PodcastEpisodeDetail\s*=/, "the episode detail contract must be shared");
+  includes(typesSource, /savedEpisodes:\s*PodcastEpisode\[\]/, "the podcast home must expose saved episodes");
+  includes(podcastRustSource, /CREATE TABLE IF NOT EXISTS podcast_saved_episodes/, "saved episodes must persist in SQLite");
+  includes(
+    podcastViewSource,
+    /invoke<PodcastEpisodeDetail\[\]>\("podcast_list_saved_episodes"\)[\s\S]{0,320}savedEpisodeDetails\.map\(\(detail\)\s*=>\s*detail\.episode\)/,
+    "the saved-detail command must be normalized back to episode rows before rendering",
+  );
+
+  for (const label of ["稍后听", "标记为已播放", "删除下载"]) {
+    includes(podcastViewSource, new RegExp(label), `episode detail is missing the ${label} action`);
+  }
+  includes(
+    podcastViewSource,
+    /podcast_get_episode_detail/,
+    "opening an episode must resolve its complete detail rather than relying on a truncated list row",
+  );
+  includes(
+    podcastRustSource,
+    /completed\s*=\s*MAX\(podcast_progress\.completed,\s*excluded\.completed\)/,
+    "ordinary progress saves must not undo an explicit played marker",
+  );
+
+  const playEpisodeSource = declaredFunctionSource(podcastViewSource, "playEpisode");
+  excludes(
+    playEpisodeSource,
+    /podcast_set_episode_saved|podcast_set_episode_played|podcast_download_episode/,
+    "playing an episode must stay independent from save, played, and download actions",
+  );
+});
+
+test("podcast queue is independent, durable, reorderable, and advances after an episode", () => {
+  includes(typesSource, /export type PodcastQueueItem\s*=/, "the queue must have a podcast-specific item type");
+  includes(
+    podcastRustSource,
+    /CREATE TABLE IF NOT EXISTS podcast_queue/,
+    "the podcast queue must persist in SQLite instead of borrowing the music queue",
+  );
+  for (const command of [
+    "podcast_list_queue",
+    "podcast_queue_add",
+    "podcast_queue_remove",
+    "podcast_queue_reorder",
+    "podcast_queue_clear",
+  ]) {
+    assert.ok(hasInvoke(appSource, command), `App does not wire durable queue command ${command}`);
+  }
+
+  includes(
+    appSource,
+    /useState<PodcastQueueItem\[\]>\(\[\]\)/,
+    "App must keep a podcast queue separate from the music id queue",
+  );
+  includes(
+    podcastPlaybackSource,
+    /export function movePodcastQueueItem\(/,
+    "queue reorder must use a podcast-specific operation",
+  );
+  includes(
+    declaredFunctionSource(appSource, "queuePodcastEpisode"),
+    /playNext/,
+    "queue insertion must distinguish next-up from adding to the end",
+  );
+  includes(
+    declaredFunctionSource(appSource, "movePodcastQueueEpisode"),
+    /podcast_queue_reorder/,
+    "reordering must be persisted after the optimistic move",
+  );
+  includes(
+    declaredFunctionSource(appSource, "serializePodcastQueueMutation"),
+    /podcastQueueMutationRef\.current\.then\(\s*operation,\s*operation\s*\)/,
+    "queue mutations must be serialized so older responses cannot win",
+  );
+  for (const operation of [
+    "queuePodcastEpisode",
+    "removePodcastQueueEpisode",
+    "clearPodcastQueue",
+    "movePodcastQueueEpisode",
+  ]) {
+    includes(
+      declaredFunctionSource(appSource, operation),
+      /beginPodcastQueueMutation\(/,
+      `${operation} must update the shared optimistic order before later mutations are computed`,
+    );
+  }
+  includes(
+    appSource,
+    /podcastQueueRevisionRef\.current\s*===\s*revision/,
+    "late queue snapshots must not overwrite newer optimistic operations",
+  );
+  const consumeSource = declaredFunctionSource(
+    appSource,
+    "consumePendingPodcastQueueEpisode",
+  );
+  for (const condition of [
+    "pendingPodcastQueueConsumeRef.current !== episodeId",
+    "activePodcastEpisodeRef.current?.episodeId !== episodeId",
+    "podcastAudioEpisodeRef.current !== episodeId",
+  ]) {
+    includes(
+      consumeSource,
+      new RegExp(escapeRegExp(condition)),
+      `queue consumption is missing source guard: ${condition}`,
+    );
+  }
+  const playPodcastSource = declaredFunctionSource(appSource, "playPodcastEpisode");
+  excludes(
+    playPodcastSource,
+    /podcast_queue_remove/,
+    "selecting an episode must not consume it before playback starts",
+  );
+  includes(
+    appSource,
+    /\.play\(\)[\s\S]{0,520}consumePendingPodcastQueueEpisode\(\s*podcastEpisodeId\s*\)/,
+    "a queued episode must be consumed only after its source successfully starts",
+  );
+  includes(
+    appSource,
+    /activeAudioSourceKeyRef\.current\s*!==\s*sourceKey/,
+    "late play promises from a replaced source must not consume or change the new episode",
+  );
+  includes(
+    appSource,
+    /activeAudioSourceKeyRef\.current\s*!==\s*sourceKey\s*\|\|\s*audioPlayAttemptRef\.current\s*!==\s*playAttempt/,
+    "late play promises from an older attempt on the same source must be ignored",
+  );
+  includes(
+    appSource,
+    /podcastQueue\.some\(\(item\)\s*=>\s*item\.episode\.id\s*===\s*episodeId\)[\s\S]{0,180}pendingPodcastQueueConsumeRef\.current\s*=\s*episodeId/,
+    "a restored current episode must still consume a matching durable queue item after playback succeeds",
+  );
+  includes(
+    appSource,
+    /pendingPodcastQueueConsumeRef\.current\s*=\s*episodeId;[\s\S]{0,180}podcastPlaybackStartedEpisodeRef\.current\s*===\s*episodeId[\s\S]{0,120}consumePendingPodcastQueueEpisode\(episodeId\)/,
+    "a queue snapshot restored after playback started must consume the already-playing episode",
+  );
+  includes(
+    appSource,
+    /podcastPlaybackStartedEpisodeRef\.current\s*=\s*podcastEpisodeId;[\s\S]{0,140}consumePendingPodcastQueueEpisode\(podcastEpisodeId\)/,
+    "successful playback must be remembered independently from the queue restore timing",
+  );
+
+  const endedSource = declaredFunctionSource(appSource, "onEnded");
+  includes(endedSource, /playNextPodcastEpisode/, "episode completion must advance the podcast queue");
+  assert.ok(
+    endedSource.indexOf('kind === "episodeEnd"') < endedSource.indexOf("playNextPodcastEpisode"),
+    "sleep-at-end must stop before queue advancement",
+  );
+
+  for (const affordance of [
+    "onPlayQueueItem",
+    "onRemoveQueueItem",
+    "onMoveQueueItem",
+    "onClearQueue",
+  ]) {
+    includes(
+      podcastNowPlayingSource,
+      new RegExp(`\\b${affordance}\\b`),
+      `now playing is missing queue affordance ${affordance}`,
+    );
+  }
+});
+
+test("podcast now playing is a dedicated branch with podcast transport and recovery", () => {
+  includes(
+    appSource,
+    /page\s*===\s*"nowPlaying"[\s\S]{0,320}activePodcastEpisode\s*\?[\s\S]{0,180}<PodcastNowPlayingView\b/,
+    "now playing must select the podcast view when a podcast owns audio",
+  );
+  includes(
+    appSource,
+    /<PodcastNowPlayingView\b[\s\S]{0,2200}\)\s*:\s*\(\s*<NowPlayingView\b/,
+    "the music NowPlayingView must remain the non-podcast branch",
+  );
+  includes(
+    declaredFunctionSource(appSource, "openNowPlaying"),
+    /!activePodcastEpisode\s*&&\s*!activeTrack/,
+    "both music and podcasts must be able to open the shared full-screen destination",
+  );
+  includes(
+    podcastPlayerBarSource,
+    /onLabelClick=\{onOpenNowPlaying\}/,
+    "the podcast player label must open its full-screen player",
+  );
+  includes(
+    appSource,
+    /<PodcastPlayerBar\b[\s\S]{0,700}status=\{podcastPlaybackStatus\}[\s\S]{0,260}onRetry=\{retryPodcastPlayback\}/,
+    "the compact podcast player must receive playback errors and retry",
+  );
+  includes(
+    podcastPlayerBarSource,
+    /onClick=\{status\s*===\s*"error"\s*\?\s*onRetry\s*:\s*onPlayPause\}/,
+    "the compact player play button must retry an errored stream",
+  );
+
+  excludes(
+    nowPlayingSource,
+    /\bPodcast(?:Episode|Feed|Playback|QueueItem|SleepTimer)?\b/,
+    "the music NowPlayingView must stay podcast-free",
+  );
+  excludes(
+    podcastNowPlayingSource,
+    /\bTrack\b|NowPlayingMosaicCanvas|AudioGlowCanvas|LyricsStage/,
+    "the podcast player must not reuse music models, mosaic, glow, or lyrics",
+  );
+
+  for (const control of [
+    "后退 15 秒",
+    "前进 30 秒",
+    "onPlaybackRate",
+    "onSleepTimer",
+    "onRetry",
+  ]) {
+    includes(
+      podcastNowPlayingSource,
+      new RegExp(control),
+      `podcast now playing is missing ${control}`,
+    );
+  }
+});
+
+test("episode detail preserves the full-screen now-playing return path and live progress", () => {
+  includes(
+    declaredFunctionSource(appSource, "openActivePodcastEpisode"),
+    /returnToNowPlaying:\s*true/,
+    "episode info opened from full-screen playback must carry its return origin",
+  );
+  includes(
+    declaredFunctionSource(podcastViewSource, "closeEpisodeDetail"),
+    /episodeReturnToNowPlaying[\s\S]{0,260}podcastSessionSnapshot\s*=[\s\S]{0,220}onReturnToNowPlaying\(\)/,
+    "closing episode info must restore the podcast session before returning to now playing",
+  );
+  includes(
+    podcastViewSource,
+    /const loadEpisodeDetail[\s\S]{0,900}episodeDetailRequestRef\.current\s*!==\s*requestId/,
+    "a detail response that resolves during navigation exit must be ignored",
+  );
+  includes(
+    podcastViewSource,
+    /返回正在播放/,
+    "episode detail must describe its full-screen return destination",
+  );
+  includes(
+    appSource,
+    /<PodcastView\b[\s\S]{0,500}activeProgress=\{progress\}[\s\S]{0,180}activeDuration=\{duration\}/,
+    "PodcastView must receive the live media clock",
+  );
+  includes(
+    podcastViewSource,
+    /mergePodcastEpisodePlayback\(/,
+    "podcast lists and detail must merge the live playback clock",
+  );
+  includes(
+    podcastViewSource,
+    /continueListening[\s\S]{0,180}\.filter\(\(episode\)\s*=>\s*!episode\.completed\)/,
+    "a completed active episode must leave continue listening immediately",
+  );
+  includes(
+    declaredFunctionSource(appSource, "onEnded"),
+    /progressSaved\.finally\(\(\)\s*=>\s*\{[\s\S]{0,140}setPodcastLibraryRevision\(\(current\)\s*=>\s*current\s*\+\s*1\)/,
+    "episode completion must refresh cached podcast lists even when the queue advances",
+  );
+  includes(
+    podcastViewSource,
+    /handledLibraryRevision\.current\s*=\s*libraryRevision;[\s\S]{0,160}loadHome\(\)/,
+    "PodcastView must reload durable home state after playback completion",
+  );
+});
+
+test("podcast playback handles speed, sleep, buffering, and errors on the shared audio", () => {
+  includes(
+    appSource,
+    /PODCAST_PLAYBACK_RATES\s*=\s*\[[^\]]*0\.5[^\]]*3[^\]]*\]/,
+    "podcast playback speed must cover the requested 0.5x to 3x range",
+  );
+  includes(
+    appSource,
+    /audio\.playbackRate\s*=\s*activePlayback\.kind\s*===\s*"podcast"\s*\?\s*podcastPlaybackRate\s*:\s*1/,
+    "the shared audio rate must apply to podcasts and reset to 1x for music",
+  );
+  includes(
+    appSource,
+    /PODCAST_PLAYBACK_SETTINGS_KEY/,
+    "the playback speed preference must survive navigation and restart",
+  );
+  includes(
+    appSource,
+    /const episodeId\s*=\s*readPodcastActiveEpisodeId\(\)/,
+    "the last active episode must restore paused across app restarts",
+  );
+  includes(
+    appSource,
+    /invoke<PodcastEpisodeDetail>\("podcast_get_episode_detail",\s*\{\s*episodeId\s*\}\)[\s\S]{0,1100}setActivePodcastEpisode\(podcastPlaybackForEpisode\(detail\.episode\)\)/,
+    "the persisted active episode must be reconstructed from SQLite detail",
+  );
+  includes(
+    appSource,
+    /if\s*\(\s*!podcastSessionHydrated\s*\)\s*return null;/,
+    "music playback must stay gated until the last podcast session is resolved",
+  );
+  includes(
+    appSource,
+    /podcastSessionRestoreCancelledRef\.current\s*\|\|\s*activePodcastEpisodeRef\.current/,
+    "a failed stale restore must not clear a podcast selected during hydration",
+  );
+  includes(
+    appSource,
+    /activeEpisodeId:\s*activePodcastEpisode\?\.episodeId\s*\?\?\s*null/,
+    "the current podcast session must be persisted separately from music state",
+  );
+
+  includes(
+    appSource,
+    /podcastSleepTimer\?\.kind\s*!==\s*"deadline"[\s\S]{0,420}setTimeout[\s\S]{0,260}flushPodcastProgress\(\)[\s\S]{0,120}pause\(\)/,
+    "a deadline sleep timer must preserve progress before pausing",
+  );
+  includes(podcastNowPlayingSource, /SLEEP_MINUTES\s*=\s*\[15,\s*30,\s*45,\s*60\]/, "sleep choices are incomplete");
+  includes(podcastNowPlayingSource, /kind:\s*"episodeEnd"/, "sleep-at-end is missing");
+
+  for (const handler of [
+    "onLoadStart={handleAudioLoadStart}",
+    "onWaiting={handleAudioWaiting}",
+    "onStalled={handleAudioWaiting}",
+    "onCanPlay={handleAudioCanPlay}",
+    "onError={handleAudioError}",
+  ]) {
+    includes(appSource, new RegExp(escapeRegExp(handler)), `shared audio is missing ${handler}`);
+  }
+  includes(typesSource, /"buffering"/, "podcast playback status must distinguish buffering");
+  includes(typesSource, /"error"/, "podcast playback status must expose errors");
+  includes(
+    declaredFunctionSource(appSource, "retryPodcastPlayback"),
+    /audio\.load\(\)[\s\S]{0,140}audio\.play\(\)/,
+    "retry must reload and play the same shared audio element",
+  );
+  includes(
+    declaredFunctionSource(appSource, "retryPodcastPlayback"),
+    /audioPlayAttemptRef\.current\s*=\s*playAttempt[\s\S]{0,520}audioPlayAttemptRef\.current\s*!==\s*playAttempt/,
+    "retry must invalidate callbacks from an older attempt on the same episode",
+  );
+  includes(
+    declaredFunctionSource(appSource, "togglePlay"),
+    /audioPlayAttemptRef\.current\s*\+=\s*1;[\s\S]{0,80}audio\.pause\(\)/,
+    "pausing must invalidate a pending play promise before it can report an error",
+  );
+  includes(
+    appSource,
+    /podcastProgressMutationRef\.current\.then/,
+    "progress writes must preserve seek order",
+  );
+  includes(
+    declaredFunctionSource(appSource, "setPodcastEpisodePlayed"),
+    /podcastProgressMutationRef\.current\.then\([\s\S]{0,220}podcast_set_episode_played/,
+    "played and unplayed markers must be ordered with pending progress saves",
+  );
+  includes(
+    appSource,
+    /setProgress\(\s*activePlayback\.kind\s*===\s*"podcast"[\s\S]{0,140}activePlayback\.episode\.savedProgressSeconds/,
+    "a restored episode must show its saved position before media metadata is available",
+  );
+  const flushProgressSource = declaredFunctionSource(appSource, "flushPodcastProgress");
+  includes(
+    flushProgressSource,
+    /resumePending\s*\?\s*pending!\.position\s*:\s*audio\.currentTime/,
+    "flushing during media hydration must preserve the pending saved position",
+  );
+  includes(
+    flushProgressSource,
+    /episode\?\.durationSeconds\s*\?\?\s*0/,
+    "flushing before metadata must preserve the episode duration fallback",
+  );
+  includes(
+    declaredFunctionSource(appSource, "handleTimeUpdate"),
+    /pending\?\.episodeId\s*===\s*podcastEpisode\.episodeId[\s\S]{0,140}setProgress\(\s*Math\.max\(0,\s*pending\.position\)\s*\)[\s\S]{0,80}return;/,
+    "zero-valued media events must not replace a pending restored position",
+  );
+  includes(
+    declaredFunctionSource(appSource, "seek"),
+    /pendingPodcastResumeRef\.current\s*=\s*null[\s\S]{0,120}currentTime\s*=\s*value/,
+    "an explicit seek must supersede the pending restored position",
+  );
+  includes(
+    appSource,
+    /useEffect\(\(\)\s*=>\s*\(\)\s*=>\s*\{[\s\S]{0,360}flushPodcastProgress\(\);[\s\S]{0,40}\},\s*\[\]\);/,
+    "application shutdown must use the same resume-safe progress flush path",
+  );
+});
+
+test("podcast detail, menus, and full-screen layout cover keyboard and minimum-window basics", () => {
+  includes(
+    baseCss,
+    /\.shell\s*\{(?=[^}]*min-width:\s*920px)[^}]*\}/,
+    "the app shell must honor Tauri's 920px minimum width",
+  );
+  excludes(baseCss, /min-width:\s*1024px/, "the old 1024px clipping floor must be removed");
+  includes(
+    podcastViewSource,
+    /window\.addEventListener\("keydown",\s*handleEscape\)/,
+    "show and episode screens must support Escape navigation",
+  );
+  includes(
+    podcastViewSource,
+    /headingRef\.current\?\.focus\(\{\s*preventScroll:\s*true\s*\}\)/,
+    "internal podcast navigation must move focus to the new heading",
+  );
+  for (const key of ["ArrowDown", "ArrowUp", "Home", "End", "Escape"]) {
+    includes(
+      podcastNowPlayingSource,
+      new RegExp(`event\\.key\\s*===\\s*"${key}"`),
+      `podcast playback menu is missing ${key} keyboard behavior`,
+    );
+  }
+  assert.equal(
+    occurrences(podcastNowPlayingSource, /aria-haspopup="menu"/g),
+    2,
+    "speed and sleep triggers must expose menu semantics",
+  );
+  includes(
+    podcastNowPlayingSource,
+    /\(selected\s*\?\?\s*items\[0\]\)\?\.focus\(\)/,
+    "opening a playback menu must focus its selected or first item",
+  );
+  includes(
+    podcastNowPlayingCss,
+    /@media\s*\(max-height:\s*680px\)\s*\{[\s\S]*?\.podcast-now-copy\s*\{(?=[^}]*max-height:\s*100%)(?=[^}]*overflow-y:\s*auto)[^}]*\}/,
+    "short windows must keep long episode copy inside the transport boundary",
+  );
+});
+
+test("remote podcast artwork is isolated behind the bounded Rust proxy", () => {
+  includes(
+    podcastArtworkSource,
+    /convertFileSrc\(\s*token,\s*"zone-podcast-artwork"\s*\)/,
+    "podcast artwork must use the dedicated safe protocol",
+  );
+  includes(
+    rustEntrySource,
+    /register_asynchronous_uri_scheme_protocol\(\s*"zone-podcast-artwork"/,
+    "Tauri must register the podcast artwork protocol",
+  );
+  includes(
+    podcastViewSource,
+    /podcastArtworkSrc\(\s*url\s*\)/,
+    "show and episode artwork must be proxied",
+  );
+  includes(
+    podcastPlayerBarSource,
+    /podcastArtworkSrc\(\s*episode\.artworkUrl\s*\)/,
+    "the podcast player artwork must be proxied",
+  );
+  includes(
+    podcastNowPlayingSource,
+    /podcastArtworkSrc\(\s*artworkUrl\s*\)/,
+    "the full-screen podcast artwork must be proxied",
+  );
+  excludes(
+    `${podcastViewSource}\n${podcastPlayerBarSource}\n${podcastNowPlayingSource}`,
+    /<img[^>]+src=\{(?:url|episode\.artworkUrl)\}/,
+    "remote RSS artwork must never be loaded directly by the WebView",
+  );
+});
+
+test("podcast episodes remain outside the music queue, Track, and beat analysis", () => {
   const trackType = declaredTypeBody(typesSource, "Track");
   const playPodcastSource = declaredFunctionSource(appSource, "playPodcastEpisode");
   const moveSource = declaredFunctionSource(appSource, "move");
-  const openNowPlayingSource = declaredFunctionSource(appSource, "openNowPlaying");
 
   excludes(trackType, /podcast|feedUrl|enclosureUrl|downloadState/i, "Track must stay music-only");
   excludes(
     podcastViewSource,
     /\bTrack\b|\b(?:setQueue|appendToQueue|onAddToQueue|queueIds)\b/,
-    "PodcastProbeView must not use the music queue",
+    "PodcastView may use its podcast queue but must not import the music queue model",
   );
   excludes(
     podcastPlayerBarSource,
@@ -77,32 +638,20 @@ test("podcast episodes remain outside music queue, Track, now playing, and beat 
     "the podcast bar must not use Track or the music queue",
   );
   excludes(
-    nowPlayingSource,
-    /\bPodcast(?:Episode|Feed|Probe|Playback)?\b/,
-    "the music NowPlayingView must stay podcast-free",
+    playPodcastSource,
+    /\b(?:setQueue|setActiveTrackId|appendToQueue|preAnalyzeBeatGrid)\b/,
+    "starting a podcast must not mutate the music queue or active track",
   );
-
   includes(
     playPodcastSource,
     /setActivePodcastEpisode\(\s*episode\s*\)/,
     "podcast playback must use its separate active state",
-  );
-  excludes(
-    playPodcastSource,
-    /\b(?:setQueue|setActiveTrackId|appendToQueue|preAnalyzeBeatGrid)\b/,
-    "starting a podcast must not mutate the music queue or active track",
   );
   includes(
     moveSource,
     /if\s*\(\s*activePodcastEpisode\s*\)\s*return\b/,
     "music queue movement must stop while a podcast owns playback",
   );
-  includes(
-    openNowPlayingSource,
-    /if\s*\(\s*activePodcastEpisode\s*(?:\|\||\))/,
-    "music now playing must stay closed for podcast playback",
-  );
-
   includes(
     appSource,
     /if\s*\(\s*activePlayback\.kind\s*===\s*"music"\s*\)[\s\S]{0,400}preAnalyzeBeatGrid\(\s*activePlayback\.track\s*\)/,
@@ -115,7 +664,7 @@ test("podcast episodes remain outside music queue, Track, now playing, and beat 
   );
 
   includes(appSource, /activePodcastEpisode/, "App must keep separate podcast playback state");
-  includes(appSource, /<PodcastProbePlayerBar\b/, "App must render the podcast-specific player bar");
+  includes(appSource, /<PodcastPlayerBar\b/, "App must render the podcast-specific player bar");
   excludes(
     playerBarSource,
     /\bPodcast(?:Episode|Feed|Probe|Playback)?\b/,
@@ -155,9 +704,13 @@ function excludes(source, pattern, message) {
 
 function hasInvoke(source, command) {
   const commandPattern = new RegExp(
-    String.raw`\binvoke(?:<[^;\n]+?>)?\(\s*["']${command}["']`,
+    String.raw`\binvoke(?:<[^>\n]+>)?\s*\(\s*["']${command}["']`,
   );
   return commandPattern.test(source);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function declaredTypeBody(source, name) {
@@ -178,5 +731,22 @@ function declaredFunctionSource(source, name) {
     nextDeclaration
       ? declaration.index + declaration[0].length + nextDeclaration.index
       : source.length,
+  );
+}
+
+function topLevelFunctionSource(source, name) {
+  const declaration = new RegExp(
+    String.raw`^function\s+${name}\s*\(`,
+    "m",
+  ).exec(source);
+  assert.ok(declaration, `missing ${name} declaration`);
+
+  const bodyStart = declaration.index + declaration[0].length;
+  const tail = source.slice(bodyStart);
+  const nextDeclaration = /^function\s+\w+\s*\(/m.exec(tail);
+
+  return source.slice(
+    declaration.index,
+    nextDeclaration ? bodyStart + nextDeclaration.index : source.length,
   );
 }

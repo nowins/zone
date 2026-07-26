@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { Track } from "../types";
-
 type SystemMediaCommand = {
   action: "play" | "pause" | "toggle" | "previous" | "next" | "seek" | "favorite";
   positionSeconds?: number | null;
@@ -19,7 +17,13 @@ type SystemMediaCallbacks = {
 };
 
 type SystemMediaOptions = SystemMediaCallbacks & {
-  track: Track | null;
+  media: {
+    id: string;
+    title: string;
+    artist: string;
+    album: string;
+    coverPath?: string | null;
+  } | null;
   isPlaying: boolean;
   canPrevious: boolean;
   canNext: boolean;
@@ -29,7 +33,7 @@ type SystemMediaOptions = SystemMediaCallbacks & {
 };
 
 export function useSystemMedia({
-  track,
+  media,
   isPlaying,
   canPrevious,
   canNext,
@@ -111,13 +115,13 @@ export function useSystemMedia({
   useEffect(() => {
     void invoke("update_system_media", {
       state: {
-        track: track
+        track: media
           ? {
-              id: track.id,
-              coverPath: track.cover_path ?? null,
-              title: track.title,
-              artist: track.artist,
-              album: track.album,
+              id: media.id,
+              coverPath: media.coverPath ?? null,
+              title: media.title,
+              artist: media.artist,
+              album: media.album,
             }
           : null,
         isPlaying,
@@ -126,18 +130,18 @@ export function useSystemMedia({
         isFavorite,
       },
     }).catch(() => undefined);
-  }, [track, isPlaying, canPrevious, canNext, isFavorite]);
+  }, [media, isPlaying, canPrevious, canNext, isFavorite]);
 
   useEffect(() => {
     const now = performance.now();
-    const trackChanged = lastTimelineTrackRef.current !== (track?.id ?? null);
+    const trackChanged = lastTimelineTrackRef.current !== (media?.id ?? null);
     if (!trackChanged && now - lastTimelineUpdateRef.current < 1_000) return;
-    lastTimelineTrackRef.current = track?.id ?? null;
+    lastTimelineTrackRef.current = media?.id ?? null;
     lastTimelineUpdateRef.current = now;
-    if (!track || !Number.isFinite(duration) || duration <= 0) return;
+    if (!media || !Number.isFinite(duration) || duration <= 0) return;
     void invoke("update_system_media_timeline", {
       durationSeconds: duration,
       positionSeconds: Math.min(duration, Math.max(0, Number.isFinite(position) ? position : 0)),
     }).catch(() => undefined);
-  }, [track, duration, position]);
+  }, [media, duration, position]);
 }

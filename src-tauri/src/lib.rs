@@ -1671,6 +1671,30 @@ pub fn run() {
     .plugin(tauri_plugin_opener::init())
     .manage(LibraryWatcherState::default())
     .register_uri_scheme_protocol("zone-audio", |_ctx, request| serve_audio_protocol(request))
+    .register_asynchronous_uri_scheme_protocol("zone-podcast-artwork", |_ctx, request, responder| {
+      tauri::async_runtime::spawn(async move {
+        let response = podcast::serve_podcast_artwork_protocol(request).await;
+        responder.respond(response);
+      });
+    })
+    .register_asynchronous_uri_scheme_protocol("zone-podcast", |ctx, request, responder| {
+      let Some(state) = ctx.app_handle().try_state::<podcast::PodcastState>() else {
+        responder.respond(
+          Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .body("podcast state unavailable".as_bytes().to_vec())
+            .unwrap(),
+        );
+        return;
+      };
+      let state = state.inner().clone();
+      tauri::async_runtime::spawn(async move {
+        let response = podcast::serve_podcast_stream_protocol(state, request).await;
+        responder.respond(response);
+      });
+    })
     .setup(|app| {
       let podcast_state = match podcast::PodcastState::initialize(app.handle()) {
         Ok(state) => state,
@@ -1707,10 +1731,24 @@ pub fn run() {
       update_system_media,
       update_system_media_timeline,
       podcast::podcast_search_apple,
+      podcast::podcast_browse_apple,
       podcast::podcast_subscribe,
+      podcast::podcast_preview_feed,
       podcast::podcast_list_feeds,
+      podcast::podcast_set_following,
+      podcast::podcast_list_home,
       podcast::podcast_list_episodes,
+      podcast::podcast_get_episode_detail,
+      podcast::podcast_set_episode_saved,
+      podcast::podcast_list_saved_episodes,
+      podcast::podcast_set_episode_played,
+      podcast::podcast_list_queue,
+      podcast::podcast_queue_add,
+      podcast::podcast_queue_remove,
+      podcast::podcast_queue_reorder,
+      podcast::podcast_queue_clear,
       podcast::podcast_download_episode,
+      podcast::podcast_delete_episode_download,
       podcast::podcast_save_progress,
     ])
     .run(tauri::generate_context!())
