@@ -170,7 +170,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: rgba(247, 242, 246, 0.38);
+  color: rgba(247, 242, 246, 0.52);
   font-size: 11px;
 }
 
@@ -491,7 +491,7 @@
 .podcast-search-form input,
 .podcast-rss-entry input {
   min-width: 0;
-  height: 39px;
+  height: 44px;
   padding: 0 4px;
   color: rgba(255, 255, 255, 0.9);
   background: transparent;
@@ -501,7 +501,7 @@
 
 .podcast-search-form button,
 .podcast-rss-entry form button {
-  height: 39px;
+  height: 44px;
   padding: 0 10px;
   color: rgba(247, 242, 246, 0.58);
 }
@@ -520,6 +520,7 @@
 
 .podcast-rss-entry summary {
   width: max-content;
+  min-height: 44px;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -637,7 +638,7 @@
   width: min(820px, 100%);
   min-height: 86px;
   display: grid;
-  grid-template-columns: 70px minmax(0, 1fr) 42px;
+  grid-template-columns: 70px minmax(0, 1fr) 44px;
   align-items: center;
   gap: 16px;
   padding: 8px 4px 8px 0;

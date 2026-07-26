@@ -620,6 +620,21 @@ test("podcast detail, menus, and full-screen layout cover keyboard and minimum-w
     "episode detail metadata must not fall back to micro-copy contrast",
   );
   includes(
+    podcastCss,
+    /\.podcast-current-episode\s*\{(?=[^}]*grid-template-columns:\s*70px\s+minmax\(0,\s*1fr\)\s+44px)[^}]*\}/,
+    "the current episode row must reserve the full play-control width",
+  );
+  includes(
+    podcastCss,
+    /\.podcast-inline-state\s*\{(?=[^}]*font-size:\s*11px)(?=[^}]*color:\s*rgba\(247,\s*242,\s*246,\s*0\.52\))[^}]*\}/,
+    "podcast loading and empty states must remain legible",
+  );
+  includes(
+    podcastCss,
+    /\.podcast-search-form input,\s*\.podcast-rss-entry input\s*\{(?=[^}]*height:\s*44px)[^}]*\}[\s\S]{0,300}\.podcast-search-form button,\s*\.podcast-rss-entry form button\s*\{(?=[^}]*height:\s*44px)[^}]*\}/,
+    "podcast search and RSS controls must share a comfortable input height",
+  );
+  includes(
     podcastViewSource,
     /window\.addEventListener\("keydown",\s*handleEscape\)/,
     "show and episode screens must support Escape navigation",
