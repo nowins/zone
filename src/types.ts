@@ -175,6 +175,8 @@ export type PodcastFeed = {
   subscribedAt?: number | null;
   lastCheckedAt?: number | null;
   lastRefreshError?: string | null;
+  latestEpisodeAt?: number | null;
+  unplayedCount: number;
 };
 
 export type PodcastDownloadState = "none" | "downloading" | "downloaded" | "failed";
@@ -228,6 +230,14 @@ export type PodcastDownloadResult = {
   resumed: boolean;
 };
 
+export type PodcastDownloadPage = {
+  episodes: PodcastEpisode[];
+  totalCount: number;
+  totalBytes: number;
+  feedCount: number;
+  hasMore: boolean;
+};
+
 export type PodcastHome = {
   continueListening: PodcastEpisode[];
   latestEpisodes: PodcastEpisode[];
@@ -235,6 +245,7 @@ export type PodcastHome = {
   downloadPriorityEpisodes: PodcastEpisode[];
   downloadedEpisodes: PodcastEpisode[];
   savedEpisodes: PodcastEpisode[];
+  recentlyPlayedEpisodes: PodcastEpisode[];
 };
 
 export type PodcastEpisodeDetail = {

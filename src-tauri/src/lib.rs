@@ -1738,6 +1738,7 @@ pub fn run() {
       podcast::podcast_list_feeds,
       podcast::podcast_set_following,
       podcast::podcast_list_home,
+      podcast::podcast_list_downloads,
       podcast::podcast_list_episodes,
       podcast::podcast_get_episode_detail,
       podcast::podcast_set_episode_saved,

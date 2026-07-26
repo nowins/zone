@@ -11,6 +11,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import {
   ArrowLeft,
+  ArrowRight,
   Bookmark,
   Check,
   CheckCircle2,
@@ -41,9 +42,18 @@ import {
   podcastEpisodePlayedPercent,
   type PodcastListenFilter,
 } from "../utils/podcastListening";
+import {
+  groupPodcastDownloads,
+  movePodcastFeedOrder,
+  normalizePodcastFeedOrder,
+  podcastDownloadedBytes,
+  sortPodcastFeeds,
+  type PodcastLibrarySort,
+} from "../utils/podcastLibrary";
 import { mergePodcastEpisodePlayback } from "../utils/podcastPlayback";
 import type {
   PodcastDiscoveryShow,
+  PodcastDownloadPage,
   PodcastDownloadResult,
   PodcastEpisode,
   PodcastEpisodeDetail,
@@ -127,8 +137,18 @@ const EMPTY_HOME: PodcastHome = {
   downloadPriorityEpisodes: [],
   downloadedEpisodes: [],
   savedEpisodes: [],
+  recentlyPlayedEpisodes: [],
+};
+const EMPTY_DOWNLOAD_PAGE: PodcastDownloadPage = {
+  episodes: [],
+  totalCount: 0,
+  totalBytes: 0,
+  feedCount: 0,
+  hasMore: false,
 };
 const DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1_000;
+const PODCAST_LIBRARY_STORAGE_KEY = "zone-podcast-library-v1";
+const PODCAST_DOWNLOAD_PAGE_SIZE = 60;
 const PODCAST_LISTEN_FILTERS: Array<{
   id: PodcastListenFilter;
   label: string;
@@ -136,6 +156,14 @@ const PODCAST_LISTEN_FILTERS: Array<{
   { id: "recent", label: "最近更新" },
   { id: "unplayed", label: "未收听" },
   { id: "download-first", label: "下载优先" },
+];
+const PODCAST_LIBRARY_SORTS: Array<{
+  id: PodcastLibrarySort;
+  label: string;
+}> = [
+  { id: "recent", label: "最近更新" },
+  { id: "name", label: "名称" },
+  { id: "custom", label: "手动排序" },
 ];
 let discoveryCache: { shows: PodcastDiscoveryShow[]; fetchedAt: number } | null = null;
 let podcastSessionSnapshot: PodcastSessionSnapshot | null = null;
@@ -160,6 +188,10 @@ export function PodcastView({
   onSetEpisodePlayed,
 }: PodcastViewProps) {
   const restoredSession = useMemo(() => podcastSessionSnapshot, []);
+  const initialLibraryPreferences = useMemo(
+    readPodcastLibraryPreferences,
+    [],
+  );
   const [screen, setScreen] = useState<PodcastScreen>(
     restoredSession?.screen ?? "listen",
   );
@@ -181,8 +213,20 @@ export function PodcastView({
   const [discoveryShows, setDiscoveryShows] = useState<PodcastDiscoveryShow[]>([]);
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
   const [libraryState, setLibraryState] = useState<RequestState>("loading");
+  const [librarySort, setLibrarySort] = useState<PodcastLibrarySort>(
+    initialLibraryPreferences.sort,
+  );
+  const [customFeedOrder, setCustomFeedOrder] = useState<string[]>(
+    initialLibraryPreferences.customOrder,
+  );
   const [home, setHome] = useState<PodcastHome>(EMPTY_HOME);
   const [homeState, setHomeState] = useState<RequestState>("loading");
+  const [downloadPage, setDownloadPage] =
+    useState<PodcastDownloadPage>(EMPTY_DOWNLOAD_PAGE);
+  const [downloadLibraryState, setDownloadLibraryState] =
+    useState<RequestState>("idle");
+  const [loadingMoreDownloads, setLoadingMoreDownloads] = useState(false);
+  const [recentHistoryExpanded, setRecentHistoryExpanded] = useState(false);
   const [selectedFeed, setSelectedFeed] = useState<PodcastFeed | null>(
     restoredSession?.selectedFeed ?? null,
   );
@@ -232,6 +276,7 @@ export function PodcastView({
   const episodeListRequestRef = useRef(0);
   const episodeDetailRequestRef = useRef(0);
   const homeRequestRef = useRef(0);
+  const downloadLibraryRequestRef = useRef(0);
   const discoveryRequestActive = useRef(false);
   const feedRefreshActive = useRef(false);
   const selectedFeedRef = useRef(selectedFeed);
@@ -246,7 +291,6 @@ export function PodcastView({
   );
 
   const loadFeeds = useCallback(async () => {
-    setLibraryState("loading");
     try {
       const nextFeeds = await invoke<PodcastFeed[]>("podcast_list_feeds");
       setFeeds(nextFeeds);
@@ -280,6 +324,7 @@ export function PodcastView({
         downloadPriorityEpisodes: nextHome.downloadPriorityEpisodes ?? [],
         downloadedEpisodes: nextHome.downloadedEpisodes ?? [],
         savedEpisodes: savedEpisodeDetails.map((detail) => detail.episode),
+        recentlyPlayedEpisodes: nextHome.recentlyPlayedEpisodes ?? [],
       };
       setHome(resolvedHome);
       setEpisodeMenu((current) => {
@@ -291,6 +336,7 @@ export function PodcastView({
           ...resolvedHome.downloadPriorityEpisodes,
           ...resolvedHome.downloadedEpisodes,
           ...resolvedHome.savedEpisodes,
+          ...resolvedHome.recentlyPlayedEpisodes,
         ].find((episode) => episode.id === current.episode.id);
         return nextEpisode ? { ...current, episode: nextEpisode } : current;
       });
@@ -299,6 +345,40 @@ export function PodcastView({
       if (homeRequestRef.current !== requestId) return;
       setHome(EMPTY_HOME);
       setHomeState("error");
+    }
+  }, []);
+
+  const loadDownloadedLibrary = useCallback(async (offset = 0) => {
+    const requestId = downloadLibraryRequestRef.current + 1;
+    downloadLibraryRequestRef.current = requestId;
+    if (offset === 0) {
+      setDownloadLibraryState("loading");
+    } else {
+      setLoadingMoreDownloads(true);
+    }
+    try {
+      const page = await invoke<PodcastDownloadPage>(
+        "podcast_list_downloads",
+        { offset, limit: PODCAST_DOWNLOAD_PAGE_SIZE },
+      );
+      if (downloadLibraryRequestRef.current !== requestId) return;
+      setDownloadPage((current) => {
+        if (offset === 0) return page;
+        const episodes = deduplicateEpisodes([
+          ...current.episodes,
+          ...page.episodes,
+        ]);
+        return { ...page, episodes };
+      });
+      setDownloadLibraryState("ready");
+    } catch (reason) {
+      if (downloadLibraryRequestRef.current !== requestId) return;
+      setDownloadLibraryState("error");
+      setError(errorMessage(reason, "读取下载资料库失败"));
+    } finally {
+      if (downloadLibraryRequestRef.current === requestId) {
+        setLoadingMoreDownloads(false);
+      }
     }
   }, []);
 
@@ -435,6 +515,12 @@ export function PodcastView({
           : current.savedEpisodes.filter(
             (episode) => episode.id !== nextEpisode.id,
           ),
+        recentlyPlayedEpisodes:
+          nextEpisode.progressSeconds > 0 || nextEpisode.completed
+            ? upsertEpisode(current.recentlyPlayedEpisodes, nextEpisode)
+            : current.recentlyPlayedEpisodes.filter(
+              (episode) => episode.id !== nextEpisode.id,
+            ),
       }));
       setSelectedEpisodeDetail((current) => {
         if (!current || current.episode.id !== nextEpisode.id) return current;
@@ -493,6 +579,33 @@ export function PodcastView({
     if (screen !== "discover" || discoveryState !== "idle") return;
     void loadDiscovery();
   }, [discoveryState, loadDiscovery, screen]);
+
+  useEffect(() => {
+    if (screen !== "library") return;
+    void loadDownloadedLibrary(0);
+  }, [libraryRevision, loadDownloadedLibrary, screen]);
+
+  useEffect(() => {
+    if (libraryState !== "ready") return;
+    setCustomFeedOrder((current) => {
+      const normalized = normalizePodcastFeedOrder(current, feeds);
+      return sameStringArray(current, normalized) ? current : normalized;
+    });
+  }, [feeds, libraryState]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        PODCAST_LIBRARY_STORAGE_KEY,
+        JSON.stringify({
+          sort: librarySort,
+          customOrder: customFeedOrder,
+        }),
+      );
+    } catch {
+      // Library ordering remains available for the current session.
+    }
+  }, [customFeedOrder, librarySort]);
 
   useEffect(() => {
     podcastSessionSnapshot = {
@@ -615,13 +728,14 @@ export function PodcastView({
   useEffect(() => {
     if (libraryRevision <= handledLibraryRevision.current) return;
     handledLibraryRevision.current = libraryRevision;
-    void loadHome();
+    void Promise.all([loadFeeds(), loadHome()]);
     if (selectedEpisodeId) {
       void loadEpisodeDetail(selectedEpisodeId, Boolean(selectedEpisodeDetail));
     }
   }, [
     libraryRevision,
     loadEpisodeDetail,
+    loadFeeds,
     loadHome,
   ]);
 
@@ -632,6 +746,19 @@ export function PodcastView({
     setReturnScreen(nextScreen);
     setError(null);
     setNotice(null);
+  }
+
+  function moveFollowedFeed(feedId: string, direction: -1 | 1) {
+    const order = normalizePodcastFeedOrder(customFeedOrder, feeds);
+    const index = order.indexOf(feedId);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= order.length) return;
+    setCustomFeedOrder(
+      movePodcastFeedOrder(order, feedId, order[targetIndex]),
+    );
+    setLibrarySort("custom");
+    const feed = feeds.find((candidate) => candidate.id === feedId);
+    setNotice(feed ? `已调整“${feed.title}”的位置` : "已调整节目位置");
   }
 
   async function searchApple(event: FormEvent) {
@@ -1042,6 +1169,13 @@ export function PodcastView({
       ? selectedFeed
       : feedById.get(episode.feedId);
     setLastPlayedEpisode(episode);
+    setHome((current) => ({
+      ...current,
+      recentlyPlayedEpisodes: promoteEpisode(
+        current.recentlyPlayedEpisodes,
+        episode,
+      ),
+    }));
     onPlayEpisode({
       ...episode,
       episodeId: episode.id,
@@ -1188,6 +1322,47 @@ export function PodcastView({
     () => home.downloadedEpisodes.map(liveEpisode),
     [home.downloadedEpisodes, liveEpisode],
   );
+  const recentlyPlayedEpisodes = useMemo(
+    () => home.recentlyPlayedEpisodes.map(liveEpisode),
+    [home.recentlyPlayedEpisodes, liveEpisode],
+  );
+  const hasDownloadedLibraryPage =
+    downloadLibraryState === "ready" || downloadPage.totalCount > 0;
+  const libraryDownloadedEpisodes = useMemo(() => {
+    if (hasDownloadedLibraryPage) {
+      return downloadPage.episodes.map(liveEpisode);
+    }
+    return downloadedEpisodes;
+  }, [
+    downloadPage.episodes,
+    downloadedEpisodes,
+    hasDownloadedLibraryPage,
+    liveEpisode,
+  ]);
+  const orderedFeeds = useMemo(
+    () => sortPodcastFeeds(feeds, librarySort, customFeedOrder),
+    [customFeedOrder, feeds, librarySort],
+  );
+  const downloadGroups = useMemo(
+    () => groupPodcastDownloads(libraryDownloadedEpisodes),
+    [libraryDownloadedEpisodes],
+  );
+  const downloadedBytes = useMemo(
+    () => hasDownloadedLibraryPage
+      ? downloadPage.totalBytes
+      : podcastDownloadedBytes(libraryDownloadedEpisodes),
+    [
+      downloadPage.totalBytes,
+      hasDownloadedLibraryPage,
+      libraryDownloadedEpisodes,
+    ],
+  );
+  const downloadedCount = hasDownloadedLibraryPage
+    ? downloadPage.totalCount
+    : libraryDownloadedEpisodes.length;
+  const downloadedFeedCount = hasDownloadedLibraryPage
+    ? downloadPage.feedCount
+    : downloadGroups.length;
   const displayedEpisodes = useMemo(
     () => episodes.map(liveEpisode),
     [episodes, liveEpisode],
@@ -1216,6 +1391,8 @@ export function PodcastView({
       ...latestEpisodes,
       ...savedEpisodes,
       ...downloadedEpisodes,
+      ...libraryDownloadedEpisodes,
+      ...recentlyPlayedEpisodes,
     ].filter((episode): episode is PodcastEpisode => Boolean(episode));
     return knownEpisodes.find((episode) => episode.id === currentEpisodeId) ?? null;
   }, [
@@ -1223,10 +1400,12 @@ export function PodcastView({
     currentEpisodeId,
     displayedEpisodes,
     downloadedEpisodes,
+    libraryDownloadedEpisodes,
     latestEpisodes,
     lastPlayedEpisode,
     liveActiveEpisode,
     queue,
+    recentlyPlayedEpisodes,
     savedEpisodes,
     selectedEpisodeDetail,
   ]);
@@ -1506,26 +1685,129 @@ export function PodcastView({
             {libraryState === "loading" ? (
               <PodcastLoading label="正在读取资料库" />
             ) : feeds.length > 0 ? (
-              <div className="podcast-library-grid">
-                {feeds.map((feed) => (
-                  <button
-                    type="button"
-                    key={feed.id}
-                    className="podcast-library-show"
-                    onClick={() => void openStoredFeed(feed, "library")}
-                  >
-                    <PodcastArtwork url={feed.artworkUrl} title={feed.title} />
-                    <span>
-                      <strong>{feed.title}</strong>
-                      <small>{feed.author || "未知作者"}</small>
-                    </span>
-                  </button>
-                ))}
-              </div>
+              <>
+                <div
+                  className="podcast-listen-filters podcast-library-sorts"
+                  role="group"
+                  aria-label="已关注节目排序"
+                >
+                  {PODCAST_LIBRARY_SORTS.map((sort) => (
+                    <button
+                      key={sort.id}
+                      type="button"
+                      aria-pressed={librarySort === sort.id}
+                      onClick={() => setLibrarySort(sort.id)}
+                    >
+                      {sort.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="podcast-library-grid">
+                  {orderedFeeds.map((feed, index) => (
+                    <article
+                      key={feed.id}
+                      className="podcast-library-show"
+                    >
+                      <button
+                        type="button"
+                        className="podcast-library-show-open"
+                        onClick={() => void openStoredFeed(feed, "library")}
+                      >
+                        <span className="podcast-library-artwork">
+                          <PodcastArtwork
+                            url={feed.artworkUrl}
+                            title={feed.title}
+                          />
+                          {feed.unplayedCount > 0 ? (
+                            <em
+                              className="podcast-unplayed-badge"
+                              aria-label={`${feed.unplayedCount} 集未听`}
+                            >
+                              {feed.unplayedCount > 99
+                                ? "99+"
+                                : feed.unplayedCount}
+                            </em>
+                          ) : null}
+                        </span>
+                        <span className="podcast-library-show-copy">
+                          <strong>{feed.title}</strong>
+                          <small>{feed.author || "未知作者"}</small>
+                          <small className="podcast-library-updated">
+                            {feed.latestEpisodeAt
+                              ? `最近更新 ${formatEpisodeDate(
+                                feed.latestEpisodeAt,
+                              )}`
+                              : "暂无单集"}
+                          </small>
+                        </span>
+                      </button>
+                      {librarySort === "custom" ? (
+                        <span
+                          className="podcast-library-order"
+                          aria-label={`调整“${feed.title}”的位置`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => moveFollowedFeed(feed.id, -1)}
+                            disabled={index === 0}
+                            title="前移"
+                            aria-label={`将“${feed.title}”前移`}
+                          >
+                            <ArrowLeft size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveFollowedFeed(feed.id, 1)}
+                            disabled={index === orderedFeeds.length - 1}
+                            title="后移"
+                            aria-label={`将“${feed.title}”后移`}
+                          >
+                            <ArrowRight size={15} />
+                          </button>
+                        </span>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </>
             ) : (
               <PodcastEmpty label="还没有关注节目，可以先去发现看看" />
             )}
           </PodcastSection>
+
+          {recentlyPlayedEpisodes.length > 0 ? (
+            <PodcastSection
+              title="最近播放"
+              count={recentlyPlayedEpisodes.length}
+              actionLabel={recentlyPlayedEpisodes.length > 8
+                ? recentHistoryExpanded ? "收起" : "查看全部"
+                : undefined}
+              onAction={recentlyPlayedEpisodes.length > 8
+                ? () => setRecentHistoryExpanded((current) => !current)
+                : undefined}
+            >
+              <div className="podcast-home-episodes">
+                {(recentHistoryExpanded
+                  ? recentlyPlayedEpisodes
+                  : recentlyPlayedEpisodes.slice(0, 8)
+                ).map((episode) => (
+                  <EpisodeRow
+                    key={episode.id}
+                    episode={episode}
+                    active={currentEpisodeId === episode.id}
+                    isPlaying={isPlaying}
+                    downloading={downloadingId === episode.id}
+                    showFeed
+                    onOpen={() => openEpisodeDetail(episode, "library")}
+                    onPlay={() => playEpisode(episode)}
+                    onDownload={() => void downloadEpisode(episode)}
+                    onContextMenu={(event) =>
+                      showEpisodeMenu(event, episode)}
+                  />
+                ))}
+              </div>
+            </PodcastSection>
+          ) : null}
 
           {savedEpisodes.length > 0 ? (
             <PodcastSection title="稍后听" count={savedEpisodes.length}>
@@ -1549,28 +1831,89 @@ export function PodcastView({
             </PodcastSection>
           ) : null}
 
-          {downloadedEpisodes.length > 0 ? (
+          {downloadedCount > 0 || downloadLibraryState === "loading"
+            || downloadLibraryState === "error" ? (
             <PodcastSection
               title="已下载"
-              count={downloadedEpisodes.length}
+              count={downloadedCount}
             >
-              <div className="podcast-home-episodes">
-                {downloadedEpisodes.map((episode) => (
-                  <EpisodeRow
-                    key={episode.id}
-                    episode={episode}
-                    active={currentEpisodeId === episode.id}
-                    isPlaying={isPlaying}
-                    downloading={false}
-                    showFeed
-                    onOpen={() => openEpisodeDetail(episode, "library")}
-                    onPlay={() => playEpisode(episode)}
-                    onDownload={() => undefined}
-                    onContextMenu={(event) =>
-                      showEpisodeMenu(event, episode)}
-                  />
-                ))}
-              </div>
+              {downloadedCount > 0 ? (
+                <>
+                  <div className="podcast-download-summary">
+                    <span>
+                      已下载占用 {formatFileSize(downloadedBytes)}
+                    </span>
+                    <span>{downloadedFeedCount} 个节目</span>
+                  </div>
+                  <div className="podcast-download-groups">
+                    {downloadGroups.map((group) => (
+                      <section
+                        key={group.feedId}
+                        className="podcast-download-group"
+                      >
+                        <div className="podcast-download-group-title">
+                          <h3>{group.feedTitle}</h3>
+                          <span>
+                            {group.episodes.length} 集 ·{" "}
+                            {formatFileSize(group.downloadedBytes)}
+                          </span>
+                        </div>
+                        <div className="podcast-home-episodes">
+                          {group.episodes.map((episode) => (
+                            <EpisodeRow
+                              key={episode.id}
+                              episode={episode}
+                              active={currentEpisodeId === episode.id}
+                              isPlaying={isPlaying}
+                              downloading={false}
+                              showDownloadedSize
+                              onOpen={() =>
+                                openEpisodeDetail(episode, "library")}
+                              onPlay={() => playEpisode(episode)}
+                              onDownload={() => undefined}
+                              onContextMenu={(event) =>
+                                showEpisodeMenu(event, episode)}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                  {downloadPage.hasMore ? (
+                    <button
+                      type="button"
+                      className="podcast-download-more"
+                      disabled={loadingMoreDownloads}
+                      onClick={() =>
+                        void loadDownloadedLibrary(
+                          downloadPage.episodes.length,
+                        )}
+                    >
+                      {loadingMoreDownloads ? (
+                        <>
+                          <LoaderCircle
+                            className="podcast-spinner"
+                            size={15}
+                          />
+                          正在加载
+                        </>
+                      ) : "加载更多"}
+                    </button>
+                  ) : null}
+                </>
+              ) : downloadLibraryState === "loading" ? (
+                <PodcastLoading label="正在读取下载资料库" />
+              ) : (
+                <div className="podcast-inline-state">
+                  <span>暂时无法读取下载资料库</span>
+                  <button
+                    type="button"
+                    onClick={() => void loadDownloadedLibrary(0)}
+                  >
+                    重试
+                  </button>
+                </div>
+              )}
             </PodcastSection>
           ) : null}
         </main>
@@ -1954,6 +2297,7 @@ function EpisodeRow({
   downloading,
   showFeed = false,
   showArtwork = false,
+  showDownloadedSize = false,
   isNew = false,
   onOpen,
   onPlay,
@@ -1966,6 +2310,7 @@ function EpisodeRow({
   downloading: boolean;
   showFeed?: boolean;
   showArtwork?: boolean;
+  showDownloadedSize?: boolean;
   isNew?: boolean;
   onOpen: () => void;
   onPlay: () => void;
@@ -2001,9 +2346,14 @@ function EpisodeRow({
         <div className="podcast-episode-date">
           <span>{formatEpisodeDate(episode.publishedAt)}</span>
           <small>
-            {episode.durationSeconds
-              ? formatTime(episode.durationSeconds)
-              : "时长未知"}
+            {[
+              episode.durationSeconds
+                ? formatTime(episode.durationSeconds)
+                : "时长未知",
+              showDownloadedSize && episode.downloadedBytes > 0
+                ? formatFileSize(episode.downloadedBytes)
+                : null,
+            ].filter(Boolean).join(" · ")}
           </small>
         </div>
       )}
@@ -2431,6 +2781,72 @@ function upsertEpisode(
     ? episodes.map((episode) =>
       episode.id === nextEpisode.id ? nextEpisode : episode)
     : [nextEpisode, ...episodes];
+}
+
+function promoteEpisode(
+  episodes: PodcastEpisode[],
+  nextEpisode: PodcastEpisode,
+) {
+  return [
+    nextEpisode,
+    ...episodes.filter((episode) => episode.id !== nextEpisode.id),
+  ];
+}
+
+function deduplicateEpisodes(episodes: PodcastEpisode[]) {
+  const seen = new Set<string>();
+  return episodes.filter((episode) => {
+    if (seen.has(episode.id)) return false;
+    seen.add(episode.id);
+    return true;
+  });
+}
+
+function readPodcastLibraryPreferences(): {
+  sort: PodcastLibrarySort;
+  customOrder: string[];
+} {
+  try {
+    const raw = localStorage.getItem(PODCAST_LIBRARY_STORAGE_KEY);
+    if (!raw) return { sort: "recent", customOrder: [] };
+    const parsed = JSON.parse(raw) as {
+      sort?: unknown;
+      customOrder?: unknown;
+    };
+    const sort = parsed.sort === "name" || parsed.sort === "custom"
+      ? parsed.sort
+      : "recent";
+    const customOrder = Array.isArray(parsed.customOrder)
+      ? parsed.customOrder.filter(
+        (feedId): feedId is string =>
+          typeof feedId === "string" && Boolean(feedId),
+      )
+      : [];
+    return { sort, customOrder };
+  } catch {
+    return { sort: "recent", customOrder: [] };
+  }
+}
+
+function sameStringArray(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length
+    && left.every((value, index) => value === right[index]);
+}
+
+function formatFileSize(bytes: number) {
+  const safeBytes = Number.isFinite(bytes) ? Math.max(0, bytes) : 0;
+  if (safeBytes < 1_024) return `${Math.round(safeBytes)} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = safeBytes / 1_024;
+  let unitIndex = 0;
+  while (value >= 1_024 && unitIndex < units.length - 1) {
+    value /= 1_024;
+    unitIndex += 1;
+  }
+  const formatted = new Intl.NumberFormat("zh-CN", {
+    maximumFractionDigits: value >= 100 ? 0 : value >= 10 ? 1 : 2,
+  }).format(value);
+  return `${formatted} ${units[unitIndex]}`;
 }
 
 function formatEpisodeDate(timestamp?: number | null) {

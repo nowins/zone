@@ -38,6 +38,8 @@ const PODCAST_HOME_UNPLAYED_LIMIT: usize = 40;
 const PODCAST_HOME_DOWNLOAD_PRIORITY_LIMIT: usize = 40;
 const PODCAST_HOME_DOWNLOADED_LIMIT: usize = 40;
 const PODCAST_HOME_SAVED_LIMIT: usize = 40;
+const PODCAST_HOME_RECENTLY_PLAYED_LIMIT: usize = 40;
+const PODCAST_DOWNLOAD_PAGE_MAX_LIMIT: usize = 100;
 const PODCAST_QUEUE_LIMIT: usize = 500;
 const PODCAST_REFRESH_CONCURRENCY: usize = 3;
 const PODCAST_REFRESH_INTERVAL: i64 = 30 * 60 * 1_000;
@@ -91,6 +93,8 @@ pub struct PodcastFeed {
   subscribed_at: Option<i64>,
   last_checked_at: Option<i64>,
   last_refresh_error: Option<String>,
+  latest_episode_at: Option<i64>,
+  unplayed_count: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -147,6 +151,17 @@ pub struct PodcastHome {
   download_priority_episodes: Vec<PodcastEpisode>,
   downloaded_episodes: Vec<PodcastEpisode>,
   saved_episodes: Vec<PodcastEpisode>,
+  recently_played_episodes: Vec<PodcastEpisode>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastDownloadPage {
+  episodes: Vec<PodcastEpisode>,
+  total_count: u64,
+  total_bytes: u64,
+  feed_count: u64,
+  has_more: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -580,6 +595,22 @@ pub async fn podcast_list_home(state: State<'_, PodcastState>) -> Result<Podcast
   tauri::async_runtime::spawn_blocking(move || list_home(&db_path, &downloads_dir))
     .await
     .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+}
+
+#[tauri::command]
+pub async fn podcast_list_downloads(
+  state: State<'_, PodcastState>,
+  offset: usize,
+  limit: usize,
+) -> Result<PodcastDownloadPage, String> {
+  state.ensure_ready()?;
+  let db_path = state.db_path.clone();
+  let downloads_dir = state.downloads_dir.clone();
+  tauri::async_runtime::spawn_blocking(move || {
+    list_downloads(&db_path, &downloads_dir, offset, limit)
+  })
+  .await
+  .map_err(|error| format!("播客数据任务异常结束：{error}"))?
 }
 
 #[tauri::command]
@@ -2118,6 +2149,8 @@ fn normalize_feed(
     subscribed_at: None,
     last_checked_at: Some(fetched_at),
     last_refresh_error: None,
+    latest_episode_at: None,
+    unplayed_count: 0,
   };
 
   let mut episodes = Vec::new();
@@ -2684,6 +2717,34 @@ fn store_feed(
       }
     }
   }
+  let (latest_episode_at, unplayed_count) = transaction
+    .query_row(
+      "
+      SELECT
+        MAX(COALESCE(e.published_at, e.first_seen_at)),
+        SUM(
+          CASE
+            WHEN COALESCE(p.completed, 0) = 0
+              AND COALESCE(p.position_seconds, 0) <= 0
+            THEN 1
+            ELSE 0
+          END
+        )
+      FROM podcast_episodes e
+      LEFT JOIN podcast_progress p ON p.episode_id = e.id
+      WHERE e.feed_id = ?1
+      ",
+      [&feed.id],
+      |row| {
+        Ok((
+          row.get::<_, Option<i64>>(0)?,
+          row.get::<_, Option<i64>>(1)?.unwrap_or(0),
+        ))
+      },
+    )
+    .map_err(|error| format!("无法读取播客节目统计：{error}"))?;
+  feed.latest_episode_at = latest_episode_at;
+  feed.unplayed_count = unplayed_count.max(0) as u64;
   transaction
     .commit()
     .map_err(|error| format!("无法提交播客订阅：{error}"))?;
@@ -2807,11 +2868,25 @@ fn list_feeds(db_path: &Path) -> Result<Vec<PodcastFeed>, String> {
     .prepare(
       "
       SELECT
-        id, feed_url, title, author, description, artwork_url,
-        last_fetched_at, subscribed, subscribed_at, last_checked_at, last_refresh_error
-      FROM podcast_feeds
-      WHERE subscribed = 1
-      ORDER BY title COLLATE NOCASE
+        f.id, f.feed_url, f.title, f.author, f.description, f.artwork_url,
+        f.last_fetched_at, f.subscribed, f.subscribed_at,
+        f.last_checked_at, f.last_refresh_error,
+        (
+          SELECT MAX(COALESCE(e.published_at, e.first_seen_at))
+          FROM podcast_episodes e
+          WHERE e.feed_id = f.id
+        ),
+        (
+          SELECT COUNT(*)
+          FROM podcast_episodes e
+          LEFT JOIN podcast_progress p ON p.episode_id = e.id
+          WHERE e.feed_id = f.id
+            AND COALESCE(p.completed, 0) = 0
+            AND COALESCE(p.position_seconds, 0) <= 0
+        )
+      FROM podcast_feeds f
+      WHERE f.subscribed = 1
+      ORDER BY f.title COLLATE NOCASE, f.id
       ",
     )
     .map_err(|error| format!("无法读取播客订阅：{error}"))?;
@@ -2829,6 +2904,8 @@ fn list_feeds(db_path: &Path) -> Result<Vec<PodcastFeed>, String> {
         subscribed_at: row.get(8)?,
         last_checked_at: row.get(9)?,
         last_refresh_error: row.get(10)?,
+        latest_episode_at: row.get(11)?,
+        unplayed_count: row.get::<_, i64>(12)?.max(0) as u64,
       })
     })
     .map_err(|error| format!("无法读取播客订阅：{error}"))?;
@@ -3025,7 +3102,7 @@ fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastHome, String
     LEFT JOIN podcast_progress p ON p.episode_id = e.id
     LEFT JOIN podcast_saved_episodes s ON s.episode_id = e.id
     WHERE d.state = 'downloaded'
-    ORDER BY d.updated_at DESC
+    ORDER BY d.updated_at DESC, e.id
     LIMIT ?1
     ",
     PODCAST_HOME_DOWNLOADED_LIMIT.saturating_mul(4),
@@ -3057,6 +3134,30 @@ fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastHome, String
     ",
     PODCAST_HOME_SAVED_LIMIT,
   )?;
+  let recently_played_episodes = query_home_episodes(
+    &connection,
+    downloads_dir,
+    "
+    SELECT
+      e.id, e.feed_id, e.title, e.description, e.published_at,
+      e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+      COALESCE(d.state, 'none'), d.local_path,
+      COALESCE(d.downloaded_bytes, 0), d.total_bytes,
+      COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
+      f.title, f.artwork_url,
+      CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
+      e.first_seen_at, e.webpage_url
+    FROM podcast_progress p
+    JOIN podcast_episodes e ON e.id = p.episode_id
+    JOIN podcast_feeds f ON f.id = e.feed_id
+    LEFT JOIN podcast_downloads d ON d.episode_id = e.id
+    LEFT JOIN podcast_saved_episodes s ON s.episode_id = e.id
+    WHERE p.position_seconds > 0 OR p.completed = 1
+    ORDER BY p.updated_at DESC, e.id
+    LIMIT ?1
+    ",
+    PODCAST_HOME_RECENTLY_PLAYED_LIMIT,
+  )?;
 
   Ok(PodcastHome {
     continue_listening,
@@ -3065,6 +3166,99 @@ fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastHome, String
     download_priority_episodes,
     downloaded_episodes,
     saved_episodes,
+    recently_played_episodes,
+  })
+}
+
+fn list_downloads(
+  db_path: &Path,
+  downloads_dir: &Path,
+  offset: usize,
+  limit: usize,
+) -> Result<PodcastDownloadPage, String> {
+  let mut connection = open_database(db_path)?;
+  prune_stale_download_records(&connection, downloads_dir)?;
+  let transaction = connection
+    .transaction_with_behavior(TransactionBehavior::Deferred)
+    .map_err(|error| format!("无法读取播客下载资料库：{error}"))?;
+  let (total_count, total_bytes, feed_count) = transaction
+    .query_row(
+      "
+      SELECT
+        COUNT(*),
+        COALESCE(
+          SUM(
+            CASE
+              WHEN d.downloaded_bytes > 0 THEN d.downloaded_bytes
+              ELSE 0
+            END
+          ),
+          0
+        ),
+        COUNT(DISTINCT e.feed_id)
+      FROM podcast_downloads d
+      JOIN podcast_episodes e ON e.id = d.episode_id
+      WHERE d.state = 'downloaded'
+      ",
+      [],
+      |row| {
+        Ok((
+          row.get::<_, i64>(0)?.max(0) as u64,
+          row.get::<_, i64>(1)?.max(0) as u64,
+          row.get::<_, i64>(2)?.max(0) as u64,
+        ))
+      },
+    )
+    .map_err(|error| format!("无法统计播客下载资料库：{error}"))?;
+
+  let limit = limit.clamp(1, PODCAST_DOWNLOAD_PAGE_MAX_LIMIT);
+  let sql_limit = i64::try_from(limit).unwrap_or(i64::MAX);
+  let sql_offset = i64::try_from(offset).unwrap_or(i64::MAX);
+  let episodes = {
+    let mut statement = transaction
+      .prepare(
+        "
+        SELECT
+          e.id, e.feed_id, e.title, e.description, e.published_at,
+          e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+          d.state, d.local_path, d.downloaded_bytes, d.total_bytes,
+          COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
+          f.title, f.artwork_url,
+          CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
+          e.first_seen_at, e.webpage_url
+        FROM podcast_downloads d
+        JOIN podcast_episodes e ON e.id = d.episode_id
+        JOIN podcast_feeds f ON f.id = e.feed_id
+        LEFT JOIN podcast_progress p ON p.episode_id = e.id
+        LEFT JOIN podcast_saved_episodes s ON s.episode_id = e.id
+        WHERE d.state = 'downloaded'
+        ORDER BY d.updated_at DESC, e.id
+        LIMIT ?1 OFFSET ?2
+        ",
+      )
+      .map_err(|error| format!("无法读取播客下载资料库：{error}"))?;
+    let rows = statement
+      .query_map(params![sql_limit, sql_offset], |row| {
+        podcast_episode_from_row(row, downloads_dir)
+      })
+      .map_err(|error| format!("无法读取播客下载资料库：{error}"))?;
+    rows
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(|error| format!("无法读取播客下载资料库：{error}"))?
+      .into_iter()
+      .filter(|episode| episode.download_state == "downloaded")
+      .collect::<Vec<_>>()
+  };
+  let returned_end = u64::try_from(offset)
+    .unwrap_or(u64::MAX)
+    .saturating_add(u64::try_from(episodes.len()).unwrap_or(u64::MAX));
+
+  Ok(PodcastDownloadPage {
+    episodes,
+    total_count,
+    total_bytes,
+    feed_count,
+    has_more: returned_end < total_count,
   })
 }
 
@@ -3200,7 +3394,21 @@ const PODCAST_EPISODE_DETAIL_SELECT: &str = "
     e.first_seen_at, e.webpage_url,
     e.expected_bytes, d.error_message, s.saved_at, q.position,
     f.feed_url, f.author, f.description, f.last_fetched_at, f.subscribed,
-    f.subscribed_at, f.last_checked_at, f.last_refresh_error
+    f.subscribed_at, f.last_checked_at, f.last_refresh_error,
+    (
+      SELECT MAX(COALESCE(feed_episode.published_at, feed_episode.first_seen_at))
+      FROM podcast_episodes feed_episode
+      WHERE feed_episode.feed_id = f.id
+    ),
+    (
+      SELECT COUNT(*)
+      FROM podcast_episodes feed_episode
+      LEFT JOIN podcast_progress feed_progress
+        ON feed_progress.episode_id = feed_episode.id
+      WHERE feed_episode.feed_id = f.id
+        AND COALESCE(feed_progress.completed, 0) = 0
+        AND COALESCE(feed_progress.position_seconds, 0) <= 0
+    )
   FROM podcast_episodes e
   JOIN podcast_feeds f ON f.id = e.feed_id
   LEFT JOIN podcast_downloads d ON d.episode_id = e.id
@@ -3235,6 +3443,8 @@ fn podcast_episode_detail_from_row(
       subscribed_at: row.get(29)?,
       last_checked_at: row.get(30)?,
       last_refresh_error: row.get(31)?,
+      latest_episode_at: row.get(32)?,
+      unplayed_count: row.get::<_, i64>(33)?.max(0) as u64,
     },
     expected_bytes,
     download_error: row.get(21)?,
@@ -5218,6 +5428,8 @@ mod tests {
     assert!(preview.feed.subscribed_at.is_none());
     assert_eq!(preview.inserted_count, 1);
     assert_eq!(preview.updated_count, 0);
+    assert!(preview.feed.latest_episode_at.is_some());
+    assert_eq!(preview.feed.unplayed_count, 1);
     let preview_first_seen = get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id)
       .expect("preview episode")
       .episode
@@ -5232,6 +5444,7 @@ mod tests {
     let followed = store_subscription(&state.db_path, parsed.clone()).expect("follow preview");
     assert!(followed.feed.subscribed);
     assert!(followed.feed.subscribed_at.is_some());
+    assert_eq!(followed.feed.unplayed_count, 1);
     assert!(preview_first_seen <= followed.feed.subscribed_at.expect("subscription time"));
     assert_eq!(followed.inserted_count, 0);
     assert_eq!(followed.updated_count, 0);
@@ -5464,6 +5677,168 @@ mod tests {
         expected,
       );
     }
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn library_feed_stats_and_recent_playback_reflect_progress_history() {
+    let directory = test_directory("library-feed-stats");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(3);
+    let feed_id = parsed.feed.id.clone();
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    let preview = parsed_fixture_at(
+      "https://media.example.test/history-episode.mp3",
+      "https://feeds.example.test/history.xml",
+    );
+    let preview_episode_id = preview.episodes[0].id.clone();
+    store_preview(&state.db_path, preview).expect("store unfollowed history");
+
+    let mut connection = open_database(&state.db_path).expect("open library database");
+    let transaction = connection.transaction().expect("begin library transaction");
+    transaction
+      .execute(
+        "
+        UPDATE podcast_episodes SET
+          published_at = CASE id
+            WHEN ?1 THEN 100
+            WHEN ?2 THEN NULL
+            WHEN ?3 THEN 200
+          END,
+          first_seen_at = CASE id
+            WHEN ?1 THEN 1000
+            WHEN ?2 THEN 3000
+            WHEN ?3 THEN 2000
+          END
+        WHERE id IN (?1, ?2, ?3)
+        ",
+        params![episode_ids[0], episode_ids[1], episode_ids[2]],
+      )
+      .expect("set deterministic feed recency");
+    for (episode_id, position, completed, updated_at) in [
+      (episode_ids[0].as_str(), 120.0, 0, 100),
+      (episode_ids[1].as_str(), 3723.0, 1, 200),
+      (preview_episode_id.as_str(), 60.0, 0, 300),
+    ] {
+      transaction
+        .execute(
+          "
+          INSERT INTO podcast_progress (
+            episode_id, position_seconds, duration_seconds, completed, updated_at
+          ) VALUES (?1, ?2, 3723, ?3, ?4)
+          ",
+          params![episode_id, position, completed, updated_at],
+        )
+        .expect("store deterministic playback history");
+    }
+    transaction.commit().expect("commit library state");
+    drop(connection);
+
+    let feeds = list_feeds(&state.db_path).expect("list feed stats");
+    assert_eq!(feeds.len(), 1);
+    assert_eq!(feeds[0].id, feed_id);
+    assert_eq!(feeds[0].latest_episode_at, Some(3000));
+    assert_eq!(feeds[0].unplayed_count, 1);
+
+    let home = list_home(&state.db_path, &state.downloads_dir).expect("list playback history");
+    assert_eq!(
+      home
+        .recently_played_episodes
+        .iter()
+        .map(|episode| episode.id.as_str())
+        .collect::<Vec<_>>(),
+      vec![
+        preview_episode_id.as_str(),
+        episode_ids[1].as_str(),
+        episode_ids[0].as_str(),
+      ],
+    );
+    assert!(
+      !home
+        .recently_played_episodes
+        .iter()
+        .any(|episode| episode.id == episode_ids[2])
+    );
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn downloaded_library_is_paginated_beyond_the_bounded_home_summary() {
+    let directory = test_directory("downloaded-library-size");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(45);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store large subscription");
+
+    for (index, episode_id) in episode_ids.iter().enumerate() {
+      let local_path = state.downloads_dir.join(format!("{episode_id}.mp3"));
+      fs::write(&local_path, b"ID3-library").expect("write managed download");
+      let downloaded_bytes = u64::try_from(index + 1).expect("download size");
+      mark_download_complete(
+        &state.db_path,
+        episode_id,
+        &local_path.to_string_lossy(),
+        downloaded_bytes,
+        Some(downloaded_bytes),
+      )
+      .expect("store managed download");
+    }
+
+    let first = list_downloads(&state.db_path, &state.downloads_dir, 0, 20)
+      .expect("list first download page");
+    let second = list_downloads(&state.db_path, &state.downloads_dir, 20, 20)
+      .expect("list second download page");
+    let third = list_downloads(&state.db_path, &state.downloads_dir, 40, 20)
+      .expect("list final download page");
+    assert_eq!(first.episodes.len(), 20);
+    assert_eq!(second.episodes.len(), 20);
+    assert_eq!(third.episodes.len(), 5);
+    assert!(first.has_more);
+    assert!(second.has_more);
+    assert!(!third.has_more);
+    for page in [&first, &second, &third] {
+      assert_eq!(page.total_count, 45);
+      assert_eq!(page.total_bytes, (1_u64..=45).sum::<u64>());
+      assert_eq!(page.feed_count, 1);
+    }
+    let paged_ids = first
+      .episodes
+      .iter()
+      .chain(second.episodes.iter())
+      .chain(third.episodes.iter())
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    assert_eq!(paged_ids.len(), 45);
+    assert_eq!(
+      paged_ids.iter().cloned().collect::<HashSet<_>>(),
+      episode_ids.iter().cloned().collect::<HashSet<_>>(),
+    );
+
+    let home = list_home(&state.db_path, &state.downloads_dir).expect("list downloaded library");
+    assert_eq!(home.downloaded_episodes.len(), PODCAST_HOME_DOWNLOADED_LIMIT);
+    assert_eq!(
+      home
+        .downloaded_episodes
+        .iter()
+        .map(|episode| episode.id.as_str())
+        .collect::<Vec<_>>(),
+      paged_ids[..PODCAST_HOME_DOWNLOADED_LIMIT]
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>(),
+    );
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }

@@ -19,6 +19,7 @@
     "src/utils/playback.ts",
     "src/utils/podcastPlayback.ts",
     "src/utils/podcastListening.ts",
+    "src/utils/podcastLibrary.ts",
     "src/utils/music.ts",
     "src/utils/lyrics.ts",
     "src/utils/lyricsDisplay.ts",

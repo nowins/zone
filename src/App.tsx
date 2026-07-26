@@ -144,6 +144,7 @@ export default function App() {
     duration: number;
   } | null>(null);
   const podcastProgressMutationRef = useRef<Promise<void>>(Promise.resolve());
+  const podcastProgressStartedRef = useRef(new Set<string>());
   const podcastPlaybackIntentRef = useRef(false);
   const podcastSessionHydratedRef = useRef(false);
   const podcastSessionRestoreCancelledRef = useRef(false);
@@ -1040,6 +1041,9 @@ export default function App() {
   }
 
   function updatePodcastEpisode(episode: PodcastEpisode) {
+    if (!episode.completed && episode.progressSeconds <= 0) {
+      podcastProgressStartedRef.current.delete(episode.id);
+    }
     applyPodcastQueue(podcastQueueRef.current.map((item) =>
       item.episode.id === episode.id ? { ...item, episode } : item
     ));
@@ -1060,6 +1064,7 @@ export default function App() {
         savedProgressSeconds: current.savedProgressSeconds,
       };
     });
+    setPodcastLibraryRevision((current) => current + 1);
   }
 
   async function toggleActivePodcastSaved() {
@@ -1524,13 +1529,21 @@ export default function App() {
       position: positionSeconds,
       duration: durationSeconds,
     };
-    const save = podcastProgressMutationRef.current.then(() =>
-      invoke("podcast_save_progress", {
+    const save = podcastProgressMutationRef.current.then(async () => {
+      await invoke("podcast_save_progress", {
         episodeId: episode.episodeId,
         positionSeconds,
         durationSeconds,
-      })
-    );
+      });
+      if (
+        positionSeconds > 0
+        && episode.progressSeconds <= 0
+        && !podcastProgressStartedRef.current.has(episode.episodeId)
+      ) {
+        podcastProgressStartedRef.current.add(episode.episodeId);
+        setPodcastLibraryRevision((current) => current + 1);
+      }
+    });
     podcastProgressMutationRef.current = save.then(
       () => undefined,
       (reason) => {
