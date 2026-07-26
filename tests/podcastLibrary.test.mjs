@@ -154,3 +154,21 @@ test("podcast library exposes durable sorting, unread state, history, and groupe
     /positionSeconds > 0[\s\S]*setPodcastLibraryRevision/,
   );
 });
+
+test("podcast download management supports bounded batch deletion and completed cleanup", () => {
+  assert.match(podcastViewSource, /aria-label="批量管理下载"/);
+  assert.match(podcastViewSource, /全选已加载/);
+  assert.match(podcastViewSource, /PODCAST_DOWNLOAD_BATCH_LIMIT = 500/);
+  assert.match(podcastViewSource, /podcast_delete_episode_downloads/);
+  assert.match(podcastViewSource, /podcast_clear_completed_downloads/);
+  assert.match(podcastViewSource, /PodcastDownloadCleanupDialog/);
+  assert.match(podcastViewSource, /show=\{downloadCleanupIntent !== null\}/);
+  assert.match(podcastViewSource, /单集和收听进度仍会保留/);
+  assert.match(appSource, /reconcileDeletedPodcastDownloads/);
+  assert.match(
+    appSource,
+    /activeEpisode[\s\S]*downloadState: "none"[\s\S]*localPath: null/,
+  );
+  assert.match(appSource, /onDownloadsDeleted=\{reconcileDeletedPodcastDownloads\}/);
+  assert.match(podcastStylesSource, /\.podcast-episode-select\[aria-pressed="true"\]/);
+});

@@ -1067,6 +1067,41 @@ export default function App() {
     setPodcastLibraryRevision((current) => current + 1);
   }
 
+  async function reconcileDeletedPodcastDownloads(episodeIds: string[]) {
+    if (episodeIds.length === 0) return;
+    const deleted = new Set(episodeIds);
+    const queueRefresh = podcastQueueRef.current.some((item) =>
+      deleted.has(item.episode.id)
+    )
+      ? reloadPodcastQueue(podcastQueueRevisionRef.current)
+      : Promise.resolve();
+    const activeEpisode = activePodcastEpisodeRef.current;
+    const activeEpisodeId = activeEpisode?.episodeId;
+    if (activeEpisode && deleted.has(activeEpisode.episodeId)) {
+      updatePodcastEpisode({
+        ...activeEpisode,
+        downloadState: "none",
+        localPath: null,
+        downloadedBytes: 0,
+        totalBytes: null,
+      });
+    }
+    const activeRefresh = activeEpisodeId && deleted.has(activeEpisodeId)
+      ? invoke<PodcastEpisodeDetail>("podcast_get_episode_detail", {
+        episodeId: activeEpisodeId,
+      }).then((detail) => {
+        if (activePodcastEpisodeRef.current?.episodeId === activeEpisodeId) {
+          updatePodcastEpisode(detail.episode);
+        }
+      }).catch((reason) => {
+        if (import.meta.env.DEV) {
+          console.warn("[podcast] deleted download refresh failed", reason);
+        }
+      })
+      : Promise.resolve();
+    await Promise.all([queueRefresh, activeRefresh]);
+  }
+
   async function toggleActivePodcastSaved() {
     const episode = activePodcastEpisodeRef.current;
     if (!episode) return;
@@ -2401,6 +2436,7 @@ export default function App() {
             onClearQueue={clearPodcastQueue}
             onEpisodeUpdated={updatePodcastEpisode}
             onSetEpisodePlayed={setPodcastEpisodePlayed}
+            onDownloadsDeleted={reconcileDeletedPodcastDownloads}
             onReturnToNowPlaying={() => requestNavigation("nowPlaying")}
           />
         )}

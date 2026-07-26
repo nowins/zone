@@ -40,6 +40,7 @@ const PODCAST_HOME_DOWNLOADED_LIMIT: usize = 40;
 const PODCAST_HOME_SAVED_LIMIT: usize = 40;
 const PODCAST_HOME_RECENTLY_PLAYED_LIMIT: usize = 40;
 const PODCAST_DOWNLOAD_PAGE_MAX_LIMIT: usize = 100;
+const PODCAST_DOWNLOAD_DELETE_LIMIT: usize = 500;
 const PODCAST_QUEUE_LIMIT: usize = 500;
 const PODCAST_REFRESH_CONCURRENCY: usize = 3;
 const PODCAST_REFRESH_INTERVAL: i64 = 30 * 60 * 1_000;
@@ -200,6 +201,15 @@ pub struct PodcastDownloadResult {
   resumed: bool,
 }
 
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastDownloadDeleteResult {
+  requested_count: usize,
+  deleted_count: usize,
+  deleted_bytes: u64,
+  deleted_episode_ids: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AppleSearchResponse {
@@ -322,6 +332,33 @@ impl EpisodeFileGuard {
       episode_id: episode_id.to_string(),
       active_downloads: active_downloads.clone(),
     })
+  }
+
+  fn acquire_many(
+    active_downloads: &Arc<Mutex<HashSet<String>>>,
+    episode_ids: &[String],
+  ) -> Result<Vec<Self>, String> {
+    let mut active = active_downloads
+      .lock()
+      .map_err(|_| "播客下载状态不可用".to_string())?;
+    if episode_ids
+      .iter()
+      .any(|episode_id| active.contains(episode_id))
+    {
+      return Err("所选播客单集中有项目正在下载或清理".to_string());
+    }
+    for episode_id in episode_ids {
+      active.insert(episode_id.clone());
+    }
+    let guards = episode_ids
+      .iter()
+      .map(|episode_id| Self {
+        episode_id: episode_id.clone(),
+        active_downloads: active_downloads.clone(),
+      })
+      .collect();
+    drop(active);
+    Ok(guards)
   }
 }
 
@@ -827,6 +864,47 @@ pub async fn podcast_delete_episode_download(
   tauri::async_runtime::spawn_blocking(move || {
     delete_episode_download(&db_path, &downloads_dir, &episode_id)?;
     get_episode_detail(&db_path, &downloads_dir, &episode_id)
+  })
+  .await
+  .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+}
+
+#[tauri::command]
+pub async fn podcast_delete_episode_downloads(
+  state: State<'_, PodcastState>,
+  episode_ids: Vec<String>,
+) -> Result<PodcastDownloadDeleteResult, String> {
+  state.ensure_ready()?;
+  let db_path = state.db_path.clone();
+  let downloads_dir = state.downloads_dir.clone();
+  let active_downloads = state.active_downloads.clone();
+  tauri::async_runtime::spawn_blocking(move || {
+    delete_episode_downloads_guarded(
+      &db_path,
+      &downloads_dir,
+      &active_downloads,
+      episode_ids,
+      false,
+    )
+  })
+  .await
+  .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+}
+
+#[tauri::command]
+pub async fn podcast_clear_completed_downloads(
+  state: State<'_, PodcastState>,
+) -> Result<PodcastDownloadDeleteResult, String> {
+  state.ensure_ready()?;
+  let db_path = state.db_path.clone();
+  let downloads_dir = state.downloads_dir.clone();
+  let active_downloads = state.active_downloads.clone();
+  tauri::async_runtime::spawn_blocking(move || {
+    clear_completed_episode_downloads_guarded(
+      &db_path,
+      &downloads_dir,
+      &active_downloads,
+    )
   })
   .await
   .map_err(|error| format!("播客数据任务异常结束：{error}"))?
@@ -3858,6 +3936,451 @@ fn delete_episode_download(
   Ok(())
 }
 
+fn normalize_download_delete_ids(episode_ids: Vec<String>) -> Result<Vec<String>, String> {
+  if episode_ids.len() > PODCAST_DOWNLOAD_DELETE_LIMIT {
+    return Err(format!(
+      "每次最多可清理 {PODCAST_DOWNLOAD_DELETE_LIMIT} 集播客"
+    ));
+  }
+  validate_and_normalize_download_delete_ids(episode_ids)
+}
+
+fn validate_and_normalize_download_delete_ids(
+  episode_ids: Vec<String>,
+) -> Result<Vec<String>, String> {
+  for episode_id in &episode_ids {
+    validate_identifier(episode_id)?;
+  }
+  let mut normalized = episode_ids;
+  normalized.sort_unstable();
+  normalized.dedup();
+  Ok(normalized)
+}
+
+fn list_completed_download_ids(db_path: &Path) -> Result<Vec<String>, String> {
+  let connection = open_database(db_path)?;
+  let mut statement = connection
+    .prepare(
+      "
+      SELECT d.episode_id
+      FROM podcast_downloads d
+      JOIN podcast_progress p ON p.episode_id = d.episode_id
+      WHERE d.state = 'downloaded' AND p.completed = 1
+      ORDER BY p.updated_at, d.episode_id
+      ",
+    )
+    .map_err(|error| format!("无法读取已听完的播客下载：{error}"))?;
+  let rows = statement
+    .query_map([], |row| row.get(0))
+    .map_err(|error| format!("无法读取已听完的播客下载：{error}"))?;
+  rows
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|error| format!("无法读取已听完的播客下载：{error}"))
+}
+
+fn delete_episode_downloads_guarded(
+  db_path: &Path,
+  downloads_dir: &Path,
+  active_downloads: &Arc<Mutex<HashSet<String>>>,
+  episode_ids: Vec<String>,
+  completed_only: bool,
+) -> Result<PodcastDownloadDeleteResult, String> {
+  let episode_ids = normalize_download_delete_ids(episode_ids)?;
+  delete_normalized_episode_downloads_guarded(
+    db_path,
+    downloads_dir,
+    active_downloads,
+    episode_ids,
+    completed_only,
+  )
+}
+
+fn delete_normalized_episode_downloads_guarded(
+  db_path: &Path,
+  downloads_dir: &Path,
+  active_downloads: &Arc<Mutex<HashSet<String>>>,
+  episode_ids: Vec<String>,
+  completed_only: bool,
+) -> Result<PodcastDownloadDeleteResult, String> {
+  let requested_count = episode_ids.len();
+  let _file_guards = EpisodeFileGuard::acquire_many(active_downloads, &episode_ids)?;
+  delete_episode_downloads(
+    db_path,
+    downloads_dir,
+    &episode_ids,
+    completed_only,
+    requested_count,
+  )
+}
+
+fn clear_completed_episode_downloads_guarded(
+  db_path: &Path,
+  downloads_dir: &Path,
+  active_downloads: &Arc<Mutex<HashSet<String>>>,
+) -> Result<PodcastDownloadDeleteResult, String> {
+  let episode_ids = validate_and_normalize_download_delete_ids(
+    list_completed_download_ids(db_path)?,
+  )?;
+  delete_normalized_episode_downloads_guarded(
+    db_path,
+    downloads_dir,
+    active_downloads,
+    episode_ids,
+    true,
+  )
+}
+
+#[derive(Debug)]
+struct EpisodeDownloadDeleteTarget {
+  episode_id: String,
+  final_path: PathBuf,
+  part_path: PathBuf,
+}
+
+#[derive(Debug)]
+struct StagedDownloadFile {
+  original_path: PathBuf,
+  staged_path: PathBuf,
+  bytes: u64,
+}
+
+fn load_episode_download_delete_targets(
+  transaction: &Transaction<'_>,
+  downloads_dir: &Path,
+  episode_ids: &[String],
+  completed_only: bool,
+) -> Result<Vec<EpisodeDownloadDeleteTarget>, String> {
+  let mut targets = Vec::new();
+  for episode_id in episode_ids {
+    let local_path = transaction
+      .query_row(
+        "
+        SELECT d.local_path
+        FROM podcast_downloads d
+        WHERE d.episode_id = ?1
+          AND d.state = 'downloaded'
+          AND (
+            ?2 = 0
+            OR EXISTS (
+              SELECT 1
+              FROM podcast_progress p
+              WHERE p.episode_id = d.episode_id AND p.completed = 1
+            )
+          )
+        ",
+        params![episode_id, i64::from(completed_only)],
+        |row| row.get::<_, Option<String>>(0),
+      )
+      .optional()
+      .map_err(|error| format!("无法读取播客下载信息：{error}"))?
+      .flatten();
+    let Some(local_path) = local_path else {
+      continue;
+    };
+    let final_path = PathBuf::from(local_path);
+    if !is_managed_download_path(downloads_dir, episode_id, &final_path) {
+      continue;
+    }
+    targets.push(EpisodeDownloadDeleteTarget {
+      episode_id: episode_id.clone(),
+      final_path,
+      part_path: downloads_dir.join(format!("{episode_id}.part")),
+    });
+  }
+  Ok(targets)
+}
+
+fn create_download_delete_staging_dir(downloads_dir: &Path) -> Result<PathBuf, String> {
+  let timestamp = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map(|duration| duration.as_nanos())
+    .unwrap_or(0);
+  for attempt in 0..100u16 {
+    let path = downloads_dir.join(format!(
+      ".zone-delete-{}-{timestamp:x}-{attempt:x}",
+      std::process::id(),
+    ));
+    match fs::create_dir(&path) {
+      Ok(()) => return Ok(path),
+      Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+      Err(error) => return Err(format!("无法创建播客下载暂存目录：{error}")),
+    }
+  }
+  Err("无法创建唯一的播客下载暂存目录".to_string())
+}
+
+fn path_entry_exists(path: &Path) -> Result<bool, String> {
+  match fs::symlink_metadata(path) {
+    Ok(_) => Ok(true),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+    Err(error) => Err(format!("无法检查播客下载文件：{error}")),
+  }
+}
+
+fn stage_download_file(
+  original_path: &Path,
+  staging_dir: &Path,
+  rename_file: &mut dyn FnMut(&Path, &Path) -> std::io::Result<()>,
+) -> Result<Option<StagedDownloadFile>, String> {
+  let metadata = match fs::symlink_metadata(original_path) {
+    Ok(metadata) => metadata,
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+    Err(error) => return Err(format!("无法检查播客下载文件：{error}")),
+  };
+  if !metadata.file_type().is_file() {
+    return Err("播客下载路径不是普通文件".to_string());
+  }
+  let file_name = original_path
+    .file_name()
+    .ok_or_else(|| "播客下载文件名无效".to_string())?;
+  let staged_path = staging_dir.join(file_name);
+  if path_entry_exists(&staged_path)? {
+    return Err("播客下载暂存目标已存在".to_string());
+  }
+  rename_file(original_path, &staged_path)
+    .map_err(|error| format!("无法暂存播客下载文件：{error}"))?;
+  Ok(Some(StagedDownloadFile {
+    original_path: original_path.to_path_buf(),
+    staged_path,
+    bytes: metadata.len(),
+  }))
+}
+
+fn rollback_staged_download_files(
+  staged_files: &[StagedDownloadFile],
+  staging_dir: &Path,
+) -> Result<(), String> {
+  let mut failures = Vec::new();
+  for staged in staged_files.iter().rev() {
+    let staged_exists = match path_entry_exists(&staged.staged_path) {
+      Ok(exists) => exists,
+      Err(error) => {
+        failures.push(error);
+        continue;
+      }
+    };
+    if !staged_exists {
+      match path_entry_exists(&staged.original_path) {
+        Ok(true) => {}
+        Ok(false) => failures.push(format!(
+          "暂存文件与原文件均不存在：{}",
+          staged.original_path.display(),
+        )),
+        Err(error) => failures.push(error),
+      }
+      continue;
+    }
+    match path_entry_exists(&staged.original_path) {
+      Ok(true) => {
+        failures.push(format!(
+          "原路径已存在，未覆盖：{}",
+          staged.original_path.display(),
+        ));
+      }
+      Ok(false) => {
+        if let Err(error) = fs::rename(&staged.staged_path, &staged.original_path) {
+          failures.push(format!(
+            "无法恢复播客下载文件 {}：{error}",
+            staged.original_path.display(),
+          ));
+        }
+      }
+      Err(error) => failures.push(error),
+    }
+  }
+  if failures.is_empty() {
+    match fs::remove_dir(staging_dir) {
+      Ok(()) => {}
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+      Err(error) => failures.push(format!("无法移除播客下载暂存目录：{error}")),
+    }
+  }
+  if failures.is_empty() {
+    Ok(())
+  } else {
+    Err(failures.join("；"))
+  }
+}
+
+fn rollback_download_delete_error(
+  error: String,
+  staged_files: &[StagedDownloadFile],
+  staging_dir: &Path,
+) -> String {
+  match rollback_staged_download_files(staged_files, staging_dir) {
+    Ok(()) => error,
+    Err(rollback_error) => format!("{error}；恢复暂存文件时发生错误：{rollback_error}"),
+  }
+}
+
+fn rollback_download_delete_transaction(
+  transaction: Transaction<'_>,
+  error: String,
+  staged_files: &[StagedDownloadFile],
+  staging_dir: &Path,
+) -> String {
+  let error = match transaction.rollback() {
+    Ok(()) => error,
+    Err(rollback_error) => {
+      format!("{error}；回滚播客下载数据库时发生错误：{rollback_error}")
+    }
+  };
+  rollback_download_delete_error(error, staged_files, staging_dir)
+}
+
+fn cleanup_committed_staged_download_files(
+  staged_files: &[StagedDownloadFile],
+  staging_dir: &Path,
+) {
+  for staged in staged_files {
+    if let Err(error) = remove_file_if_present(&staged.staged_path, "播客下载暂存文件") {
+      eprintln!(
+        "[podcast] 已清除下载记录，但暂存文件清理失败（{}）：{error}",
+        staged.staged_path.display(),
+      );
+    }
+  }
+  if let Err(error) = fs::remove_dir(staging_dir) {
+    if error.kind() != std::io::ErrorKind::NotFound {
+      eprintln!(
+        "[podcast] 已清除下载记录，但暂存目录清理失败（{}）：{error}",
+        staging_dir.display(),
+      );
+    }
+  }
+}
+
+fn delete_episode_downloads(
+  db_path: &Path,
+  downloads_dir: &Path,
+  episode_ids: &[String],
+  completed_only: bool,
+  requested_count: usize,
+) -> Result<PodcastDownloadDeleteResult, String> {
+  let mut rename_file = |from: &Path, to: &Path| fs::rename(from, to);
+  delete_episode_downloads_with_rename(
+    db_path,
+    downloads_dir,
+    episode_ids,
+    completed_only,
+    requested_count,
+    &mut rename_file,
+  )
+}
+
+fn delete_episode_downloads_with_rename(
+  db_path: &Path,
+  downloads_dir: &Path,
+  episode_ids: &[String],
+  completed_only: bool,
+  requested_count: usize,
+  rename_file: &mut dyn FnMut(&Path, &Path) -> std::io::Result<()>,
+) -> Result<PodcastDownloadDeleteResult, String> {
+  if episode_ids.is_empty() {
+    return Ok(PodcastDownloadDeleteResult {
+      requested_count,
+      ..PodcastDownloadDeleteResult::default()
+    });
+  }
+
+  let mut connection = open_database(db_path)?;
+  let transaction = connection
+    .transaction_with_behavior(TransactionBehavior::Immediate)
+    .map_err(|error| format!("无法开始清理播客下载：{error}"))?;
+  let targets = load_episode_download_delete_targets(
+    &transaction,
+    downloads_dir,
+    episode_ids,
+    completed_only,
+  )?;
+  if targets.is_empty() {
+    drop(transaction);
+    return Ok(PodcastDownloadDeleteResult {
+      requested_count,
+      ..PodcastDownloadDeleteResult::default()
+    });
+  }
+
+  let staging_dir = create_download_delete_staging_dir(downloads_dir)?;
+  let mut staged_files = Vec::new();
+  for target in &targets {
+    for path in [&target.final_path, &target.part_path] {
+      match stage_download_file(path, &staging_dir, rename_file) {
+        Ok(Some(staged)) => staged_files.push(staged),
+        Ok(None) => {}
+        Err(error) => {
+          return Err(rollback_download_delete_transaction(
+            transaction,
+            error,
+            &staged_files,
+            &staging_dir,
+          ));
+        }
+      }
+    }
+  }
+
+  let mut deleted_episode_ids = Vec::with_capacity(targets.len());
+  for target in &targets {
+    let deleted = match transaction
+      .execute(
+        "
+        DELETE FROM podcast_downloads
+        WHERE episode_id = ?1
+          AND state = 'downloaded'
+          AND (
+            ?2 = 0
+            OR EXISTS (
+              SELECT 1
+              FROM podcast_progress p
+              WHERE p.episode_id = podcast_downloads.episode_id
+                AND p.completed = 1
+            )
+          )
+        ",
+        params![target.episode_id, i64::from(completed_only)],
+      )
+    {
+      Ok(deleted) => deleted,
+      Err(error) => {
+        return Err(rollback_download_delete_transaction(
+          transaction,
+          format!("无法清除播客下载记录：{error}"),
+          &staged_files,
+          &staging_dir,
+        ));
+      }
+    };
+    if deleted != 1 {
+      return Err(rollback_download_delete_transaction(
+        transaction,
+        "播客下载状态已发生变化，请刷新后重试".to_string(),
+        &staged_files,
+        &staging_dir,
+      ));
+    }
+    deleted_episode_ids.push(target.episode_id.clone());
+  }
+
+  if let Err(error) = transaction.commit() {
+    return Err(rollback_download_delete_error(
+      format!("无法提交播客下载清理：{error}"),
+      &staged_files,
+      &staging_dir,
+    ));
+  }
+  let deleted_bytes = staged_files
+    .iter()
+    .fold(0u64, |total, staged| total.saturating_add(staged.bytes));
+  cleanup_committed_staged_download_files(&staged_files, &staging_dir);
+  Ok(PodcastDownloadDeleteResult {
+    requested_count,
+    deleted_count: deleted_episode_ids.len(),
+    deleted_bytes,
+    deleted_episode_ids,
+  })
+}
+
 async fn download_episode(
   db_path: &Path,
   downloads_dir: &Path,
@@ -6434,6 +6957,394 @@ mod tests {
       .expect("inspect download row")
       .is_some();
     assert!(!download_row_exists);
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn bulk_download_delete_removes_only_selected_downloads() {
+    let directory = test_directory("bulk-delete-downloads");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(3);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    let mut paths = Vec::new();
+    let mut expected_deleted_bytes = 0u64;
+    for (index, episode_id) in episode_ids.iter().enumerate() {
+      let path = state.downloads_dir.join(format!("{episode_id}.mp3"));
+      let payload = format!("ID3-bulk-{index}").into_bytes();
+      fs::write(&path, &payload).expect("write managed download");
+      mark_download_complete(
+        &state.db_path,
+        episode_id,
+        &path.to_string_lossy(),
+        payload.len() as u64,
+        Some(payload.len() as u64),
+      )
+      .expect("mark managed download");
+      if index != 1 {
+        expected_deleted_bytes += payload.len() as u64;
+      }
+      paths.push(path);
+    }
+    let part_path = state.downloads_dir.join(format!("{}.part", episode_ids[0]));
+    let part_payload = b"ID3-bulk-part";
+    fs::write(&part_path, part_payload).expect("write managed partial download");
+    expected_deleted_bytes += part_payload.len() as u64;
+
+    let result = delete_episode_downloads_guarded(
+      &state.db_path,
+      &state.downloads_dir,
+      &state.active_downloads,
+      vec![episode_ids[2].clone(), episode_ids[0].clone()],
+      false,
+    )
+    .expect("delete selected downloads");
+    assert_eq!(result.requested_count, 2);
+    assert_eq!(result.deleted_count, 2);
+    assert_eq!(result.deleted_bytes, expected_deleted_bytes);
+    let mut expected_deleted_ids = vec![episode_ids[0].clone(), episode_ids[2].clone()];
+    expected_deleted_ids.sort_unstable();
+    assert_eq!(result.deleted_episode_ids, expected_deleted_ids);
+    assert!(!paths[0].exists());
+    assert!(!part_path.exists());
+    assert!(paths[1].exists());
+    assert!(!paths[2].exists());
+    assert_eq!(
+      get_episode_detail(&state.db_path, &state.downloads_dir, &episode_ids[0])
+        .expect("selected detail")
+        .episode
+        .download_state,
+      "none"
+    );
+    assert_eq!(
+      get_episode_detail(&state.db_path, &state.downloads_dir, &episode_ids[1])
+        .expect("unselected detail")
+        .episode
+        .download_state,
+      "downloaded"
+    );
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn clearing_completed_downloads_keeps_unplayed_downloads() {
+    let directory = test_directory("clear-completed-downloads");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(3);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    let paths = episode_ids
+      .iter()
+      .enumerate()
+      .map(|(index, episode_id)| {
+        let path = state.downloads_dir.join(format!("{episode_id}.mp3"));
+        let payload = format!("ID3-completed-{index}").into_bytes();
+        fs::write(&path, &payload).expect("write managed download");
+        mark_download_complete(
+          &state.db_path,
+          episode_id,
+          &path.to_string_lossy(),
+          payload.len() as u64,
+          Some(payload.len() as u64),
+        )
+        .expect("mark managed download");
+        path
+      })
+      .collect::<Vec<_>>();
+    set_episode_played(&state.db_path, &episode_ids[0], true)
+      .expect("mark first episode completed");
+    set_episode_played(&state.db_path, &episode_ids[2], true)
+      .expect("mark third episode completed");
+
+    let result = clear_completed_episode_downloads_guarded(
+      &state.db_path,
+      &state.downloads_dir,
+      &state.active_downloads,
+    )
+    .expect("clear completed downloads");
+    assert_eq!(result.requested_count, 2);
+    assert_eq!(result.deleted_count, 2);
+    assert!(!paths[0].exists());
+    assert!(paths[1].exists());
+    assert!(!paths[2].exists());
+    assert_eq!(
+      get_episode_detail(&state.db_path, &state.downloads_dir, &episode_ids[1])
+        .expect("unplayed detail")
+        .episode
+        .download_state,
+      "downloaded"
+    );
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn clearing_completed_downloads_is_not_truncated_at_selection_limit() {
+    let directory = test_directory("clear-all-completed-downloads");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(PODCAST_DOWNLOAD_DELETE_LIMIT + 1);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    let mut connection = open_database(&state.db_path).expect("open podcast database");
+    let transaction = connection
+      .transaction_with_behavior(TransactionBehavior::Immediate)
+      .expect("begin fixture transaction");
+    for (index, episode_id) in episode_ids.iter().enumerate() {
+      let local_path = state.downloads_dir.join(format!("{episode_id}.mp3"));
+      transaction
+        .execute(
+          "
+          INSERT INTO podcast_downloads (
+            episode_id, local_path, state, downloaded_bytes, total_bytes,
+            error_message, updated_at
+          ) VALUES (?1, ?2, 'downloaded', 1, 1, NULL, ?3)
+          ",
+          params![
+            episode_id,
+            local_path.to_string_lossy(),
+            i64::try_from(index).unwrap_or(i64::MAX),
+          ],
+        )
+        .expect("insert completed download");
+      transaction
+        .execute(
+          "
+          INSERT INTO podcast_progress (
+            episode_id, position_seconds, duration_seconds, completed, updated_at
+          ) VALUES (?1, 1, 1, 1, ?2)
+          ",
+          params![
+            episode_id,
+            i64::try_from(index).unwrap_or(i64::MAX),
+          ],
+        )
+        .expect("insert completed progress");
+    }
+    transaction.commit().expect("commit fixture transaction");
+    drop(connection);
+
+    assert_eq!(
+      list_completed_download_ids(&state.db_path)
+        .expect("list all completed downloads")
+        .len(),
+      PODCAST_DOWNLOAD_DELETE_LIMIT + 1
+    );
+    let result = clear_completed_episode_downloads_guarded(
+      &state.db_path,
+      &state.downloads_dir,
+      &state.active_downloads,
+    )
+    .expect("clear every completed download");
+    assert_eq!(result.requested_count, PODCAST_DOWNLOAD_DELETE_LIMIT + 1);
+    assert_eq!(result.deleted_count, PODCAST_DOWNLOAD_DELETE_LIMIT + 1);
+    assert_eq!(
+      result.deleted_episode_ids.len(),
+      PODCAST_DOWNLOAD_DELETE_LIMIT + 1
+    );
+    assert!(
+      state
+        .active_downloads
+        .lock()
+        .expect("inspect active downloads")
+        .is_empty()
+    );
+    let remaining_downloads = {
+      let connection = open_database(&state.db_path).expect("reopen podcast database");
+      connection
+        .query_row("SELECT COUNT(*) FROM podcast_downloads", [], |row| {
+          row.get::<_, i64>(0)
+        })
+        .expect("count remaining downloads")
+    };
+    assert_eq!(remaining_downloads, 0);
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn bulk_download_delete_preflight_prevents_partial_cleanup() {
+    let directory = test_directory("bulk-delete-preflight");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(3);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    let paths = episode_ids
+      .iter()
+      .enumerate()
+      .map(|(index, episode_id)| {
+        let path = state.downloads_dir.join(format!("{episode_id}.mp3"));
+        let payload = format!("ID3-preflight-{index}").into_bytes();
+        fs::write(&path, &payload).expect("write managed download");
+        mark_download_complete(
+          &state.db_path,
+          episode_id,
+          &path.to_string_lossy(),
+          payload.len() as u64,
+          Some(payload.len() as u64),
+        )
+        .expect("mark managed download");
+        path
+      })
+      .collect::<Vec<_>>();
+
+    assert!(
+      delete_episode_downloads_guarded(
+        &state.db_path,
+        &state.downloads_dir,
+        &state.active_downloads,
+        vec![episode_ids[0].clone(), "invalid".to_string(), episode_ids[1].clone()],
+        false,
+      )
+      .is_err()
+    );
+    assert!(paths.iter().all(|path| path.exists()));
+    assert!(
+      delete_episode_downloads_guarded(
+        &state.db_path,
+        &state.downloads_dir,
+        &state.active_downloads,
+        vec![episode_ids[0].clone(); PODCAST_DOWNLOAD_DELETE_LIMIT + 1],
+        false,
+      )
+      .is_err()
+    );
+    assert!(paths.iter().all(|path| path.exists()));
+
+    let active_guard = EpisodeFileGuard::acquire(
+      &state.active_downloads,
+      &episode_ids[1],
+    )
+    .expect("reserve active episode");
+    assert!(
+      delete_episode_downloads_guarded(
+        &state.db_path,
+        &state.downloads_dir,
+        &state.active_downloads,
+        vec![episode_ids[0].clone(), episode_ids[1].clone()],
+        false,
+      )
+      .is_err()
+    );
+    assert!(paths.iter().all(|path| path.exists()));
+    drop(active_guard);
+
+    let result = delete_episode_downloads_guarded(
+      &state.db_path,
+      &state.downloads_dir,
+      &state.active_downloads,
+      vec![
+        episode_ids[0].clone(),
+        episode_ids[0].clone(),
+        episode_ids[1].clone(),
+      ],
+      false,
+    )
+    .expect("delete deduplicated selection");
+    assert_eq!(result.requested_count, 2);
+    assert_eq!(result.deleted_count, 2);
+    assert_eq!(result.deleted_episode_ids.len(), 2);
+    assert!(!paths[0].exists());
+    assert!(!paths[1].exists());
+    assert!(paths[2].exists());
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn bulk_download_delete_restores_staged_files_when_a_later_rename_fails() {
+    let directory = test_directory("bulk-delete-stage-rollback");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(2);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    let paths = episode_ids
+      .iter()
+      .enumerate()
+      .map(|(index, episode_id)| {
+        let path = state.downloads_dir.join(format!("{episode_id}.mp3"));
+        let payload = format!("ID3-rollback-{index}").into_bytes();
+        fs::write(&path, &payload).expect("write managed download");
+        mark_download_complete(
+          &state.db_path,
+          episode_id,
+          &path.to_string_lossy(),
+          payload.len() as u64,
+          Some(payload.len() as u64),
+        )
+        .expect("mark managed download");
+        (path, payload)
+      })
+      .collect::<Vec<_>>();
+
+    let mut rename_count = 0usize;
+    let mut injected_rename = |from: &Path, to: &Path| {
+      rename_count += 1;
+      if rename_count == 2 {
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::Other,
+          "injected staging failure",
+        ));
+      }
+      fs::rename(from, to)
+    };
+    let result = delete_episode_downloads_with_rename(
+      &state.db_path,
+      &state.downloads_dir,
+      &episode_ids,
+      false,
+      episode_ids.len(),
+      &mut injected_rename,
+    );
+    assert!(result.is_err());
+    assert_eq!(rename_count, 2);
+    for ((path, payload), episode_id) in paths.iter().zip(&episode_ids) {
+      assert_eq!(fs::read(path).expect("read restored download"), *payload);
+      assert_eq!(
+        get_episode_detail(&state.db_path, &state.downloads_dir, episode_id)
+          .expect("detail after rollback")
+          .episode
+          .download_state,
+        "downloaded"
+      );
+    }
+    assert!(
+      fs::read_dir(&state.downloads_dir)
+        .expect("inspect downloads directory")
+        .all(|entry| {
+          !entry
+            .expect("read downloads entry")
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".zone-delete-")
+        })
+    );
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }

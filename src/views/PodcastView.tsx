@@ -34,6 +34,8 @@ import {
   PodcastEpisodeContextMenu,
   type PodcastEpisodeMenuState,
 } from "../components/PodcastEpisodeContextMenu";
+import { Presence, useLastNonNull } from "../motion/presence";
+import { MOTION_DURATIONS } from "../motion/tokens";
 import { formatTime } from "../utils/music";
 import { podcastArtworkSrc } from "../utils/podcastArtwork";
 import {
@@ -53,6 +55,7 @@ import {
 import { mergePodcastEpisodePlayback } from "../utils/podcastPlayback";
 import type {
   PodcastDiscoveryShow,
+  PodcastDownloadDeleteResult,
   PodcastDownloadPage,
   PodcastDownloadResult,
   PodcastEpisode,
@@ -85,6 +88,15 @@ type ShowCandidate = Pick<
   PodcastSearchResult,
   "id" | "title" | "author" | "feedUrl" | "artworkUrl"
 >;
+type PodcastDownloadCleanupIntent =
+  | {
+    kind: "selected";
+    episodeIds: string[];
+    downloadedBytes: number;
+  }
+  | {
+    kind: "completed";
+  };
 
 export type PodcastViewProps = {
   queue: PodcastQueueItem[];
@@ -113,6 +125,7 @@ export type PodcastViewProps = {
     episodeId: string,
     played: boolean,
   ) => Promise<PodcastEpisodeDetail>;
+  onDownloadsDeleted: (episodeIds: string[]) => void | Promise<void>;
 };
 
 type PodcastSessionSnapshot = {
@@ -149,6 +162,7 @@ const EMPTY_DOWNLOAD_PAGE: PodcastDownloadPage = {
 const DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1_000;
 const PODCAST_LIBRARY_STORAGE_KEY = "zone-podcast-library-v1";
 const PODCAST_DOWNLOAD_PAGE_SIZE = 60;
+const PODCAST_DOWNLOAD_BATCH_LIMIT = 500;
 const PODCAST_LISTEN_FILTERS: Array<{
   id: PodcastListenFilter;
   label: string;
@@ -186,6 +200,7 @@ export function PodcastView({
   onClearQueue,
   onEpisodeUpdated,
   onSetEpisodePlayed,
+  onDownloadsDeleted,
 }: PodcastViewProps) {
   const restoredSession = useMemo(() => podcastSessionSnapshot, []);
   const initialLibraryPreferences = useMemo(
@@ -227,6 +242,13 @@ export function PodcastView({
     useState<RequestState>("idle");
   const [loadingMoreDownloads, setLoadingMoreDownloads] = useState(false);
   const [recentHistoryExpanded, setRecentHistoryExpanded] = useState(false);
+  const [downloadSelectionMode, setDownloadSelectionMode] = useState(false);
+  const [selectedDownloadIds, setSelectedDownloadIds] =
+    useState<Set<string>>(() => new Set());
+  const [downloadCleanupIntent, setDownloadCleanupIntent] =
+    useState<PodcastDownloadCleanupIntent | null>(null);
+  const [downloadCleanupAction, setDownloadCleanupAction] =
+    useState<"selected" | "completed" | null>(null);
   const [selectedFeed, setSelectedFeed] = useState<PodcastFeed | null>(
     restoredSession?.selectedFeed ?? null,
   );
@@ -282,6 +304,7 @@ export function PodcastView({
   const selectedFeedRef = useRef(selectedFeed);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const episodeReturnSessionRef = useRef<PodcastSessionSnapshot | null>(null);
+  const lastDownloadCleanupIntent = useLastNonNull(downloadCleanupIntent);
   selectedFeedRef.current = selectedFeed;
 
   const currentEpisodeId = activeEpisode?.episodeId ?? activeEpisodeId;
@@ -586,6 +609,13 @@ export function PodcastView({
   }, [libraryRevision, loadDownloadedLibrary, screen]);
 
   useEffect(() => {
+    if (screen === "library") return;
+    setDownloadSelectionMode(false);
+    setSelectedDownloadIds(new Set());
+    setDownloadCleanupIntent(null);
+  }, [screen]);
+
+  useEffect(() => {
     if (libraryState !== "ready") return;
     setCustomFeedOrder((current) => {
       const normalized = normalizePodcastFeedOrder(current, feeds);
@@ -759,6 +789,146 @@ export function PodcastView({
     setLibrarySort("custom");
     const feed = feeds.find((candidate) => candidate.id === feedId);
     setNotice(feed ? `已调整“${feed.title}”的位置` : "已调整节目位置");
+  }
+
+  function toggleDownloadSelection(episodeId: string) {
+    if (
+      !selectedDownloadIds.has(episodeId)
+      && selectedDownloadIds.size >= PODCAST_DOWNLOAD_BATCH_LIMIT
+    ) {
+      setNotice(`每次最多选择 ${PODCAST_DOWNLOAD_BATCH_LIMIT} 集`);
+      return;
+    }
+    setSelectedDownloadIds((current) => {
+      const next = new Set(current);
+      if (next.has(episodeId)) next.delete(episodeId);
+      else next.add(episodeId);
+      return next;
+    });
+  }
+
+  function toggleDownloadSelectionMode() {
+    setDownloadSelectionMode((current) => {
+      if (current) setSelectedDownloadIds(new Set());
+      return !current;
+    });
+  }
+
+  function toggleAllLoadedDownloads() {
+    const selectableIds = libraryDownloadedEpisodes
+      .slice(0, PODCAST_DOWNLOAD_BATCH_LIMIT)
+      .map((episode) => episode.id);
+    const allSelected = selectableIds.length > 0
+      && selectableIds.every((episodeId) => selectedDownloadIds.has(episodeId));
+    setSelectedDownloadIds(
+      allSelected ? new Set() : new Set(selectableIds),
+    );
+    if (
+      !allSelected
+      && libraryDownloadedEpisodes.length > PODCAST_DOWNLOAD_BATCH_LIMIT
+    ) {
+      setNotice(`已选择前 ${PODCAST_DOWNLOAD_BATCH_LIMIT} 集`);
+    }
+  }
+
+  function requestSelectedDownloadDeletion() {
+    const selectedEpisodes = libraryDownloadedEpisodes.filter((episode) =>
+      selectedDownloadIds.has(episode.id)
+    );
+    if (selectedEpisodes.length === 0) return;
+    setDownloadCleanupIntent({
+      kind: "selected",
+      episodeIds: selectedEpisodes.map((episode) => episode.id),
+      downloadedBytes: podcastDownloadedBytes(selectedEpisodes),
+    });
+  }
+
+  function applyDownloadDeletionLocally(episodeIds: readonly string[]) {
+    const deleted = new Set(episodeIds);
+    const clear = (episode: PodcastEpisode) =>
+      deleted.has(episode.id) ? clearPodcastEpisodeDownload(episode) : episode;
+    setEpisodes((current) => current.map(clear));
+    setHome((current) => ({
+      continueListening: current.continueListening.map(clear),
+      latestEpisodes: current.latestEpisodes.map(clear),
+      unplayedEpisodes: current.unplayedEpisodes.map(clear),
+      downloadPriorityEpisodes: current.downloadPriorityEpisodes.map(clear),
+      downloadedEpisodes: current.downloadedEpisodes.filter(
+        (episode) => !deleted.has(episode.id),
+      ),
+      savedEpisodes: current.savedEpisodes.map(clear),
+      recentlyPlayedEpisodes: current.recentlyPlayedEpisodes.map(clear),
+    }));
+    setDownloadPage((current) => ({
+      ...current,
+      episodes: current.episodes.filter(
+        (episode) => !deleted.has(episode.id),
+      ),
+    }));
+    setSelectedEpisodeDetail((current) => {
+      if (!current || !deleted.has(current.episode.id)) return current;
+      return {
+        ...current,
+        episode: clearPodcastEpisodeDownload(current.episode),
+      };
+    });
+    setEpisodeMenu((current) => {
+      if (!current || !deleted.has(current.episode.id)) return current;
+      return {
+        ...current,
+        episode: clearPodcastEpisodeDownload(current.episode),
+      };
+    });
+    setLastPlayedEpisode((current) =>
+      current && deleted.has(current.id)
+        ? clearPodcastEpisodeDownload(current)
+        : current
+    );
+  }
+
+  async function confirmDownloadCleanup() {
+    const intent = downloadCleanupIntent;
+    if (!intent || downloadCleanupAction) return;
+    setDownloadCleanupAction(intent.kind);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = intent.kind === "selected"
+        ? await invoke<PodcastDownloadDeleteResult>(
+          "podcast_delete_episode_downloads",
+          { episodeIds: intent.episodeIds },
+        )
+        : await invoke<PodcastDownloadDeleteResult>(
+          "podcast_clear_completed_downloads",
+        );
+      applyDownloadDeletionLocally(result.deletedEpisodeIds);
+      setSelectedDownloadIds(new Set());
+      if (intent.kind === "selected") setDownloadSelectionMode(false);
+      setDownloadCleanupIntent(null);
+      await Promise.all([
+        Promise.resolve(onDownloadsDeleted(result.deletedEpisodeIds)),
+        loadFeeds(),
+        loadHome(),
+        loadDownloadedLibrary(0),
+      ]);
+      if (result.deletedCount > 0) {
+        setNotice(
+          `已删除 ${result.deletedCount} 集下载，释放 ${
+            formatFileSize(result.deletedBytes)
+          }`,
+        );
+      } else {
+        setNotice(
+          intent.kind === "completed"
+            ? "没有可清理的已听完下载"
+            : "所选下载已不存在",
+        );
+      }
+    } catch (reason) {
+      setError(errorMessage(reason, "删除播客下载失败"));
+    } finally {
+      setDownloadCleanupAction(null);
+    }
   }
 
   async function searchApple(event: FormEvent) {
@@ -1363,6 +1533,28 @@ export function PodcastView({
   const downloadedFeedCount = hasDownloadedLibraryPage
     ? downloadPage.feedCount
     : downloadGroups.length;
+  const allLoadedDownloadsSelected =
+    libraryDownloadedEpisodes.length > 0
+    && libraryDownloadedEpisodes
+      .slice(0, PODCAST_DOWNLOAD_BATCH_LIMIT)
+      .every((episode) =>
+      selectedDownloadIds.has(episode.id)
+    );
+  const loadedDownloadsExceedBatchLimit =
+    libraryDownloadedEpisodes.length > PODCAST_DOWNLOAD_BATCH_LIMIT;
+
+  useEffect(() => {
+    const available = new Set(
+      libraryDownloadedEpisodes.map((episode) => episode.id),
+    );
+    setSelectedDownloadIds((current) => {
+      const next = new Set(
+        [...current].filter((episodeId) => available.has(episodeId)),
+      );
+      return next.size === current.size ? current : next;
+    });
+  }, [libraryDownloadedEpisodes]);
+
   const displayedEpisodes = useMemo(
     () => episodes.map(liveEpisode),
     [episodes, liveEpisode],
@@ -1844,7 +2036,52 @@ export function PodcastView({
                       已下载占用 {formatFileSize(downloadedBytes)}
                     </span>
                     <span>{downloadedFeedCount} 个节目</span>
+                    <div className="podcast-download-summary-actions">
+                      <button
+                        type="button"
+                        aria-pressed={downloadSelectionMode}
+                        onClick={toggleDownloadSelectionMode}
+                        disabled={Boolean(downloadCleanupAction)}
+                      >
+                        {downloadSelectionMode ? "退出选择" : "选择"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDownloadCleanupIntent({ kind: "completed" })}
+                        disabled={Boolean(downloadCleanupAction)}
+                      >
+                        清理已听完
+                      </button>
+                    </div>
                   </div>
+                  {downloadSelectionMode ? (
+                    <div
+                      className="podcast-download-batch"
+                      role="toolbar"
+                      aria-label="批量管理下载"
+                    >
+                      <span>已选择 {selectedDownloadIds.size} 集</span>
+                      <button
+                        type="button"
+                        onClick={toggleAllLoadedDownloads}
+                      >
+                        {allLoadedDownloadsSelected
+                          ? "取消全选"
+                          : loadedDownloadsExceedBatchLimit
+                            ? `选择前 ${PODCAST_DOWNLOAD_BATCH_LIMIT} 集`
+                            : "全选已加载"}
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={requestSelectedDownloadDeletion}
+                        disabled={selectedDownloadIds.size === 0}
+                      >
+                        删除所选
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="podcast-download-groups">
                     {downloadGroups.map((group) => (
                       <section
@@ -1867,6 +2104,10 @@ export function PodcastView({
                               isPlaying={isPlaying}
                               downloading={false}
                               showDownloadedSize
+                              selecting={downloadSelectionMode}
+                              selected={selectedDownloadIds.has(episode.id)}
+                              onSelect={() =>
+                                toggleDownloadSelection(episode.id)}
                               onOpen={() =>
                                 openEpisodeDetail(episode, "library")}
                               onPlay={() => playEpisode(episode)}
@@ -1883,7 +2124,10 @@ export function PodcastView({
                     <button
                       type="button"
                       className="podcast-download-more"
-                      disabled={loadingMoreDownloads}
+                      disabled={
+                        loadingMoreDownloads
+                        || downloadLibraryState === "loading"
+                      }
                       onClick={() =>
                         void loadDownloadedLibrary(
                           downloadPage.episodes.length,
@@ -2081,6 +2325,22 @@ export function PodcastView({
         </div>
       ) : null}
 
+      <Presence
+        show={downloadCleanupIntent !== null}
+        exitDurationMs={MOTION_DURATIONS.micro}
+      >
+        {lastDownloadCleanupIntent ? (
+          <PodcastDownloadCleanupDialog
+            intent={lastDownloadCleanupIntent}
+            busy={Boolean(downloadCleanupAction)}
+            onCancel={() => {
+              if (!downloadCleanupAction) setDownloadCleanupIntent(null);
+            }}
+            onConfirm={() => void confirmDownloadCleanup()}
+          />
+        ) : <span style={{ display: "none" }} />}
+      </Presence>
+
       <PodcastEpisodeContextMenu
         menu={episodeMenu}
         downloading={Boolean(downloadingId)}
@@ -2104,6 +2364,81 @@ export function PodcastView({
         onShare={(episode) => void shareEpisode(episode)}
       />
     </section>
+  );
+}
+
+function PodcastDownloadCleanupDialog({
+  intent,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  intent: PodcastDownloadCleanupIntent;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape" || busy) return;
+      event.preventDefault();
+      onCancel();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [busy, onCancel]);
+
+  const title = intent.kind === "selected"
+    ? `删除 ${intent.episodeIds.length} 集下载`
+    : "清理已听完下载";
+
+  return (
+    <div
+      className="playlist-dialog-overlay podcast-download-dialog-overlay"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (!busy && event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <form
+        className="playlist-dialog playlist-dialog-delete podcast-download-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="podcast-download-dialog-title"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onConfirm();
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <span className="playlist-dialog-kicker">下载管理</span>
+        <h2 id="podcast-download-dialog-title">{title}</h2>
+        <p className="playlist-dialog-message">
+          {intent.kind === "selected"
+            ? `将释放约 ${formatFileSize(
+              intent.downloadedBytes,
+            )}。单集和收听进度仍会保留。`
+            : "将删除所有已听完单集的离线文件。单集和收听进度仍会保留。"}
+        </p>
+        <div className="playlist-dialog-actions">
+          <button
+            type="submit"
+            className="danger"
+            disabled={busy}
+          >
+            {busy ? (
+              <>
+                <LoaderCircle className="podcast-spinner" size={15} />
+                正在删除
+              </>
+            ) : "删除"}
+          </button>
+          <button type="button" onClick={onCancel} disabled={busy} autoFocus>
+            取消
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -2298,8 +2633,11 @@ function EpisodeRow({
   showFeed = false,
   showArtwork = false,
   showDownloadedSize = false,
+  selecting = false,
+  selected = false,
   isNew = false,
   onOpen,
+  onSelect,
   onPlay,
   onDownload,
   onContextMenu,
@@ -2311,15 +2649,20 @@ function EpisodeRow({
   showFeed?: boolean;
   showArtwork?: boolean;
   showDownloadedSize?: boolean;
+  selecting?: boolean;
+  selected?: boolean;
   isNew?: boolean;
   onOpen: () => void;
+  onSelect?: () => void;
   onPlay: () => void;
   onDownload: () => void;
   onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const progressLabel = podcastPlayedLabel(episode);
   const accessibilityLabel = [
-    `查看单集：${episode.title}`,
+    selecting
+      ? `${selected ? "取消选择" : "选择"}单集：${episode.title}`
+      : `查看单集：${episode.title}`,
     isNew ? "24 小时内更新" : null,
     progressLabel,
   ].filter(Boolean).join("，");
@@ -2327,6 +2670,7 @@ function EpisodeRow({
     <article
       className={`podcast-episode${showArtwork ? " with-artwork" : ""}${
         active ? " active" : ""
+      }${selecting ? " selecting" : ""}${selected ? " selected" : ""
       }`}
       onContextMenu={onContextMenu}
     >
@@ -2360,7 +2704,7 @@ function EpisodeRow({
       <button
         type="button"
         className="podcast-episode-copy podcast-episode-open"
-        onClick={onOpen}
+        onClick={selecting && onSelect ? onSelect : onOpen}
         aria-label={accessibilityLabel}
       >
         {showArtwork ? (
@@ -2390,43 +2734,57 @@ function EpisodeRow({
         ) : null}
       </button>
       <div className="podcast-episode-actions">
-        <button
-          type="button"
-          className="podcast-download-action"
-          onClick={onDownload}
-          disabled={downloading || Boolean(episode.localPath)}
-          title={
-            episode.localPath
-              ? "已下载，可离线收听"
-              : downloading
-                ? "正在下载"
-                : "下载以便离线收听"
-          }
-        >
-          {downloading ? (
-            <LoaderCircle className="podcast-spinner" size={16} />
-          ) : episode.localPath ? (
-            <Check size={16} />
-          ) : (
-            <Download size={16} />
-          )}
-        </button>
-        <button
-          type="button"
-          className="podcast-play-action"
-          onClick={onPlay}
-          title={
-            active && isPlaying
-              ? "暂停"
-              : episode.progressSeconds > 0
-                ? "继续播放"
-                : "播放"
-          }
-        >
-          {active && isPlaying
-            ? <Pause size={17} fill="currentColor" />
-            : <Play size={17} fill="currentColor" />}
-        </button>
+        {selecting && onSelect ? (
+          <button
+            type="button"
+            className="podcast-episode-select"
+            aria-pressed={selected}
+            aria-label={`${selected ? "取消选择" : "选择"}“${episode.title}”`}
+            onClick={onSelect}
+          >
+            {selected ? <Check size={17} /> : null}
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="podcast-download-action"
+              onClick={onDownload}
+              disabled={downloading || Boolean(episode.localPath)}
+              title={
+                episode.localPath
+                  ? "已下载，可离线收听"
+                  : downloading
+                    ? "正在下载"
+                    : "下载以便离线收听"
+              }
+            >
+              {downloading ? (
+                <LoaderCircle className="podcast-spinner" size={16} />
+              ) : episode.localPath ? (
+                <Check size={16} />
+              ) : (
+                <Download size={16} />
+              )}
+            </button>
+            <button
+              type="button"
+              className="podcast-play-action"
+              onClick={onPlay}
+              title={
+                active && isPlaying
+                  ? "暂停"
+                  : episode.progressSeconds > 0
+                    ? "继续播放"
+                    : "播放"
+              }
+            >
+              {active && isPlaying
+                ? <Pause size={17} fill="currentColor" />
+                : <Play size={17} fill="currentColor" />}
+            </button>
+          </>
+        )}
       </div>
     </article>
   );
@@ -2800,6 +3158,18 @@ function deduplicateEpisodes(episodes: PodcastEpisode[]) {
     seen.add(episode.id);
     return true;
   });
+}
+
+function clearPodcastEpisodeDownload(
+  episode: PodcastEpisode,
+): PodcastEpisode {
+  return {
+    ...episode,
+    downloadState: "none",
+    localPath: null,
+    downloadedBytes: 0,
+    totalBytes: null,
+  };
 }
 
 function readPodcastLibraryPreferences(): {

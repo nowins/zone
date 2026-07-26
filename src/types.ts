@@ -238,6 +238,13 @@ export type PodcastDownloadPage = {
   hasMore: boolean;
 };
 
+export type PodcastDownloadDeleteResult = {
+  requestedCount: number;
+  deletedCount: number;
+  deletedBytes: number;
+  deletedEpisodeIds: string[];
+};
+
 export type PodcastHome = {
   continueListening: PodcastEpisode[];
   latestEpisodes: PodcastEpisode[];

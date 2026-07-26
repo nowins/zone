@@ -1751,6 +1751,8 @@ pub fn run() {
       podcast::podcast_queue_clear,
       podcast::podcast_download_episode,
       podcast::podcast_delete_episode_download,
+      podcast::podcast_delete_episode_downloads,
+      podcast::podcast_clear_completed_downloads,
       podcast::podcast_save_progress,
     ])
     .run(tauri::generate_context!())
