@@ -1,0 +1,75 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const viewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
+const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
+
+test("podcast discovery offers low-friction topics and durable recent searches", () => {
+  assert.match(viewSource, /PODCAST_DISCOVERY_STORAGE_KEY = "zone-podcast-discovery-v1"/);
+  assert.match(viewSource, /label: "热门"/);
+  assert.match(viewSource, /label: "商业", query: "商业"/);
+  assert.match(viewSource, /label: "科技", query: "科技"/);
+  assert.match(viewSource, /label: "人文", query: "人文"/);
+  assert.match(viewSource, /label: "英语", query: "英语"/);
+  assert.match(viewSource, /aria-label="按主题浏览"/);
+  assert.match(viewSource, /aria-pressed=\{discoveryTopic === topic\.id\}/);
+  assert.match(viewSource, /addPodcastSearchHistory\(current, cleanQuery\)/);
+  assert.match(viewSource, /searchHistory: normalizePodcastSearchHistory\(searchHistory\)/);
+  assert.match(
+    viewSource,
+    /function writePodcastSearchHistory\([\s\S]*?if \(raw\) \{[\s\S]*?try \{[\s\S]*?JSON\.parse\(raw\)[\s\S]*?catch \{[\s\S]*?current = \{\};[\s\S]*?localStorage\.setItem/,
+  );
+  assert.match(viewSource, /aria-label="最近搜索"/);
+  assert.match(viewSource, />\s*清空\s*</);
+  assert.match(
+    viewSource,
+    /podcastSessionSnapshot = \{[\s\S]*?discoveryTopic,[\s\S]*?searchHeading,[\s\S]*?searchState,[\s\S]*?searchResults,/,
+  );
+  assert.match(
+    viewSource,
+    /restoredSession\?\.searchState === "loading"[\s\S]*?\? "popular"[\s\S]*?: restoredSession[\s\S]*?\? restoredSession\.discoveryTopic/,
+  );
+});
+
+test("topic and manual searches share one race-safe Apple search path", () => {
+  const searchStart = viewSource.indexOf("async function runAppleSearch(");
+  const searchEnd = viewSource.indexOf("\n  async function openStoredFeed(", searchStart);
+  const searchSource = viewSource.slice(searchStart, searchEnd);
+
+  assert.match(searchSource, /appleSearchRequestRef\.current = requestId/);
+  assert.match(searchSource, /"podcast_search_apple"/);
+  assert.match(
+    searchSource,
+    /if \(appleSearchRequestRef\.current !== requestId\) return;[\s\S]*?setSearchResults\(results\)/,
+  );
+  assert.match(searchSource, /void runAppleSearch\(query, \{ remember: true \}\)/);
+  assert.match(searchSource, /void runAppleSearch\(topicOption\.query,/);
+  assert.match(searchSource, /void runAppleSearch\(historyQuery, \{ remember: true \}\)/);
+  assert.match(
+    searchSource,
+    /function showPopularDiscovery\(\)[\s\S]*?appleSearchRequestRef\.current \+= 1[\s\S]*?setSearchState\("idle"\)[\s\S]*?loadDiscovery\(\)/,
+  );
+});
+
+test("RSS subscription is prominent, accessible, and keeps the native command boundary", () => {
+  assert.match(viewSource, /className="podcast-rss-toggle"/);
+  assert.match(viewSource, /aria-expanded=\{rssExpanded\}/);
+  assert.match(viewSource, /aria-controls="podcast-rss-subscribe"/);
+  assert.match(viewSource, /id="podcast-rss-subscribe"/);
+  assert.match(viewSource, /"podcast_subscribe"/);
+  assert.doesNotMatch(viewSource, /fetch\(/);
+  assert.match(
+    stylesSource,
+    /\.podcast-rss-toggle\s*\{[\s\S]*?min-height:\s*44px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.podcast-discovery-topics button,[\s\S]*?min-height:\s*40px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.podcast-search-history > div > button\s*\{[\s\S]*?min-height:\s*40px/,
+  );
+  assert.match(viewSource, /actionLabel="返回热门"/);
+});

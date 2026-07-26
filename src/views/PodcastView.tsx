@@ -54,6 +54,10 @@ import {
   sortPodcastFeeds,
   type PodcastLibrarySort,
 } from "../utils/podcastLibrary";
+import {
+  addPodcastSearchHistory,
+  normalizePodcastSearchHistory,
+} from "../utils/podcastDiscovery";
 import { mergePodcastEpisodePlayback } from "../utils/podcastPlayback";
 import type {
   PodcastAutoQueueMode,
@@ -108,6 +112,12 @@ type PodcastQueueDropTarget = {
 type PodcastQueueRemovalIntent = {
   episodeIds: string[];
 };
+type PodcastDiscoveryTopic =
+  | "popular"
+  | "business"
+  | "technology"
+  | "humanities"
+  | "english";
 
 export type PodcastViewProps = {
   queue: PodcastQueueItem[];
@@ -159,6 +169,9 @@ type PodcastSessionSnapshot = {
   returnScreen: RootPodcastScreen;
   query: string;
   listenFilter: PodcastListenFilter;
+  discoveryTopic: PodcastDiscoveryTopic | null;
+  searchHeading: string;
+  searchState: RequestState;
   searchResults: PodcastSearchResult[];
   selectedFeed: PodcastFeed | null;
   episodes: PodcastEpisode[];
@@ -186,6 +199,7 @@ const EMPTY_DOWNLOAD_PAGE: PodcastDownloadPage = {
   hasMore: false,
 };
 const DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1_000;
+const PODCAST_DISCOVERY_STORAGE_KEY = "zone-podcast-discovery-v1";
 const PODCAST_LIBRARY_STORAGE_KEY = "zone-podcast-library-v1";
 const PODCAST_DOWNLOAD_PAGE_SIZE = 60;
 const PODCAST_DOWNLOAD_BATCH_LIMIT = 500;
@@ -213,6 +227,17 @@ const PODCAST_LIBRARY_SORTS: Array<{
   { id: "recent", label: "最近更新" },
   { id: "name", label: "名称" },
   { id: "custom", label: "手动排序" },
+];
+const PODCAST_DISCOVERY_TOPICS: Array<{
+  id: PodcastDiscoveryTopic;
+  label: string;
+  query?: string;
+}> = [
+  { id: "popular", label: "热门" },
+  { id: "business", label: "商业", query: "商业" },
+  { id: "technology", label: "科技", query: "科技" },
+  { id: "humanities", label: "人文", query: "人文" },
+  { id: "english", label: "英语", query: "英语" },
 ];
 let discoveryCache: { shows: PodcastDiscoveryShow[]; fetchedAt: number } | null = null;
 let podcastSessionSnapshot: PodcastSessionSnapshot | null = null;
@@ -248,6 +273,10 @@ export function PodcastView({
     readPodcastLibraryPreferences,
     [],
   );
+  const initialSearchHistory = useMemo(readPodcastSearchHistory, []);
+  const restoredSearchState = restoredSession?.searchState === "loading"
+    ? "idle"
+    : restoredSession?.searchState;
   const [screen, setScreen] = useState<PodcastScreen>(
     restoredSession?.screen ?? "listen",
   );
@@ -259,8 +288,25 @@ export function PodcastView({
     restoredSession?.listenFilter ?? "recent",
   );
   const [rssUrl, setRssUrl] = useState("");
+  const [rssExpanded, setRssExpanded] = useState(false);
+  const [discoveryTopic, setDiscoveryTopic] =
+    useState<PodcastDiscoveryTopic | null>(
+      restoredSession?.searchState === "loading"
+        ? "popular"
+        : restoredSession
+          ? restoredSession.discoveryTopic
+          : "popular",
+    );
+  const [searchHeading, setSearchHeading] = useState(
+    restoredSession?.searchState === "loading"
+      ? "搜索结果"
+      : restoredSession?.searchHeading ?? "搜索结果",
+  );
+  const [searchHistory, setSearchHistory] =
+    useState<string[]>(initialSearchHistory);
   const [searchState, setSearchState] = useState<RequestState>(
-    restoredSession?.searchResults.length ? "ready" : "idle",
+    restoredSearchState
+      ?? (restoredSession?.searchResults.length ? "ready" : "idle"),
   );
   const [searchResults, setSearchResults] = useState<PodcastSearchResult[]>(
     restoredSession?.searchResults ?? [],
@@ -352,6 +398,7 @@ export function PodcastView({
   const episodeDetailRequestRef = useRef(0);
   const homeRequestRef = useRef(0);
   const downloadLibraryRequestRef = useRef(0);
+  const appleSearchRequestRef = useRef(0);
   const discoveryRequestActive = useRef(false);
   const feedRefreshActive = useRef(false);
   const selectedFeedRef = useRef(selectedFeed);
@@ -701,11 +748,18 @@ export function PodcastView({
   }, [customFeedOrder, librarySort]);
 
   useEffect(() => {
+    writePodcastSearchHistory(searchHistory);
+  }, [searchHistory]);
+
+  useEffect(() => {
     podcastSessionSnapshot = {
       screen,
       returnScreen,
       query,
       listenFilter,
+      discoveryTopic,
+      searchHeading,
+      searchState,
       searchResults,
       selectedFeed,
       episodes,
@@ -719,11 +773,14 @@ export function PodcastView({
     episodeOriginFeed,
     episodeOriginScreen,
     episodes,
+    discoveryTopic,
     lastPlayedEpisode,
     listenFilter,
     query,
     returnScreen,
     screen,
+    searchHeading,
+    searchState,
     searchResults,
     selectedEpisodeDetail,
     selectedEpisodeId,
@@ -744,6 +801,9 @@ export function PodcastView({
         returnScreen,
         query,
         listenFilter,
+        discoveryTopic,
+        searchHeading,
+        searchState,
         searchResults,
         selectedFeed,
         episodes,
@@ -1203,25 +1263,84 @@ export function PodcastView({
     resetQueueDrag();
   }
 
-  async function searchApple(event: FormEvent) {
-    event.preventDefault();
-    const cleanQuery = query.trim();
-    if (!cleanQuery || searchState === "loading") return;
+  async function runAppleSearch(
+    requestedQuery: string,
+    {
+      heading = "搜索结果",
+      topic = null,
+      remember = false,
+    }: {
+      heading?: string;
+      topic?: PodcastDiscoveryTopic | null;
+      remember?: boolean;
+    } = {},
+  ) {
+    const cleanQuery = requestedQuery.trim();
+    if (!cleanQuery) return;
+    const requestId = appleSearchRequestRef.current + 1;
+    appleSearchRequestRef.current = requestId;
+    setDiscoveryTopic(topic);
+    setSearchHeading(heading);
     setSearchState("loading");
     setError(null);
     setNotice(null);
+    if (remember) {
+      setSearchHistory((current) =>
+        addPodcastSearchHistory(current, cleanQuery)
+      );
+    }
     try {
       const results = await invoke<PodcastSearchResult[]>(
         "podcast_search_apple",
         { query: cleanQuery, limit: 18 },
       );
+      if (appleSearchRequestRef.current !== requestId) return;
       setSearchResults(results);
       setSearchState("ready");
     } catch (reason) {
+      if (appleSearchRequestRef.current !== requestId) return;
       setSearchResults([]);
       setSearchState("error");
       setError(errorMessage(reason, "搜索节目失败"));
     }
+  }
+
+  function searchApple(event: FormEvent) {
+    event.preventDefault();
+    void runAppleSearch(query, { remember: true });
+  }
+
+  function showPopularDiscovery() {
+    appleSearchRequestRef.current += 1;
+    setDiscoveryTopic("popular");
+    setQuery("");
+    setSearchResults([]);
+    setSearchState("idle");
+    setSearchHeading("搜索结果");
+    setError(null);
+    setNotice(null);
+    void loadDiscovery();
+  }
+
+  function browseDiscoveryTopic(topic: PodcastDiscoveryTopic) {
+    if (topic === "popular") {
+      showPopularDiscovery();
+      return;
+    }
+    const topicOption = PODCAST_DISCOVERY_TOPICS.find(
+      (candidate) => candidate.id === topic,
+    );
+    if (!topicOption?.query) return;
+    setQuery("");
+    void runAppleSearch(topicOption.query, {
+      heading: `${topicOption.label}主题`,
+      topic,
+    });
+  }
+
+  function repeatPodcastSearch(historyQuery: string) {
+    setQuery(historyQuery);
+    void runAppleSearch(historyQuery, { remember: true });
   }
 
   async function openStoredFeed(
@@ -2092,31 +2211,116 @@ export function PodcastView({
 
       {screen === "discover" ? (
         <main className="podcast-screen podcast-discover-screen">
-          <form className="podcast-search-form" onSubmit={searchApple}>
-            <Search size={17} aria-hidden="true" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索节目、人物或主题…"
-              aria-label="搜索播客"
-            />
+          <div className="podcast-discovery-search-row">
+            <form className="podcast-search-form" onSubmit={searchApple}>
+              <Search size={17} aria-hidden="true" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="搜索节目、人物或主题…"
+                aria-label="搜索播客"
+              />
+              <button
+                type="submit"
+                disabled={!query.trim()}
+              >
+                {searchState === "loading" && discoveryTopic === null
+                  ? <LoaderCircle className="podcast-spinner" size={17} />
+                  : "搜索"}
+              </button>
+            </form>
             <button
-              type="submit"
-              disabled={!query.trim() || searchState === "loading"}
+              className="podcast-rss-toggle"
+              type="button"
+              aria-expanded={rssExpanded}
+              aria-controls="podcast-rss-subscribe"
+              onClick={() => setRssExpanded((expanded) => !expanded)}
             >
-              {searchState === "loading"
-                ? <LoaderCircle className="podcast-spinner" size={17} />
-                : "搜索"}
+              + RSS
             </button>
-          </form>
+          </div>
 
-          {searchState === "ready" || searchState === "loading" ? (
+          {rssExpanded ? (
+            <div
+              id="podcast-rss-subscribe"
+              className="podcast-rss-entry"
+            >
+              <form onSubmit={subscribeRss}>
+                <Rss size={15} aria-hidden="true" />
+                <input
+                  value={rssUrl}
+                  onChange={(event) => setRssUrl(event.target.value)}
+                  placeholder="粘贴公开 RSS 地址"
+                  aria-label="RSS 地址"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={!rssUrl.trim() || Boolean(openingId)}
+                >
+                  关注
+                </button>
+              </form>
+            </div>
+          ) : null}
+
+          <div
+            className="podcast-discovery-topics"
+            role="group"
+            aria-label="按主题浏览"
+          >
+            <span>按主题浏览</span>
+            <div>
+              {PODCAST_DISCOVERY_TOPICS.map((topic) => (
+                <button
+                  key={topic.id}
+                  type="button"
+                  aria-pressed={discoveryTopic === topic.id}
+                  onClick={() => browseDiscoveryTopic(topic.id)}
+                >
+                  {topic.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {searchHistory.length > 0 ? (
+            <div className="podcast-search-history">
+              <div>
+                <span>最近搜索</span>
+                <button
+                  type="button"
+                  onClick={() => setSearchHistory([])}
+                >
+                  清空
+                </button>
+              </div>
+              <ul aria-label="最近搜索">
+                {searchHistory.map((historyQuery) => (
+                  <li key={historyQuery}>
+                    <button
+                      type="button"
+                      onClick={() => repeatPodcastSearch(historyQuery)}
+                    >
+                      {historyQuery}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {searchState !== "idle" ? (
             <PodcastSection
-              title={searchState === "loading" ? "正在搜索" : "搜索结果"}
+              title={searchState === "loading" ? "正在搜索" : searchHeading}
               count={searchResults.length}
+              actionLabel="返回热门"
+              onAction={showPopularDiscovery}
             >
               {searchState === "loading" ? (
                 <PodcastLoading label="正在查找节目" />
+              ) : searchState === "error" ? (
+                <PodcastEmpty label="暂时无法完成搜索" />
               ) : searchResults.length > 0 ? (
                 <div className="podcast-search-grid">
                   {searchResults.map((result) => (
@@ -2147,24 +2351,6 @@ export function PodcastView({
               />
             </PodcastSection>
           )}
-
-          <details className="podcast-rss-entry">
-            <summary><Rss size={15} />通过 RSS 关注</summary>
-            <form onSubmit={subscribeRss}>
-              <input
-                value={rssUrl}
-                onChange={(event) => setRssUrl(event.target.value)}
-                placeholder="粘贴公开 RSS 地址"
-                aria-label="RSS 地址"
-              />
-              <button
-                type="submit"
-                disabled={!rssUrl.trim() || Boolean(openingId)}
-              >
-                关注
-              </button>
-            </form>
-          </details>
         </main>
       ) : null}
 
@@ -3790,6 +3976,43 @@ function readPodcastLibraryPreferences(): {
     return { sort, customOrder };
   } catch {
     return { sort: "recent", customOrder: [] };
+  }
+}
+
+function readPodcastSearchHistory() {
+  try {
+    const raw = localStorage.getItem(PODCAST_DISCOVERY_STORAGE_KEY);
+    if (!raw) return normalizePodcastSearchHistory([]);
+    const parsed = JSON.parse(raw) as { searchHistory?: unknown };
+    return normalizePodcastSearchHistory(parsed?.searchHistory);
+  } catch {
+    return normalizePodcastSearchHistory([]);
+  }
+}
+
+function writePodcastSearchHistory(searchHistory: string[]) {
+  try {
+    const raw = localStorage.getItem(PODCAST_DISCOVERY_STORAGE_KEY);
+    let current: Record<string, unknown> = {};
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          current = parsed as Record<string, unknown>;
+        }
+      } catch {
+        current = {};
+      }
+    }
+    localStorage.setItem(
+      PODCAST_DISCOVERY_STORAGE_KEY,
+      JSON.stringify({
+        ...current,
+        searchHistory: normalizePodcastSearchHistory(searchHistory),
+      }),
+    );
+  } catch {
+    // Search history remains available for the current session.
   }
 }
 
