@@ -966,6 +966,30 @@ export default function App() {
     });
   }
 
+  function removePodcastQueueEpisodes(episodeIds: string[]) {
+    const selected = new Set(episodeIds);
+    if (selected.size === 0) return Promise.resolve();
+    const optimistic = podcastQueueRef.current
+      .filter((item) => !selected.has(item.episode.id))
+      .map((item, position) => ({ ...item, position }));
+    const revision = beginPodcastQueueMutation(optimistic);
+    return serializePodcastQueueMutation(async () => {
+      try {
+        const items = await invoke<PodcastQueueItem[]>(
+          "podcast_queue_remove_many",
+          { episodeIds: [...selected] },
+        );
+        applyPodcastQueueResult(items, revision);
+      } catch (reason) {
+        await reloadPodcastQueue(revision);
+        if (import.meta.env.DEV) {
+          console.warn("[podcast] queue batch remove failed", reason);
+        }
+        throw reason;
+      }
+    });
+  }
+
   function clearPodcastQueue() {
     const revision = beginPodcastQueueMutation([]);
     return serializePodcastQueueMutation(async () => {
@@ -1040,15 +1064,23 @@ export default function App() {
     });
   }
 
-  function updatePodcastEpisode(episode: PodcastEpisode) {
-    if (!episode.completed && episode.progressSeconds <= 0) {
-      podcastProgressStartedRef.current.delete(episode.id);
+  function updatePodcastEpisodes(episodes: PodcastEpisode[]) {
+    if (episodes.length === 0) return;
+    const updates = new Map(episodes.map((episode) => [episode.id, episode]));
+    for (const episode of episodes) {
+      if (!episode.completed && episode.progressSeconds <= 0) {
+        podcastProgressStartedRef.current.delete(episode.id);
+      }
     }
     applyPodcastQueue(podcastQueueRef.current.map((item) =>
-      item.episode.id === episode.id ? { ...item, episode } : item
+      updates.has(item.episode.id)
+        ? { ...item, episode: updates.get(item.episode.id)! }
+        : item
     ));
     setActivePodcastEpisode((current) => {
-      if (!current || current.id !== episode.id) return current;
+      if (!current) return current;
+      const episode = updates.get(current.id);
+      if (!episode) return current;
       const next = podcastPlaybackForEpisode(episode);
       const audio = audioRef.current;
       if (current.playbackLocalPath && !episode.localPath) {
@@ -1065,6 +1097,10 @@ export default function App() {
       };
     });
     setPodcastLibraryRevision((current) => current + 1);
+  }
+
+  function updatePodcastEpisode(episode: PodcastEpisode) {
+    updatePodcastEpisodes([episode]);
   }
 
   async function reconcileDeletedPodcastDownloads(episodeIds: string[]) {
@@ -1130,6 +1166,64 @@ export default function App() {
       () => undefined,
     );
     return operation;
+  }
+
+  function setPodcastQueueEpisodesPlayed(
+    episodeIds: string[],
+    played: boolean,
+  ) {
+    const uniqueEpisodeIds = [...new Set(episodeIds)];
+    if (uniqueEpisodeIds.length === 0) return Promise.resolve();
+    const operation = podcastProgressMutationRef.current.then(async () => {
+      const details = await invoke<PodcastEpisodeDetail[]>(
+        "podcast_set_episodes_played",
+        { episodeIds: uniqueEpisodeIds, played },
+      );
+      updatePodcastEpisodes(details.map((detail) => detail.episode));
+    });
+    podcastProgressMutationRef.current = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    return operation;
+  }
+
+  async function downloadPodcastQueueEpisodes(episodes: PodcastEpisode[]) {
+    const uniqueEpisodes = [...new Map(
+      episodes.map((episode) => [episode.id, episode]),
+    ).values()];
+    let downloadedCount = 0;
+    let failedCount = 0;
+    const refreshedEpisodes: PodcastEpisode[] = [];
+    for (const episode of uniqueEpisodes) {
+      if (episode.localPath) continue;
+      try {
+        await invoke("podcast_download_episode", { episodeId: episode.id });
+        downloadedCount += 1;
+      } catch (reason) {
+        failedCount += 1;
+        if (import.meta.env.DEV) {
+          console.warn("[podcast] queue batch download failed", episode.id, reason);
+        }
+      }
+      try {
+        const detail = await invoke<PodcastEpisodeDetail>(
+          "podcast_get_episode_detail",
+          { episodeId: episode.id },
+        );
+        refreshedEpisodes.push(detail.episode);
+      } catch (reason) {
+        if (import.meta.env.DEV) {
+          console.warn(
+            "[podcast] queue batch download refresh failed",
+            episode.id,
+            reason,
+          );
+        }
+      }
+    }
+    updatePodcastEpisodes(refreshedEpisodes);
+    return { downloadedCount, failedCount };
   }
 
   function openActivePodcastEpisode() {
@@ -2432,10 +2526,14 @@ export default function App() {
             onPlayEpisode={playPodcastEpisode}
             onQueueEpisode={queuePodcastEpisode}
             onRemoveQueueEpisode={removePodcastQueueEpisode}
+            onRemoveQueueEpisodes={removePodcastQueueEpisodes}
             onMoveQueueEpisode={movePodcastQueueEpisode}
+            onReorderQueueEpisode={reorderPodcastQueueEpisode}
             onClearQueue={clearPodcastQueue}
             onEpisodeUpdated={updatePodcastEpisode}
             onSetEpisodePlayed={setPodcastEpisodePlayed}
+            onSetQueueEpisodesPlayed={setPodcastQueueEpisodesPlayed}
+            onDownloadQueueEpisodes={downloadPodcastQueueEpisodes}
             onDownloadsDeleted={reconcileDeletedPodcastDownloads}
             onReturnToNowPlaying={() => requestNavigation("nowPlaying")}
           />

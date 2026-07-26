@@ -41,6 +41,7 @@ const PODCAST_HOME_SAVED_LIMIT: usize = 40;
 const PODCAST_HOME_RECENTLY_PLAYED_LIMIT: usize = 40;
 const PODCAST_DOWNLOAD_PAGE_MAX_LIMIT: usize = 100;
 const PODCAST_DOWNLOAD_DELETE_LIMIT: usize = 500;
+const PODCAST_EPISODE_BATCH_LIMIT: usize = 500;
 const PODCAST_QUEUE_LIMIT: usize = 500;
 const PODCAST_REFRESH_CONCURRENCY: usize = 3;
 const PODCAST_REFRESH_INTERVAL: i64 = 30 * 60 * 1_000;
@@ -727,6 +728,23 @@ pub async fn podcast_set_episode_played(
 }
 
 #[tauri::command]
+pub async fn podcast_set_episodes_played(
+  state: State<'_, PodcastState>,
+  episode_ids: Vec<String>,
+  played: bool,
+) -> Result<Vec<PodcastEpisodeDetail>, String> {
+  state.ensure_ready()?;
+  let db_path = state.db_path.clone();
+  let downloads_dir = state.downloads_dir.clone();
+  tauri::async_runtime::spawn_blocking(move || {
+    let episode_ids = set_episodes_played(&db_path, &episode_ids, played)?;
+    get_episode_details(&db_path, &downloads_dir, &episode_ids)
+  })
+  .await
+  .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+}
+
+#[tauri::command]
 pub async fn podcast_list_queue(state: State<'_, PodcastState>) -> Result<Vec<PodcastQueueItem>, String> {
   state.ensure_ready()?;
   let db_path = state.db_path.clone();
@@ -765,6 +783,22 @@ pub async fn podcast_queue_remove(
   let downloads_dir = state.downloads_dir.clone();
   tauri::async_runtime::spawn_blocking(move || {
     queue_remove(&db_path, &episode_id)?;
+    list_queue(&db_path, &downloads_dir)
+  })
+  .await
+  .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+}
+
+#[tauri::command]
+pub async fn podcast_queue_remove_many(
+  state: State<'_, PodcastState>,
+  episode_ids: Vec<String>,
+) -> Result<Vec<PodcastQueueItem>, String> {
+  state.ensure_ready()?;
+  let db_path = state.db_path.clone();
+  let downloads_dir = state.downloads_dir.clone();
+  tauri::async_runtime::spawn_blocking(move || {
+    queue_remove_many(&db_path, &episode_ids)?;
     list_queue(&db_path, &downloads_dir)
   })
   .await
@@ -3548,6 +3582,29 @@ fn get_episode_detail(
     .ok_or_else(|| "播客单集不存在".to_string())
 }
 
+fn get_episode_details(
+  db_path: &Path,
+  downloads_dir: &Path,
+  episode_ids: &[String],
+) -> Result<Vec<PodcastEpisodeDetail>, String> {
+  let connection = open_database(db_path)?;
+  let mut statement = connection
+    .prepare(&format!("{PODCAST_EPISODE_DETAIL_SELECT} WHERE e.id = ?1"))
+    .map_err(|error| format!("无法读取播客单集详情：{error}"))?;
+  episode_ids
+    .iter()
+    .map(|episode_id| {
+      statement
+        .query_row([episode_id], |row| {
+          podcast_episode_detail_from_row(row, downloads_dir)
+        })
+        .optional()
+        .map_err(|error| format!("无法读取播客单集详情：{error}"))?
+        .ok_or_else(|| "播客单集不存在".to_string())
+    })
+    .collect()
+}
+
 fn set_episode_saved(db_path: &Path, episode_id: &str, saved: bool) -> Result<(), String> {
   let connection = open_database(db_path)?;
   ensure_episode_exists(&connection, episode_id)?;
@@ -3596,6 +3653,14 @@ fn list_saved_episodes(
 
 fn set_episode_played(db_path: &Path, episode_id: &str, played: bool) -> Result<(), String> {
   let connection = open_database(db_path)?;
+  set_episode_played_on_connection(&connection, episode_id, played)
+}
+
+fn set_episode_played_on_connection(
+  connection: &Connection,
+  episode_id: &str,
+  played: bool,
+) -> Result<(), String> {
   let progress = connection
     .query_row(
       "
@@ -3649,6 +3714,50 @@ fn set_episode_played(db_path: &Path, episode_id: &str, played: bool) -> Result<
     )
     .map_err(|error| format!("无法标记播客单集为已播放：{error}"))?;
   Ok(())
+}
+
+fn validate_bulk_episode_identifiers(episode_ids: &[String]) -> Result<Vec<String>, String> {
+  if episode_ids.is_empty() {
+    return Err("请至少选择一集播客".to_string());
+  }
+  if episode_ids.len() > PODCAST_EPISODE_BATCH_LIMIT {
+    return Err(format!(
+      "一次最多可处理 {PODCAST_EPISODE_BATCH_LIMIT} 集播客"
+    ));
+  }
+  for episode_id in episode_ids {
+    validate_identifier(episode_id)?;
+  }
+  let mut unique = HashSet::with_capacity(episode_ids.len());
+  Ok(
+    episode_ids
+      .iter()
+      .filter(|episode_id| unique.insert(episode_id.as_str()))
+      .cloned()
+      .collect(),
+  )
+}
+
+fn set_episodes_played(
+  db_path: &Path,
+  episode_ids: &[String],
+  played: bool,
+) -> Result<Vec<String>, String> {
+  let episode_ids = validate_bulk_episode_identifiers(episode_ids)?;
+  let mut connection = open_database(db_path)?;
+  let transaction = connection
+    .transaction_with_behavior(TransactionBehavior::Immediate)
+    .map_err(|error| format!("无法批量更新播客播放状态：{error}"))?;
+  for episode_id in &episode_ids {
+    ensure_episode_exists(&transaction, episode_id)?;
+  }
+  for episode_id in &episode_ids {
+    set_episode_played_on_connection(&transaction, episode_id, played)?;
+  }
+  transaction
+    .commit()
+    .map_err(|error| format!("无法提交播客播放状态：{error}"))?;
+  Ok(episode_ids)
 }
 
 #[derive(Clone, Debug)]
@@ -3769,6 +3878,35 @@ fn queue_remove(db_path: &Path, episode_id: &str) -> Result<(), String> {
     .map_err(|error| format!("无法提交播客待播列表：{error}"))
 }
 
+fn queue_remove_many(db_path: &Path, episode_ids: &[String]) -> Result<Vec<String>, String> {
+  let episode_ids = validate_bulk_episode_identifiers(episode_ids)?;
+  let mut connection = open_database(db_path)?;
+  let transaction = connection
+    .transaction_with_behavior(TransactionBehavior::Immediate)
+    .map_err(|error| format!("无法更新播客待播列表：{error}"))?;
+  let mut records = read_queue_records(&transaction)?;
+  let queued_ids = records
+    .iter()
+    .map(|record| record.episode_id.as_str())
+    .collect::<HashSet<_>>();
+  if episode_ids
+    .iter()
+    .any(|episode_id| !queued_ids.contains(episode_id.as_str()))
+  {
+    return Err("播客待播列表已发生变化，请刷新后重试".to_string());
+  }
+  let removed_ids = episode_ids
+    .iter()
+    .map(String::as_str)
+    .collect::<HashSet<_>>();
+  records.retain(|record| !removed_ids.contains(record.episode_id.as_str()));
+  rewrite_queue(&transaction, &records)?;
+  transaction
+    .commit()
+    .map_err(|error| format!("无法提交播客待播列表：{error}"))?;
+  Ok(episode_ids)
+}
+
 fn validate_queue_identifiers(episode_ids: &[String]) -> Result<(), String> {
   if episode_ids.len() > PODCAST_QUEUE_LIMIT {
     return Err(format!("播客待播列表最多可加入 {PODCAST_QUEUE_LIMIT} 集"));
@@ -3831,7 +3969,7 @@ fn list_queue(db_path: &Path, downloads_dir: &Path) -> Result<Vec<PodcastQueueIt
         e.id, e.feed_id, e.title, e.description, e.published_at,
         e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
         COALESCE(d.state, 'none'), d.local_path,
-        COALESCE(d.downloaded_bytes, 0), d.total_bytes,
+        COALESCE(d.downloaded_bytes, 0), COALESCE(d.total_bytes, e.expected_bytes),
         COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
         f.title, f.artwork_url,
         CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
@@ -6817,6 +6955,104 @@ mod tests {
   }
 
   #[test]
+  fn bulk_played_markers_preflight_all_episodes_and_update_atomically() {
+    let directory = test_directory("bulk-played-state");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(3);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+    save_progress(&state.db_path, &episode_ids[0], 30.0, 100.0).expect("save first progress");
+    save_progress(&state.db_path, &episode_ids[2], 20.0, 100.0).expect("save untouched progress");
+
+    let marked_ids = set_episodes_played(
+      &state.db_path,
+      &[
+        episode_ids[0].clone(),
+        episode_ids[0].clone(),
+        episode_ids[1].clone(),
+      ],
+      true,
+    )
+    .expect("mark selected episodes played");
+    assert_eq!(marked_ids, episode_ids[..2]);
+    let marked = get_episode_details(
+      &state.db_path,
+      &state.downloads_dir,
+      &marked_ids,
+    )
+    .expect("read marked episodes");
+    assert!(marked.iter().all(|detail| detail.episode.completed));
+    assert_eq!(marked[0].episode.progress_seconds, 100.0);
+    assert_eq!(marked[1].episode.progress_seconds, 3_723.0);
+    let untouched =
+      get_episode_detail(&state.db_path, &state.downloads_dir, &episode_ids[2])
+        .expect("read untouched episode");
+    assert!(!untouched.episode.completed);
+    assert_eq!(untouched.episode.progress_seconds, 20.0);
+
+    let missing_episode_id = "f".repeat(64);
+    assert!(
+      set_episodes_played(
+        &state.db_path,
+        &[episode_ids[0].clone(), missing_episode_id],
+        false,
+      )
+      .is_err()
+    );
+    assert!(
+      get_episode_detail(&state.db_path, &state.downloads_dir, &episode_ids[0])
+        .expect("read episode after rejected update")
+        .episode
+        .completed
+    );
+
+    set_episodes_played(
+      &state.db_path,
+      &[episode_ids[0].clone(), episode_ids[1].clone()],
+      false,
+    )
+    .expect("mark selected episodes unplayed");
+    let unplayed = get_episode_details(
+      &state.db_path,
+      &state.downloads_dir,
+      &episode_ids[..2],
+    )
+    .expect("read unplayed episodes");
+    assert!(unplayed.iter().all(|detail| {
+      !detail.episode.completed && detail.episode.progress_seconds == 0.0
+    }));
+    let connection = open_database(&state.db_path).expect("open database");
+    for episode_id in &episode_ids[..2] {
+      let progress_exists = connection
+        .query_row(
+          "SELECT 1 FROM podcast_progress WHERE episode_id = ?1",
+          [episode_id],
+          |_| Ok(()),
+        )
+        .optional()
+        .expect("inspect cleared progress")
+        .is_some();
+      assert!(!progress_exists);
+    }
+    assert!(set_episodes_played(&state.db_path, &[], true).is_err());
+    assert!(
+      set_episodes_played(
+        &state.db_path,
+        &vec![episode_ids[0].clone(); PODCAST_EPISODE_BATCH_LIMIT + 1],
+        true,
+      )
+      .is_err()
+    );
+
+    drop(connection);
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
   fn queue_is_ordered_deduplicated_reorder_safe_and_persistent() {
     let directory = test_directory("queue");
     let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
@@ -6889,6 +7125,97 @@ mod tests {
     assert!(list_queue(&reopened.db_path, &reopened.downloads_dir)
       .expect("list cleared queue")
       .is_empty());
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn bulk_queue_remove_is_atomic_and_reindexes_remaining_episodes() {
+    let directory = test_directory("bulk-queue-remove");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(4);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+    for episode_id in &episode_ids {
+      queue_add(&state.db_path, episode_id, false).expect("append episode");
+    }
+
+    let removed_ids = queue_remove_many(
+      &state.db_path,
+      &[
+        episode_ids[1].clone(),
+        episode_ids[1].clone(),
+        episode_ids[3].clone(),
+      ],
+    )
+    .expect("remove selected episodes");
+    assert_eq!(
+      removed_ids,
+      vec![episode_ids[1].clone(), episode_ids[3].clone()]
+    );
+    let remaining = list_queue(&state.db_path, &state.downloads_dir).expect("list remaining queue");
+    assert_eq!(
+      remaining
+        .iter()
+        .map(|item| item.episode.id.as_str())
+        .collect::<Vec<_>>(),
+      vec![episode_ids[0].as_str(), episode_ids[2].as_str()]
+    );
+    assert_eq!(
+      remaining.iter().map(|item| item.position).collect::<Vec<_>>(),
+      vec![0, 1]
+    );
+
+    assert!(
+      queue_remove_many(
+        &state.db_path,
+        &[episode_ids[0].clone(), episode_ids[1].clone()],
+      )
+      .is_err()
+    );
+    assert!(
+      queue_remove_many(
+        &state.db_path,
+        &[episode_ids[0].clone(), "invalid".to_string()],
+      )
+      .is_err()
+    );
+    let after_rejected =
+      list_queue(&state.db_path, &state.downloads_dir).expect("list unchanged queue");
+    assert_eq!(
+      after_rejected
+        .iter()
+        .map(|item| item.episode.id.as_str())
+        .collect::<Vec<_>>(),
+      vec![episode_ids[0].as_str(), episode_ids[2].as_str()]
+    );
+    assert!(queue_remove_many(&state.db_path, &[]).is_err());
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn queue_total_bytes_falls_back_to_episode_expected_bytes_without_shifting_rows() {
+    let directory = test_directory("queue-expected-bytes");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let episode_id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+    mark_download_failed(&state.db_path, &episode_id, 0, "test failure")
+      .expect("store download row without total bytes");
+    queue_add(&state.db_path, &episode_id, false).expect("queue episode");
+
+    let queue = list_queue(&state.db_path, &state.downloads_dir).expect("list queue");
+    assert_eq!(queue.len(), 1);
+    assert_eq!(queue[0].episode.id, episode_id);
+    assert_eq!(queue[0].episode.download_state, "failed");
+    assert_eq!(queue[0].episode.total_bytes, Some(23));
+    assert_eq!(queue[0].position, 0);
+    assert!(queue[0].added_at > 0);
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }

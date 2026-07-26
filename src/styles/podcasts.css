@@ -1005,14 +1005,159 @@
   display: grid;
 }
 
+.podcast-queue-toolbar,
+.podcast-queue-batch {
+  width: min(940px, 100%);
+  min-height: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  border-bottom: 1px solid rgba(247, 242, 246, 0.1);
+}
+
+.podcast-queue-toolbar {
+  justify-content: space-between;
+}
+
+.podcast-queue-toolbar p {
+  margin: 0;
+  color: rgba(247, 242, 246, 0.42);
+  font-size: 10px;
+}
+
+.podcast-queue-toolbar button,
+.podcast-queue-batch button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  color: rgba(247, 242, 246, 0.56);
+  font-size: 10px;
+}
+
+.podcast-queue-toolbar button:hover:not(:disabled),
+.podcast-queue-batch button:hover:not(:disabled) {
+  color: #fff;
+}
+
+.podcast-queue-batch > span {
+  margin-right: 2px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.podcast-queue-batch button:disabled {
+  color: rgba(247, 242, 246, 0.22);
+}
+
+.podcast-queue-batch .danger {
+  color: #e88189;
+}
+
+.podcast-queue-batch .danger:hover:not(:disabled) {
+  color: #ffabb1;
+}
+
+.podcast-queue-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .podcast-queue-episode {
+  position: relative;
   min-height: 62px;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 158px;
+  grid-template-columns: 40px 28px minmax(0, 1fr) 169px;
   align-items: center;
-  gap: 13px;
+  gap: 9px;
   padding: 7px 4px 7px 0;
   border-bottom: 1px solid rgba(247, 242, 246, 0.075);
+}
+
+.podcast-queue-episode.selecting {
+  grid-template-columns: 40px 28px minmax(0, 1fr);
+}
+
+.podcast-queue-episode.selected {
+  background: rgba(216, 32, 121, 0.09);
+}
+
+.podcast-queue-episode.is-dragging {
+  opacity: 0.36;
+}
+
+.podcast-queue-episode.is-drop-target {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.podcast-queue-episode[data-drop-position="before"]::before,
+.podcast-queue-episode[data-drop-position="after"]::after {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+  content: "";
+  pointer-events: none;
+}
+
+.podcast-queue-episode[data-drop-position="before"]::before {
+  top: -1px;
+}
+
+.podcast-queue-episode[data-drop-position="after"]::after {
+  bottom: -1px;
+}
+
+.podcast-queue-drag,
+.podcast-queue-select-control {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+
+.podcast-queue-drag {
+  color: rgba(247, 242, 246, 0.28);
+  cursor: grab;
+}
+
+.podcast-queue-drag:hover {
+  color: rgba(247, 242, 246, 0.78);
+}
+
+.podcast-queue-drag:active {
+  cursor: grabbing;
+}
+
+.podcast-queue-drag[data-disabled="true"] {
+  cursor: default;
+  opacity: 0.16;
+}
+
+.podcast-queue-select-control {
+  color: transparent;
+  border: 1px solid rgba(247, 242, 246, 0.34);
+}
+
+.podcast-queue-select-control:hover {
+  border-color: rgba(255, 255, 255, 0.72);
+}
+
+.podcast-queue-select-control[aria-pressed="true"] {
+  color: #14080f;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .podcast-queue-position {
@@ -1058,8 +1203,8 @@
 }
 
 .podcast-queue-actions button {
-  width: 34px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   color: rgba(247, 242, 246, 0.42);
@@ -1071,6 +1216,16 @@
 
 .podcast-queue-actions button:disabled {
   color: rgba(247, 242, 246, 0.14);
+}
+
+.podcast-queue-dialog {
+  min-height: 230px;
+}
+
+.podcast-queue-dialog .playlist-dialog-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .podcast-detail-screen {
@@ -1356,11 +1511,11 @@
   }
 
   .podcast-queue-episode {
-    grid-template-columns: 28px minmax(0, 1fr) 148px;
-    gap: 9px;
+    grid-template-columns: 40px 24px minmax(0, 1fr) 169px;
+    gap: 7px;
   }
 
-  .podcast-queue-actions button {
-    width: 34px;
+  .podcast-queue-episode.selecting {
+    grid-template-columns: 40px 24px minmax(0, 1fr);
   }
 }
