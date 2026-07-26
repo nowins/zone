@@ -498,6 +498,7 @@
   .podcast-now-artwork,
   .podcast-now-back,
   .podcast-now-popover,
+  .podcast-now-queue,
   .podcast-now-queue-actions {
     transition-duration: var(--motion-instant);
   }
@@ -536,6 +537,7 @@
   .podcast-now-artwork,
   .podcast-now-back,
   .podcast-now-popover,
+  .podcast-now-queue,
   .podcast-now-queue-actions {
     transform: none !important;
   }

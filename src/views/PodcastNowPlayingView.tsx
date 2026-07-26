@@ -91,10 +91,13 @@ export function PodcastNowPlayingView({
   onRetry: () => void;
 }) {
   const [activeMenu, setActiveMenu] = useState<PodcastNowMenu>(null);
+  const [queueOpen, setQueueOpen] = useState(false);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const rateTriggerRef = useRef<HTMLButtonElement | null>(null);
   const sleepTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const queueTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const queueCloseRef = useRef<HTMLButtonElement | null>(null);
   const rateMenuRef = useRef<HTMLDivElement | null>(null);
   const sleepMenuRef = useRef<HTMLDivElement | null>(null);
   const artworkUrl = episode.artworkUrl ?? episode.feedArtworkUrl;
@@ -149,6 +152,14 @@ export function PodcastNowPlayingView({
   }, [activeMenu]);
 
   useEffect(() => {
+    if (!queueOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      queueCloseRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [queueOpen]);
+
+  useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       if (activeMenu) {
@@ -156,11 +167,16 @@ export function PodcastNowPlayingView({
         closeActiveMenu(true);
         return;
       }
+      if (queueOpen) {
+        event.preventDefault();
+        closeQueue(true);
+        return;
+      }
       onBack();
     }
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [activeMenu, onBack]);
+  }, [activeMenu, onBack, queueOpen]);
 
   function closeActiveMenu(restoreFocus = false) {
     const menu = activeMenu;
@@ -169,6 +185,12 @@ export function PodcastNowPlayingView({
     window.requestAnimationFrame(() => {
       (menu === "rate" ? rateTriggerRef.current : sleepTriggerRef.current)?.focus();
     });
+  }
+
+  function closeQueue(restoreFocus = false) {
+    setQueueOpen(false);
+    if (!restoreFocus) return;
+    window.requestAnimationFrame(() => queueTriggerRef.current?.focus());
   }
 
   function handleMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -293,8 +315,110 @@ export function PodcastNowPlayingView({
     </div>
   ) : null;
 
+  const queuePanelElement = queueOpen ? (
+    <aside
+      id="podcast-now-queue"
+      className="podcast-now-queue"
+      aria-labelledby="podcast-now-queue-title"
+    >
+      <header>
+        <div>
+          <ListMusic size={16} aria-hidden="true" />
+          <h2 id="podcast-now-queue-title">待播</h2>
+          {orderedQueue.length > 0 ? <span>{orderedQueue.length}</span> : null}
+        </div>
+        <div className="podcast-now-queue-header-actions">
+          {orderedQueue.length > 0 ? (
+            <button type="button" onClick={onClearQueue}>
+              清空
+            </button>
+          ) : null}
+          <button
+            ref={queueCloseRef}
+            type="button"
+            className="podcast-now-queue-close"
+            onClick={() => closeQueue(true)}
+            aria-label="关闭待播列表"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      </header>
+
+      {orderedQueue.length > 0 ? (
+        <ol className="podcast-now-queue-list">
+          {orderedQueue.map((item, index) => {
+            const queuedEpisode = item.episode;
+            return (
+              <li key={queuedEpisode.id}>
+                <button
+                  type="button"
+                  className="podcast-now-queue-select"
+                  onClick={() => {
+                    onPlayQueueItem(queuedEpisode.id);
+                    closeQueue(true);
+                  }}
+                  title={`播放“${queuedEpisode.title}”`}
+                >
+                  <span>{index + 1}</span>
+                  <span>
+                    <strong>{queuedEpisode.title}</strong>
+                    <small>
+                      {queuedEpisode.feedTitle || "播客"}
+                      {queuedEpisode.durationSeconds
+                        ? ` · ${formatTime(queuedEpisode.durationSeconds)}`
+                        : ""}
+                    </small>
+                  </span>
+                </button>
+                <div className="podcast-now-queue-actions">
+                  <button
+                    type="button"
+                    onClick={() => onMoveQueueItem(queuedEpisode.id, -1)}
+                    disabled={index === 0}
+                    title="上移"
+                  >
+                    <ChevronUp size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMoveQueueItem(queuedEpisode.id, 1)}
+                    disabled={index === orderedQueue.length - 1}
+                    title="下移"
+                  >
+                    <ChevronDown size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveQueueItem(queuedEpisode.id)}
+                    title="从待播移除"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <div className="podcast-now-queue-empty">
+          <span>待播列表为空</span>
+          <small>从单集菜单加入接下来播放的内容</small>
+        </div>
+      )}
+
+      {orderedQueue.length > 0 ? (
+        <button className="podcast-now-next" type="button" onClick={onNext}>
+          <SkipForward size={14} />
+          播放下一集
+        </button>
+      ) : null}
+    </aside>
+  ) : null;
+
   const lastRateMenuElement = useLastNonNull(rateMenuElement);
   const lastSleepMenuElement = useLastNonNull(sleepMenuElement);
+  const lastQueuePanelElement = useLastNonNull(queuePanelElement);
 
   return (
     <section
@@ -313,6 +437,22 @@ export function PodcastNowPlayingView({
 
       <button className="podcast-now-back" type="button" onClick={onBack} title="返回">
         <ArrowLeft size={35} strokeWidth={2.45} />
+      </button>
+
+      <button
+        ref={queueTriggerRef}
+        type="button"
+        className="podcast-now-queue-trigger"
+        aria-controls="podcast-now-queue"
+        aria-expanded={queueOpen}
+        onClick={() => {
+          setActiveMenu(null);
+          setQueueOpen((current) => !current);
+        }}
+      >
+        <ListMusic size={16} aria-hidden="true" />
+        <span>待播</span>
+        {orderedQueue.length > 0 ? <em>{orderedQueue.length}</em> : null}
       </button>
 
       <main className="podcast-now-main">
@@ -368,88 +508,13 @@ export function PodcastNowPlayingView({
             </button>
           </div>
         </section>
-
-        <aside className="podcast-now-queue" aria-label="待播列表">
-          <header>
-            <div>
-              <ListMusic size={16} aria-hidden="true" />
-              <h2>待播</h2>
-              {orderedQueue.length > 0 ? <span>{orderedQueue.length}</span> : null}
-            </div>
-            {orderedQueue.length > 0 ? (
-              <button type="button" onClick={onClearQueue} title="清空待播">
-                清空
-              </button>
-            ) : null}
-          </header>
-
-          {orderedQueue.length > 0 ? (
-            <ol className="podcast-now-queue-list">
-              {orderedQueue.map((item, index) => {
-                const queuedEpisode = item.episode;
-                return (
-                  <li key={queuedEpisode.id}>
-                    <button
-                      type="button"
-                      className="podcast-now-queue-select"
-                      onClick={() => onPlayQueueItem(queuedEpisode.id)}
-                      title={`播放“${queuedEpisode.title}”`}
-                    >
-                      <span>{index + 1}</span>
-                      <span>
-                        <strong>{queuedEpisode.title}</strong>
-                        <small>
-                          {queuedEpisode.feedTitle || "播客"}
-                          {queuedEpisode.durationSeconds
-                            ? ` · ${formatTime(queuedEpisode.durationSeconds)}`
-                            : ""}
-                        </small>
-                      </span>
-                    </button>
-                    <div className="podcast-now-queue-actions">
-                      <button
-                        type="button"
-                        onClick={() => onMoveQueueItem(queuedEpisode.id, -1)}
-                        disabled={index === 0}
-                        title="上移"
-                      >
-                        <ChevronUp size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onMoveQueueItem(queuedEpisode.id, 1)}
-                        disabled={index === orderedQueue.length - 1}
-                        title="下移"
-                      >
-                        <ChevronDown size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onRemoveQueueItem(queuedEpisode.id)}
-                        title="从待播移除"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          ) : (
-            <div className="podcast-now-queue-empty">
-              <span>待播列表为空</span>
-              <small>从单集菜单加入接下来播放的内容</small>
-            </div>
-          )}
-
-          {orderedQueue.length > 0 ? (
-            <button className="podcast-now-next" type="button" onClick={onNext}>
-              <SkipForward size={14} />
-              播放下一集
-            </button>
-          ) : null}
-        </aside>
       </main>
+
+      <Presence show={queuePanelElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {queuePanelElement
+          ?? lastQueuePanelElement
+          ?? <span style={{ display: "none" }} />}
+      </Presence>
 
       <footer className="podcast-now-transport">
         <PlaybackProgress
@@ -470,7 +535,9 @@ export function PodcastNowPlayingView({
                 aria-haspopup="menu"
                 aria-controls="podcast-rate-menu"
                 aria-expanded={activeMenu === "rate"}
-                onClick={() => setActiveMenu((current) => current === "rate" ? null : "rate")}
+                onClick={() =>
+                  setActiveMenu((current) => current === "rate" ? null : "rate")
+                }
               >
                 <Gauge size={14} />
                 {formatPlaybackRate(playbackRate)}
@@ -488,7 +555,9 @@ export function PodcastNowPlayingView({
                 aria-haspopup="menu"
                 aria-controls="podcast-sleep-menu"
                 aria-expanded={activeMenu === "sleep"}
-                onClick={() => setActiveMenu((current) => current === "sleep" ? null : "sleep")}
+                onClick={() =>
+                  setActiveMenu((current) => current === "sleep" ? null : "sleep")
+                }
               >
                 <Clock3 size={14} />
                 {sleepLabel}

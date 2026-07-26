@@ -14,6 +14,7 @@ const podcastPlaybackSource = readFileSync("src/utils/podcastPlayback.ts", "utf8
 const baseCss = readFileSync("src/styles/base.css", "utf8");
 const podcastCss = readFileSync("src/styles/podcasts.css", "utf8");
 const podcastNowPlayingCss = readFileSync("src/styles/podcast-now-playing.css", "utf8");
+const motionCss = readFileSync("src/styles/motion.css", "utf8");
 const nowPlayingSource = readFileSync("src/views/NowPlayingView.tsx", "utf8");
 const typesSource = readFileSync("src/types.ts", "utf8");
 const rustEntrySource = readFileSync("src-tauri/src/lib.rs", "utf8");
@@ -665,6 +666,70 @@ test("podcast detail, menus, and full-screen layout cover keyboard and minimum-w
     podcastNowPlayingCss,
     /@media\s*\(max-height:\s*680px\)\s*\{[\s\S]*?\.podcast-now-copy\s*\{(?=[^}]*max-height:\s*100%)(?=[^}]*overflow-y:\s*auto)[^}]*\}/,
     "short windows must keep long episode copy inside the transport boundary",
+  );
+});
+
+test("podcast now-playing queue defaults closed and behaves as an accessible side panel", () => {
+  includes(
+    podcastNowPlayingSource,
+    /const\s*\[queueOpen,\s*setQueueOpen\]\s*=\s*useState\(false\)/,
+    "the full-screen queue must default to closed",
+  );
+  includes(
+    podcastNowPlayingSource,
+    /className="podcast-now-queue-trigger"[\s\S]{0,180}aria-controls="podcast-now-queue"[\s\S]{0,120}aria-expanded=\{queueOpen\}/,
+    "the queue trigger must expose its controlled expanded state",
+  );
+  includes(
+    podcastNowPlayingSource,
+    /const queuePanelElement\s*=\s*queueOpen\s*\?\s*\([\s\S]{0,160}<aside[\s\S]{0,120}id="podcast-now-queue"/,
+    "the queue panel must not exist in the default closed state",
+  );
+  includes(
+    podcastNowPlayingSource,
+    /<Presence\s+show=\{queuePanelElement\s*!==\s*null\}\s+exitDurationMs=\{MOTION_DURATIONS\.micro\}>/,
+    "the queue panel must keep a paired exit lifecycle",
+  );
+
+  const escapeSource = declaredFunctionSource(
+    podcastNowPlayingSource,
+    "handleEscape",
+  );
+  assert.ok(
+    escapeSource.indexOf("if (activeMenu)") < escapeSource.indexOf("if (queueOpen)")
+      && escapeSource.indexOf("if (queueOpen)") < escapeSource.indexOf("onBack()"),
+    "Escape must close a menu, then the queue, before leaving now playing",
+  );
+  includes(
+    podcastNowPlayingSource,
+    /queueCloseRef\.current\?\.focus\(\)/,
+    "opening the queue must focus its close control",
+  );
+  includes(
+    declaredFunctionSource(podcastNowPlayingSource, "closeQueue"),
+    /queueTriggerRef\.current\?\.focus\(\)/,
+    "closing the queue from within must restore focus to its trigger",
+  );
+
+  includes(
+    podcastNowPlayingCss,
+    /\.podcast-now-queue\s*\{(?=[^}]*position:\s*absolute)(?=[^}]*right:\s*clamp\()(?=[^}]*transform:\s*translate3d\(0,\s*0,\s*0\))[^}]*\}/,
+    "the queue must open as a right-anchored non-modal panel without reflowing playback",
+  );
+  includes(
+    podcastNowPlayingCss,
+    /@starting-style\s*\{\s*\.podcast-now-queue\s*\{(?=[^}]*opacity:\s*0)(?=[^}]*translate3d\(18px,\s*0,\s*0\))[^}]*\}/,
+    "the queue panel must enter from its owning edge",
+  );
+  includes(
+    podcastNowPlayingCss,
+    /\.motion-exit\s+\.podcast-now-queue\s*\{(?=[^}]*opacity:\s*0)(?=[^}]*translate3d\(12px,\s*0,\s*0\))[^}]*\}/,
+    "the queue panel must exit back toward the same edge",
+  );
+  includes(
+    motionCss,
+    /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.podcast-now-queue[\s\S]*?transform:\s*none\s*!important;/,
+    "reduced motion must remove queue-panel travel",
   );
 });
 
