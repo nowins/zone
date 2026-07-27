@@ -2,6 +2,8 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use encoding_rs::{Encoding, UTF_16BE, UTF_16LE, UTF_8};
 use feed_rs::model::{Entry as ParsedEntry, Feed as ParsedFeed};
 use quick_xml::events::{BytesStart, Event};
+use quick_xml::name::{Namespace, ResolveResult};
+use quick_xml::reader::NsReader;
 use quick_xml::Reader;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::{StatusCode, Url};
@@ -22,6 +24,8 @@ const APPLE_SEARCH_RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
 const APPLE_DISCOVERY_RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
 const APPLE_DISCOVERY_MAX_RESULTS: u8 = 50;
 const PODCAST_FEED_RESPONSE_LIMIT: usize = 20 * 1024 * 1024;
+const PODCAST_CHAPTER_MAX_COUNT: usize = 1_000;
+const PODCAST_TRANSCRIPT_SOURCE_MAX_COUNT: usize = 16;
 const PODCAST_ARTWORK_RESPONSE_LIMIT: usize = 8 * 1024 * 1024;
 const PODCAST_ARTWORK_URL_LIMIT: usize = 4 * 1024;
 const PODCAST_ARTWORK_TOKEN_LIMIT: usize = 6 * 1024;
@@ -48,6 +52,11 @@ const PODCAST_QUEUE_LIMIT: usize = 500;
 const PODCAST_REFRESH_CONCURRENCY: usize = 3;
 const PODCAST_REFRESH_INTERVAL: i64 = 30 * 60 * 1_000;
 const PODCAST_SYNTHETIC_ID_PREFIX: &str = "zone-generated:";
+const PODCAST_NAMESPACE_URI: &[u8] = b"https://podcastindex.org/namespace/1.0";
+const PODCAST_NAMESPACE_COMPAT_URI: &[u8] =
+  b"https://github.com/Podcastindex-org/podcast-namespace/blob/main/docs/1.0.md";
+const PODLOVE_SIMPLE_CHAPTERS_NAMESPACE_URI: &[u8] =
+  b"http://podlove.org/simple-chapters";
 const USER_AGENT: &str = "Zone/0.1 (local podcast player)";
 
 #[derive(Clone, Debug)]
@@ -138,6 +147,8 @@ pub struct PodcastEpisodeDetail {
   saved: bool,
   saved_at: Option<i64>,
   queue_position: Option<u32>,
+  has_chapters: bool,
+  transcript_count: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -286,6 +297,34 @@ struct ParsedPodcastEpisode {
   artwork_url: Option<String>,
   expected_bytes: Option<u64>,
   webpage_url: Option<String>,
+  resources: Option<Vec<ParsedEpisodeResource>>,
+}
+
+#[derive(Clone, Debug)]
+struct ParsedEpisodeResource {
+  kind: &'static str,
+  source_kind: &'static str,
+  url: Option<String>,
+  mime_type: Option<String>,
+  language: Option<String>,
+  relation: Option<String>,
+  ordinal: usize,
+  chapters: Vec<ParsedPodcastChapter>,
+}
+
+#[derive(Clone, Debug)]
+struct ParsedPodcastChapter {
+  start_ms: i64,
+  end_ms: Option<i64>,
+  title: String,
+  href: Option<String>,
+  image_url: Option<String>,
+  visible: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct ParsedEpisodeExtensions {
+  resources: Vec<ParsedEpisodeResource>,
 }
 
 #[derive(Clone, Debug)]
@@ -2034,10 +2073,9 @@ fn parse_feed_bytes_with_network_policy(
       parsed
     }
   };
-  let rss_enclosures = extract_rss_enclosures(
-    repaired_document.as_deref().unwrap_or(bytes),
-    final_url,
-  );
+  let normalized_document = repaired_document.as_deref().unwrap_or(bytes);
+  let rss_enclosures = extract_rss_enclosures(normalized_document, final_url);
+  let episode_extensions = extract_episode_extensions(normalized_document, final_url);
   normalize_feed(
     parsed,
     final_url,
@@ -2047,6 +2085,7 @@ fn parse_feed_bytes_with_network_policy(
     etag,
     last_modified,
     &rss_enclosures,
+    episode_extensions.as_deref(),
     allow_private_network,
   )
 }
@@ -2324,6 +2363,338 @@ fn extract_rss_enclosures(bytes: &[u8], base_uri: &str) -> Vec<Option<Enclosure>
   enclosures
 }
 
+fn extract_episode_extensions(
+  bytes: &[u8],
+  base_uri: &str,
+) -> Option<Vec<ParsedEpisodeExtensions>> {
+  let mut reader = NsReader::from_reader(bytes);
+  let mut extensions = Vec::<ParsedEpisodeExtensions>::new();
+  let mut current_entry = None;
+  let mut psc_entry = None;
+  let mut base_stack = vec![Url::parse(base_uri).ok()];
+  loop {
+    let decoder = reader.decoder();
+    let (namespace, event) = reader.read_resolved_event().ok()?;
+    let namespace_uri = match &namespace {
+      ResolveResult::Bound(Namespace(value)) => Some((*value).to_vec()),
+      _ => None,
+    };
+    drop(namespace);
+    match event {
+      Event::Start(element) => {
+        let local_name = element.local_name();
+        let base_url = element_base_url(
+          &element,
+          decoder,
+          base_stack.last().and_then(Option::as_ref),
+        );
+        base_stack.push(base_url);
+        if is_feed_entry_element(local_name.as_ref()) {
+          extensions.push(ParsedEpisodeExtensions::default());
+          current_entry = Some(extensions.len() - 1);
+          psc_entry = None;
+          continue;
+        }
+        let Some(entry_index) = current_entry else {
+          continue;
+        };
+        collect_episode_extension_element(
+          namespace_uri.as_deref(),
+          &element,
+          decoder,
+          base_stack.last().and_then(Option::as_ref),
+          entry_index,
+          &mut psc_entry,
+          &mut extensions,
+        );
+      }
+      Event::Empty(element) => {
+        let local_name = element.local_name();
+        let base_url = element_base_url(
+          &element,
+          decoder,
+          base_stack.last().and_then(Option::as_ref),
+        );
+        if is_feed_entry_element(local_name.as_ref()) {
+          extensions.push(ParsedEpisodeExtensions::default());
+          continue;
+        }
+        let Some(entry_index) = current_entry else {
+          continue;
+        };
+        collect_episode_extension_element(
+          namespace_uri.as_deref(),
+          &element,
+          decoder,
+          base_url.as_ref(),
+          entry_index,
+          &mut psc_entry,
+          &mut extensions,
+        );
+        if namespace_is(
+          namespace_uri.as_deref(),
+          PODLOVE_SIMPLE_CHAPTERS_NAMESPACE_URI,
+        ) && local_name.as_ref() == b"chapters"
+        {
+          psc_entry = None;
+        }
+      }
+      Event::End(element) => {
+        let local_name = element.local_name();
+        if namespace_is(namespace_uri.as_deref(), PODLOVE_SIMPLE_CHAPTERS_NAMESPACE_URI)
+          && local_name.as_ref() == b"chapters"
+        {
+          psc_entry = None;
+        }
+        if is_feed_entry_element(local_name.as_ref()) {
+          current_entry = None;
+          psc_entry = None;
+        }
+        if base_stack.len() > 1 {
+          base_stack.pop();
+        }
+      }
+      Event::Eof => break,
+      _ => {}
+    }
+  }
+  for entry in &mut extensions {
+    normalize_parsed_episode_resources(&mut entry.resources);
+  }
+  Some(extensions)
+}
+
+fn collect_episode_extension_element(
+  namespace: Option<&[u8]>,
+  element: &BytesStart<'_>,
+  decoder: quick_xml::Decoder,
+  base_url: Option<&Url>,
+  entry_index: usize,
+  psc_entry: &mut Option<usize>,
+  extensions: &mut [ParsedEpisodeExtensions],
+) {
+  let local_name = element.local_name();
+  if namespace_is_podcast(namespace) && local_name.as_ref() == b"chapters" {
+    if extensions[entry_index]
+      .resources
+      .iter()
+      .any(|resource| resource.source_kind == "podcast-json")
+    {
+      return;
+    }
+    let url = xml_attribute(element, decoder, b"url")
+      .and_then(|value| resolve_resource_url(&value, base_url, true));
+    let mime_type = xml_attribute(element, decoder, b"type")
+      .and_then(|value| clean_text(&value, 200));
+    if let (Some(url), Some(mime_type)) = (url, mime_type) {
+      if is_json_chapter_mime_type(&mime_type) {
+        extensions[entry_index].resources.push(ParsedEpisodeResource {
+          kind: "chapters",
+          source_kind: "podcast-json",
+          url: Some(url),
+          mime_type: Some(mime_type),
+          language: None,
+          relation: None,
+          ordinal: 0,
+          chapters: Vec::new(),
+        });
+      }
+    }
+    return;
+  }
+  if namespace_is_podcast(namespace) && local_name.as_ref() == b"transcript" {
+    let transcript_count = extensions[entry_index]
+      .resources
+      .iter()
+      .filter(|resource| resource.kind == "transcript")
+      .count();
+    if transcript_count >= PODCAST_TRANSCRIPT_SOURCE_MAX_COUNT {
+      return;
+    }
+    let url = xml_attribute(element, decoder, b"url")
+      .and_then(|value| resolve_resource_url(&value, base_url, true));
+    let mime_type = xml_attribute(element, decoder, b"type")
+      .and_then(|value| clean_text(&value, 200));
+    if let (Some(url), Some(mime_type)) = (url, mime_type) {
+      extensions[entry_index].resources.push(ParsedEpisodeResource {
+        kind: "transcript",
+        source_kind: "podcast-transcript",
+        url: Some(url),
+        mime_type: Some(mime_type),
+        language: xml_attribute(element, decoder, b"language")
+          .and_then(|value| clean_text(&value, 50)),
+        relation: xml_attribute(element, decoder, b"rel")
+          .and_then(|value| clean_text(&value, 100)),
+        ordinal: transcript_count,
+        chapters: Vec::new(),
+      });
+    }
+    return;
+  }
+  if namespace_is(namespace, PODLOVE_SIMPLE_CHAPTERS_NAMESPACE_URI)
+    && local_name.as_ref() == b"chapters"
+  {
+    if extensions[entry_index]
+      .resources
+      .iter()
+      .any(|resource| resource.source_kind == "psc")
+    {
+      return;
+    }
+    extensions[entry_index].resources.push(ParsedEpisodeResource {
+      kind: "chapters",
+      source_kind: "psc",
+      url: None,
+      mime_type: Some("application/xml".to_string()),
+      language: None,
+      relation: None,
+      ordinal: 1,
+      chapters: Vec::new(),
+    });
+    *psc_entry = Some(entry_index);
+    return;
+  }
+  if namespace_is(namespace, PODLOVE_SIMPLE_CHAPTERS_NAMESPACE_URI)
+    && local_name.as_ref() == b"chapter"
+    && *psc_entry == Some(entry_index)
+  {
+    let Some(resource) = extensions[entry_index]
+      .resources
+      .iter_mut()
+      .find(|resource| resource.source_kind == "psc")
+    else {
+      return;
+    };
+    if resource.chapters.len() >= PODCAST_CHAPTER_MAX_COUNT {
+      return;
+    }
+    let start_ms = xml_attribute(element, decoder, b"start")
+      .and_then(|value| parse_psc_time_ms(&value));
+    let title = xml_attribute(element, decoder, b"title")
+      .and_then(|value| clean_text(&value, PODCAST_TITLE_LIMIT));
+    if let (Some(start_ms), Some(title)) = (start_ms, title) {
+      resource.chapters.push(ParsedPodcastChapter {
+        start_ms,
+        end_ms: None,
+        title,
+        href: xml_attribute(element, decoder, b"href")
+          .and_then(|value| resolve_resource_url(&value, base_url, false)),
+        image_url: xml_attribute(element, decoder, b"image")
+          .and_then(|value| resolve_resource_url(&value, base_url, false)),
+        visible: true,
+      });
+    }
+  }
+}
+
+fn namespace_is(namespace: Option<&[u8]>, expected: &[u8]) -> bool {
+  namespace == Some(expected)
+}
+
+fn namespace_is_podcast(namespace: Option<&[u8]>) -> bool {
+  namespace_is(namespace, PODCAST_NAMESPACE_URI)
+    || namespace_is(namespace, PODCAST_NAMESPACE_COMPAT_URI)
+}
+
+fn xml_attribute(
+  element: &BytesStart<'_>,
+  decoder: quick_xml::Decoder,
+  local_name: &[u8],
+) -> Option<String> {
+  element
+    .attributes()
+    .with_checks(false)
+    .filter_map(Result::ok)
+    .find(|attribute| attribute.key.local_name().as_ref() == local_name)
+    .and_then(|attribute| {
+      attribute
+        .decoded_and_normalized_value(quick_xml::XmlVersion::Implicit1_0, decoder)
+        .ok()
+        .map(|value| value.into_owned())
+    })
+}
+
+fn resolve_resource_url(
+  value: &str,
+  base_url: Option<&Url>,
+  require_https: bool,
+) -> Option<String> {
+  let url = Url::parse(value.trim())
+    .ok()
+    .or_else(|| base_url.and_then(|base_url| base_url.join(value.trim()).ok()))?;
+  if require_https && url.scheme() != "https" {
+    return None;
+  }
+  validate_url_with_policy(&url, false).ok()?;
+  clean_url_string(url.as_str())
+}
+
+fn is_json_chapter_mime_type(value: &str) -> bool {
+  matches!(
+    value
+      .split(';')
+      .next()
+      .unwrap_or_default()
+      .trim()
+      .to_ascii_lowercase()
+      .as_str(),
+    "application/json+chapters" | "application/json"
+  )
+}
+
+fn parse_psc_time_ms(value: &str) -> Option<i64> {
+  let parts = value.trim().split(':').collect::<Vec<_>>();
+  if parts.is_empty() || parts.len() > 3 {
+    return None;
+  }
+  let seconds = parts.last()?.parse::<f64>().ok()?;
+  if !seconds.is_finite() || seconds < 0.0 || (parts.len() > 1 && seconds >= 60.0) {
+    return None;
+  }
+  let mut total_seconds = seconds;
+  if parts.len() >= 2 {
+    let minutes = parts[parts.len() - 2].parse::<u64>().ok()?;
+    if parts.len() == 3 && minutes >= 60 {
+      return None;
+    }
+    total_seconds += minutes as f64 * 60.0;
+  }
+  if parts.len() == 3 {
+    let hours = parts[0].parse::<u64>().ok()?;
+    total_seconds += hours as f64 * 3_600.0;
+  }
+  let milliseconds = (total_seconds * 1_000.0).round();
+  (milliseconds.is_finite() && milliseconds >= 0.0 && milliseconds <= i64::MAX as f64)
+    .then_some(milliseconds as i64)
+}
+
+fn normalize_parsed_episode_resources(resources: &mut Vec<ParsedEpisodeResource>) {
+  for resource in resources.iter_mut() {
+    resource.chapters.sort_by_key(|chapter| chapter.start_ms);
+    resource
+      .chapters
+      .dedup_by_key(|chapter| chapter.start_ms);
+  }
+  resources.retain(|resource| {
+    resource.source_kind != "psc" || !resource.chapters.is_empty()
+  });
+  let mut seen = HashSet::new();
+  resources.retain(|resource| {
+    let key = format!(
+      "{}\0{}\0{}\0{}\0{}",
+      resource.kind,
+      resource.source_kind,
+      resource.url.as_deref().unwrap_or_default(),
+      resource.mime_type.as_deref().unwrap_or_default(),
+      resource.language.as_deref().unwrap_or_default(),
+    );
+    seen.insert(key)
+  });
+  for (ordinal, resource) in resources.iter_mut().enumerate() {
+    resource.ordinal = ordinal;
+  }
+}
+
 fn is_feed_entry_element(name: &[u8]) -> bool {
   name == b"item" || name == b"entry"
 }
@@ -2402,6 +2773,7 @@ fn normalize_feed(
   etag: Option<String>,
   last_modified: Option<String>,
   rss_enclosures: &[Option<Enclosure>],
+  episode_extensions: Option<&[ParsedEpisodeExtensions]>,
   allow_private_network: bool,
 ) -> Result<ParsedPodcast, String> {
   let normalized_url = normalize_url(final_url, allow_private_network)?;
@@ -2466,6 +2838,13 @@ fn normalize_feed(
       &feed_id,
       artwork_url.as_deref(),
       rss_enclosures.get(index).and_then(Option::as_ref),
+      episode_extensions
+        .map(|extensions| {
+          extensions
+            .get(index)
+            .map(|entry| entry.resources.clone())
+            .unwrap_or_default()
+        }),
     ) {
       episodes.push(episode);
     }
@@ -2487,6 +2866,7 @@ fn normalize_episode(
   feed_id: &str,
   feed_artwork: Option<&str>,
   rss_enclosure: Option<&Enclosure>,
+  resources: Option<Vec<ParsedEpisodeResource>>,
 ) -> Option<ParsedPodcastEpisode> {
   let enclosure = rss_enclosure.cloned().or_else(|| find_enclosure(entry))?;
   let guid = clean_text(&entry.id, 4_096).filter(|value| !value.starts_with(PODCAST_SYNTHETIC_ID_PREFIX));
@@ -2555,6 +2935,7 @@ fn normalize_episode(
     artwork_url,
     expected_bytes: enclosure.length,
     webpage_url,
+    resources,
   })
 }
 
@@ -2724,12 +3105,46 @@ fn open_database(path: &Path) -> Result<Connection, String> {
         added_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS podcast_episode_resources (
+        id TEXT PRIMARY KEY,
+        episode_id TEXT NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK(kind IN ('chapters', 'transcript')),
+        source_kind TEXT NOT NULL CHECK(
+          source_kind IN ('podcast-json', 'psc', 'podcast-transcript')
+        ),
+        url TEXT,
+        mime_type TEXT,
+        language TEXT,
+        relation TEXT,
+        ordinal INTEGER NOT NULL DEFAULT 0 CHECK(ordinal >= 0),
+        etag TEXT,
+        last_modified TEXT,
+        fetched_at INTEGER,
+        error_message TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS podcast_chapters (
+        resource_id TEXT NOT NULL REFERENCES podcast_episode_resources(id) ON DELETE CASCADE,
+        ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+        start_ms INTEGER NOT NULL CHECK(start_ms >= 0),
+        end_ms INTEGER,
+        title TEXT NOT NULL,
+        href TEXT,
+        image_url TEXT,
+        visible INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY(resource_id, ordinal)
+      );
+
       CREATE INDEX IF NOT EXISTS podcast_episodes_feed_published
         ON podcast_episodes(feed_id, published_at DESC);
       CREATE INDEX IF NOT EXISTS podcast_saved_episodes_saved_at
         ON podcast_saved_episodes(saved_at DESC);
       CREATE INDEX IF NOT EXISTS podcast_queue_position
         ON podcast_queue(position, added_at, episode_id);
+      CREATE INDEX IF NOT EXISTS podcast_episode_resources_episode
+        ON podcast_episode_resources(episode_id, kind, ordinal);
+      CREATE INDEX IF NOT EXISTS podcast_chapters_resource_start
+        ON podcast_chapters(resource_id, start_ms, ordinal);
       ",
     )
     .map_err(|error| format!("无法初始化播客数据库：{error}"))?;
@@ -3018,9 +3433,10 @@ fn store_feed(
           episode.expected_bytes.and_then(|value| i64::try_from(value).ok()),
           feed.last_fetched_at,
           episode.webpage_url,
-        ])
+          ])
           .map_err(|error| format!("无法更新播客单集：{error}"))?;
       }
+      reconcile_episode_resources(&transaction, episode)?;
     }
   }
   let (latest_episode_at, unplayed_count) = transaction
@@ -3061,6 +3477,130 @@ fn store_feed(
     inserted_count,
     updated_count,
   })
+}
+
+fn reconcile_episode_resources(
+  transaction: &Transaction<'_>,
+  episode: &ParsedPodcastEpisode,
+) -> Result<(), String> {
+  let Some(resources) = episode.resources.as_ref() else {
+    return Ok(());
+  };
+  let mut existing_statement = transaction
+    .prepare("SELECT id FROM podcast_episode_resources WHERE episode_id = ?1")
+    .map_err(|error| format!("无法读取播客单集资源：{error}"))?;
+  let existing_ids = existing_statement
+    .query_map([&episode.id], |row| row.get::<_, String>(0))
+    .map_err(|error| format!("无法读取播客单集资源：{error}"))?
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|error| format!("无法读取播客单集资源：{error}"))?;
+  drop(existing_statement);
+
+  let mut active_ids = HashSet::new();
+  for resource in resources {
+    let resource_id = parsed_episode_resource_id(&episode.id, resource);
+    active_ids.insert(resource_id.clone());
+    transaction
+      .execute(
+        "
+        INSERT INTO podcast_episode_resources (
+          id, episode_id, kind, source_kind, url, mime_type, language,
+          relation, ordinal, etag, last_modified, fetched_at, error_message
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, NULL, NULL, NULL)
+        ON CONFLICT(id) DO UPDATE SET
+          episode_id = excluded.episode_id,
+          kind = excluded.kind,
+          source_kind = excluded.source_kind,
+          url = excluded.url,
+          mime_type = excluded.mime_type,
+          language = excluded.language,
+          relation = excluded.relation,
+          ordinal = excluded.ordinal
+        ",
+        params![
+          resource_id,
+          episode.id,
+          resource.kind,
+          resource.source_kind,
+          resource.url,
+          resource.mime_type,
+          resource.language,
+          resource.relation,
+          i64::try_from(resource.ordinal).unwrap_or(i64::MAX),
+        ],
+      )
+      .map_err(|error| format!("无法保存播客单集资源：{error}"))?;
+    if resource.source_kind == "psc" {
+      replace_podcast_chapters(transaction, &resource_id, &resource.chapters)?;
+    }
+  }
+  for existing_id in existing_ids {
+    if active_ids.contains(&existing_id) {
+      continue;
+    }
+    transaction
+      .execute(
+        "DELETE FROM podcast_episode_resources WHERE id = ?1 AND episode_id = ?2",
+        params![existing_id, episode.id],
+      )
+      .map_err(|error| format!("无法清理播客单集资源：{error}"))?;
+  }
+  Ok(())
+}
+
+fn parsed_episode_resource_id(
+  episode_id: &str,
+  resource: &ParsedEpisodeResource,
+) -> String {
+  hash_identifier(
+    "episode-resource",
+    &[
+      episode_id,
+      resource.kind,
+      resource.source_kind,
+      resource.url.as_deref().unwrap_or_default(),
+      resource.mime_type.as_deref().unwrap_or_default(),
+      resource.language.as_deref().unwrap_or_default(),
+      resource.relation.as_deref().unwrap_or_default(),
+    ],
+  )
+}
+
+fn replace_podcast_chapters(
+  transaction: &Transaction<'_>,
+  resource_id: &str,
+  chapters: &[ParsedPodcastChapter],
+) -> Result<(), String> {
+  transaction
+    .execute(
+      "DELETE FROM podcast_chapters WHERE resource_id = ?1",
+      [resource_id],
+    )
+    .map_err(|error| format!("无法更新播客章节：{error}"))?;
+  let mut insert = transaction
+    .prepare(
+      "
+      INSERT INTO podcast_chapters (
+        resource_id, ordinal, start_ms, end_ms, title, href, image_url, visible
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+      ",
+    )
+    .map_err(|error| format!("无法准备播客章节写入：{error}"))?;
+  for (ordinal, chapter) in chapters.iter().take(PODCAST_CHAPTER_MAX_COUNT).enumerate() {
+    insert
+      .execute(params![
+        resource_id,
+        i64::try_from(ordinal).unwrap_or(i64::MAX),
+        chapter.start_ms,
+        chapter.end_ms,
+        chapter.title,
+        chapter.href,
+        chapter.image_url,
+        i64::from(chapter.visible),
+      ])
+      .map_err(|error| format!("无法保存播客章节：{error}"))?;
+  }
+  Ok(())
 }
 
 fn list_refresh_targets(
@@ -3768,6 +4308,18 @@ const PODCAST_EPISODE_DETAIL_SELECT: &str = "
       WHERE feed_episode.feed_id = f.id
         AND COALESCE(feed_progress.completed, 0) = 0
         AND COALESCE(feed_progress.position_seconds, 0) <= 0
+    ),
+    EXISTS(
+      SELECT 1
+      FROM podcast_episode_resources resource
+      WHERE resource.episode_id = e.id
+        AND resource.kind = 'chapters'
+    ),
+    (
+      SELECT COUNT(*)
+      FROM podcast_episode_resources resource
+      WHERE resource.episode_id = e.id
+        AND resource.kind = 'transcript'
     )
   FROM podcast_episodes e
   JOIN podcast_feeds f ON f.id = e.feed_id
@@ -3810,6 +4362,12 @@ fn podcast_episode_detail_from_row(
     download_error: row.get(21)?,
     saved_at: row.get(22)?,
     queue_position,
+    has_chapters: row.get::<_, i64>(34)? != 0,
+    transcript_count: row
+      .get::<_, i64>(35)?
+      .max(0)
+      .try_into()
+      .unwrap_or(u32::MAX),
   })
 }
 
@@ -6335,6 +6893,211 @@ mod tests {
       parsed.episodes[0].enclosure_url,
       "https://media.example.test/episode.m4a"
     );
+  }
+
+  #[test]
+  fn podcast_resources_are_namespace_aware_and_align_with_audio_entries() {
+    let rss = r#"<?xml version="1.0"?>
+      <rss version="2.0"
+        xmlns:p2="https://podcastindex.org/namespace/1.0"
+        xmlns:psc="http://podlove.org/simple-chapters"
+        xmlns:wrong="https://example.test/not-podcast">
+        <channel>
+          <title>章节节目</title>
+          <description>chapter fixture</description>
+          <link>https://example.test/show</link>
+          <item>
+            <guid>article-only</guid>
+            <title>无音频文章</title>
+            <wrong:chapters url="https://example.test/wrong.json"
+              type="application/json+chapters" />
+          </item>
+          <item>
+            <guid>chapter-episode</guid>
+            <title>带章节单集</title>
+            <enclosure url="https://media.example.test/chapter.mp3"
+              type="audio/mpeg" length="128" />
+            <p2:chapters url="https://cdn.example.test/chapters.json"
+              type="application/json+chapters" />
+            <p2:transcript url="https://cdn.example.test/transcript.vtt"
+              type="text/vtt" language="zh-CN" rel="captions" />
+            <psc:chapters version="1.1">
+              <psc:chapter start="35:12.250" title="后半段" />
+              <psc:chapter start="0" title="开场" />
+              <psc:chapter start="7:48" title="主题"
+                href="https://example.test/topic" />
+            </psc:chapters>
+          </item>
+        </channel>
+      </rss>"#;
+    let parsed = parse_test_feed(rss, "chapter-resources");
+    assert_eq!(parsed.episodes.len(), 1);
+    let resources = parsed.episodes[0]
+      .resources
+      .as_ref()
+      .expect("complete resource scan");
+    assert_eq!(resources.len(), 3);
+    let json = resources
+      .iter()
+      .find(|resource| resource.source_kind == "podcast-json")
+      .expect("Podcasting 2.0 chapters");
+    assert_eq!(
+      json.url.as_deref(),
+      Some("https://cdn.example.test/chapters.json")
+    );
+    let transcript = resources
+      .iter()
+      .find(|resource| resource.kind == "transcript")
+      .expect("transcript resource");
+    assert_eq!(transcript.language.as_deref(), Some("zh-CN"));
+    assert_eq!(transcript.relation.as_deref(), Some("captions"));
+    let psc = resources
+      .iter()
+      .find(|resource| resource.source_kind == "psc")
+      .expect("PSC chapters");
+    assert_eq!(
+      psc
+        .chapters
+        .iter()
+        .map(|chapter| chapter.start_ms)
+        .collect::<Vec<_>>(),
+      vec![0, 468_000, 2_112_250],
+    );
+    assert!(!resources.iter().any(|resource| {
+      resource.url.as_deref() == Some("https://example.test/wrong.json")
+    }));
+  }
+
+  #[test]
+  fn podcast_namespace_compatibility_uri_and_psc_times_are_supported() {
+    let rss = r#"<?xml version="1.0"?>
+      <rss version="2.0"
+        xmlns:any="https://github.com/Podcastindex-org/podcast-namespace/blob/main/docs/1.0.md">
+        <channel>
+          <title>兼容命名空间</title>
+          <description>compat fixture</description>
+          <item>
+            <guid>compat-episode</guid>
+            <title>兼容单集</title>
+            <enclosure url="https://media.example.test/compat.mp3" type="audio/mpeg" />
+            <any:chapters url="https://cdn.example.test/compat.json"
+              type="application/json" />
+          </item>
+        </channel>
+      </rss>"#;
+    let parsed = parse_test_feed(rss, "chapter-compat");
+    assert!(parsed.episodes[0]
+      .resources
+      .as_ref()
+      .is_some_and(|resources| {
+        resources
+          .iter()
+          .any(|resource| resource.source_kind == "podcast-json")
+      }));
+    assert_eq!(parse_psc_time_ms("37"), Some(37_000));
+    assert_eq!(parse_psc_time_ms("7:48"), Some(468_000));
+    assert_eq!(parse_psc_time_ms("35:12.250"), Some(2_112_250));
+    assert_eq!(parse_psc_time_ms("05:12:03.5"), Some(18_723_500));
+    for invalid in ["", "-1", "1:60", "1:60:00", "1:2:3:4", "NaN"] {
+      assert_eq!(parse_psc_time_ms(invalid), None, "{invalid}");
+    }
+  }
+
+  #[test]
+  fn episode_resources_migrate_reconcile_and_preserve_cached_metadata() {
+    let directory = test_directory("episode-resources");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let rss = r#"<?xml version="1.0"?>
+      <rss version="2.0"
+        xmlns:podcast="https://podcastindex.org/namespace/1.0"
+        xmlns:psc="http://podlove.org/simple-chapters">
+        <channel>
+          <title>资源持久化</title>
+          <description>resource persistence</description>
+          <item>
+            <guid>resource-episode</guid>
+            <title>资源单集</title>
+            <enclosure url="https://media.example.test/resource.mp3" type="audio/mpeg" />
+            <podcast:chapters url="https://cdn.example.test/resource.json"
+              type="application/json+chapters" />
+            <podcast:transcript url="https://cdn.example.test/resource.vtt"
+              type="text/vtt" language="zh" />
+            <psc:chapters>
+              <psc:chapter start="30" title="第二章" />
+              <psc:chapter start="0" title="第一章" />
+            </psc:chapters>
+          </item>
+        </channel>
+      </rss>"#;
+    let parsed = parse_test_feed(rss, "resource-persistence");
+    let episode_id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed.clone()).expect("store resource feed");
+    let detail = get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id)
+      .expect("resource detail");
+    assert!(detail.has_chapters);
+    assert_eq!(detail.transcript_count, 1);
+    let connection = open_database(&state.db_path).expect("open resource database");
+    assert_eq!(
+      connection
+        .query_row(
+          "SELECT COUNT(*) FROM podcast_episode_resources WHERE episode_id = ?1",
+          [&episode_id],
+          |row| row.get::<_, i64>(0),
+        )
+        .expect("resource count"),
+      3,
+    );
+    assert_eq!(
+      connection
+        .query_row(
+          "SELECT COUNT(*) FROM podcast_chapters",
+          [],
+          |row| row.get::<_, i64>(0),
+        )
+        .expect("chapter count"),
+      2,
+    );
+    connection
+      .execute(
+        "
+        UPDATE podcast_episode_resources
+        SET etag = 'cached', fetched_at = 42
+        WHERE episode_id = ?1 AND source_kind = 'podcast-json'
+        ",
+        [&episode_id],
+      )
+      .expect("seed resource cache");
+    drop(connection);
+
+    let mut incomplete = parsed.clone();
+    incomplete.episodes[0].resources = None;
+    store_subscription(&state.db_path, incomplete).expect("store incomplete resource scan");
+    let connection = open_database(&state.db_path).expect("reopen resource database");
+    assert_eq!(
+      connection
+        .query_row(
+          "
+          SELECT etag, fetched_at
+          FROM podcast_episode_resources
+          WHERE episode_id = ?1 AND source_kind = 'podcast-json'
+          ",
+          [&episode_id],
+          |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<i64>>(1)?)),
+        )
+        .expect("preserved cache"),
+      (Some("cached".to_string()), Some(42)),
+    );
+    drop(connection);
+
+    let mut without_resources = parsed;
+    without_resources.episodes[0].resources = Some(Vec::new());
+    store_subscription(&state.db_path, without_resources).expect("remove feed resources");
+    let detail = get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id)
+      .expect("detail without resources");
+    assert!(!detail.has_chapters);
+    assert_eq!(detail.transcript_count, 0);
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
   }
 
   #[test]

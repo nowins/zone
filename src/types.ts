@@ -265,6 +265,8 @@ export type PodcastEpisodeDetail = {
   saved: boolean;
   savedAt?: number | null;
   queuePosition?: number | null;
+  hasChapters: boolean;
+  transcriptCount: number;
 };
 
 export type PodcastQueueItem = {
