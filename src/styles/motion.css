@@ -350,15 +350,11 @@
 @keyframes motion-page-enter {
   from {
     opacity: 0;
-    transform: translate3d(calc(var(--motion-dir, 1) * var(--motion-drift, var(--motion-drift-m))), 0, 0) scale(0.975);
-  }
-  62% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(0.996);
+    transform: translate3d(calc(var(--motion-dir, 1) * var(--motion-drift, var(--motion-drift-m))), 0, 0);
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, 0, 0);
   }
 }
 
