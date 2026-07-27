@@ -4,6 +4,8 @@ import test from "node:test";
 
 const viewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
 const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
+const typesSource = readFileSync("src/types.ts", "utf8");
+const rustSource = readFileSync("src-tauri/src/podcast.rs", "utf8");
 
 test("podcast discovery offers low-friction topics and durable recent searches", () => {
   assert.match(viewSource, /PODCAST_DISCOVERY_STORAGE_KEY = "zone-podcast-discovery-v1"/);
@@ -72,4 +74,54 @@ test("RSS subscription is prominent, accessible, and keeps the native command bo
     /\.podcast-search-history > div > button\s*\{[\s\S]*?min-height:\s*40px/,
   );
   assert.match(viewSource, /actionLabel="返回热门"/);
+});
+
+test("search results expose only real Apple metadata and stable local sorting", () => {
+  assert.match(
+    typesSource,
+    /PodcastSearchResult = \{[\s\S]*?episodeCount\?: number \| null;[\s\S]*?genres: string\[\];[\s\S]*?latestReleaseAt\?: number \| null;/,
+  );
+  assert.match(rustSource, /primary_genre_name: Option<String>/);
+  assert.match(rustSource, /release_date: Option<String>/);
+  assert.match(rustSource, /normalize_apple_search_genres/);
+  assert.match(rustSource, /genre\.eq_ignore_ascii_case\("podcasts"\) \|\| genre == "播客"/);
+  assert.match(rustSource, /and_then\(parse_iso8601_millis\)/);
+  assert.match(viewSource, /id: "relevance", label: "相关性"/);
+  assert.match(viewSource, /id: "recent", label: "最近更新"/);
+  assert.match(viewSource, /id: "episodes", label: "单集数量"/);
+  assert.match(
+    viewSource,
+    /const sortedSearchResults = useMemo\([\s\S]*?sortPodcastSearchResults\(searchResults, searchSort\)/,
+  );
+  assert.match(
+    viewSource,
+    /function runAppleSearch\([\s\S]*?setSearchSort\("relevance"\)/,
+  );
+  assert.match(viewSource, /\{episodeCount\} 集/);
+  assert.match(viewSource, /更新 \{formatEpisodeDate\(show\.latestReleaseAt\)\}/);
+  assert.doesNotMatch(viewSource, /订阅数|更新频率/);
+});
+
+test("manual search highlighting stays text-only and themes do not expose hidden terms", () => {
+  assert.match(
+    viewSource,
+    /setSearchHighlightQuery\(remember \? cleanQuery : ""\)/,
+  );
+  assert.match(
+    viewSource,
+    /function PodcastSearchHighlight\([\s\S]*?splitPodcastSearchMatch\(text, query\)[\s\S]*?<mark/,
+  );
+  assert.doesNotMatch(viewSource, /dangerouslySetInnerHTML/);
+  assert.match(
+    stylesSource,
+    /\.podcast-search-sorts button\s*\{[\s\S]*?min-height:\s*40px/,
+  );
+  assert.match(
+    stylesSource,
+    /\.podcast-show-card-copy mark\s*\{[\s\S]*?background:/,
+  );
+  assert.match(
+    stylesSource,
+    /\.podcast-show-card-genres em:only-child\s*\{[\s\S]*?max-width:\s*100%/,
+  );
 });

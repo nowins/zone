@@ -358,7 +358,7 @@
 }
 
 .podcast-search-grid .podcast-show-card {
-  grid-template-columns: 62px minmax(0, 1fr);
+  grid-template-columns: 72px minmax(0, 1fr);
   align-items: center;
   padding: 7px 0;
   border-bottom: 1px solid rgba(247, 242, 246, 0.075);
@@ -402,6 +402,53 @@
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.podcast-show-card-copy mark {
+  color: #fff;
+  background: rgba(255, 49, 142, 0.22);
+}
+
+.podcast-show-card-meta,
+.podcast-show-card-genres {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  overflow: hidden;
+  color: rgba(247, 242, 246, 0.38);
+  font-size: 9px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.podcast-show-card-meta > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.podcast-show-card-meta > span + span::before {
+  margin-right: 9px;
+  color: rgba(247, 242, 246, 0.18);
+  content: "·";
+}
+
+.podcast-show-card-genres {
+  gap: 0;
+}
+
+.podcast-show-card-genres em {
+  max-width: 46%;
+}
+
+.podcast-show-card-genres em:only-child {
+  max-width: 100%;
+}
+
+.podcast-show-card-genres em + em::before {
+  margin: 0 7px;
+  color: rgba(247, 242, 246, 0.24);
+  content: "/";
 }
 
 .podcast-card-state,
@@ -767,6 +814,57 @@
 .podcast-search-history li button {
   color: rgba(247, 242, 246, 0.42);
   font-size: 11px;
+}
+
+.podcast-search-sorts {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: -5px 0 5px;
+  border-bottom: 1px solid rgba(247, 242, 246, 0.075);
+}
+
+.podcast-search-sorts > span {
+  color: rgba(247, 242, 246, 0.38);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.podcast-search-sorts > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+
+.podcast-search-sorts button {
+  position: relative;
+  min-height: 40px;
+  padding: 0 2px;
+  color: rgba(247, 242, 246, 0.48);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.podcast-search-sorts button::after {
+  position: absolute;
+  right: 2px;
+  bottom: 3px;
+  left: 2px;
+  height: 1px;
+  background: var(--accent);
+  content: "";
+  opacity: 0;
+}
+
+.podcast-search-sorts button:hover,
+.podcast-search-sorts button[aria-pressed="true"] {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.podcast-search-sorts button[aria-pressed="true"]::after {
+  opacity: 1;
 }
 
 .podcast-library-grid {

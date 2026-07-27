@@ -57,6 +57,9 @@ import {
 import {
   addPodcastSearchHistory,
   normalizePodcastSearchHistory,
+  sortPodcastSearchResults,
+  splitPodcastSearchMatch,
+  type PodcastDiscoverySort,
 } from "../utils/podcastDiscovery";
 import { mergePodcastEpisodePlayback } from "../utils/podcastPlayback";
 import type {
@@ -171,6 +174,8 @@ type PodcastSessionSnapshot = {
   listenFilter: PodcastListenFilter;
   discoveryTopic: PodcastDiscoveryTopic | null;
   searchHeading: string;
+  searchSort: PodcastDiscoverySort;
+  searchHighlightQuery: string;
   searchState: RequestState;
   searchResults: PodcastSearchResult[];
   selectedFeed: PodcastFeed | null;
@@ -239,6 +244,14 @@ const PODCAST_DISCOVERY_TOPICS: Array<{
   { id: "humanities", label: "人文", query: "人文" },
   { id: "english", label: "英语", query: "英语" },
 ];
+const PODCAST_DISCOVERY_SORTS: Array<{
+  id: PodcastDiscoverySort;
+  label: string;
+}> = [
+  { id: "relevance", label: "相关性" },
+  { id: "recent", label: "最近更新" },
+  { id: "episodes", label: "单集数量" },
+];
 let discoveryCache: { shows: PodcastDiscoveryShow[]; fetchedAt: number } | null = null;
 let podcastSessionSnapshot: PodcastSessionSnapshot | null = null;
 
@@ -301,6 +314,14 @@ export function PodcastView({
     restoredSession?.searchState === "loading"
       ? "搜索结果"
       : restoredSession?.searchHeading ?? "搜索结果",
+  );
+  const [searchSort, setSearchSort] = useState<PodcastDiscoverySort>(
+    restoredSession?.searchSort ?? "relevance",
+  );
+  const [searchHighlightQuery, setSearchHighlightQuery] = useState(
+    restoredSession?.searchState === "loading"
+      ? ""
+      : restoredSession?.searchHighlightQuery ?? "",
   );
   const [searchHistory, setSearchHistory] =
     useState<string[]>(initialSearchHistory);
@@ -409,6 +430,10 @@ export function PodcastView({
   selectedFeedRef.current = selectedFeed;
 
   const currentEpisodeId = activeEpisode?.episodeId ?? activeEpisodeId;
+  const sortedSearchResults = useMemo(
+    () => sortPodcastSearchResults(searchResults, searchSort),
+    [searchResults, searchSort],
+  );
   const feedById = useMemo(
     () => new Map(feeds.map((feed) => [feed.id, feed])),
     [feeds],
@@ -759,6 +784,8 @@ export function PodcastView({
       listenFilter,
       discoveryTopic,
       searchHeading,
+      searchSort,
+      searchHighlightQuery,
       searchState,
       searchResults,
       selectedFeed,
@@ -780,6 +807,8 @@ export function PodcastView({
     returnScreen,
     screen,
     searchHeading,
+    searchHighlightQuery,
+    searchSort,
     searchState,
     searchResults,
     selectedEpisodeDetail,
@@ -803,6 +832,8 @@ export function PodcastView({
         listenFilter,
         discoveryTopic,
         searchHeading,
+        searchSort,
+        searchHighlightQuery,
         searchState,
         searchResults,
         selectedFeed,
@@ -1281,6 +1312,8 @@ export function PodcastView({
     appleSearchRequestRef.current = requestId;
     setDiscoveryTopic(topic);
     setSearchHeading(heading);
+    setSearchSort("relevance");
+    setSearchHighlightQuery(remember ? cleanQuery : "");
     setSearchState("loading");
     setError(null);
     setNotice(null);
@@ -1317,6 +1350,8 @@ export function PodcastView({
     setSearchResults([]);
     setSearchState("idle");
     setSearchHeading("搜索结果");
+    setSearchSort("relevance");
+    setSearchHighlightQuery("");
     setError(null);
     setNotice(null);
     void loadDiscovery();
@@ -2322,19 +2357,42 @@ export function PodcastView({
               ) : searchState === "error" ? (
                 <PodcastEmpty label="暂时无法完成搜索" />
               ) : searchResults.length > 0 ? (
-                <div className="podcast-search-grid">
-                  {searchResults.map((result) => (
-                    <ShowCard
-                      key={result.id}
-                      show={result}
-                      followed={feeds.some(
-                        (feed) => feed.feedUrl === result.feedUrl,
-                      )}
-                      loading={openingId === result.id}
-                      onOpen={() => void previewFeed(result, "discover")}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div
+                    className="podcast-search-sorts"
+                    role="group"
+                    aria-label="搜索结果排序"
+                  >
+                    <span>排序</span>
+                    <div>
+                      {PODCAST_DISCOVERY_SORTS.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          aria-pressed={searchSort === option.id}
+                          onClick={() => setSearchSort(option.id)}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="podcast-search-grid">
+                    {sortedSearchResults.map((result) => (
+                      <ShowCard
+                        key={result.id}
+                        show={result}
+                        followed={feeds.some(
+                          (feed) => feed.feedUrl === result.feedUrl,
+                        )}
+                        highlightQuery={searchHighlightQuery}
+                        loading={openingId === result.id}
+                        onOpen={() => void previewFeed(result, "discover")}
+                        showSearchMetadata
+                      />
+                    ))}
+                  </div>
+                </>
               ) : (
                 <PodcastEmpty label="没有找到相关节目" />
               )}
@@ -3235,14 +3293,29 @@ function DiscoveryShelf({
 function ShowCard({
   show,
   followed,
+  highlightQuery = "",
   loading,
   onOpen,
+  showSearchMetadata = false,
 }: {
-  show: ShowCandidate & { genres?: string[]; rank?: number };
+  show: ShowCandidate & {
+    episodeCount?: number | null;
+    genres?: string[];
+    latestReleaseAt?: number | null;
+    rank?: number;
+  };
   followed: boolean;
+  highlightQuery?: string;
   loading: boolean;
   onOpen: () => void;
+  showSearchMetadata?: boolean;
 }) {
+  const genres = show.genres?.filter(Boolean).slice(0, showSearchMetadata ? 2 : 1)
+    ?? [];
+  const episodeCount = typeof show.episodeCount === "number"
+    && Number.isFinite(show.episodeCount)
+    ? Math.max(0, Math.floor(show.episodeCount))
+    : null;
   return (
     <button
       type="button"
@@ -3252,9 +3325,39 @@ function ShowCard({
     >
       <PodcastArtwork url={show.artworkUrl} title={show.title} />
       <span className="podcast-show-card-copy">
-        <strong>{show.title}</strong>
-        <small>{show.author || "未知作者"}</small>
-        {show.genres?.[0] ? <em>{show.genres[0]}</em> : null}
+        <strong>
+          <PodcastSearchHighlight
+            text={show.title}
+            query={highlightQuery}
+          />
+        </strong>
+        <small>
+          <PodcastSearchHighlight
+            text={show.author || "未知作者"}
+            query={highlightQuery}
+          />
+        </small>
+        {showSearchMetadata ? (
+          <>
+            {episodeCount !== null || show.latestReleaseAt ? (
+              <span className="podcast-show-card-meta">
+                {episodeCount !== null ? <span>{episodeCount} 集</span> : null}
+                {show.latestReleaseAt ? (
+                  <span>更新 {formatEpisodeDate(show.latestReleaseAt)}</span>
+                ) : null}
+              </span>
+            ) : null}
+            {genres.length > 0 ? (
+              <span className="podcast-show-card-genres">
+                {genres.map((genre, index) => (
+                  <em key={`${index}-${genre}`}>{genre}</em>
+                ))}
+              </span>
+            ) : null}
+          </>
+        ) : genres[0] ? (
+          <em>{genres[0]}</em>
+        ) : null}
       </span>
       {loading ? (
         <LoaderCircle
@@ -3267,6 +3370,26 @@ function ShowCard({
         <span className="podcast-card-rank">{show.rank}</span>
       ) : null}
     </button>
+  );
+}
+
+function PodcastSearchHighlight({
+  text,
+  query,
+}: {
+  text: string;
+  query: string;
+}) {
+  return (
+    <>
+      {splitPodcastSearchMatch(text, query).map((segment, index) =>
+        segment.matched ? (
+          <mark key={`${index}-${segment.text}`}>{segment.text}</mark>
+        ) : (
+          <span key={`${index}-${segment.text}`}>{segment.text}</span>
+        )
+      )}
+    </>
   );
 }
 

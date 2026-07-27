@@ -67,6 +67,8 @@ pub struct PodcastSearchResult {
   feed_url: String,
   artwork_url: Option<String>,
   episode_count: Option<u32>,
+  genres: Vec<String>,
+  latest_release_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -227,6 +229,10 @@ struct AppleSearchItem {
   artwork_url_600: Option<String>,
   artwork_url_100: Option<String>,
   track_count: Option<u32>,
+  #[serde(default)]
+  genres: Vec<String>,
+  primary_genre_name: Option<String>,
+  release_date: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1492,30 +1498,178 @@ async fn search_apple_cn(query: &str, requested_limit: u8) -> Result<Vec<Podcast
   let bytes = read_limited(public_response.response, APPLE_SEARCH_RESPONSE_LIMIT, "Apple 播客搜索").await?;
   let response =
     serde_json::from_slice::<AppleSearchResponse>(&bytes).map_err(|_| "Apple 播客搜索结果格式无效".to_string())?;
-  let mut results = Vec::new();
-  for item in response.results {
-    let Some(feed_url) = clean_optional(item.feed_url, 4_096) else {
+  Ok(
+    response
+      .results
+      .into_iter()
+      .filter_map(apple_search_result_from_item)
+      .collect(),
+  )
+}
+
+fn apple_search_result_from_item(item: AppleSearchItem) -> Option<PodcastSearchResult> {
+  let feed_url = clean_optional(item.feed_url, 4_096)?;
+  if validate_public_url_shape(&feed_url).is_err() {
+    return None;
+  }
+  let title = clean_optional(item.collection_name, PODCAST_TITLE_LIMIT).unwrap_or_else(|| "未命名播客".to_string());
+  let author = clean_optional(item.artist_name, PODCAST_TITLE_LIMIT).unwrap_or_default();
+  let id = item
+    .collection_id
+    .map(|value| value.to_string())
+    .unwrap_or_else(|| hash_identifier("apple", &[&feed_url]));
+  let genres = normalize_apple_search_genres(item.genres, item.primary_genre_name);
+  let latest_release_at = item.release_date.as_deref().and_then(parse_iso8601_millis);
+  Some(PodcastSearchResult {
+    id,
+    title,
+    author,
+    feed_url,
+    artwork_url: clean_optional(item.artwork_url_600.or(item.artwork_url_100), 4_096),
+    episode_count: item.track_count,
+    genres,
+    latest_release_at,
+  })
+}
+
+fn normalize_apple_search_genres(genres: Vec<String>, primary_genre_name: Option<String>) -> Vec<String> {
+  let mut normalized = Vec::new();
+  let mut seen = HashSet::new();
+  for genre in genres.into_iter().chain(primary_genre_name) {
+    let Some(genre) = clean_text(&genre, 100) else {
       continue;
     };
-    if validate_public_url_shape(&feed_url).is_err() {
+    if genre.eq_ignore_ascii_case("podcasts") || genre == "播客" {
       continue;
     }
-    let title = clean_optional(item.collection_name, PODCAST_TITLE_LIMIT).unwrap_or_else(|| "未命名播客".to_string());
-    let author = clean_optional(item.artist_name, PODCAST_TITLE_LIMIT).unwrap_or_default();
-    let id = item
-      .collection_id
-      .map(|value| value.to_string())
-      .unwrap_or_else(|| hash_identifier("apple", &[&feed_url]));
-    results.push(PodcastSearchResult {
-      id,
-      title,
-      author,
-      feed_url,
-      artwork_url: clean_optional(item.artwork_url_600.or(item.artwork_url_100), 4_096),
-      episode_count: item.track_count,
-    });
+    if seen.insert(genre.to_lowercase()) {
+      normalized.push(genre);
+    }
   }
-  Ok(results)
+  normalized
+}
+
+fn parse_iso8601_millis(value: &str) -> Option<i64> {
+  let bytes = value.trim().as_bytes();
+  if bytes.len() < 10 || bytes.get(4) != Some(&b'-') || bytes.get(7) != Some(&b'-') {
+    return None;
+  }
+  let year = parse_ascii_number(bytes.get(0..4)?)?;
+  let month = parse_ascii_number(bytes.get(5..7)?)?;
+  let day = parse_ascii_number(bytes.get(8..10)?)?;
+  if year == 0 || !(1..=12).contains(&month) || !(1..=days_in_month(year, month)).contains(&day) {
+    return None;
+  }
+
+  let mut hour = 0;
+  let mut minute = 0;
+  let mut second = 0;
+  let mut millisecond = 0;
+  let mut offset_minutes = 0i64;
+  if bytes.len() > 10 {
+    if !matches!(bytes.get(10), Some(b'T' | b't' | b' ')) || bytes.len() < 19 {
+      return None;
+    }
+    hour = parse_ascii_number(bytes.get(11..13)?)?;
+    minute = parse_ascii_number(bytes.get(14..16)?)?;
+    second = parse_ascii_number(bytes.get(17..19)?)?;
+    if bytes.get(13) != Some(&b':')
+      || bytes.get(16) != Some(&b':')
+      || hour > 23
+      || minute > 59
+      || second > 59
+    {
+      return None;
+    }
+
+    let mut cursor = 19;
+    if bytes.get(cursor) == Some(&b'.') {
+      cursor += 1;
+      let fraction_start = cursor;
+      while bytes.get(cursor).is_some_and(u8::is_ascii_digit) {
+        cursor += 1;
+      }
+      if cursor == fraction_start {
+        return None;
+      }
+      let fraction = &bytes[fraction_start..cursor];
+      millisecond = i64::from(fraction[0] - b'0') * 100;
+      if fraction.len() > 1 {
+        millisecond += i64::from(fraction[1] - b'0') * 10;
+      }
+      if fraction.len() > 2 {
+        millisecond += i64::from(fraction[2] - b'0');
+      }
+    }
+
+    match bytes.get(cursor) {
+      Some(b'Z' | b'z') if cursor + 1 == bytes.len() => {}
+      Some(sign @ (b'+' | b'-')) => {
+        let remainder = bytes.get(cursor + 1..)?;
+        let (offset_hour, offset_minute) = match remainder {
+          [hour_1, hour_2, b':', minute_1, minute_2] => (
+            parse_ascii_number(&[*hour_1, *hour_2])?,
+            parse_ascii_number(&[*minute_1, *minute_2])?,
+          ),
+          [hour_1, hour_2, minute_1, minute_2] => (
+            parse_ascii_number(&[*hour_1, *hour_2])?,
+            parse_ascii_number(&[*minute_1, *minute_2])?,
+          ),
+          _ => return None,
+        };
+        if offset_hour > 23 || offset_minute > 59 {
+          return None;
+        }
+        offset_minutes = i64::from(offset_hour * 60 + offset_minute);
+        if *sign == b'-' {
+          offset_minutes = -offset_minutes;
+        }
+      }
+      _ => return None,
+    }
+  }
+
+  let days = days_from_civil(i64::from(year), i64::from(month), i64::from(day));
+  days
+    .checked_mul(86_400_000)?
+    .checked_add(i64::from(hour) * 3_600_000)?
+    .checked_add(i64::from(minute) * 60_000)?
+    .checked_add(i64::from(second) * 1_000)?
+    .checked_add(millisecond)?
+    .checked_sub(offset_minutes * 60_000)
+}
+
+fn parse_ascii_number(bytes: &[u8]) -> Option<u32> {
+  if bytes.is_empty() || !bytes.iter().all(u8::is_ascii_digit) {
+    return None;
+  }
+  bytes
+    .iter()
+    .try_fold(0u32, |value, digit| value.checked_mul(10)?.checked_add(u32::from(*digit - b'0')))
+}
+
+fn days_in_month(year: u32, month: u32) -> u32 {
+  match month {
+    1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+    4 | 6 | 9 | 11 => 30,
+    2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+    2 => 28,
+    _ => 0,
+  }
+}
+
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+  let adjusted_year = year - if month <= 2 { 1 } else { 0 };
+  let era = if adjusted_year >= 0 {
+    adjusted_year
+  } else {
+    adjusted_year - 399
+  } / 400;
+  let year_of_era = adjusted_year - era * 400;
+  let adjusted_month = month + if month > 2 { -3 } else { 9 };
+  let day_of_year = (153 * adjusted_month + 2) / 5 + day - 1;
+  let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+  era * 146_097 + day_of_era - 719_468
 }
 
 async fn browse_apple_cn(requested_limit: u8) -> Result<Vec<PodcastDiscoveryShow>, String> {
@@ -5721,6 +5875,60 @@ mod tests {
     assert_eq!(shows[1].id, "333");
     assert_eq!(shows[1].rank, 3);
     assert_eq!(shows[1].feed_url, "https://feeds.example.test/333.xml");
+  }
+
+  #[test]
+  fn apple_search_maps_clean_decision_metadata() {
+    let item = serde_json::from_str::<AppleSearchItem>(
+      r#"{
+        "collectionId": 111,
+        "collectionName": "一档科技播客",
+        "artistName": "Zone",
+        "feedUrl": "https://feeds.example.test/technology.xml",
+        "artworkUrl600": "https://img.example.test/technology.jpg",
+        "trackCount": 42,
+        "genres": [" 科技 ", "科技", "", "Society & Culture", "Podcasts"],
+        "primaryGenreName": "科技",
+        "releaseDate": "1970-01-02T01:30:00.125+01:30"
+      }"#,
+    )
+    .expect("parse Apple search item");
+
+    let result = apple_search_result_from_item(item).expect("map Apple search item");
+    assert_eq!(result.genres, vec!["科技", "Society & Culture"]);
+    assert_eq!(result.latest_release_at, Some(86_400_125));
+  }
+
+  #[test]
+  fn apple_search_ignores_invalid_release_date() {
+    let item = serde_json::from_str::<AppleSearchItem>(
+      r#"{
+        "collectionName": "无效日期",
+        "feedUrl": "https://feeds.example.test/invalid-date.xml",
+        "releaseDate": "2026-02-29T08:00:00Z"
+      }"#,
+    )
+    .expect("parse Apple search item");
+
+    let result = apple_search_result_from_item(item).expect("map Apple search item");
+    assert_eq!(result.latest_release_at, None);
+    assert!(result.genres.is_empty());
+  }
+
+  #[test]
+  fn apple_search_uses_primary_genre_when_genres_are_missing() {
+    let item = serde_json::from_str::<AppleSearchItem>(
+      r#"{
+        "collectionName": "分类回退",
+        "feedUrl": "https://feeds.example.test/fallback-genre.xml",
+        "primaryGenreName": " 人文 "
+      }"#,
+    )
+    .expect("parse Apple search item");
+
+    let result = apple_search_result_from_item(item).expect("map Apple search item");
+    assert_eq!(result.genres, vec!["人文"]);
+    assert_eq!(result.latest_release_at, None);
   }
 
   #[test]

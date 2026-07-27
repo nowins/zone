@@ -151,6 +151,8 @@ export type PodcastSearchResult = {
   feedUrl: string;
   artworkUrl?: string | null;
   episodeCount?: number | null;
+  genres: string[];
+  latestReleaseAt?: number | null;
 };
 
 export type PodcastDiscoveryShow = {
