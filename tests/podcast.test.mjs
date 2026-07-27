@@ -36,6 +36,7 @@ const PODCAST_COMMANDS = [
   "podcast_list_episodes",
   "podcast_list_related_episodes",
   "podcast_get_episode_detail",
+  "podcast_get_episode_chapters",
   "podcast_set_episode_saved",
   "podcast_list_saved_episodes",
   "podcast_set_episode_played",
@@ -696,8 +697,8 @@ test("podcast playback handles speed, sleep, buffering, and errors on the shared
   );
   includes(
     appSource,
-    /setProgress\(\s*activePlayback\.kind\s*===\s*"podcast"[\s\S]{0,140}activePlayback\.episode\.savedProgressSeconds/,
-    "a restored episode must show its saved position before media metadata is available",
+    /const startPosition\s*=[\s\S]*?activePlayback\.episode\.savedProgressSeconds;[\s\S]*?setProgress\(Math\.max\(0,\s*startPosition\)\)/,
+    "a restored episode or explicit chapter start must show its pending position before media metadata is available",
   );
   const flushProgressSource = declaredFunctionSource(appSource, "flushPodcastProgress");
   includes(

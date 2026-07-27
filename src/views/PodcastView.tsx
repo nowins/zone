@@ -62,8 +62,10 @@ import {
   type PodcastDiscoverySort,
 } from "../utils/podcastDiscovery";
 import { mergePodcastEpisodePlayback } from "../utils/podcastPlayback";
+import { findActivePodcastChapterIndex } from "../utils/podcastChapters";
 import type {
   PodcastAutoQueueMode,
+  PodcastChapterDocument,
   PodcastDiscoveryShow,
   PodcastDownloadDeleteResult,
   PodcastDownloadPage,
@@ -135,6 +137,7 @@ export type PodcastViewProps = {
   onReturnToNowPlaying: () => void;
   isPlaying: boolean;
   onPlayEpisode: (episode: PodcastPlayback) => void;
+  onPlayEpisodeAt: (episode: PodcastPlayback, positionSeconds: number) => void;
   onQueueEpisode: (
     episode: PodcastEpisode,
     playNext: boolean,
@@ -268,6 +271,7 @@ export function PodcastView({
   onReturnToNowPlaying,
   isPlaying,
   onPlayEpisode,
+  onPlayEpisodeAt,
   onQueueEpisode,
   onRemoveQueueEpisode,
   onMoveQueueEpisode,
@@ -390,6 +394,10 @@ export function PodcastView({
   );
   const [relatedEpisodes, setRelatedEpisodes] = useState<PodcastEpisode[]>([]);
   const [relatedState, setRelatedState] = useState<RequestState>("idle");
+  const [chapterDocument, setChapterDocument] =
+    useState<PodcastChapterDocument | null>(null);
+  const [chapterState, setChapterState] = useState<RequestState>("idle");
+  const [chaptersOpen, setChaptersOpen] = useState(false);
   const [episodeOriginScreen, setEpisodeOriginScreen] =
     useState<EpisodeOriginScreen>(
       restoredSession?.episodeOriginScreen ?? "listen",
@@ -420,6 +428,7 @@ export function PodcastView({
   const episodeListRequestRef = useRef(0);
   const episodeDetailRequestRef = useRef(0);
   const relatedEpisodeRequestRef = useRef(0);
+  const chapterRequestRef = useRef(0);
   const homeRequestRef = useRef(0);
   const downloadLibraryRequestRef = useRef(0);
   const appleSearchRequestRef = useRef(0);
@@ -640,6 +649,38 @@ export function PodcastView({
     }
   }, []);
 
+  const loadEpisodeChapters = useCallback(async (episodeId: string) => {
+    const requestId = chapterRequestRef.current + 1;
+    chapterRequestRef.current = requestId;
+    setChapterDocument(null);
+    setChapterState("loading");
+    try {
+      const document = await invoke<PodcastChapterDocument>(
+        "podcast_get_episode_chapters",
+        { episodeId },
+      );
+      if (chapterRequestRef.current !== requestId) return;
+      const chapters = document.chapters
+        .filter((chapter) =>
+          Number.isFinite(chapter.startSeconds)
+          && chapter.startSeconds >= 0
+          && Boolean(chapter.title.trim()))
+        .slice(0, 1_000);
+      if (document.episodeId !== episodeId || chapters.length === 0) {
+        throw new Error("没有可显示的章节");
+      }
+      setChapterDocument({ ...document, chapters });
+      setChapterState("ready");
+    } catch (reason) {
+      if (chapterRequestRef.current !== requestId) return;
+      setChapterDocument(null);
+      setChapterState("error");
+      if (import.meta.env.DEV) {
+        console.warn("[podcast] episode chapters failed", reason);
+      }
+    }
+  }, []);
+
   const loadEpisodeDetail = useCallback(
     async (episodeId: string, preserveCurrent = false) => {
       const requestId = episodeDetailRequestRef.current + 1;
@@ -647,6 +688,10 @@ export function PodcastView({
       relatedEpisodeRequestRef.current += 1;
       setRelatedEpisodes([]);
       setRelatedState("idle");
+      chapterRequestRef.current += 1;
+      setChapterDocument(null);
+      setChapterState("idle");
+      setChaptersOpen(false);
       setDetailState("loading");
       if (!preserveCurrent) setSelectedEpisodeDetail(null);
       try {
@@ -1796,19 +1841,13 @@ export function PodcastView({
     });
   }
 
-  function playEpisode(episode: PodcastEpisode) {
+  function podcastPlaybackForEpisode(
+    episode: PodcastEpisode,
+  ): PodcastPlayback {
     const feed = selectedFeed?.id === episode.feedId
       ? selectedFeed
       : feedById.get(episode.feedId);
-    setLastPlayedEpisode(episode);
-    setHome((current) => ({
-      ...current,
-      recentlyPlayedEpisodes: promoteEpisode(
-        current.recentlyPlayedEpisodes,
-        episode,
-      ),
-    }));
-    onPlayEpisode({
+    return {
       ...episode,
       episodeId: episode.id,
       podcastTitle: episode.feedTitle ?? feed?.title ?? "播客",
@@ -1819,7 +1858,47 @@ export function PodcastView({
         ?? null,
       savedProgressSeconds: Math.max(0, episode.progressSeconds),
       playbackLocalPath: episode.localPath,
-    });
+    };
+  }
+
+  function rememberEpisodePlayback(episode: PodcastEpisode) {
+    setLastPlayedEpisode(episode);
+    setHome((current) => ({
+      ...current,
+      recentlyPlayedEpisodes: promoteEpisode(
+        current.recentlyPlayedEpisodes,
+        episode,
+      ),
+    }));
+  }
+
+  function playEpisode(episode: PodcastEpisode) {
+    rememberEpisodePlayback(episode);
+    onPlayEpisode(podcastPlaybackForEpisode(episode));
+  }
+
+  function playEpisodeAt(episode: PodcastEpisode, positionSeconds: number) {
+    rememberEpisodePlayback(episode);
+    onPlayEpisodeAt(
+      podcastPlaybackForEpisode(episode),
+      Math.max(0, positionSeconds),
+    );
+  }
+
+  function toggleEpisodeChapters() {
+    if (!selectedEpisodeDetail?.hasChapters) return;
+    if (chaptersOpen) {
+      setChaptersOpen(false);
+      return;
+    }
+    setChaptersOpen(true);
+    if (
+      chapterState === "idle"
+      || chapterState === "error"
+      || chapterDocument?.episodeId !== selectedEpisodeDetail.episode.id
+    ) {
+      void loadEpisodeChapters(selectedEpisodeDetail.episode.id);
+    }
   }
 
   function openEpisodeDetail(
@@ -1853,6 +1932,7 @@ export function PodcastView({
   function closeEpisodeDetail() {
     episodeDetailRequestRef.current += 1;
     relatedEpisodeRequestRef.current += 1;
+    chapterRequestRef.current += 1;
     setError(null);
     setNotice(null);
     if (episodeReturnToNowPlaying) {
@@ -1885,6 +1965,7 @@ export function PodcastView({
     if (!selectedEpisodeDetail) return;
     episodeDetailRequestRef.current += 1;
     relatedEpisodeRequestRef.current += 1;
+    chapterRequestRef.current += 1;
     episodeReturnSessionRef.current = null;
     setEpisodeReturnToNowPlaying(false);
     const originRoot = episodeOriginScreen === "show"
@@ -3037,6 +3118,10 @@ export function PodcastView({
                 }
                 action={detailAction}
                 queuePosition={detailQueuePosition}
+                chapterDocument={chapterDocument}
+                chapterState={chapterState}
+                chaptersOpen={chaptersOpen}
+                activeProgress={activeProgress}
                 onPlay={() => playEpisode(displayedEpisodeDetail.episode)}
                 onPlayNext={() =>
                   void onQueueEpisode(displayedEpisodeDetail.episode, true)}
@@ -3051,6 +3136,16 @@ export function PodcastView({
                 onTogglePlayed={() =>
                   void toggleEpisodePlayed(displayedEpisodeDetail)}
                 onOpenShow={() => void openEpisodeShow()}
+                onToggleChapters={toggleEpisodeChapters}
+                onRetryChapters={() =>
+                  void loadEpisodeChapters(
+                    displayedEpisodeDetail.episode.id,
+                  )}
+                onPlayChapter={(positionSeconds) =>
+                  playEpisodeAt(
+                    displayedEpisodeDetail.episode,
+                    positionSeconds,
+                  )}
               />
               {relatedState === "loading" ? (
                 <div className="podcast-detail-related">
@@ -3918,6 +4013,10 @@ function EpisodeDetail({
   downloading,
   action,
   queuePosition,
+  chapterDocument,
+  chapterState,
+  chaptersOpen,
+  activeProgress,
   onPlay,
   onPlayNext,
   onAddQueue,
@@ -3926,6 +4025,9 @@ function EpisodeDetail({
   onDeleteDownload,
   onTogglePlayed,
   onOpenShow,
+  onToggleChapters,
+  onRetryChapters,
+  onPlayChapter,
 }: {
   detail: PodcastEpisodeDetail;
   active: boolean;
@@ -3933,6 +4035,10 @@ function EpisodeDetail({
   downloading: boolean;
   action: "save" | "played" | "delete" | null;
   queuePosition: number;
+  chapterDocument: PodcastChapterDocument | null;
+  chapterState: RequestState;
+  chaptersOpen: boolean;
+  activeProgress: number;
   onPlay: () => void;
   onPlayNext: () => void;
   onAddQueue: () => void;
@@ -3941,8 +4047,18 @@ function EpisodeDetail({
   onDeleteDownload: () => void;
   onTogglePlayed: () => void;
   onOpenShow: () => void;
+  onToggleChapters: () => void;
+  onRetryChapters: () => void;
+  onPlayChapter: (positionSeconds: number) => void;
 }) {
   const { episode, feed } = detail;
+  const currentChapterIndex = active && chapterDocument
+    ? findActivePodcastChapterIndex(
+      chapterDocument.chapters,
+      activeProgress,
+    )
+    : -1;
+  const chapterPanelId = `podcast-chapters-${episode.id}`;
   const playLabel = active && isPlaying
     ? "暂停"
     : episode.progressSeconds > 0 && !episode.completed
@@ -4072,6 +4188,75 @@ function EpisodeDetail({
             : "这集暂时没有简介。"}
         </p>
       </section>
+      {detail.hasChapters ? (
+        <section className="podcast-detail-chapters">
+          <button
+            type="button"
+            className="podcast-chapter-disclosure"
+            aria-expanded={chaptersOpen}
+            aria-controls={chapterPanelId}
+            onClick={onToggleChapters}
+          >
+            <span>
+              <strong>章节</strong>
+              <small>
+                {chapterState === "ready" && chapterDocument
+                  ? `${chapterDocument.chapters.length} 章`
+                  : chapterState === "loading"
+                    ? "正在读取"
+                    : chapterState === "error"
+                      ? "读取失败"
+                      : "按需读取"}
+              </small>
+            </span>
+            <ChevronDown size={18} aria-hidden="true" />
+          </button>
+          {chaptersOpen ? (
+            <div id={chapterPanelId} className="podcast-chapter-panel">
+              {chapterState === "loading" ? (
+                <PodcastLoading label="正在读取章节" />
+              ) : chapterState === "error" ? (
+                <PodcastEmpty
+                  label="暂时无法读取章节"
+                  actionLabel="重试"
+                  onAction={onRetryChapters}
+                />
+              ) : chapterDocument ? (
+                <>
+                  {chapterDocument.stale ? (
+                    <p className="podcast-chapter-cache-note">
+                      当前显示上次成功读取的章节
+                    </p>
+                  ) : null}
+                  <ol className="podcast-chapter-list">
+                    {chapterDocument.chapters.map((chapter, index) => {
+                      const current = index === currentChapterIndex;
+                      return (
+                        <li key={`${chapter.startSeconds}-${chapter.title}`}>
+                          <button
+                            type="button"
+                            className={current ? "current" : ""}
+                            aria-current={current ? "true" : undefined}
+                            aria-label={`跳到 ${chapter.title}，${formatTime(
+                              chapter.startSeconds,
+                            )}`}
+                            onClick={() =>
+                              onPlayChapter(chapter.startSeconds)}
+                          >
+                            <time>{formatTime(chapter.startSeconds)}</time>
+                            <span>{chapter.title}</span>
+                            {current ? <em>正在播放</em> : null}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </article>
   );
 }

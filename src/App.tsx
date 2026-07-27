@@ -176,7 +176,12 @@ export default function App() {
   const podcastQueueMutationRef = useRef<Promise<void>>(Promise.resolve());
   const pendingPodcastQueueConsumeRef = useRef<string | null>(null);
   const podcastPlaybackStartedEpisodeRef = useRef<string | null>(null);
-  const pendingPodcastResumeRef = useRef<{ episodeId: string; position: number } | null>(null);
+  const pendingPodcastResumeRef = useRef<{
+    episodeId: string;
+    position: number;
+    explicit?: boolean;
+  } | null>(null);
+  const pendingPodcastStartRef = useRef<{ episodeId: string; position: number } | null>(null);
   const podcastProgressSaveRef = useRef<{
     episodeId: string;
     savedAt: number;
@@ -668,6 +673,7 @@ export default function App() {
     if (!activePlayback) {
       podcastAudioEpisodeRef.current = null;
       podcastPlaybackStartedEpisodeRef.current = null;
+      pendingPodcastStartRef.current = null;
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
@@ -697,6 +703,7 @@ export default function App() {
       podcastPlaybackStartedEpisodeRef.current = null;
       publishIdleBeatFrame();
       pendingPodcastResumeRef.current = null;
+      pendingPodcastStartRef.current = null;
       setPodcastPlaybackStatus("idle");
       void preAnalyzeBeatGrid(activePlayback.track);
     } else {
@@ -706,16 +713,23 @@ export default function App() {
       beatAnalysisRequestRef.current += 1;
       publishPodcastVisualizerReset();
       setPodcastPlaybackStatus("loading");
+      const requestedStart = pendingPodcastStartRef.current;
+      const startPosition =
+        requestedStart?.episodeId === activePlayback.episode.episodeId
+          ? requestedStart.position
+          : activePlayback.episode.savedProgressSeconds;
+      if (requestedStart?.episodeId === activePlayback.episode.episodeId) {
+        pendingPodcastStartRef.current = null;
+      }
       pendingPodcastResumeRef.current = {
         episodeId: activePlayback.episode.episodeId,
-        position: activePlayback.episode.savedProgressSeconds,
+        position: startPosition,
+        explicit:
+          requestedStart?.episodeId === activePlayback.episode.episodeId,
       };
+      setProgress(Math.max(0, startPosition));
     }
-    setProgress(
-      activePlayback.kind === "podcast"
-        ? Math.max(0, activePlayback.episode.savedProgressSeconds)
-        : 0,
-    );
+    if (activePlayback.kind === "music") setProgress(0);
     setDuration(
       activePlayback.kind === "podcast"
         ? Math.max(0, activePlayback.episode.durationSeconds ?? 0)
@@ -864,19 +878,34 @@ export default function App() {
     }
   }
 
-  function playPodcastEpisode(episode: PodcastPlayback) {
+  function playPodcastEpisode(
+    episode: PodcastPlayback,
+    positionSeconds?: number,
+  ) {
     cancelPodcastSessionRestore();
     podcastAutoQueueAttemptRef.current += 1;
+    const requestedPosition = Number.isFinite(positionSeconds)
+      ? Math.max(0, positionSeconds ?? 0)
+      : null;
     const current = activePodcastEpisode;
     if (
       current?.episodeId === episode.episodeId
       && (current.localPath ?? null) === (episode.localPath ?? null)
     ) {
-      togglePlay();
+      pendingPodcastStartRef.current = null;
+      if (requestedPosition !== null) {
+        seek(requestedPosition);
+        if (audioRef.current?.paused) togglePlay();
+      } else {
+        togglePlay();
+      }
       return;
     }
 
     flushPodcastProgress();
+    pendingPodcastStartRef.current = requestedPosition === null
+      ? null
+      : { episodeId: episode.episodeId, position: requestedPosition };
     podcastPlaybackIntentRef.current = true;
     playbackSessionRef.current = null;
     audioPlayAttemptRef.current += 1;
@@ -1806,11 +1835,13 @@ export default function App() {
     const episode = activePodcastEpisodeRef.current;
     if (!pending || !episode || pending.episodeId !== episode.episodeId) return;
     pendingPodcastResumeRef.current = null;
-    const resumePosition = !episode.completed && pending.position > 0 && (
-      nextDuration <= 0 || pending.position < Math.max(0, nextDuration - 5)
-    )
+    const resumePosition = pending.explicit
       ? Math.min(pending.position, nextDuration || pending.position)
-      : 0;
+      : !episode.completed && pending.position > 0 && (
+          nextDuration <= 0 || pending.position < Math.max(0, nextDuration - 5)
+        )
+        ? Math.min(pending.position, nextDuration || pending.position)
+        : 0;
     if (resumePosition > 0) audio.currentTime = resumePosition;
     setProgress(resumePosition);
   }
@@ -2630,6 +2661,8 @@ export default function App() {
               );
             }}
             onPlayEpisode={playPodcastEpisode}
+            onPlayEpisodeAt={(episode, positionSeconds) =>
+              playPodcastEpisode(episode, positionSeconds)}
             onQueueEpisode={queuePodcastEpisode}
             onRemoveQueueEpisode={removePodcastQueueEpisode}
             onRemoveQueueEpisodes={removePodcastQueueEpisodes}

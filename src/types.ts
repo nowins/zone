@@ -269,6 +269,21 @@ export type PodcastEpisodeDetail = {
   transcriptCount: number;
 };
 
+export type PodcastChapter = {
+  startSeconds: number;
+  endSeconds?: number | null;
+  title: string;
+  href?: string | null;
+  imageUrl?: string | null;
+};
+
+export type PodcastChapterDocument = {
+  episodeId: string;
+  sourceKind: "podcast-json" | "psc";
+  chapters: PodcastChapter[];
+  stale: boolean;
+};
+
 export type PodcastQueueItem = {
   episode: PodcastEpisode;
   position: number;

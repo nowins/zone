@@ -1666,6 +1666,121 @@
   white-space: pre-line;
 }
 
+.podcast-detail-chapters {
+  width: min(820px, 100%);
+  margin-bottom: 38px;
+  border-top: 1px solid rgba(247, 242, 246, 0.1);
+  border-bottom: 1px solid rgba(247, 242, 246, 0.1);
+}
+
+.podcast-chapter-disclosure {
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: rgba(255, 255, 255, 0.88);
+  text-align: left;
+}
+
+.podcast-chapter-disclosure > span {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.podcast-chapter-disclosure strong {
+  font-size: 18px;
+  font-weight: 340;
+}
+
+.podcast-chapter-disclosure small {
+  color: rgba(247, 242, 246, 0.46);
+  font-size: 11px;
+  font-weight: 430;
+}
+
+.podcast-chapter-disclosure svg {
+  flex: none;
+  color: rgba(247, 242, 246, 0.48);
+  transition: transform var(--motion-micro) var(--motion-ease-standard);
+}
+
+.podcast-chapter-disclosure[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.podcast-chapter-panel {
+  padding: 0 0 10px;
+}
+
+.podcast-chapter-panel .podcast-inline-state {
+  min-height: 86px;
+  justify-content: flex-start;
+}
+
+.podcast-chapter-cache-note {
+  margin: 0;
+  padding: 0 0 10px;
+  color: rgba(247, 242, 246, 0.44);
+  font-size: 11px;
+}
+
+.podcast-chapter-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.podcast-chapter-list li {
+  border-top: 1px solid rgba(247, 242, 246, 0.07);
+}
+
+.podcast-chapter-list button {
+  width: 100%;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  color: rgba(247, 242, 246, 0.62);
+  text-align: left;
+  transition:
+    color var(--motion-micro) var(--motion-ease-standard),
+    transform var(--motion-press) var(--motion-ease-standard);
+}
+
+.podcast-chapter-list button:hover,
+.podcast-chapter-list button.current {
+  color: #fff;
+}
+
+.podcast-chapter-list button:active {
+  transform: scale(0.99);
+}
+
+.podcast-chapter-list time {
+  color: rgba(247, 242, 246, 0.43);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.podcast-chapter-list span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podcast-chapter-list em {
+  color: var(--accent);
+  font-size: 10px;
+  font-style: normal;
+}
+
 .podcast-detail-related {
   width: min(980px, 100%);
   padding: 0 0 42px;

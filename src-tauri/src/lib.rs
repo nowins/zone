@@ -1742,6 +1742,7 @@ pub fn run() {
       podcast::podcast_list_episodes,
       podcast::podcast_list_related_episodes,
       podcast::podcast_get_episode_detail,
+      podcast::podcast_get_episode_chapters,
       podcast::podcast_set_episode_saved,
       podcast::podcast_list_saved_episodes,
       podcast::podcast_set_episode_played,
