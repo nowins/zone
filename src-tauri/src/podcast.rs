@@ -53,6 +53,7 @@ const PODCAST_EPISODE_BATCH_LIMIT: usize = 500;
 const PODCAST_QUEUE_LIMIT: usize = 500;
 const PODCAST_REFRESH_CONCURRENCY: usize = 3;
 const PODCAST_REFRESH_INTERVAL: i64 = 30 * 60 * 1_000;
+const PODCAST_CHAPTER_REFRESH_INTERVAL: i64 = 6 * 60 * 60 * 1_000;
 const PODCAST_SYNTHETIC_ID_PREFIX: &str = "zone-generated:";
 const PODCAST_NAMESPACE_URI: &[u8] = b"https://podcastindex.org/namespace/1.0";
 const PODCAST_NAMESPACE_COMPAT_URI: &[u8] =
@@ -563,6 +564,20 @@ pub async fn podcast_preview_feed(
   artwork_url: Option<String>,
 ) -> Result<PodcastSubscribeResult, String> {
   state.ensure_ready()?;
+  let cache_db_path = state.db_path.clone();
+  let cache_feed_url = feed_url.clone();
+  if let Some(cached) = tauri::async_runtime::spawn_blocking(move || {
+    get_recent_preview(
+      &cache_db_path,
+      &cache_feed_url,
+      unix_time_millis(),
+    )
+  })
+  .await
+  .map_err(|error| format!("播客数据任务异常结束：{error}"))??
+  {
+    return Ok(cached);
+  }
   let parsed = fetch_and_parse_feed(
     &feed_url,
     title_hint.as_deref(),
@@ -742,6 +757,7 @@ struct StoredChapterResource {
   mime_type: Option<String>,
   etag: Option<String>,
   last_modified: Option<String>,
+  fetched_at: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -3773,6 +3789,72 @@ fn mark_refresh_failed(
   Ok(())
 }
 
+fn get_recent_preview(
+  db_path: &Path,
+  feed_url: &str,
+  now: i64,
+) -> Result<Option<PodcastSubscribeResult>, String> {
+  let normalized_url = normalize_url(feed_url, false)?;
+  let cutoff = now.saturating_sub(PODCAST_REFRESH_INTERVAL);
+  let connection = open_database(db_path)?;
+  connection
+    .query_row(
+      "
+      SELECT
+        f.id, f.feed_url, f.title, f.author, f.description, f.artwork_url,
+        f.last_fetched_at, f.subscribed, f.subscribed_at,
+        f.last_checked_at, f.last_refresh_error,
+        (
+          SELECT MAX(COALESCE(e.published_at, e.first_seen_at))
+          FROM podcast_episodes e
+          WHERE e.feed_id = f.id
+        ),
+        (
+          SELECT COUNT(*)
+          FROM podcast_episodes e
+          LEFT JOIN podcast_progress p ON p.episode_id = e.id
+          WHERE e.feed_id = f.id
+            AND COALESCE(p.completed, 0) = 0
+            AND COALESCE(p.position_seconds, 0) <= 0
+        ),
+        (
+          SELECT COUNT(*)
+          FROM podcast_episodes e
+          WHERE e.feed_id = f.id
+        )
+      FROM podcast_feeds f
+      WHERE f.feed_url = ?1 AND f.last_fetched_at >= ?2
+      LIMIT 1
+      ",
+      params![normalized_url, cutoff],
+      |row| {
+        let episode_count = row.get::<_, i64>(13)?.max(0);
+        Ok(PodcastSubscribeResult {
+          feed: PodcastFeed {
+            id: row.get(0)?,
+            feed_url: row.get(1)?,
+            title: row.get(2)?,
+            author: row.get(3)?,
+            description: row.get(4)?,
+            artwork_url: row.get(5)?,
+            last_fetched_at: row.get(6)?,
+            subscribed: row.get::<_, i64>(7)? != 0,
+            subscribed_at: row.get(8)?,
+            last_checked_at: row.get(9)?,
+            last_refresh_error: row.get(10)?,
+            latest_episode_at: row.get(11)?,
+            unplayed_count: row.get::<_, i64>(12)?.max(0) as u64,
+          },
+          episode_count: usize::try_from(episode_count).unwrap_or(usize::MAX),
+          inserted_count: 0,
+          updated_count: 0,
+        })
+      },
+    )
+    .optional()
+    .map_err(|error| format!("无法读取播客预览缓存：{error}"))
+}
+
 fn list_feeds(db_path: &Path) -> Result<Vec<PodcastFeed>, String> {
   let connection = open_database(db_path)?;
   let mut statement = connection
@@ -4468,6 +4550,14 @@ async fn get_episode_chapters_with_network_policy(
     .find(|resource| resource.source_kind == "psc");
   if let Some(resource) = external {
     let cached = chapter_document_from_resource(db_path, resource, false)?;
+    if resource.fetched_at.is_some_and(|fetched_at| {
+      unix_time_millis().saturating_sub(fetched_at)
+        < PODCAST_CHAPTER_REFRESH_INTERVAL
+    }) {
+      if let Some(cached) = cached.clone() {
+        return Ok(cached);
+      }
+    }
     match refresh_external_chapter_resource(
       db_path,
       resource,
@@ -4512,7 +4602,9 @@ fn list_chapter_resources(
   let mut statement = connection
     .prepare(
       "
-      SELECT id, episode_id, source_kind, url, mime_type, etag, last_modified
+      SELECT
+        id, episode_id, source_kind, url, mime_type, etag, last_modified,
+        fetched_at
       FROM podcast_episode_resources
       WHERE episode_id = ?1 AND kind = 'chapters'
       ORDER BY
@@ -4532,6 +4624,7 @@ fn list_chapter_resources(
         mime_type: row.get(4)?,
         etag: row.get(5)?,
         last_modified: row.get(6)?,
+        fetched_at: row.get(7)?,
       })
     })
     .map_err(|error| format!("无法读取播客章节来源：{error}"))?
@@ -7673,6 +7766,26 @@ mod tests {
     assert_eq!(first.source_kind, "podcast-json");
     assert_eq!(first.chapters.len(), 2);
     assert!(!first.stale);
+    let fresh_cache = get_episode_chapters_with_network_policy(
+      &state.db_path,
+      &episode_id,
+      true,
+    )
+    .await
+    .expect("reuse fresh chapter cache without another request");
+    assert_eq!(fresh_cache.chapters.len(), 2);
+    assert!(!fresh_cache.stale);
+    open_database(&state.db_path)
+      .expect("open chapter cache database")
+      .execute(
+        "
+        UPDATE podcast_episode_resources
+        SET fetched_at = 0
+        WHERE episode_id = ?1 AND source_kind = 'podcast-json'
+        ",
+        [&episode_id],
+      )
+      .expect("age chapter cache for conditional request");
     let second = get_episode_chapters_with_network_policy(
       &state.db_path,
       &episode_id,
@@ -7683,6 +7796,17 @@ mod tests {
     assert_eq!(second.chapters[1].start_seconds, 60.0);
     assert!(!second.stale);
     server.await.expect("chapter server task");
+    open_database(&state.db_path)
+      .expect("open chapter cache database")
+      .execute(
+        "
+        UPDATE podcast_episode_resources
+        SET fetched_at = 0
+        WHERE episode_id = ?1 AND source_kind = 'podcast-json'
+        ",
+        [&episode_id],
+      )
+      .expect("expire chapter cache for stale fallback");
 
     let stale = get_episode_chapters_with_network_policy(
       &state.db_path,
@@ -7856,6 +7980,43 @@ mod tests {
     assert!(feeds[0].subscribed);
     assert_eq!(feeds[0].subscribed_at, Some(1));
     assert_eq!(feeds[0].last_checked_at, Some(1));
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn recent_preview_reuses_database_content_until_refresh_is_due() {
+    let directory = test_directory("preview-cache");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture("https://media.example.test/preview-cache.mp3");
+    let feed_url = parsed.feed.feed_url.clone();
+    let feed_id = parsed.feed.id.clone();
+    store_preview(&state.db_path, parsed).expect("store preview cache");
+    let now = unix_time_millis();
+
+    let cached = get_recent_preview(&state.db_path, &feed_url, now)
+      .expect("read preview cache")
+      .expect("fresh preview");
+    assert_eq!(cached.feed.id, feed_id);
+    assert_eq!(cached.episode_count, 1);
+    assert_eq!(cached.inserted_count, 0);
+    assert_eq!(cached.updated_count, 0);
+
+    open_database(&state.db_path)
+      .expect("open preview cache database")
+      .execute(
+        "UPDATE podcast_feeds SET last_fetched_at = ?2 WHERE id = ?1",
+        params![
+          feed_id,
+          now.saturating_sub(PODCAST_REFRESH_INTERVAL + 1),
+        ],
+      )
+      .expect("age preview cache");
+    assert!(
+      get_recent_preview(&state.db_path, &feed_url, now)
+        .expect("read expired preview cache")
+        .is_none()
+    );
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }

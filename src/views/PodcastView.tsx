@@ -207,6 +207,9 @@ const EMPTY_DOWNLOAD_PAGE: PodcastDownloadPage = {
   hasMore: false,
 };
 const DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1_000;
+const SEARCH_CACHE_TTL_MS = 15 * 60 * 1_000;
+const SEARCH_CACHE_LIMIT = 24;
+const CHAPTER_MEMORY_CACHE_LIMIT = 64;
 const PODCAST_DISCOVERY_STORAGE_KEY = "zone-podcast-discovery-v1";
 const PODCAST_LIBRARY_STORAGE_KEY = "zone-podcast-library-v1";
 const PODCAST_DOWNLOAD_PAGE_SIZE = 60;
@@ -256,7 +259,28 @@ const PODCAST_DISCOVERY_SORTS: Array<{
   { id: "episodes", label: "单集数量" },
 ];
 let discoveryCache: { shows: PodcastDiscoveryShow[]; fetchedAt: number } | null = null;
+const searchCache = new Map<
+  string,
+  { results: PodcastSearchResult[]; fetchedAt: number }
+>();
+const previewFeedCache = new Map<string, PodcastFeed>();
+const chapterDocumentCache = new Map<string, PodcastChapterDocument>();
 let podcastSessionSnapshot: PodcastSessionSnapshot | null = null;
+
+function rememberBoundedCacheEntry<Key, Value>(
+  cache: Map<Key, Value>,
+  key: Key,
+  value: Value,
+  limit: number,
+) {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > limit) {
+    const oldest = cache.keys().next();
+    if (oldest.done) break;
+    cache.delete(oldest.value);
+  }
+}
 
 export function PodcastView({
   queue,
@@ -544,17 +568,15 @@ export function PodcastView({
   }, []);
 
   const loadDiscovery = useCallback(async () => {
-    if (
-      discoveryCache
-      && Date.now() - discoveryCache.fetchedAt < DISCOVERY_CACHE_TTL_MS
-    ) {
-      setDiscoveryShows(discoveryCache.shows);
+    const cached = discoveryCache;
+    if (cached) {
+      setDiscoveryShows(cached.shows);
       setDiscoveryState("ready");
-      return;
+      if (Date.now() - cached.fetchedAt < DISCOVERY_CACHE_TTL_MS) return;
     }
     if (discoveryRequestActive.current) return;
     discoveryRequestActive.current = true;
-    setDiscoveryState("loading");
+    if (!cached) setDiscoveryState("loading");
     try {
       const shows = await invoke<PodcastDiscoveryShow[]>(
         "podcast_browse_apple",
@@ -564,8 +586,10 @@ export function PodcastView({
       setDiscoveryShows(shows);
       setDiscoveryState("ready");
     } catch {
-      setDiscoveryShows([]);
-      setDiscoveryState("error");
+      if (!cached) {
+        setDiscoveryShows([]);
+        setDiscoveryState("error");
+      }
     } finally {
       discoveryRequestActive.current = false;
     }
@@ -606,6 +630,7 @@ export function PodcastView({
         report.checked - report.notModified - report.failures.length,
       );
       if (refreshed === 0) return;
+      chapterDocumentCache.clear();
       const [nextFeeds] = await Promise.all([loadFeeds(), loadHome()]);
       const currentFeed = selectedFeedRef.current;
       const refreshedFeed = currentFeed
@@ -652,6 +677,12 @@ export function PodcastView({
   const loadEpisodeChapters = useCallback(async (episodeId: string) => {
     const requestId = chapterRequestRef.current + 1;
     chapterRequestRef.current = requestId;
+    const cached = chapterDocumentCache.get(episodeId);
+    if (cached) {
+      setChapterDocument(cached);
+      setChapterState("ready");
+      return;
+    }
     setChapterDocument(null);
     setChapterState("loading");
     try {
@@ -669,7 +700,14 @@ export function PodcastView({
       if (document.episodeId !== episodeId || chapters.length === 0) {
         throw new Error("没有可显示的章节");
       }
-      setChapterDocument({ ...document, chapters });
+      const resolvedDocument = { ...document, chapters };
+      rememberBoundedCacheEntry(
+        chapterDocumentCache,
+        episodeId,
+        resolvedDocument,
+        CHAPTER_MEMORY_CACHE_LIMIT,
+      );
+      setChapterDocument(resolvedDocument);
       setChapterState("ready");
     } catch (reason) {
       if (chapterRequestRef.current !== requestId) return;
@@ -1395,7 +1433,6 @@ export function PodcastView({
     setSearchHeading(heading);
     setSearchSort("relevance");
     setSearchHighlightQuery(remember ? cleanQuery : "");
-    setSearchState("loading");
     setError(null);
     setNotice(null);
     if (remember) {
@@ -1403,19 +1440,41 @@ export function PodcastView({
         addPodcastSearchHistory(current, cleanQuery)
       );
     }
+    const cacheKey = cleanQuery.toLocaleLowerCase();
+    const cached = searchCache.get(cacheKey);
+    if (cached) {
+      setSearchResults(cached.results);
+      setSearchState("ready");
+      if (Date.now() - cached.fetchedAt < SEARCH_CACHE_TTL_MS) return;
+    } else {
+      setSearchResults([]);
+      setSearchState("loading");
+    }
     try {
       const results = await invoke<PodcastSearchResult[]>(
         "podcast_search_apple",
         { query: cleanQuery, limit: 18 },
       );
       if (appleSearchRequestRef.current !== requestId) return;
+      rememberBoundedCacheEntry(
+        searchCache,
+        cacheKey,
+        { results, fetchedAt: Date.now() },
+        SEARCH_CACHE_LIMIT,
+      );
       setSearchResults(results);
       setSearchState("ready");
     } catch (reason) {
       if (appleSearchRequestRef.current !== requestId) return;
-      setSearchResults([]);
-      setSearchState("error");
-      setError(errorMessage(reason, "搜索节目失败"));
+      if (cached) {
+        setSearchResults(cached.results);
+        setSearchState("ready");
+        setNotice("网络暂时不可用，已保留上次搜索结果");
+      } else {
+        setSearchResults([]);
+        setSearchState("error");
+        setError(errorMessage(reason, "搜索节目失败"));
+      }
     }
   }
 
@@ -1479,8 +1538,10 @@ export function PodcastView({
     const stored = selectedFeed?.feedUrl === candidate.feedUrl
       ? selectedFeed
       : feeds.find((feed) => feed.feedUrl === candidate.feedUrl);
-    if (stored) {
-      await openStoredFeed(stored, origin);
+    const cachedPreview = previewFeedCache.get(candidate.feedUrl);
+    const reusableFeed = stored ?? cachedPreview;
+    if (reusableFeed) {
+      await openStoredFeed(reusableFeed, origin);
       return;
     }
 
@@ -1496,6 +1557,12 @@ export function PodcastView({
           authorHint: candidate.author,
           artworkUrl: candidate.artworkUrl ?? undefined,
         },
+      );
+      rememberBoundedCacheEntry(
+        previewFeedCache,
+        candidate.feedUrl,
+        result.feed,
+        SEARCH_CACHE_LIMIT,
       );
       setNotice(null);
       setReturnScreen(origin);
@@ -1552,6 +1619,7 @@ export function PodcastView({
         (item) => item.feedId === selectedFeed.id,
       );
       if (failure) throw new Error(failure.message);
+      chapterDocumentCache.clear();
       const nextFeeds = await loadFeeds();
       const listedFeed = nextFeeds.find(
         (feed) => feed.id === selectedFeed.id,
@@ -2392,7 +2460,12 @@ export function PodcastView({
                 disabled={!query.trim()}
               >
                 {searchState === "loading" && discoveryTopic === null
-                  ? <LoaderCircle className="podcast-spinner" size={17} />
+                  ? (
+                    <span className="podcast-button-loading">
+                      <PodcastActivityIndicator />
+                      搜索中
+                    </span>
+                  )
                   : "搜索"}
               </button>
             </form>
@@ -3553,10 +3626,7 @@ function ShowCard({
         ) : null}
       </span>
       {loading ? (
-        <LoaderCircle
-          className="podcast-spinner podcast-card-state"
-          size={16}
-        />
+        <PodcastActivityIndicator className="podcast-card-state" />
       ) : followed ? (
         <Check className="podcast-card-state" size={16} />
       ) : show.rank ? (
@@ -4284,10 +4354,27 @@ function PodcastArtwork({
 
 function PodcastLoading({ label }: { label: string }) {
   return (
-    <div className="podcast-inline-state">
-      <LoaderCircle className="podcast-spinner" size={17} />
+    <div className="podcast-inline-state podcast-loading-state" role="status">
+      <PodcastActivityIndicator />
       <span>{label}</span>
     </div>
+  );
+}
+
+function PodcastActivityIndicator({
+  className = "",
+}: {
+  className?: string;
+}) {
+  return (
+    <span
+      className={`podcast-activity-indicator ${className}`.trim()}
+      aria-hidden="true"
+    >
+      <span />
+      <span />
+      <span />
+    </span>
   );
 }
 

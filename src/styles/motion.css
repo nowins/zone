@@ -417,6 +417,8 @@
   .zune-play svg,
   .lyrics-source-browser.is-searching::after,
   .podcast-spinner,
+  .podcast-loading-state,
+  .podcast-activity-indicator > span,
   .podcast-now-playing-stage,
   .podcast-now-spinner,
   .motion-page-enter,
