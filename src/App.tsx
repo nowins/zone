@@ -34,6 +34,7 @@ import { getVisualizerFrame, publishVisualizerFrame } from "./utils/visualizerBu
 import { createShuffleOrder, haveSameQueueItems, playbackSourceKey, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
 import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
 import { movePodcastQueueItem, podcastPlaybackForEpisode } from "./utils/podcastPlayback";
+import { createPodcastProgressWriteGate } from "./utils/podcastProgress";
 import {
   resolveSearchSurface,
   type CollectionSearchMode,
@@ -189,6 +190,7 @@ export default function App() {
     duration: number;
   } | null>(null);
   const podcastProgressMutationRef = useRef<Promise<void>>(Promise.resolve());
+  const podcastProgressWriteGateRef = useRef(createPodcastProgressWriteGate());
   const podcastProgressStartedRef = useRef(new Set<string>());
   const podcastPlaybackIntentRef = useRef(false);
   const podcastAutoQueueAttemptRef = useRef(0);
@@ -829,6 +831,19 @@ export default function App() {
     setPodcastSessionHydrated(true);
   }
 
+  function suppressPodcastProgressWrites(episodeId: string) {
+    podcastProgressWriteGateRef.current.suppress(episodeId);
+    if (podcastProgressSaveRef.current?.episodeId === episodeId) {
+      podcastProgressSaveRef.current = null;
+    }
+    podcastProgressStartedRef.current.delete(episodeId);
+  }
+
+  function resumePodcastProgressWrites(episodeId: string) {
+    if (!podcastProgressWriteGateRef.current.resume(episodeId)) return;
+    podcastProgressSaveRef.current = null;
+  }
+
   function playTrack(track: Track, sourceTracks = tracks) {
     cancelPodcastSessionRestore();
     setQueue(sourceTracks.map((item) => item.id));
@@ -903,6 +918,7 @@ export default function App() {
     }
 
     flushPodcastProgress();
+    resumePodcastProgressWrites(episode.episodeId);
     pendingPodcastStartRef.current = requestedPosition === null
       ? null
       : { episodeId: episode.episodeId, position: requestedPosition };
@@ -1221,6 +1237,9 @@ export default function App() {
   }
 
   function setPodcastEpisodePlayed(episodeId: string, played: boolean) {
+    const suppressActiveProgress =
+      activePodcastEpisodeRef.current?.episodeId === episodeId;
+    if (suppressActiveProgress) suppressPodcastProgressWrites(episodeId);
     const operation = podcastProgressMutationRef.current.then(() =>
       invoke<PodcastEpisodeDetail>("podcast_set_episode_played", {
         episodeId,
@@ -1231,7 +1250,10 @@ export default function App() {
       () => undefined,
       () => undefined,
     );
-    return operation;
+    return operation.catch((reason) => {
+      if (suppressActiveProgress) resumePodcastProgressWrites(episodeId);
+      throw reason;
+    });
   }
 
   function setPodcastQueueEpisodesPlayed(
@@ -1240,6 +1262,13 @@ export default function App() {
   ) {
     const uniqueEpisodeIds = [...new Set(episodeIds)];
     if (uniqueEpisodeIds.length === 0) return Promise.resolve();
+    const activeEpisodeId = activePodcastEpisodeRef.current?.episodeId;
+    const suppressActiveProgress = Boolean(
+      activeEpisodeId && uniqueEpisodeIds.includes(activeEpisodeId),
+    );
+    if (suppressActiveProgress && activeEpisodeId) {
+      suppressPodcastProgressWrites(activeEpisodeId);
+    }
     const operation = podcastProgressMutationRef.current.then(async () => {
       const details = await invoke<PodcastEpisodeDetail[]>(
         "podcast_set_episodes_played",
@@ -1251,7 +1280,12 @@ export default function App() {
       () => undefined,
       () => undefined,
     );
-    return operation;
+    return operation.catch((reason) => {
+      if (suppressActiveProgress && activeEpisodeId) {
+        resumePodcastProgressWrites(activeEpisodeId);
+      }
+      throw reason;
+    });
   }
 
   async function downloadPodcastQueueEpisodes(episodes: PodcastEpisode[]) {
@@ -1761,8 +1795,14 @@ export default function App() {
   function persistPodcastProgress(currentTime: number, trackDuration: number, force = false) {
     const episode = activePodcastEpisodeRef.current;
     if (!episode) return Promise.resolve();
+    if (podcastProgressWriteGateRef.current.isSuppressed(episode.episodeId)) {
+      return podcastProgressMutationRef.current;
+    }
     const positionSeconds = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
     const durationSeconds = Number.isFinite(trackDuration) ? Math.max(0, trackDuration) : 0;
+    const writeEpoch = podcastProgressWriteGateRef.current.capture(
+      episode.episodeId,
+    );
     const now = Date.now();
     const previous = podcastProgressSaveRef.current;
     if (
@@ -1788,6 +1828,12 @@ export default function App() {
       duration: durationSeconds,
     };
     const save = podcastProgressMutationRef.current.then(async () => {
+      if (!podcastProgressWriteGateRef.current.allows(
+        episode.episodeId,
+        writeEpoch,
+      )) {
+        return;
+      }
       await invoke("podcast_save_progress", {
         episodeId: episode.episodeId,
         positionSeconds,
@@ -1889,6 +1935,9 @@ export default function App() {
     if (!audio || !activePlayback) return;
 
     if (audio.paused) {
+      if (activePodcastEpisodeRef.current) {
+        resumePodcastProgressWrites(activePodcastEpisodeRef.current.episodeId);
+      }
       const sourceKey = activeAudioSourceKeyRef.current;
       const playAttempt = audioPlayAttemptRef.current + 1;
       audioPlayAttemptRef.current = playAttempt;
@@ -1927,6 +1976,7 @@ export default function App() {
     const audio = audioRef.current;
     const episode = activePodcastEpisodeRef.current;
     if (!audio || !episode) return;
+    resumePodcastProgressWrites(episode.episodeId);
     const currentPosition = Number.isFinite(audio.currentTime)
       ? Math.max(0, audio.currentTime)
       : 0;
@@ -2331,6 +2381,7 @@ export default function App() {
   function seek(value: number) {
     if (!audioRef.current) return;
     const podcastEpisode = activePodcastEpisodeRef.current;
+    if (podcastEpisode) resumePodcastProgressWrites(podcastEpisode.episodeId);
     if (pendingPodcastResumeRef.current?.episodeId === podcastEpisode?.episodeId) {
       pendingPodcastResumeRef.current = null;
     }

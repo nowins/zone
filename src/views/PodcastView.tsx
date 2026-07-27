@@ -208,12 +208,16 @@ const EMPTY_DOWNLOAD_PAGE: PodcastDownloadPage = {
 };
 const DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1_000;
 const SEARCH_CACHE_TTL_MS = 15 * 60 * 1_000;
+const PREVIEW_FEED_CACHE_TTL_MS = 30 * 60 * 1_000;
+const CHAPTER_CACHE_TTL_MS = 6 * 60 * 60 * 1_000;
+const STALE_CHAPTER_CACHE_TTL_MS = 5 * 60 * 1_000;
 const SEARCH_CACHE_LIMIT = 24;
 const CHAPTER_MEMORY_CACHE_LIMIT = 64;
 const PODCAST_DISCOVERY_STORAGE_KEY = "zone-podcast-discovery-v1";
 const PODCAST_LIBRARY_STORAGE_KEY = "zone-podcast-library-v1";
 const PODCAST_DOWNLOAD_PAGE_SIZE = 60;
 const PODCAST_DOWNLOAD_BATCH_LIMIT = 500;
+const PODCAST_DOWNLOAD_PROGRESS_POLL_MS = 800;
 const PODCAST_QUEUE_BATCH_LIMIT = 500;
 const PODCAST_AUTO_QUEUE_MODES: Array<{
   id: PodcastAutoQueueMode;
@@ -263,8 +267,14 @@ const searchCache = new Map<
   string,
   { results: PodcastSearchResult[]; fetchedAt: number }
 >();
-const previewFeedCache = new Map<string, PodcastFeed>();
-const chapterDocumentCache = new Map<string, PodcastChapterDocument>();
+const previewFeedCache = new Map<
+  string,
+  { value: PodcastFeed; fetchedAt: number }
+>();
+const chapterDocumentCache = new Map<
+  string,
+  { value: PodcastChapterDocument; fetchedAt: number }
+>();
 let podcastSessionSnapshot: PodcastSessionSnapshot | null = null;
 
 function rememberBoundedCacheEntry<Key, Value>(
@@ -280,6 +290,14 @@ function rememberBoundedCacheEntry<Key, Value>(
     if (oldest.done) break;
     cache.delete(oldest.value);
   }
+}
+
+function cacheEntryIsFresh(
+  entry: { fetchedAt: number } | undefined,
+  ttlMs: number,
+  now = Date.now(),
+) {
+  return Boolean(entry && now - entry.fetchedAt < ttlMs);
 }
 
 export function PodcastView({
@@ -456,6 +474,8 @@ export function PodcastView({
   const chapterRequestRef = useRef(0);
   const homeRequestRef = useRef(0);
   const downloadLibraryRequestRef = useRef(0);
+  const downloadProgressPollRef = useRef<number | null>(null);
+  const downloadProgressEpisodeRef = useRef<string | null>(null);
   const appleSearchRequestRef = useRef(0);
   const discoveryRequestActive = useRef(false);
   const feedRefreshActive = useRef(false);
@@ -465,6 +485,14 @@ export function PodcastView({
   const lastDownloadCleanupIntent = useLastNonNull(downloadCleanupIntent);
   const lastQueueRemovalIntent = useLastNonNull(queueRemovalIntent);
   selectedFeedRef.current = selectedFeed;
+
+  useEffect(() => () => {
+    downloadProgressEpisodeRef.current = null;
+    if (downloadProgressPollRef.current !== null) {
+      window.clearInterval(downloadProgressPollRef.current);
+      downloadProgressPollRef.current = null;
+    }
+  }, []);
 
   const currentEpisodeId = activeEpisode?.episodeId ?? activeEpisodeId;
   const sortedSearchResults = useMemo(
@@ -675,17 +703,24 @@ export function PodcastView({
     }
   }, []);
 
-  const loadEpisodeChapters = useCallback(async (episodeId: string) => {
+  const loadEpisodeChapters = useCallback(async (
+    episodeId: string,
+    force = false,
+  ) => {
     const requestId = chapterRequestRef.current + 1;
     chapterRequestRef.current = requestId;
-    const cached = chapterDocumentCache.get(episodeId);
-    if (cached) {
-      setChapterDocument(cached);
+    const cachedEntry = chapterDocumentCache.get(episodeId);
+    const cachedDocument = cachedEntry?.value ?? null;
+    const cacheTtl = cachedDocument?.stale
+      ? STALE_CHAPTER_CACHE_TTL_MS
+      : CHAPTER_CACHE_TTL_MS;
+    if (!force && cacheEntryIsFresh(cachedEntry, cacheTtl)) {
+      setChapterDocument(cachedDocument);
       setChapterState("ready");
       return;
     }
-    setChapterDocument(null);
-    setChapterState("loading");
+    setChapterDocument(cachedDocument);
+    setChapterState(cachedDocument ? "ready" : "loading");
     try {
       const document = await invoke<PodcastChapterDocument>(
         "podcast_get_episode_chapters",
@@ -705,15 +740,15 @@ export function PodcastView({
       rememberBoundedCacheEntry(
         chapterDocumentCache,
         episodeId,
-        resolvedDocument,
+        { value: resolvedDocument, fetchedAt: Date.now() },
         CHAPTER_MEMORY_CACHE_LIMIT,
       );
       setChapterDocument(resolvedDocument);
       setChapterState("ready");
     } catch (reason) {
       if (chapterRequestRef.current !== requestId) return;
-      setChapterDocument(null);
-      setChapterState("error");
+      setChapterDocument(cachedDocument);
+      setChapterState(cachedDocument ? "ready" : "error");
       if (import.meta.env.DEV) {
         console.warn("[podcast] episode chapters failed", reason);
       }
@@ -1539,8 +1574,20 @@ export function PodcastView({
     const stored = selectedFeed?.feedUrl === candidate.feedUrl
       ? selectedFeed
       : feeds.find((feed) => feed.feedUrl === candidate.feedUrl);
-    const cachedPreview = previewFeedCache.get(candidate.feedUrl);
-    const reusableFeed = stored ?? cachedPreview;
+    const cachedPreviewEntry = previewFeedCache.get(candidate.feedUrl);
+    const cachedPreview = cacheEntryIsFresh(
+      cachedPreviewEntry,
+      PREVIEW_FEED_CACHE_TTL_MS,
+    )
+      ? cachedPreviewEntry?.value
+      : null;
+    const reusableStoredFeed = stored && (
+      stored.subscribed
+      || Date.now() - stored.lastFetchedAt < PREVIEW_FEED_CACHE_TTL_MS
+    )
+      ? stored
+      : null;
+    const reusableFeed = reusableStoredFeed ?? cachedPreview;
     if (reusableFeed) {
       await openStoredFeed(reusableFeed, origin);
       return;
@@ -1562,7 +1609,7 @@ export function PodcastView({
       rememberBoundedCacheEntry(
         previewFeedCache,
         candidate.feedUrl,
-        result.feed,
+        { value: result.feed, fetchedAt: Date.now() },
         SEARCH_CACHE_LIMIT,
       );
       setNotice(null);
@@ -1693,6 +1740,36 @@ export function PodcastView({
     setDownloadingId(episode.id);
     setError(null);
     setNotice(`正在下载“${episode.title}”`);
+    downloadProgressEpisodeRef.current = episode.id;
+    let progressRequestActive = false;
+    const refreshDownloadProgress = async () => {
+      if (
+        downloadProgressEpisodeRef.current !== episode.id
+        || progressRequestActive
+      ) return;
+      progressRequestActive = true;
+      try {
+        const detail = await invoke<PodcastEpisodeDetail>(
+          "podcast_get_episode_detail",
+          { episodeId: episode.id },
+        );
+        if (downloadProgressEpisodeRef.current === episode.id) {
+          applyEpisodeUpdate(detail.episode);
+        }
+      } catch (reason) {
+        if (import.meta.env.DEV) {
+          console.warn("[podcast] download progress refresh failed", reason);
+        }
+      } finally {
+        progressRequestActive = false;
+      }
+    };
+    const progressPoll = window.setInterval(
+      () => void refreshDownloadProgress(),
+      PODCAST_DOWNLOAD_PROGRESS_POLL_MS,
+    );
+    downloadProgressPollRef.current = progressPoll;
+    void refreshDownloadProgress();
     try {
       const result = await invoke<PodcastDownloadResult>(
         "podcast_download_episode",
@@ -1736,6 +1813,13 @@ export function PodcastView({
       setNotice(null);
       setError(errorMessage(reason, "下载单集失败"));
     } finally {
+      if (downloadProgressEpisodeRef.current === episode.id) {
+        downloadProgressEpisodeRef.current = null;
+      }
+      window.clearInterval(progressPoll);
+      if (downloadProgressPollRef.current === progressPoll) {
+        downloadProgressPollRef.current = null;
+      }
       setDownloadingId(null);
     }
   }
@@ -3216,6 +3300,7 @@ export function PodcastView({
                 onRetryChapters={() =>
                   void loadEpisodeChapters(
                     displayedEpisodeDetail.episode.id,
+                    true,
                   )}
                 onPlayChapter={(positionSeconds) =>
                   playEpisodeAt(
@@ -3674,6 +3759,18 @@ function podcastPlayedLabel(episode: PodcastEpisode): string | null {
   return episode.progressSeconds > 0 ? "收听中" : null;
 }
 
+function podcastDownloadProgressLabel(episode: PodcastEpisode) {
+  if (episode.downloadedBytes <= 0) return null;
+  if (episode.totalBytes && episode.totalBytes > 0) {
+    const percentage = Math.min(
+      99,
+      Math.floor(episode.downloadedBytes / episode.totalBytes * 100),
+    );
+    return `${percentage}%`;
+  }
+  return formatFileSize(episode.downloadedBytes);
+}
+
 function ContinueCard({
   episode,
   active,
@@ -3775,6 +3872,9 @@ function EpisodeRow({
   onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const progressLabel = podcastPlayedLabel(episode);
+  const downloadProgressLabel = downloading
+    ? podcastDownloadProgressLabel(episode)
+    : null;
   const accessibilityLabel = [
     selecting
       ? `${selected ? "取消选择" : "选择"}单集：${episode.title}`
@@ -3871,11 +3971,17 @@ function EpisodeRow({
                 episode.localPath
                   ? "已下载，可离线收听"
                   : downloading
-                    ? "正在下载"
+                    ? downloadProgressLabel
+                      ? `正在下载 ${downloadProgressLabel}`
+                      : "正在下载"
                     : "下载以便离线收听"
               }
             >
-              {downloading ? (
+              {downloading && downloadProgressLabel ? (
+                <span className="podcast-download-progress">
+                  {downloadProgressLabel}
+                </span>
+              ) : downloading ? (
                 <LoaderCircle className="podcast-spinner" size={16} />
               ) : episode.localPath ? (
                 <Check size={16} />
@@ -4145,6 +4251,9 @@ function EpisodeDetail({
     : episode.progressSeconds > 0 && !episode.completed
       ? "继续播放"
       : "播放";
+  const downloadProgressLabel = downloading
+    ? podcastDownloadProgressLabel(episode)
+    : null;
   return (
     <article className="podcast-detail">
       <section className="podcast-detail-hero">
@@ -4244,7 +4353,9 @@ function EpisodeDetail({
             {downloading
               ? <LoaderCircle className="podcast-spinner" size={16} />
               : <Download size={16} />}
-            {downloading ? "正在下载" : "下载"}
+            {downloading
+              ? `正在下载${downloadProgressLabel ? ` ${downloadProgressLabel}` : ""}`
+              : "下载"}
           </button>
         )}
         <button

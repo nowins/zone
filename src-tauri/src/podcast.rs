@@ -15,7 +15,7 @@ use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::http::{Method, Request, Response};
 use tauri::{AppHandle, Manager, State};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -32,6 +32,9 @@ const PODCAST_ARTWORK_URL_LIMIT: usize = 4 * 1024;
 const PODCAST_ARTWORK_TOKEN_LIMIT: usize = 6 * 1024;
 const PODCAST_AUDIO_RESPONSE_LIMIT: u64 = 2 * 1024 * 1024 * 1024;
 const PODCAST_STREAM_CHUNK_SIZE: u64 = 1024 * 1024;
+const PODCAST_DOWNLOAD_PROGRESS_BYTE_INTERVAL: u64 = 2 * 1024 * 1024;
+const PODCAST_DOWNLOAD_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(500);
+const PODCAST_DOWNLOAD_PROGRESS_MAX_INTERVAL: Duration = Duration::from_secs(2);
 const PODCAST_REDIRECT_LIMIT: usize = 5;
 const PODCAST_DESCRIPTION_LIMIT: usize = 20_000;
 const PODCAST_TITLE_LIMIT: usize = 500;
@@ -6103,6 +6106,8 @@ async fn download_episode_with_network_policy(
     .map_err(|error| format!("无法创建播客下载文件：{error}"))?;
   let mut response = public_response.response;
   let mut downloaded_bytes = offset;
+  let mut persisted_downloaded_bytes = offset;
+  let mut last_progress_update = Instant::now();
   while let Some(chunk) = response
     .chunk()
     .await
@@ -6118,6 +6123,29 @@ async fn download_episode_with_network_policy(
       .write_all(&chunk)
       .await
       .map_err(|error| format!("无法写入播客下载文件：{error}"))?;
+    let progress_elapsed = last_progress_update.elapsed();
+    let progressed_bytes = downloaded_bytes.saturating_sub(persisted_downloaded_bytes);
+    if (
+      progressed_bytes >= PODCAST_DOWNLOAD_PROGRESS_BYTE_INTERVAL
+        && progress_elapsed >= PODCAST_DOWNLOAD_PROGRESS_MIN_INTERVAL
+    ) || progress_elapsed >= PODCAST_DOWNLOAD_PROGRESS_MAX_INTERVAL
+    {
+      let db_path_owned = db_path.to_path_buf();
+      let progress_id = episode_id.to_string();
+      let total_for_db = response_total;
+      tauri::async_runtime::spawn_blocking(move || {
+        mark_download_started(
+          &db_path_owned,
+          &progress_id,
+          downloaded_bytes,
+          total_for_db,
+        )
+      })
+      .await
+      .map_err(|error| format!("播客数据任务异常结束：{error}"))??;
+      persisted_downloaded_bytes = downloaded_bytes;
+      last_progress_update = Instant::now();
+    }
   }
   file
     .flush()
@@ -8564,6 +8592,14 @@ mod tests {
     assert_eq!(list_feeds(&state.db_path).expect("list feeds").len(), 1);
 
     save_progress(&state.db_path, &episode_id, 120.0, 100.0).expect("save progress");
+    mark_download_started(&state.db_path, &episode_id, 7, Some(23))
+      .expect("save in-progress download");
+    let downloading =
+      get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id)
+        .expect("read in-progress download");
+    assert_eq!(downloading.episode.download_state, "downloading");
+    assert_eq!(downloading.episode.downloaded_bytes, 7);
+    assert_eq!(downloading.episode.total_bytes, Some(23));
     let fake_path = state.downloads_dir.join(format!("{episode_id}.mp3"));
     fs::write(&fake_path, b"ID3-test-download").expect("write managed download");
     mark_download_complete(&state.db_path, &episode_id, &fake_path.to_string_lossy(), 23, Some(23))

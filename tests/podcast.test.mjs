@@ -696,6 +696,30 @@ test("podcast playback handles speed, sleep, buffering, and errors on the shared
     "played and unplayed markers must be ordered with pending progress saves",
   );
   includes(
+    declaredFunctionSource(appSource, "setPodcastEpisodePlayed"),
+    /suppressPodcastProgressWrites\(episodeId\)[\s\S]{0,520}podcast_set_episode_played/,
+    "marking the active episode must invalidate queued and automatic progress writes before the mutation",
+  );
+  const persistProgressSource = declaredFunctionSource(
+    appSource,
+    "persistPodcastProgress",
+  );
+  includes(
+    persistProgressSource,
+    /podcastProgressWriteGateRef\.current\.isSuppressed\(episode\.episodeId\)[\s\S]{0,180}return podcastProgressMutationRef\.current/,
+    "automatic progress must stay suspended after an explicit played-state mutation",
+  );
+  includes(
+    persistProgressSource,
+    /podcastProgressWriteGateRef\.current\.capture\([\s\S]{0,900}podcastProgressWriteGateRef\.current\.allows\(/,
+    "queued progress saves must be discarded when a newer explicit mutation invalidates their epoch",
+  );
+  includes(
+    declaredFunctionSource(appSource, "togglePlay"),
+    /audio\.paused[\s\S]{0,180}resumePodcastProgressWrites/,
+    "a later explicit resume must start a new progress-writing session",
+  );
+  includes(
     appSource,
     /const startPosition\s*=[\s\S]*?activePlayback\.episode\.savedProgressSeconds;[\s\S]*?setProgress\(Math\.max\(0,\s*startPosition\)\)/,
     "a restored episode or explicit chapter start must show its pending position before media metadata is available",

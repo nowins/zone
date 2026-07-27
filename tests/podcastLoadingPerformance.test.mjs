@@ -45,6 +45,26 @@ test("preview and chapter requests reuse durable caches before networking", () =
     /resource\.fetched_at\.is_some_and[\s\S]*?return Ok\(cached\);[\s\S]*?refresh_external_chapter_resource/,
   );
   assert.match(viewSource, /chapterDocumentCache\.get\(episodeId\)/);
+  assert.match(
+    viewSource,
+    /PREVIEW_FEED_CACHE_TTL_MS\s*=\s*30\s*\*\s*60\s*\*\s*1_000/,
+  );
+  assert.match(
+    viewSource,
+    /cacheEntryIsFresh\(\s*cachedPreviewEntry,\s*PREVIEW_FEED_CACHE_TTL_MS/,
+  );
+  assert.match(
+    viewSource,
+    /cachedDocument\?\.stale[\s\S]*?STALE_CHAPTER_CACHE_TTL_MS[\s\S]*?CHAPTER_CACHE_TTL_MS/,
+  );
+  assert.match(
+    viewSource,
+    /setChapterDocument\(cachedDocument\);[\s\S]*?invoke<PodcastChapterDocument>/,
+  );
+  assert.match(
+    viewSource,
+    /loadEpisodeChapters\(\s*displayedEpisodeDetail\.episode\.id,\s*true/,
+  );
 });
 
 test("content loading pairs a delayed reveal with the Metro orbit indicator", () => {
@@ -73,4 +93,25 @@ test("content loading pairs a delayed reveal with the Metro orbit indicator", ()
     /width|height|margin|padding/,
   );
   assert.match(motionSource, /\.podcast-activity-indicator > span/);
+});
+
+test("podcast downloads expose throttled byte progress instead of an indefinite spinner", () => {
+  assert.match(
+    rustSource,
+    /PODCAST_DOWNLOAD_PROGRESS_BYTE_INTERVAL:\s*u64\s*=\s*2\s*\*\s*1024\s*\*\s*1024/,
+  );
+  assert.match(
+    rustSource,
+    /while let Some\(chunk\)[\s\S]*?progressed_bytes[\s\S]*?mark_download_started\(/,
+  );
+  assert.match(
+    viewSource,
+    /window\.setInterval\([\s\S]*?PODCAST_DOWNLOAD_PROGRESS_POLL_MS/,
+  );
+  assert.match(
+    viewSource,
+    /"podcast_get_episode_detail"[\s\S]*?applyEpisodeUpdate\(detail\.episode\)/,
+  );
+  assert.match(viewSource, /function podcastDownloadProgressLabel\(/);
+  assert.match(viewSource, /className="podcast-download-progress"/);
 });

@@ -18,6 +18,7 @@
     "src/utils/audioGlow.ts",
     "src/utils/playback.ts",
     "src/utils/podcastPlayback.ts",
+    "src/utils/podcastProgress.ts",
     "src/utils/podcastListening.ts",
     "src/utils/podcastLibrary.ts",
     "src/utils/podcastDiscovery.ts",
