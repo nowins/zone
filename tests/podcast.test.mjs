@@ -34,6 +34,7 @@ const PODCAST_COMMANDS = [
   "podcast_subscribe",
   "podcast_list_feeds",
   "podcast_list_episodes",
+  "podcast_list_related_episodes",
   "podcast_get_episode_detail",
   "podcast_set_episode_saved",
   "podcast_list_saved_episodes",

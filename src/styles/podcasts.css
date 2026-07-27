@@ -1666,6 +1666,15 @@
   white-space: pre-line;
 }
 
+.podcast-detail-related {
+  width: min(980px, 100%);
+  padding: 0 0 42px;
+}
+
+.podcast-detail-related-list {
+  display: grid;
+}
+
 .podcast-page button:focus-visible,
 .podcast-page input:focus-visible,
 .podcast-page summary:focus-visible {

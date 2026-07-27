@@ -1740,6 +1740,7 @@ pub fn run() {
       podcast::podcast_list_home,
       podcast::podcast_list_downloads,
       podcast::podcast_list_episodes,
+      podcast::podcast_list_related_episodes,
       podcast::podcast_get_episode_detail,
       podcast::podcast_set_episode_saved,
       podcast::podcast_list_saved_episodes,

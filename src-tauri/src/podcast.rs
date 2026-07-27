@@ -39,6 +39,8 @@ const PODCAST_HOME_DOWNLOAD_PRIORITY_LIMIT: usize = 40;
 const PODCAST_HOME_DOWNLOADED_LIMIT: usize = 40;
 const PODCAST_HOME_SAVED_LIMIT: usize = 40;
 const PODCAST_HOME_RECENTLY_PLAYED_LIMIT: usize = 40;
+const PODCAST_RELATED_EPISODE_DEFAULT_LIMIT: usize = 6;
+const PODCAST_RELATED_EPISODE_MAX_LIMIT: usize = 12;
 const PODCAST_DOWNLOAD_PAGE_MAX_LIMIT: usize = 100;
 const PODCAST_DOWNLOAD_DELETE_LIMIT: usize = 500;
 const PODCAST_EPISODE_BATCH_LIMIT: usize = 500;
@@ -669,6 +671,25 @@ pub async fn podcast_list_episodes(
   tauri::async_runtime::spawn_blocking(move || list_episodes(&db_path, &downloads_dir, &feed_id))
     .await
     .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+}
+
+#[tauri::command]
+pub async fn podcast_list_related_episodes(
+  state: State<'_, PodcastState>,
+  episode_id: String,
+  limit: Option<u8>,
+) -> Result<Vec<PodcastEpisode>, String> {
+  state.ensure_ready()?;
+  validate_identifier(&episode_id)?;
+  let limit = usize::from(limit.unwrap_or(PODCAST_RELATED_EPISODE_DEFAULT_LIMIT as u8))
+    .clamp(1, PODCAST_RELATED_EPISODE_MAX_LIMIT);
+  let db_path = state.db_path.clone();
+  let downloads_dir = state.downloads_dir.clone();
+  tauri::async_runtime::spawn_blocking(move || {
+    list_related_episodes(&db_path, &downloads_dir, &episode_id, limit)
+  })
+  .await
+  .map_err(|error| format!("播客数据任务异常结束：{error}"))?
 }
 
 #[tauri::command]
@@ -3257,6 +3278,60 @@ fn list_episodes(
   rows
     .collect::<Result<Vec<_>, _>>()
     .map_err(|error| format!("无法读取播客单集：{error}"))
+}
+
+fn list_related_episodes(
+  db_path: &Path,
+  downloads_dir: &Path,
+  episode_id: &str,
+  limit: usize,
+) -> Result<Vec<PodcastEpisode>, String> {
+  validate_identifier(episode_id)?;
+  let connection = open_database(db_path)?;
+  ensure_episode_exists(&connection, episode_id)?;
+  let limit = limit.clamp(1, PODCAST_RELATED_EPISODE_MAX_LIMIT) as i64;
+  let mut statement = connection
+    .prepare(
+      "
+      WITH current_episode AS (
+        SELECT feed_id
+        FROM podcast_episodes
+        WHERE id = ?1
+      )
+      SELECT
+        e.id, e.feed_id, e.title, e.description, e.published_at,
+        e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+        COALESCE(d.state, 'none'), d.local_path,
+        COALESCE(d.downloaded_bytes, 0), d.total_bytes,
+        COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
+        f.title, f.artwork_url,
+        CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
+        e.first_seen_at, e.webpage_url
+      FROM podcast_episodes e
+      JOIN current_episode current ON current.feed_id = e.feed_id
+      JOIN podcast_feeds f ON f.id = e.feed_id
+      LEFT JOIN podcast_downloads d ON d.episode_id = e.id
+      LEFT JOIN podcast_progress p ON p.episode_id = e.id
+      LEFT JOIN podcast_saved_episodes s ON s.episode_id = e.id
+      WHERE e.id != ?1
+        AND TRIM(e.enclosure_url) != ''
+      ORDER BY
+        e.published_at IS NULL,
+        COALESCE(e.published_at, e.first_seen_at) DESC,
+        e.id
+      LIMIT ?2
+      ",
+    )
+    .map_err(|error| format!("无法读取相关播客单集：{error}"))?;
+  let rows = statement
+    .query_map(
+      params![episode_id, limit],
+      |row| podcast_episode_from_row(row, downloads_dir),
+    )
+    .map_err(|error| format!("无法读取相关播客单集：{error}"))?;
+  rows
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|error| format!("无法读取相关播客单集：{error}"))
 }
 
 fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastHome, String> {
@@ -6835,6 +6910,61 @@ mod tests {
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>(),
+    );
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn related_episode_list_is_bounded_ordered_and_keeps_episode_state() {
+    let directory = test_directory("related-episodes");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture_with_episode_count(6);
+    let episode_ids = parsed
+      .episodes
+      .iter()
+      .map(|episode| episode.id.clone())
+      .collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).expect("store related episodes");
+    save_progress(&state.db_path, &episode_ids[2], 30.0, 100.0)
+      .expect("save related progress");
+    open_database(&state.db_path)
+      .expect("open podcast database")
+      .execute(
+        "UPDATE podcast_episodes SET enclosure_url = '' WHERE id = ?1",
+        [&episode_ids[1]],
+      )
+      .expect("remove related enclosure");
+
+    let related = list_related_episodes(
+      &state.db_path,
+      &state.downloads_dir,
+      &episode_ids[0],
+      3,
+    )
+    .expect("list related episodes");
+    assert_eq!(
+      related
+        .iter()
+        .map(|episode| episode.id.as_str())
+        .collect::<Vec<_>>(),
+      vec![
+        episode_ids[2].as_str(),
+        episode_ids[3].as_str(),
+        episode_ids[4].as_str(),
+      ]
+    );
+    assert_eq!(related[0].progress_seconds, 30.0);
+    assert!(!related.iter().any(|episode| episode.id == episode_ids[0]));
+    assert!(!related.iter().any(|episode| episode.id == episode_ids[1]));
+    assert!(
+      list_related_episodes(
+        &state.db_path,
+        &state.downloads_dir,
+        "missing",
+        PODCAST_RELATED_EPISODE_MAX_LIMIT + 1,
+      )
+      .is_err()
     );
 
     fs::remove_dir_all(directory).expect("cleanup test directory");

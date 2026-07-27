@@ -388,6 +388,8 @@ export function PodcastView({
   const [detailState, setDetailState] = useState<RequestState>(
     restoredSession?.selectedEpisodeDetail ? "ready" : "idle",
   );
+  const [relatedEpisodes, setRelatedEpisodes] = useState<PodcastEpisode[]>([]);
+  const [relatedState, setRelatedState] = useState<RequestState>("idle");
   const [episodeOriginScreen, setEpisodeOriginScreen] =
     useState<EpisodeOriginScreen>(
       restoredSession?.episodeOriginScreen ?? "listen",
@@ -417,6 +419,7 @@ export function PodcastView({
   const handledLibraryRevision = useRef(libraryRevision);
   const episodeListRequestRef = useRef(0);
   const episodeDetailRequestRef = useRef(0);
+  const relatedEpisodeRequestRef = useRef(0);
   const homeRequestRef = useRef(0);
   const downloadLibraryRequestRef = useRef(0);
   const appleSearchRequestRef = useRef(0);
@@ -609,10 +612,41 @@ export function PodcastView({
     }
   }, [loadEpisodes, loadFeeds, loadHome]);
 
+  const loadRelatedEpisodes = useCallback(async (episodeId: string) => {
+    const requestId = relatedEpisodeRequestRef.current + 1;
+    relatedEpisodeRequestRef.current = requestId;
+    setRelatedEpisodes([]);
+    setRelatedState("loading");
+    try {
+      const nextEpisodes = await invoke<PodcastEpisode[]>(
+        "podcast_list_related_episodes",
+        { episodeId, limit: 6 },
+      );
+      if (relatedEpisodeRequestRef.current !== requestId) return;
+      setRelatedEpisodes(
+        nextEpisodes
+          .filter((episode) =>
+            episode.id !== episodeId && Boolean(episode.enclosureUrl.trim()))
+          .slice(0, 6),
+      );
+      setRelatedState("ready");
+    } catch (reason) {
+      if (relatedEpisodeRequestRef.current !== requestId) return;
+      setRelatedEpisodes([]);
+      setRelatedState("error");
+      if (import.meta.env.DEV) {
+        console.warn("[podcast] related episodes failed", reason);
+      }
+    }
+  }, []);
+
   const loadEpisodeDetail = useCallback(
     async (episodeId: string, preserveCurrent = false) => {
       const requestId = episodeDetailRequestRef.current + 1;
       episodeDetailRequestRef.current = requestId;
+      relatedEpisodeRequestRef.current += 1;
+      setRelatedEpisodes([]);
+      setRelatedState("idle");
       setDetailState("loading");
       if (!preserveCurrent) setSelectedEpisodeDetail(null);
       try {
@@ -624,6 +658,7 @@ export function PodcastView({
         setSelectedEpisodeId(episodeId);
         setSelectedEpisodeDetail(detail);
         setDetailState("ready");
+        void loadRelatedEpisodes(episodeId);
         return detail;
       } catch (reason) {
         if (episodeDetailRequestRef.current !== requestId) return null;
@@ -632,7 +667,7 @@ export function PodcastView({
         return null;
       }
     },
-    [],
+    [loadRelatedEpisodes],
   );
 
   const applyEpisodeUpdate = useCallback(
@@ -640,6 +675,7 @@ export function PodcastView({
       const update = (episode: PodcastEpisode) =>
         episode.id === nextEpisode.id ? nextEpisode : episode;
       setEpisodes((current) => current.map(update));
+      setRelatedEpisodes((current) => current.map(update));
       setHome((current) => ({
         continueListening: nextEpisode.completed
           ? current.continueListening.filter(
@@ -1792,8 +1828,12 @@ export function PodcastView({
       ? episodeOriginScreen
       : screen,
   ) {
-    episodeReturnSessionRef.current = null;
-    setEpisodeReturnToNowPlaying(false);
+    const preserveNowPlayingReturn =
+      screen === "episode" && episodeReturnToNowPlaying;
+    if (!preserveNowPlayingReturn) {
+      episodeReturnSessionRef.current = null;
+      setEpisodeReturnToNowPlaying(false);
+    }
     const originFeed = origin === "show" ? selectedFeed : null;
     setEpisodeOriginScreen(origin);
     setEpisodeOriginFeed(originFeed);
@@ -1812,6 +1852,7 @@ export function PodcastView({
 
   function closeEpisodeDetail() {
     episodeDetailRequestRef.current += 1;
+    relatedEpisodeRequestRef.current += 1;
     setError(null);
     setNotice(null);
     if (episodeReturnToNowPlaying) {
@@ -1843,6 +1884,7 @@ export function PodcastView({
   async function openEpisodeShow() {
     if (!selectedEpisodeDetail) return;
     episodeDetailRequestRef.current += 1;
+    relatedEpisodeRequestRef.current += 1;
     episodeReturnSessionRef.current = null;
     setEpisodeReturnToNowPlaying(false);
     const originRoot = episodeOriginScreen === "show"
@@ -1869,6 +1911,15 @@ export function PodcastView({
   const liveActiveEpisode = useMemo(
     () => activeEpisode ? liveEpisode(activeEpisode) : null,
     [activeEpisode, liveEpisode],
+  );
+  const displayedRelatedEpisodes = useMemo(
+    () => relatedEpisodes
+      .map(liveEpisode)
+      .filter((episode) =>
+        episode.id !== selectedEpisodeId
+        && Boolean(episode.enclosureUrl.trim()))
+      .slice(0, 6),
+    [liveEpisode, relatedEpisodes, selectedEpisodeId],
   );
   const continueListeningEpisodes = useMemo(() => {
     const next = home.continueListening
@@ -2976,30 +3027,77 @@ export function PodcastView({
           {detailState === "loading" && !selectedEpisodeDetail ? (
             <PodcastLoading label="正在读取单集详情" />
           ) : displayedEpisodeDetail ? (
-            <EpisodeDetail
-              detail={displayedEpisodeDetail}
-              active={currentEpisodeId === displayedEpisodeDetail.episode.id}
-              isPlaying={isPlaying}
-              downloading={
-                downloadingId === displayedEpisodeDetail.episode.id
-              }
-              action={detailAction}
-              queuePosition={detailQueuePosition}
-              onPlay={() => playEpisode(displayedEpisodeDetail.episode)}
-              onPlayNext={() =>
-                void onQueueEpisode(displayedEpisodeDetail.episode, true)}
-              onAddQueue={() =>
-                void onQueueEpisode(displayedEpisodeDetail.episode, false)}
-              onToggleSaved={() =>
-                void toggleEpisodeSaved(displayedEpisodeDetail)}
-              onDownload={() =>
-                void downloadEpisode(displayedEpisodeDetail.episode)}
-              onDeleteDownload={() =>
-                void deleteEpisodeDownload(displayedEpisodeDetail)}
-              onTogglePlayed={() =>
-                void toggleEpisodePlayed(displayedEpisodeDetail)}
-              onOpenShow={() => void openEpisodeShow()}
-            />
+            <>
+              <EpisodeDetail
+                detail={displayedEpisodeDetail}
+                active={currentEpisodeId === displayedEpisodeDetail.episode.id}
+                isPlaying={isPlaying}
+                downloading={
+                  downloadingId === displayedEpisodeDetail.episode.id
+                }
+                action={detailAction}
+                queuePosition={detailQueuePosition}
+                onPlay={() => playEpisode(displayedEpisodeDetail.episode)}
+                onPlayNext={() =>
+                  void onQueueEpisode(displayedEpisodeDetail.episode, true)}
+                onAddQueue={() =>
+                  void onQueueEpisode(displayedEpisodeDetail.episode, false)}
+                onToggleSaved={() =>
+                  void toggleEpisodeSaved(displayedEpisodeDetail)}
+                onDownload={() =>
+                  void downloadEpisode(displayedEpisodeDetail.episode)}
+                onDeleteDownload={() =>
+                  void deleteEpisodeDownload(displayedEpisodeDetail)}
+                onTogglePlayed={() =>
+                  void toggleEpisodePlayed(displayedEpisodeDetail)}
+                onOpenShow={() => void openEpisodeShow()}
+              />
+              {relatedState === "loading" ? (
+                <div className="podcast-detail-related">
+                  <PodcastSection title="该节目的其他单集">
+                    <PodcastLoading label="正在整理其他单集" />
+                  </PodcastSection>
+                </div>
+              ) : displayedRelatedEpisodes.length > 0 ? (
+                <div className="podcast-detail-related">
+                  <PodcastSection
+                    title="该节目的其他单集"
+                    actionLabel="查看全部"
+                    onAction={() => void openEpisodeShow()}
+                  >
+                    <div className="podcast-detail-related-list">
+                      {displayedRelatedEpisodes.map((episode) => (
+                        <EpisodeRow
+                          key={episode.id}
+                          episode={episode}
+                          active={currentEpisodeId === episode.id}
+                          isPlaying={isPlaying}
+                          downloading={downloadingId === episode.id}
+                          onOpen={() => openEpisodeDetail(episode)}
+                          onPlay={() => playEpisode(episode)}
+                          onDownload={() => void downloadEpisode(episode)}
+                          onContextMenu={(event) =>
+                            showEpisodeMenu(event, episode)}
+                        />
+                      ))}
+                    </div>
+                  </PodcastSection>
+                </div>
+              ) : relatedState === "error" ? (
+                <div className="podcast-detail-related">
+                  <PodcastSection title="该节目的其他单集">
+                    <PodcastEmpty
+                      label="暂时无法读取其他单集"
+                      actionLabel="重试"
+                      onAction={() =>
+                        void loadRelatedEpisodes(
+                          displayedEpisodeDetail.episode.id,
+                        )}
+                    />
+                  </PodcastSection>
+                </div>
+              ) : null}
+            </>
           ) : detailState === "error" ? (
             <PodcastEmpty label="无法读取这集内容，可以返回后重试" />
           ) : (
