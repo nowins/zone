@@ -436,6 +436,7 @@ export function PodcastView({
       restoredSession?.lastPlayedEpisode ?? null,
     );
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [openingCandidate, setOpeningCandidate] = useState<ShowCandidate | null>(null);
   const [following, setFollowing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [detailAction, setDetailAction] = useState<
@@ -1546,8 +1547,8 @@ export function PodcastView({
     }
 
     setOpeningId(candidate.id);
+    setOpeningCandidate(candidate);
     setError(null);
-    setNotice(`正在打开“${candidate.title}”`);
     try {
       const result = await invoke<PodcastSubscribeResult>(
         "podcast_preview_feed",
@@ -1568,12 +1569,14 @@ export function PodcastView({
       setReturnScreen(origin);
       setSelectedFeed(result.feed);
       setScreen("show");
+      setOpeningCandidate(null);
       await loadEpisodes(result.feed);
     } catch (reason) {
       setNotice(null);
       setError(errorMessage(reason, "打开节目失败"));
     } finally {
       setOpeningId(null);
+      setOpeningCandidate(null);
     }
   }
 
@@ -3274,6 +3277,14 @@ export function PodcastView({
         </main>
       ) : null}
 
+      {openingCandidate ? (
+        <div className="podcast-opening-state" role="status">
+          <PodcastActivityIndicator className="large" />
+          <strong>{openingCandidate.title}</strong>
+          <span>正在打开节目</span>
+        </div>
+      ) : null}
+
       {(notice || error) ? (
         <div
           className={`podcast-notice${error ? " error" : ""}`}
@@ -4371,6 +4382,8 @@ function PodcastActivityIndicator({
       className={`podcast-activity-indicator ${className}`.trim()}
       aria-hidden="true"
     >
+      <span />
+      <span />
       <span />
       <span />
       <span />

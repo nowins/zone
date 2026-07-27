@@ -22,8 +22,9 @@
 }
 
 .quick-group:nth-child(1) { --stagger: 0ms; }
-.quick-group:nth-child(2) { --stagger: 36ms; }
-.quick-group:nth-child(3) { --stagger: 72ms; }
+.quick-group:nth-child(2) { --stagger: 60ms; }
+.quick-group:nth-child(3) { --stagger: 120ms; }
+.quick-group:nth-child(4) { --stagger: 180ms; }
 .quick-album:nth-child(1),
 .history-stack > button:nth-child(1),
 .folder-list > div:nth-child(1),
@@ -291,8 +292,8 @@
 }
 
 @keyframes motion-feather-in {
-  from { opacity: 0; transform: translate3d(var(--motion-drift, var(--motion-drift-m)), 0, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
+  from { opacity: 0; transform: translate3d(var(--motion-drift, var(--motion-drift-m)), 0, 0) scale(0.96); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
 @keyframes motion-confirm {
@@ -349,11 +350,15 @@
 @keyframes motion-page-enter {
   from {
     opacity: 0;
-    transform: translate3d(calc(var(--motion-dir, 1) * var(--motion-drift, var(--motion-drift-m))), 0, 0);
+    transform: translate3d(calc(var(--motion-dir, 1) * var(--motion-drift, var(--motion-drift-m))), 0, 0) scale(0.975);
+  }
+  62% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(0.996);
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -418,6 +423,7 @@
   .lyrics-source-browser.is-searching::after,
   .podcast-spinner,
   .podcast-loading-state,
+  .podcast-opening-state,
   .podcast-activity-indicator > span,
   .podcast-now-playing-stage,
   .podcast-now-spinner,

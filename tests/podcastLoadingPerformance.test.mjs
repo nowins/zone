@@ -47,7 +47,7 @@ test("preview and chapter requests reuse durable caches before networking", () =
   assert.match(viewSource, /chapterDocumentCache\.get\(episodeId\)/);
 });
 
-test("content loading uses a delayed opacity signal instead of another spinner", () => {
+test("content loading pairs a delayed reveal with the Metro orbit indicator", () => {
   const loadingStart = viewSource.indexOf("function PodcastLoading(");
   const indicatorStart = viewSource.indexOf(
     "\nfunction PodcastActivityIndicator(",
@@ -63,14 +63,14 @@ test("content loading uses a delayed opacity signal instead of another spinner",
   );
   assert.match(
     stylesSource,
-    /@keyframes podcast-loading-pulse\s*\{[\s\S]*?opacity:[\s\S]*?\}/,
+    /@keyframes podcast-metro-orbit\s*\{[\s\S]*?rotate\(720deg\)[\s\S]*?\}/,
   );
   assert.doesNotMatch(
     stylesSource.slice(
-      stylesSource.indexOf("@keyframes podcast-loading-pulse"),
+      stylesSource.indexOf("@keyframes podcast-metro-orbit"),
       stylesSource.indexOf("@keyframes podcast-spin"),
     ),
-    /transform|width|height|margin|padding/,
+    /width|height|margin|padding/,
   );
   assert.match(motionSource, /\.podcast-activity-indicator > span/);
 });

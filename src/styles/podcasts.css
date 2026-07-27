@@ -224,34 +224,88 @@
     var(--motion-micro) backwards;
 }
 
+.podcast-opening-state {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+  background: rgba(10, 7, 11, 0.74);
+  animation:
+    podcast-loading-reveal var(--motion-micro) var(--motion-ease-standard)
+    var(--motion-micro) backwards;
+}
+
+.podcast-opening-state strong {
+  max-width: min(420px, 70vw);
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 17px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podcast-opening-state span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .podcast-activity-indicator {
-  width: 17px;
-  height: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
+  position: relative;
+  width: 16px;
+  height: 16px;
+  display: inline-block;
   flex: none;
 }
 
+/* Metro ring: five dots chase clockwise, two turns per pass, phased 5% apart. */
 .podcast-activity-indicator > span {
-  width: 3px;
-  height: 3px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--dot, 2.5px);
+  height: var(--dot, 2.5px);
+  margin: calc(var(--dot, 2.5px) / -2) 0 0 calc(var(--dot, 2.5px) / -2);
   display: block;
-  opacity: 0.24;
+  opacity: 0.3;
   background: currentColor;
   border-radius: 50%;
-  animation:
-    podcast-loading-pulse calc(var(--motion-page) * 3)
-    var(--motion-ease-standard) infinite;
+  animation: podcast-metro-orbit 4500ms linear infinite;
+}
+
+.podcast-activity-indicator.large {
+  width: 40px;
+  height: 40px;
+  --orbit: 17px;
+  --dot: 3px;
+}
+
+.podcast-activity-indicator > span:nth-child(1) {
+  transform: rotate(0deg) translateY(var(--orbit, 7px));
 }
 
 .podcast-activity-indicator > span:nth-child(2) {
-  animation-delay: var(--motion-micro);
+  transform: rotate(72deg) translateY(var(--orbit, 7px));
+  animation-delay: -225ms;
 }
 
 .podcast-activity-indicator > span:nth-child(3) {
-  animation-delay: calc(var(--motion-micro) * 2);
+  transform: rotate(144deg) translateY(var(--orbit, 7px));
+  animation-delay: -450ms;
+}
+
+.podcast-activity-indicator > span:nth-child(4) {
+  transform: rotate(216deg) translateY(var(--orbit, 7px));
+  animation-delay: -675ms;
+}
+
+.podcast-activity-indicator > span:nth-child(5) {
+  transform: rotate(288deg) translateY(var(--orbit, 7px));
+  animation-delay: -900ms;
 }
 
 .podcast-button-loading {
@@ -1850,15 +1904,28 @@
   to { opacity: 1; }
 }
 
-@keyframes podcast-loading-pulse {
-  0%,
-  60%,
-  100% {
-    opacity: 0.24;
+@keyframes podcast-metro-orbit {
+  0% {
+    transform: rotate(0deg) translateY(var(--orbit, 7px));
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
   }
 
-  30% {
-    opacity: 0.9;
+  38% {
+    transform: rotate(360deg) translateY(var(--orbit, 7px));
+    animation-timing-function: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  }
+
+  76% {
+    transform: rotate(720deg) translateY(var(--orbit, 7px));
+    opacity: 1;
+    animation-timing-function: linear;
+  }
+
+  76.01%,
+  100% {
+    transform: rotate(720deg) translateY(var(--orbit, 7px));
+    opacity: 0;
   }
 }
 
