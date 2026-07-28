@@ -8,6 +8,8 @@ export const MOTION_DURATIONS = {
   content: 220,
   page: 260,
   chrome: 700,
+  /** Long-lived looping loaders (Metro orbit); not a page-transition duration. */
+  loader: 4500,
 } as const;
 
 export type MotionDurationName = keyof typeof MOTION_DURATIONS;

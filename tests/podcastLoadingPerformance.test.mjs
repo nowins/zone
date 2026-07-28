@@ -83,6 +83,10 @@ test("content loading pairs a delayed reveal with the Metro orbit indicator", ()
   );
   assert.match(
     stylesSource,
+    /animation:\s*podcast-metro-orbit\s+var\(--motion-loader,\s*4500ms\)/,
+  );
+  assert.match(
+    stylesSource,
     /@keyframes podcast-metro-orbit\s*\{[\s\S]*?rotate\(720deg\)[\s\S]*?\}/,
   );
   assert.doesNotMatch(

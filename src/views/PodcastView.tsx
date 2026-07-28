@@ -1632,8 +1632,15 @@ export function PodcastView({
     const cleanUrl = rssUrl.trim();
     if (!cleanUrl || openingId) return;
     setOpeningId(cleanUrl);
+    setOpeningCandidate({
+      id: cleanUrl,
+      title: "RSS 订阅",
+      author: cleanUrl,
+      feedUrl: cleanUrl,
+      artworkUrl: null,
+    });
     setError(null);
-    setNotice("正在读取 RSS 与单集");
+    setNotice(null);
     try {
       const result = await invoke<PodcastSubscribeResult>(
         "podcast_subscribe",
@@ -1646,12 +1653,14 @@ export function PodcastView({
       setReturnScreen("library");
       setSelectedFeed(result.feed);
       setScreen("show");
+      setOpeningCandidate(null);
       await loadEpisodes(result.feed);
     } catch (reason) {
       setNotice(null);
       setError(errorMessage(reason, "通过 RSS 关注节目失败"));
     } finally {
       setOpeningId(null);
+      setOpeningCandidate(null);
     }
   }
 

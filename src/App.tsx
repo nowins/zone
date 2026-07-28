@@ -1236,21 +1236,41 @@ export default function App() {
     }
   }
 
+  function resumePodcastProgressWritesIfActivelyPlaying(episodeId: string) {
+    const stillActive =
+      activePodcastEpisodeRef.current?.episodeId === episodeId;
+    const stillPlaying = Boolean(
+      stillActive && audioRef.current && !audioRef.current.paused,
+    );
+    // Keep writes suppressed while paused so a settled "mark unplayed" cannot be
+    // resurrected by a later flush of the paused clock. Resume only when the
+    // episode is still actively playing so continued listening / onEnded can
+    // record progress under a fresh gate epoch.
+    if (stillPlaying) resumePodcastProgressWrites(episodeId);
+  }
+
   function setPodcastEpisodePlayed(episodeId: string, played: boolean) {
     const suppressActiveProgress =
       activePodcastEpisodeRef.current?.episodeId === episodeId;
     if (suppressActiveProgress) suppressPodcastProgressWrites(episodeId);
-    const operation = podcastProgressMutationRef.current.then(() =>
-      invoke<PodcastEpisodeDetail>("podcast_set_episode_played", {
+    const operation = podcastProgressMutationRef.current.then(async () => {
+      const detail = await invoke<PodcastEpisodeDetail>("podcast_set_episode_played", {
         episodeId,
         played,
-      })
-    );
+      });
+      updatePodcastEpisode(detail.episode);
+      return detail;
+    });
     podcastProgressMutationRef.current = operation.then(
       () => undefined,
       () => undefined,
     );
-    return operation.catch((reason) => {
+    return operation.then((detail) => {
+      if (suppressActiveProgress) {
+        resumePodcastProgressWritesIfActivelyPlaying(episodeId);
+      }
+      return detail;
+    }).catch((reason) => {
       if (suppressActiveProgress) resumePodcastProgressWrites(episodeId);
       throw reason;
     });
@@ -1280,7 +1300,11 @@ export default function App() {
       () => undefined,
       () => undefined,
     );
-    return operation.catch((reason) => {
+    return operation.then(() => {
+      if (suppressActiveProgress && activeEpisodeId) {
+        resumePodcastProgressWritesIfActivelyPlaying(activeEpisodeId);
+      }
+    }).catch((reason) => {
       if (suppressActiveProgress && activeEpisodeId) {
         resumePodcastProgressWrites(activeEpisodeId);
       }
@@ -1838,6 +1862,7 @@ export default function App() {
         episodeId: episode.episodeId,
         positionSeconds,
         durationSeconds,
+        force,
       });
       if (
         positionSeconds > 0

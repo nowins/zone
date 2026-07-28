@@ -170,7 +170,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - 收藏是 id 为 `DEFAULT_PLAYLIST_ID`（`favorites`）的默认播放列表；读取播放列表状态时必须用 `normalizePlaylists`，让旧状态补齐默认收藏列表。
 - home pins 用 `normalizeHomePins`/`reconcileHomePins` 做归一化与对账。
 - 歌词缓存、手动绑定与按曲目保存的在线搜索信息映射在 `zone-local-lyrics-v1`；歌词显示偏好在 `zone-lyrics-display-v1`；歌词 provider 设置在 `zone-lyrics-providers-v1`；按曲目与歌词来源保存的时间校准在 `zone-lyrics-timing-v1`。
-- 播客状态不写入音乐 `localStorage` schema；节目预览/关注状态、单集、稍后听、待播顺序、下载与进度存于应用数据目录的 `podcasts.sqlite`，音频位于同目录下的 `podcast-downloads/`。预览节目可以入库但不出现在资料库，`subscribed` 只表达用户是否关注。播客播放倍速与最后一个活动单集 ID 独立保存在 `zone-podcast-playback-v1`，最后单集重启后以暂停态恢复且不改变音乐播放速度；睡眠定时只存在于当前运行会话。
+- 播客状态不写入音乐 `localStorage` schema；节目预览/关注状态、单集、稍后听、待播顺序、下载与进度存于应用数据目录的 `podcasts.sqlite`，音频位于同目录下的 `podcast-downloads/`。预览节目可以入库但不出现在资料库，`subscribed` 只表达用户是否关注。Feed 刷新时若单集已从源消失，仅在无进度、未稍后听、未排队、无进行中/完成下载时删除该行；有用户状态的单集会保留。`enclosure_url` 变更会失效对应离线下载。普通进度写仅允许前进，显式 seek/flush 传 `force` 才可回退。播客播放倍速与最后一个活动单集 ID 独立保存在 `zone-podcast-playback-v1`，最后单集重启后以暂停态恢复且不改变音乐播放速度；睡眠定时只存在于当前运行会话。
 
 ## 播放与 Web Audio
 

@@ -1119,6 +1119,7 @@ pub async fn podcast_save_progress(
   episode_id: String,
   position_seconds: f64,
   duration_seconds: f64,
+  force: Option<bool>,
 ) -> Result<(), String> {
   state.ensure_ready()?;
   validate_identifier(&episode_id)?;
@@ -1127,7 +1128,20 @@ pub async fn podcast_save_progress(
     return Err("播客播放进度无效".to_string());
   }
   let db_path = state.db_path.clone();
-  tauri::async_runtime::spawn_blocking(move || save_progress(&db_path, &episode_id, position_seconds, duration_seconds))
+  let force = force.unwrap_or(false);
+  tauri::async_runtime::spawn_blocking(move || {
+    if force {
+      save_progress_with_policy(
+        &db_path,
+        &episode_id,
+        position_seconds,
+        duration_seconds,
+        true,
+      )
+    } else {
+      save_progress(&db_path, &episode_id, position_seconds, duration_seconds)
+    }
+  })
     .await
     .map_err(|error| format!("播客数据任务异常结束：{error}"))?
 }
@@ -1359,6 +1373,7 @@ async fn serve_podcast_stream_protocol_with_network_policy(
   proxy_podcast_stream_response(
     public_response.response,
     source.enclosure_type.as_deref(),
+    Some(source.enclosure_url.as_str()),
     requested_range,
     is_head,
   )
@@ -1368,6 +1383,7 @@ async fn serve_podcast_stream_protocol_with_network_policy(
 async fn proxy_podcast_stream_response(
   response: reqwest::Response,
   enclosure_type: Option<&str>,
+  enclosure_url: Option<&str>,
   requested_range: PodcastStreamRange,
   is_head: bool,
 ) -> Response<Vec<u8>> {
@@ -1385,7 +1401,11 @@ async fn proxy_podcast_stream_response(
     );
   }
 
-  let content_type = match podcast_stream_content_type(response.headers(), enclosure_type) {
+  let content_type = match podcast_stream_content_type(
+    response.headers(),
+    enclosure_type,
+    enclosure_url,
+  ) {
     Ok(content_type) => content_type,
     Err(error) => return podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error),
   };
@@ -1423,6 +1443,9 @@ async fn proxy_podcast_stream_response(
       Ok(body) => body,
       Err(error) => return podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error),
     };
+    if let Err(error) = ensure_stream_body_looks_like_audio(&content_type, &body) {
+      return podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error);
+    }
     return podcast_stream_response_builder(StatusCode::PARTIAL_CONTENT, &content_type, expected_length)
       .header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{total}"))
       .body(body)
@@ -1455,6 +1478,9 @@ async fn proxy_podcast_stream_response(
     Ok(body) => body,
     Err(error) => return podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error),
   };
+  if let Err(error) = ensure_stream_body_looks_like_audio(&content_type, &body) {
+    return podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error);
+  }
   podcast_stream_response_builder(StatusCode::OK, &content_type, total)
     .body(body)
     .unwrap()
@@ -1563,9 +1589,17 @@ async fn read_exact_stream_body(mut response: reqwest::Response, expected_length
   Ok(body)
 }
 
-fn podcast_stream_content_type(headers: &HeaderMap, enclosure_type: Option<&str>) -> Result<String, String> {
+fn podcast_stream_content_type(
+  headers: &HeaderMap,
+  enclosure_type: Option<&str>,
+  enclosure_url: Option<&str>,
+) -> Result<String, String> {
   let response_type = header_text(headers, header::CONTENT_TYPE);
-  if !response_content_type_is_audio_candidate(response_type.as_deref(), enclosure_type) {
+  if !response_content_type_is_audio_candidate(
+    response_type.as_deref(),
+    enclosure_type,
+    enclosure_url,
+  ) {
     return Err("播客音频来源返回了非音频内容".to_string());
   }
   let candidate = response_type
@@ -1582,6 +1616,18 @@ fn podcast_stream_content_type(headers: &HeaderMap, enclosure_type: Option<&str>
   } else {
     Ok(candidate)
   }
+}
+
+fn ensure_stream_body_looks_like_audio(content_type: &str, body: &[u8]) -> Result<(), String> {
+  if content_type.starts_with("audio/") {
+    return Ok(());
+  }
+  // Generic binary responses may be error pages or non-media payloads. Require a
+  // recognized audio magic when the upstream did not advertise an audio MIME.
+  if audio_prefix_looks_like_audio(body) {
+    return Ok(());
+  }
+  Err("播客音频来源返回了非音频内容".to_string())
 }
 
 fn parse_unsatisfied_content_range(value: &str) -> Option<u64> {
@@ -3323,15 +3369,23 @@ fn ensure_database_column(
 }
 
 fn store_subscription(db_path: &Path, parsed: ParsedPodcast) -> Result<PodcastSubscribeResult, String> {
-  store_feed(db_path, parsed, true)
+  store_feed(db_path, &podcast_downloads_dir_for_db(db_path), parsed, true)
 }
 
 fn store_preview(db_path: &Path, parsed: ParsedPodcast) -> Result<PodcastSubscribeResult, String> {
-  store_feed(db_path, parsed, false)
+  store_feed(db_path, &podcast_downloads_dir_for_db(db_path), parsed, false)
+}
+
+fn podcast_downloads_dir_for_db(db_path: &Path) -> PathBuf {
+  db_path
+    .parent()
+    .map(|parent| parent.join("podcast-downloads"))
+    .unwrap_or_else(|| PathBuf::from("podcast-downloads"))
 }
 
 fn store_feed(
   db_path: &Path,
+  downloads_dir: &Path,
   parsed: ParsedPodcast,
   requested_subscribed: bool,
 ) -> Result<PodcastSubscribeResult, String> {
@@ -3501,6 +3555,15 @@ fn store_feed(
         .map_err(|error| format!("无法保存播客单集：{error}"))?;
       inserted_count += inserted;
       if inserted == 0 {
+        // Enclosure URL identity drives streaming and offline files. Refresh must
+        // drop managed downloads before the episode row switches to the new URL,
+        // otherwise playbackLocalPath keeps serving a stale CDN object.
+        invalidate_download_if_enclosure_changed(
+          &transaction,
+          &downloads_dir,
+          &episode.id,
+          &episode.enclosure_url,
+        )?;
         updated_count += update
           .execute(params![
           episode.id,
@@ -3523,6 +3586,7 @@ fn store_feed(
       reconcile_episode_resources(&transaction, episode)?;
     }
   }
+  prune_missing_feed_episodes(&transaction, &downloads_dir, &feed.id, &episodes)?;
   let (latest_episode_at, unplayed_count) = transaction
     .query_row(
       "
@@ -3561,6 +3625,149 @@ fn store_feed(
     inserted_count,
     updated_count,
   })
+}
+
+fn prune_missing_feed_episodes(
+  transaction: &Transaction<'_>,
+  downloads_dir: &Path,
+  feed_id: &str,
+  current_episodes: &[ParsedPodcastEpisode],
+) -> Result<(), String> {
+  let current_ids = current_episodes
+    .iter()
+    .map(|episode| episode.id.as_str())
+    .collect::<HashSet<_>>();
+  let existing_ids = {
+    let mut statement = transaction
+      .prepare("SELECT id FROM podcast_episodes WHERE feed_id = ?1")
+      .map_err(|error| format!("无法读取播客单集：{error}"))?;
+    let rows = statement
+      .query_map([feed_id], |row| row.get::<_, String>(0))
+      .map_err(|error| format!("无法读取播客单集：{error}"))?;
+    rows
+      .collect::<Result<Vec<_>, _>>()
+      .map_err(|error| format!("无法读取播客单集：{error}"))?
+  };
+
+  for episode_id in existing_ids {
+    if current_ids.contains(episode_id.as_str()) {
+      continue;
+    }
+    let (
+      has_progress,
+      is_saved,
+      is_queued,
+      has_active_download,
+    ) = transaction
+      .query_row(
+        "
+        SELECT
+          EXISTS(
+            SELECT 1
+            FROM podcast_progress
+            WHERE episode_id = ?1
+              AND (completed = 1 OR position_seconds > 0)
+          ),
+          EXISTS(SELECT 1 FROM podcast_saved_episodes WHERE episode_id = ?1),
+          EXISTS(SELECT 1 FROM podcast_queue WHERE episode_id = ?1),
+          EXISTS(
+            SELECT 1
+            FROM podcast_downloads
+            WHERE episode_id = ?1
+              AND state IN ('downloaded', 'downloading')
+          )
+        ",
+        [&episode_id],
+        |row| {
+          Ok((
+            row.get::<_, i64>(0)? != 0,
+            row.get::<_, i64>(1)? != 0,
+            row.get::<_, i64>(2)? != 0,
+            row.get::<_, i64>(3)? != 0,
+          ))
+        },
+      )
+      .map_err(|error| format!("无法检查播客单集保留条件：{error}"))?;
+    if has_progress || is_saved || is_queued || has_active_download {
+      continue;
+    }
+
+    let local_path = transaction
+      .query_row(
+        "SELECT local_path FROM podcast_downloads WHERE episode_id = ?1",
+        [&episode_id],
+        |row| row.get::<_, Option<String>>(0),
+      )
+      .optional()
+      .map_err(|error| format!("无法读取播客下载信息：{error}"))?
+      .flatten();
+    if let Some(local_path) = local_path {
+      let path = PathBuf::from(local_path);
+      if is_managed_download_path(downloads_dir, &episode_id, &path) {
+        remove_file_if_present(&path, "播客下载")?;
+      }
+    }
+    remove_file_if_present(
+      &downloads_dir.join(format!("{episode_id}.part")),
+      "播客下载临时文件",
+    )?;
+    transaction
+      .execute(
+        "DELETE FROM podcast_episodes WHERE id = ?1 AND feed_id = ?2",
+        params![episode_id, feed_id],
+      )
+      .map_err(|error| format!("无法清理已下架的播客单集：{error}"))?;
+  }
+  Ok(())
+}
+
+fn invalidate_download_if_enclosure_changed(
+  transaction: &Transaction<'_>,
+  downloads_dir: &Path,
+  episode_id: &str,
+  next_enclosure_url: &str,
+) -> Result<(), String> {
+  let previous_enclosure_url = transaction
+    .query_row(
+      "SELECT enclosure_url FROM podcast_episodes WHERE id = ?1",
+      [episode_id],
+      |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|error| format!("无法读取播客音频地址：{error}"))?;
+  let Some(previous_enclosure_url) = previous_enclosure_url else {
+    return Ok(());
+  };
+  if previous_enclosure_url == next_enclosure_url {
+    return Ok(());
+  }
+
+  let local_path = transaction
+    .query_row(
+      "SELECT local_path FROM podcast_downloads WHERE episode_id = ?1",
+      [episode_id],
+      |row| row.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .map_err(|error| format!("无法读取播客下载信息：{error}"))?
+    .flatten();
+  if let Some(local_path) = local_path {
+    let path = PathBuf::from(local_path);
+    if is_managed_download_path(downloads_dir, episode_id, &path) {
+      remove_file_if_present(&path, "播客下载")?;
+    }
+  }
+  remove_file_if_present(
+    &downloads_dir.join(format!("{episode_id}.part")),
+    "播客下载临时文件",
+  )?;
+  transaction
+    .execute(
+      "DELETE FROM podcast_downloads WHERE episode_id = ?1",
+      [episode_id],
+    )
+    .map_err(|error| format!("无法清除失效的播客下载记录：{error}"))?;
+  Ok(())
 }
 
 fn reconcile_episode_resources(
@@ -6045,7 +6252,11 @@ async fn download_episode_with_network_policy(
     return Err(format!("播客音频来源返回错误 {}", status.as_u16()));
   }
   let response_content_type = header_text(public_response.response.headers(), header::CONTENT_TYPE);
-  if !response_content_type_is_audio_candidate(response_content_type.as_deref(), enclosure_type) {
+  if !response_content_type_is_audio_candidate(
+    response_content_type.as_deref(),
+    enclosure_type,
+    Some(enclosure_url),
+  ) {
     return Err("播客音频来源返回了非音频内容".to_string());
   }
 
@@ -6284,7 +6495,22 @@ fn mark_download_failed(db_path: &Path, episode_id: &str, downloaded_bytes: u64,
   Ok(())
 }
 
-fn save_progress(db_path: &Path, episode_id: &str, position_seconds: f64, duration_seconds: f64) -> Result<(), String> {
+fn save_progress(
+  db_path: &Path,
+  episode_id: &str,
+  position_seconds: f64,
+  duration_seconds: f64,
+) -> Result<(), String> {
+  save_progress_with_policy(db_path, episode_id, position_seconds, duration_seconds, false)
+}
+
+fn save_progress_with_policy(
+  db_path: &Path,
+  episode_id: &str,
+  position_seconds: f64,
+  duration_seconds: f64,
+  force: bool,
+) -> Result<(), String> {
   let connection = open_database(db_path)?;
   let exists = connection
     .query_row("SELECT 1 FROM podcast_episodes WHERE id = ?1", [episode_id], |_| Ok(()))
@@ -6300,6 +6526,8 @@ fn save_progress(db_path: &Path, episode_id: &str, position_seconds: f64, durati
     position_seconds
   };
   let completed = duration_seconds > 0.0 && clamped_position / duration_seconds >= 0.95;
+  // Ordinary timeupdate writes only move the playhead forward. Explicit seeks
+  // and flushes pass force=true so rewinds and chapter jumps still persist.
   connection
     .execute(
       "
@@ -6307,8 +6535,13 @@ fn save_progress(db_path: &Path, episode_id: &str, position_seconds: f64, durati
         episode_id, position_seconds, duration_seconds, completed, updated_at
       ) VALUES (?1, ?2, ?3, ?4, ?5)
       ON CONFLICT(episode_id) DO UPDATE SET
-        position_seconds = excluded.position_seconds,
-        duration_seconds = excluded.duration_seconds,
+        position_seconds = CASE
+          WHEN ?6 != 0 THEN excluded.position_seconds
+          WHEN excluded.position_seconds >= podcast_progress.position_seconds
+            THEN excluded.position_seconds
+          ELSE podcast_progress.position_seconds
+        END,
+        duration_seconds = COALESCE(excluded.duration_seconds, podcast_progress.duration_seconds),
         completed = MAX(podcast_progress.completed, excluded.completed),
         updated_at = excluded.updated_at
       ",
@@ -6318,6 +6551,7 @@ fn save_progress(db_path: &Path, episode_id: &str, position_seconds: f64, durati
         (duration_seconds > 0.0).then_some(duration_seconds),
         i64::from(completed),
         unix_time_millis(),
+        i64::from(force),
       ],
     )
     .map_err(|error| format!("无法保存播客播放进度：{error}"))?;
@@ -6538,13 +6772,18 @@ fn is_public_ipv6(ip: Ipv6Addr) -> bool {
     return is_public_ipv4(ipv4);
   }
   let segments = ip.segments();
+  // Reject ULA/link-local/site-local/multicast/documentation, plus well-known
+  // translation prefixes (NAT64 64:ff9b::/96 and deprecated 64:ff9b:1::/48)
+  // that can tunnel traffic toward private IPv4 space.
   !(ip.is_unspecified()
     || ip.is_loopback()
     || (segments[0] & 0xfe00) == 0xfc00
     || (segments[0] & 0xffc0) == 0xfe80
     || (segments[0] & 0xffc0) == 0xfec0
     || (segments[0] & 0xff00) == 0xff00
-    || (segments[0] == 0x2001 && segments[1] == 0x0db8))
+    || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+    || (segments[0] == 0x64 && segments[1] == 0xff9b)
+    || (segments[0] == 0x64 && segments[1] == 0xff9b && segments[2] == 0x1))
 }
 
 async fn read_limited(mut response: reqwest::Response, limit: usize, label: &str) -> Result<Vec<u8>, String> {
@@ -6597,18 +6836,73 @@ fn parse_content_range(value: &str) -> Option<(u64, u64, Option<u64>)> {
   Some((start, end, total))
 }
 
-fn response_content_type_is_audio_candidate(response_type: Option<&str>, enclosure_type: Option<&str>) -> bool {
-  let candidate = response_type.or(enclosure_type);
-  let Some(candidate) = candidate else {
-    return true;
-  };
-  let candidate = candidate
+fn response_content_type_is_audio_candidate(
+  response_type: Option<&str>,
+  enclosure_type: Option<&str>,
+  enclosure_url: Option<&str>,
+) -> bool {
+  let candidate = first_nonempty_mime(response_type).or_else(|| first_nonempty_mime(enclosure_type));
+  if let Some(candidate) = candidate {
+    return is_audio_or_generic_binary_mime(candidate);
+  }
+  // No usable Content-Type / enclosure type: only accept URLs that look like
+  // audio files so the stream proxy does not forward arbitrary opaque bytes.
+  enclosure_url.is_some_and(enclosure_url_looks_like_audio)
+}
+
+fn first_nonempty_mime(value: Option<&str>) -> Option<&str> {
+  value
+    .map(str::trim)
+    .filter(|value| !value.is_empty())
+}
+
+fn is_audio_or_generic_binary_mime(value: &str) -> bool {
+  let candidate = value
     .split(';')
     .next()
     .unwrap_or_default()
     .trim()
     .to_ascii_lowercase();
-  candidate.starts_with("audio/") || matches!(candidate.as_str(), "application/octet-stream" | "binary/octet-stream")
+  candidate.starts_with("audio/")
+    || matches!(
+      candidate.as_str(),
+      "application/octet-stream" | "binary/octet-stream"
+    )
+}
+
+fn enclosure_url_looks_like_audio(url: &str) -> bool {
+  let path = url
+    .split(['?', '#'])
+    .next()
+    .unwrap_or(url)
+    .trim()
+    .to_ascii_lowercase();
+  let extension = path
+    .rsplit('/')
+    .next()
+    .unwrap_or(path.as_str())
+    .rsplit('.')
+    .next()
+    .filter(|value| value.len() >= 2 && value.len() <= 5)
+    .unwrap_or("");
+  matches!(
+    extension,
+    "mp3" | "m4a" | "aac" | "flac" | "ogg" | "wav" | "mp4" | "opus" | "m4b"
+  )
+}
+
+fn audio_prefix_looks_like_audio(bytes: &[u8]) -> bool {
+  if bytes.starts_with(b"ID3")
+    || bytes.starts_with(b"fLaC")
+    || bytes.starts_with(b"OggS")
+    || (bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WAVE"))
+    || bytes.get(4..8) == Some(b"ftyp")
+  {
+    return true;
+  }
+  bytes
+    .get(0..2)
+    .is_some_and(|value| value[0] == 0xff && value[1] & 0xe0 == 0xe0 && value[1] & 0x06 != 0)
 }
 
 async fn detect_audio_extension(path: &Path) -> Result<&'static str, String> {
@@ -6959,11 +7253,100 @@ mod tests {
       "fc00::1",
       "fe80::1",
       "2001:db8::1",
+      "64:ff9b::192.0.2.1",
+      "64:ff9b:1::1",
     ] {
       assert!(!is_public_ip(value.parse().expect("special IP")), "{value}");
     }
     assert!(is_fake_ip_proxy_address("198.18.1.204".parse().expect("fake IP")));
     assert!(!is_fake_ip_proxy_address("192.168.0.1".parse().expect("private IP")));
+  }
+
+  #[test]
+  fn audio_candidate_requires_mime_extension_or_magic() {
+    assert!(response_content_type_is_audio_candidate(
+      Some("audio/mpeg"),
+      None,
+      None,
+    ));
+    assert!(response_content_type_is_audio_candidate(
+      None,
+      Some("audio/mp4"),
+      None,
+    ));
+    assert!(response_content_type_is_audio_candidate(
+      None,
+      None,
+      Some("https://cdn.example.test/show/ep-1.mp3?token=1"),
+    ));
+    assert!(!response_content_type_is_audio_candidate(None, None, None));
+    assert!(!response_content_type_is_audio_candidate(
+      None,
+      None,
+      Some("https://cdn.example.test/show/ep-1"),
+    ));
+    assert!(!response_content_type_is_audio_candidate(
+      Some("text/html"),
+      None,
+      Some("https://cdn.example.test/show/ep-1.mp3"),
+    ));
+    assert!(audio_prefix_looks_like_audio(b"ID3\x03\x00"));
+    assert!(!audio_prefix_looks_like_audio(b"<html>not audio"));
+  }
+
+  #[test]
+  fn ordinary_progress_is_monotonic_while_force_allows_rewind() {
+    let directory = test_directory("progress-monotonic");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let episode_id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    save_progress(&state.db_path, &episode_id, 40.0, 100.0).expect("save later progress");
+    save_progress(&state.db_path, &episode_id, 20.0, 100.0)
+      .expect("stale earlier progress must not rewind");
+    let after_stale =
+      get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id).expect("detail");
+    assert_eq!(after_stale.episode.progress_seconds, 40.0);
+
+    save_progress_with_policy(&state.db_path, &episode_id, 12.0, 100.0, true)
+      .expect("forced seek may rewind");
+    let after_force =
+      get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id).expect("detail");
+    assert_eq!(after_force.episode.progress_seconds, 12.0);
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn feed_refresh_prunes_unreferenced_episodes_but_keeps_user_state() {
+    let directory = test_directory("prune-missing-episodes");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let mut initial = parsed_fixture_with_episode_count(3);
+    let feed_id = initial.feed.id.clone();
+    let kept_with_progress = initial.episodes[0].id.clone();
+    let kept_saved = initial.episodes[1].id.clone();
+    let prune_candidate = initial.episodes[2].id.clone();
+    store_subscription(&state.db_path, initial.clone()).expect("store subscription");
+    save_progress(&state.db_path, &kept_with_progress, 15.0, 100.0).expect("progress");
+    set_episode_saved(&state.db_path, &kept_saved, true).expect("save episode");
+
+    initial.feed.last_fetched_at = initial.feed.last_fetched_at.saturating_add(1);
+    initial.feed.last_checked_at = Some(initial.feed.last_fetched_at);
+    initial.episodes.truncate(2);
+    store_preview(&state.db_path, initial).expect("refresh without third episode");
+
+    let remaining = list_episodes(&state.db_path, &state.downloads_dir, &feed_id)
+      .expect("list remaining episodes");
+    let remaining_ids = remaining
+      .iter()
+      .map(|episode| episode.id.as_str())
+      .collect::<HashSet<_>>();
+    assert!(remaining_ids.contains(kept_with_progress.as_str()));
+    assert!(remaining_ids.contains(kept_saved.as_str()));
+    assert!(!remaining_ids.contains(prune_candidate.as_str()));
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
   }
 
   #[test]
@@ -8653,6 +9036,69 @@ mod tests {
         .expect_err("unknown selected feed")
         .contains("不存在")
     );
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  fn enclosure_url_change_invalidates_managed_offline_downloads() {
+    let directory = test_directory("enclosure-url-invalidates-download");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let episode_id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed.clone()).expect("store initial subscription");
+
+    let final_path = state.downloads_dir.join(format!("{episode_id}.mp3"));
+    let part_path = state.downloads_dir.join(format!("{episode_id}.part"));
+    fs::write(&final_path, b"ID3-stale").expect("write managed download");
+    fs::write(&part_path, b"ID3-part").expect("write part download");
+    mark_download_complete(
+      &state.db_path,
+      &episode_id,
+      &final_path.to_string_lossy(),
+      9,
+      Some(9),
+    )
+    .expect("mark managed download");
+
+    let before = get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id)
+      .expect("detail before enclosure change");
+    assert_eq!(before.episode.download_state, "downloaded");
+    assert_eq!(
+      before.episode.local_path.as_deref(),
+      Some(final_path.to_string_lossy().as_ref())
+    );
+
+    let mut changed = parsed;
+    changed.feed.last_fetched_at = changed.feed.last_fetched_at.saturating_add(1);
+    changed.feed.last_checked_at = Some(changed.feed.last_fetched_at);
+    changed.episodes[0].enclosure_url =
+      "https://cdn.example.test/rotated/episode-1.mp3".to_string();
+    let result = store_preview(&state.db_path, changed).expect("store enclosure rotation");
+    assert_eq!(result.inserted_count, 0);
+    assert_eq!(result.updated_count, 1);
+
+    assert!(!final_path.exists());
+    assert!(!part_path.exists());
+    let after = get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id)
+      .expect("detail after enclosure change");
+    assert_eq!(
+      after.episode.enclosure_url,
+      "https://cdn.example.test/rotated/episode-1.mp3"
+    );
+    assert_eq!(after.episode.download_state, "none");
+    assert!(after.episode.local_path.is_none());
+    let download_row_exists = open_database(&state.db_path)
+      .expect("open database")
+      .query_row(
+        "SELECT 1 FROM podcast_downloads WHERE episode_id = ?1",
+        [&episode_id],
+        |_| Ok(()),
+      )
+      .optional()
+      .expect("inspect download row")
+      .is_some();
+    assert!(!download_row_exists);
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }
@@ -10518,6 +10964,7 @@ mod tests {
     assert!(response_content_type_is_audio_candidate(
       header_text(response.response.headers(), header::CONTENT_TYPE).as_deref(),
       episode.enclosure_type.as_deref(),
+      Some(episode.enclosure_url.as_str()),
     ));
     let first_chunk = response
       .response

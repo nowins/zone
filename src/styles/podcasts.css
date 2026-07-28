@@ -274,7 +274,7 @@
   opacity: 0.3;
   background: currentColor;
   border-radius: 50%;
-  animation: podcast-metro-orbit 4500ms linear infinite;
+  animation: podcast-metro-orbit var(--motion-loader, 4500ms) linear infinite;
 }
 
 .podcast-activity-indicator.large {

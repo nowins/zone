@@ -296,6 +296,11 @@ test("podcast feeds refresh conditionally while cached content stays usable", ()
     "background refresh failures must preserve cached podcast content",
   );
   includes(
+    declaredFunctionSource(podcastViewSource, "subscribeRss"),
+    /setOpeningCandidate\(\{[\s\S]{0,220}title:\s*"RSS 订阅"/,
+    "manual RSS subscribe must reuse the full-screen opening state",
+  );
+  includes(
     podcastViewSource,
     /const loadEpisodes\s*=\s*useCallback[\s\S]{0,220}episodeListRequestRef\.current\s*=\s*requestId[\s\S]{0,320}episodeListRequestRef\.current\s*!==\s*requestId\)\s*return null/,
     "late episode-list responses must not overwrite a newer selected feed",
@@ -358,6 +363,41 @@ test("episode detail exposes saved, played, queue, and offline lifecycle actions
     podcastRustSource,
     /completed\s*=\s*MAX\(podcast_progress\.completed,\s*excluded\.completed\)/,
     "ordinary progress saves must not undo an explicit played marker",
+  );
+  includes(
+    podcastRustSource,
+    /invalidate_download_if_enclosure_changed\([\s\S]{0,220}&episode\.enclosure_url/,
+    "feed refresh must invalidate offline downloads when enclosure URLs rotate",
+  );
+  includes(
+    podcastRustSource,
+    /fn invalidate_download_if_enclosure_changed[\s\S]{0,1800}DELETE FROM podcast_downloads WHERE episode_id = \?1/,
+    "enclosure rotation must clear managed download rows after removing final and part files",
+  );
+  includes(
+    podcastRustSource,
+    /fn prune_missing_feed_episodes/,
+    "feed refresh must prune episodes that disappeared from the RSS",
+  );
+  includes(
+    podcastRustSource,
+    /prune_missing_feed_episodes\(&transaction,\s*&downloads_dir,\s*&feed\.id,\s*&episodes\)/,
+    "store_feed must run episode pruning after upserting the current feed items",
+  );
+  includes(
+    podcastRustSource,
+    /DELETE FROM podcast_episodes WHERE id = \?1 AND feed_id = \?2/,
+    "gone-from-feed pruning must delete only unreferenced episode rows for that feed",
+  );
+  includes(
+    podcastRustSource,
+    /position_seconds = CASE[\s\S]{0,320}WHEN \?6 != 0 THEN excluded\.position_seconds/,
+    "ordinary progress saves must only move the playhead forward unless force is set",
+  );
+  includes(
+    podcastRustSource,
+    /64:ff9b|0xff9b/,
+    "IPv6 publicness checks must reject NAT64 translation prefixes",
   );
 
   const playEpisodeSource = declaredFunctionSource(podcastViewSource, "playEpisode");
@@ -700,6 +740,16 @@ test("podcast playback handles speed, sleep, buffering, and errors on the shared
     /suppressPodcastProgressWrites\(episodeId\)[\s\S]{0,520}podcast_set_episode_played/,
     "marking the active episode must invalidate queued and automatic progress writes before the mutation",
   );
+  includes(
+    declaredFunctionSource(appSource, "setPodcastEpisodePlayed"),
+    /resumePodcastProgressWritesIfActivelyPlaying\(episodeId\)/,
+    "a settled mark while the episode keeps playing must reopen progress writes under a fresh epoch",
+  );
+  includes(
+    declaredFunctionSource(appSource, "resumePodcastProgressWritesIfActivelyPlaying"),
+    /!audioRef\.current\.paused[\s\S]{0,400}if \(stillPlaying\) resumePodcastProgressWrites/,
+    "paused mark-unplayed must keep progress suppressed so a later flush cannot resurrect it",
+  );
   const persistProgressSource = declaredFunctionSource(
     appSource,
     "persistPodcastProgress",
@@ -713,6 +763,11 @@ test("podcast playback handles speed, sleep, buffering, and errors on the shared
     persistProgressSource,
     /podcastProgressWriteGateRef\.current\.capture\([\s\S]{0,900}podcastProgressWriteGateRef\.current\.allows\(/,
     "queued progress saves must be discarded when a newer explicit mutation invalidates their epoch",
+  );
+  includes(
+    persistProgressSource,
+    /"podcast_save_progress"[\s\S]{0,180}force,/,
+    "progress persistence must pass force so seeks can rewind while ordinary writes stay monotonic",
   );
   includes(
     declaredFunctionSource(appSource, "togglePlay"),
