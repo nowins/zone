@@ -46,6 +46,16 @@ test("episode detail loads a bounded related list without polluting the show bro
   assert.match(rustSource, /podcast_list_related_episodes/);
   assert.match(rustSource, /PODCAST_RELATED_EPISODE_DEFAULT_LIMIT/);
   assert.match(rustSource, /PODCAST_RELATED_EPISODE_MAX_LIMIT/);
+  assert.match(rustSource, /pub async fn podcast_list_related_episodes\(/);
+  assert.match(
+    rustSource,
+    /fn list_related_episodes\([\s\S]*?ensure_episode_exists\(&connection, episode_id\)/,
+  );
+  assert.match(rustSource, /WHERE e\.id != \?1[\s\S]*?TRIM\(e\.enclosure_url\) != ''/);
+  assert.match(
+    rustSource,
+    /COALESCE\(e\.published_at, e\.first_seen_at\) DESC,[\s\S]*?LIMIT \?2/,
+  );
 });
 
 test("related episode rows retain normal playback actions and an all-episodes path", () => {
