@@ -94,7 +94,7 @@ test("chapter seeks reuse the shared audio and distinguish explicit starts from 
   assert.match(appSource, /const pendingPodcastStartRef = useRef/);
   assert.match(
     appSource,
-    /requestedStart\?\.episodeId === activePlayback\.episode\.episodeId[\s\S]*?pendingPodcastResumeRef\.current = \{[\s\S]*?explicit:/,
+    /explicitStart[\s\S]*?pendingPodcastResumeRef\.current = \{[\s\S]*?explicit:\s*explicitStart/,
   );
   assert.match(
     appSource,

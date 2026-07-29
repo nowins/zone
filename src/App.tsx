@@ -138,6 +138,7 @@ export default function App() {
     playbackSessionRef,
   });
   const {
+    transport: podcastTransport,
     activePodcastEpisode,
     activePodcastEpisodeRef,
     podcastQueue,
@@ -205,6 +206,11 @@ export default function App() {
     handleAudioCanPlay,
     togglePlay,
     retryPodcastPlayback,
+    armPodcastPlay,
+    clearPlaybackIntent,
+    setPlaybackIntent,
+    clearPendingPodcastStart,
+    peekPendingResumePosition,
   } = usePlaybackControls({
     audioRef,
     showActionNotice,
@@ -219,9 +225,18 @@ export default function App() {
     setQueue,
     playHistory,
     setPlayHistory,
-    podcast,
+    podcast: podcastTransport,
   });
-  playbackControlsRef.current = { seek, togglePlay };
+  // Late-bound: podcast domain calls arm/seek/toggle without a circular hook import.
+  playbackControlsRef.current = {
+    seek,
+    togglePlay,
+    armPodcastPlay,
+    clearPlaybackIntent,
+    setPlaybackIntent,
+    clearPendingPodcastStart,
+    peekPendingResumePosition,
+  };
   audioEngineRef.current = useAudioEngine({
     audioRef,
     volume,

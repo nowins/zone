@@ -159,7 +159,7 @@ test("podcast library exposes durable sorting, unread state, history, and groupe
   assert.match(appSource, /podcastProgressStartedRef/);
   assert.match(
     appSource,
-    /positionSeconds > 0[\s\S]*setPodcastLibraryRevision/,
+    /positionSeconds > 0[\s\S]*bumpLibraryRevision\(\)/,
   );
 });
 

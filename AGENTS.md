@@ -55,13 +55,14 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 
 ## 代码结构
 
-- `src/App.tsx`：应用组合根（约 800 行）。持有唯一的 `<audio ref={audioRef}>` 与跨 hook 共享状态（queue/activeTrackId/playHistory/selectedPlaylistId、浮层与 actionNotice、playbackSessionRef 及三个 late-bound ref），按序调用 `useNavigation` → `useMusicLibrary` → `usePodcastPlayback` → `usePlaybackControls` → `useAudioEngine` → `usePlaylists`，负责 localStorage 状态恢复/持久化、卸载清理、`useSystemMedia` 接线与全部 JSX。共享 ref/state 只在 App 层或拥有它的 hook 创建一次，经参数传递；hook 间反向调用（播客 playPodcastEpisode → seek/togglePlay、播放控制 → 音频图、openNowPlaying 的媒体目标）经渲染期赋值的 late-bound ref 保持单向传参。
+- `src/App.tsx`：应用组合根（约 800 行）。持有唯一的 `<audio ref={audioRef}>` 与跨 hook 共享状态（queue/activeTrackId/playHistory/selectedPlaylistId、浮层与 actionNotice、playbackSessionRef 及三个 late-bound ref），按序调用 `useNavigation` → `useMusicLibrary` → `usePodcastPlayback` → `usePlaybackControls` → `useAudioEngine` → `usePlaylists`，负责 localStorage 状态恢复/持久化、卸载清理、`useSystemMedia` 接线与全部 JSX。共享 ref/state 只在 App 层或拥有它的 hook 创建一次，经参数传递；hook 间反向调用经渲染期赋值的 late-bound ref 保持单向传参（播客 → `playbackControlsRef` 的 arm/seek/toggle/intent；播放控制 → `audioEngineRef`；`openNowPlaying` 的媒体目标）。
 - `src/app/podcastPlaybackSettings.ts`：播客倍速/活动单集/自动续播偏好（`zone-podcast-playback-v1`）的常量、类型与 read/patch 纯函数，附 `webkitAudioContext` 全局声明。
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
   - `useNavigation.ts`：page/view/搜索状态、`requestNavigation` 页面过渡、搜索导航与 Ctrl/Cmd+F/Esc 键盘 effect、`openNowPlaying`。
   - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、albums/artists 分组与专辑选中、addFolder/rescan 与 `useLibraryWatcher` 接线。
-  - `usePodcastPlayback.ts`：播客 refs/state、队列/会话恢复、倍速与睡眠定时、播放入口与待播队列管理、进度写门与持久化、单集状态同步、自动续播。
-  - `usePlaybackControls.ts`：音乐播放会话与统计、queue/shuffle/repeat、activeTrack/activePlayback 等派生、playTrack/move/onEnded/seek/togglePlay、媒体源切换 effect 与 audio 元素事件处理。
+  - `usePodcastPlayback.ts`：播客会话/队列/进度 domain。对外只返回产品状态与动作，另附 `transport: PodcastTransportBridge` 给播放控制；不导出 play-attempt / intent / pending-resume 等 transport 私有 ref。
+  - `podcastTransport.ts`：`PodcastTransportBridge` 窄接口（仅 transport 可碰的播客面）。
+  - `usePlaybackControls.ts`：拥有 `audioPlayAttemptRef`、autoplay intent、pending start/resume；`runPlayAttempt` 为唯一 `audio.play()` 成功/失败门闩；音乐 queue/shuffle/repeat/统计、媒体源切换与 audio 事件；经 bridge 调用 `clearActivePodcast` / `markEpisodeCompletedOnEnd` 等命令，不拿 raw `setActivePodcastEpisode`。
   - `useAudioEngine.ts`：Web Audio 图 refs、ensureAudioGraph/resumeAudioGraph、节拍预分析、可视化采样循环与启停、音量应用；以 `AudioEngineHandle` 形式经 ref 交给播放控制。
   - `usePlaylists.ts`：playlists/homePins/收藏状态与 CRUD、homePins 对账、toggleHomePin/openHomePin。
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。

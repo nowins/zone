@@ -13,7 +13,10 @@ import {
 } from "../utils/playback";
 import { createTrackActivity } from "../utils/smartPlaylist";
 import type { AudioEngineHandle } from "./useAudioEngine";
-import type { PodcastPlaybackApi } from "./usePodcastPlayback";
+import type {
+  PodcastPendingResume,
+  PodcastTransportBridge,
+} from "./podcastTransport";
 import type {
   PodcastPlayback,
   RepeatMode,
@@ -28,9 +31,22 @@ export type PlaybackSession = {
   countedComplete: boolean;
 };
 
+/** Late-bound surface for podcast domain → transport (seek / arm / intent). */
 export type PlaybackControlsHandle = {
   seek: (value: number) => void;
   togglePlay: () => void;
+  /** Arm autoplay before `activePodcastEpisode` changes to a new source. */
+  armPodcastPlay: (options: {
+    episodeId: string;
+    positionSeconds?: number | null;
+  }) => void;
+  /** Intent false + invalidate in-flight play (music takeover, sleep deadline). */
+  clearPlaybackIntent: () => void;
+  /** Intent only (episode end / autofill idle without invalidating source). */
+  setPlaybackIntent: (value: boolean) => void;
+  clearPendingPodcastStart: () => void;
+  /** Pending resume position while media hydrates (for progress flush). */
+  peekPendingResumePosition: (episodeId: string | null) => number | null;
 };
 
 export type ActivePlayback =
@@ -52,7 +68,7 @@ type UsePlaybackControlsParams = {
   setQueue: React.Dispatch<React.SetStateAction<string[]>>;
   playHistory: string[];
   setPlayHistory: React.Dispatch<React.SetStateAction<string[]>>;
-  podcast: PodcastPlaybackApi;
+  podcast: PodcastTransportBridge;
 };
 
 export function usePlaybackControls({
@@ -73,23 +89,20 @@ export function usePlaybackControls({
 }: UsePlaybackControlsParams) {
   const {
     activePodcastEpisode,
-    setActivePodcastEpisode,
     activePodcastEpisodeRef,
     podcastAudioEpisodeRef,
     podcastPlaybackStartedEpisodeRef,
     pendingPodcastQueueConsumeRef,
-    pendingPodcastResumeRef,
-    pendingPodcastStartRef,
-    podcastPlaybackIntentRef,
     podcastAutoQueueModeRef,
-    audioPlayAttemptRef,
     podcastSleepTimer,
     setPodcastSleepTimer,
     setPodcastPlaybackStatus,
-    setPodcastLibraryRevision,
     podcastPlaybackRate,
     podcastSessionHydrated,
     cancelPodcastSessionRestore,
+    clearActivePodcast,
+    markEpisodeCompletedOnEnd,
+    bumpLibraryRevision,
     flushPodcastProgress,
     persistPodcastProgress,
     resumePodcastProgressWrites,
@@ -97,7 +110,14 @@ export function usePlaybackControls({
     playNextPodcastEpisode,
     autofillPodcastQueueAfter,
   } = podcast;
+
+  // Transport owns play-attempt generation, autoplay intent, and resume bookkeeping.
+  const audioPlayAttemptRef = useRef(0);
+  const podcastPlaybackIntentRef = useRef(false);
+  const pendingPodcastStartRef = useRef<{ episodeId: string; position: number } | null>(null);
+  const pendingPodcastResumeRef = useRef<PodcastPendingResume | null>(null);
   const activeAudioSourceKeyRef = useRef<string | null>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -175,6 +195,89 @@ export function usePlaybackControls({
     setShuffleOrder(createShuffleOrder(baseQueueIds, activeTrackId));
   }, [baseQueueIds, shuffle]);
 
+  function beginPlayAttempt() {
+    const playAttempt = audioPlayAttemptRef.current + 1;
+    audioPlayAttemptRef.current = playAttempt;
+    return playAttempt;
+  }
+
+  function setPlaybackIntent(value: boolean) {
+    podcastPlaybackIntentRef.current = value;
+  }
+
+  function clearPlaybackIntent() {
+    podcastPlaybackIntentRef.current = false;
+    audioPlayAttemptRef.current += 1;
+  }
+
+  function clearPendingPodcastStart() {
+    pendingPodcastStartRef.current = null;
+  }
+
+  function armPodcastPlay(options: {
+    episodeId: string;
+    positionSeconds?: number | null;
+  }) {
+    const requested = options.positionSeconds;
+    pendingPodcastStartRef.current =
+      requested === null || requested === undefined || !Number.isFinite(requested)
+        ? null
+        : { episodeId: options.episodeId, position: Math.max(0, requested) };
+    podcastPlaybackIntentRef.current = true;
+    audioPlayAttemptRef.current += 1;
+    audioRef.current?.pause();
+  }
+
+  function peekPendingResumePosition(episodeId: string | null) {
+    const pending = pendingPodcastResumeRef.current;
+    if (!episodeId || !pending || pending.episodeId !== episodeId) return null;
+    return pending.position;
+  }
+
+  /**
+   * Single success/failure gate for audio.play().
+   * Callers that already bumped `audioPlayAttemptRef` pass `playAttempt`.
+   */
+  function runPlayAttempt(options: {
+    sourceKey: string | null;
+    podcastEpisodeId: string | null;
+    playAttempt?: number;
+    resumeGraph?: () => void | Promise<void>;
+  }) {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const playAttempt = options.playAttempt ?? beginPlayAttempt();
+    const { sourceKey, podcastEpisodeId } = options;
+    const resumeGraph = options.resumeGraph
+      ?? (() => audioEngineRef.current?.resumeAudioGraph());
+
+    void audio
+      .play()
+      .then(() => {
+        if (
+          activeAudioSourceKeyRef.current !== sourceKey
+          || audioPlayAttemptRef.current !== playAttempt
+        ) return;
+        setIsPlaying(true);
+        if (podcastEpisodeId) {
+          podcastPlaybackStartedEpisodeRef.current = podcastEpisodeId;
+          setPodcastPlaybackStatus("playing");
+          consumePendingPodcastQueueEpisode(podcastEpisodeId);
+        }
+        void resumeGraph();
+      })
+      .catch(() => {
+        if (
+          activeAudioSourceKeyRef.current !== sourceKey
+          || audioPlayAttemptRef.current !== playAttempt
+        ) return;
+        setIsPlaying(false);
+        if (podcastEpisodeId && activePodcastEpisodeRef.current) {
+          setPodcastPlaybackStatus("error");
+        }
+      });
+  }
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -238,18 +341,18 @@ export function usePlaybackControls({
       publishPodcastVisualizerReset();
       setPodcastPlaybackStatus("loading");
       const requestedStart = pendingPodcastStartRef.current;
-      const startPosition =
-        requestedStart?.episodeId === activePlayback.episode.episodeId
-          ? requestedStart.position
-          : activePlayback.episode.savedProgressSeconds;
-      if (requestedStart?.episodeId === activePlayback.episode.episodeId) {
+      const explicitStart =
+        requestedStart?.episodeId === activePlayback.episode.episodeId;
+      const startPosition = explicitStart
+        ? requestedStart!.position
+        : activePlayback.episode.savedProgressSeconds;
+      if (explicitStart) {
         pendingPodcastStartRef.current = null;
       }
       pendingPodcastResumeRef.current = {
         episodeId: activePlayback.episode.episodeId,
         position: startPosition,
-        explicit:
-          requestedStart?.episodeId === activePlayback.episode.episodeId,
+        explicit: explicitStart,
       };
       setProgress(Math.max(0, startPosition));
     }
@@ -271,41 +374,28 @@ export function usePlaybackControls({
       return;
     }
 
-    void audio
-      .play()
-      .then(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(true);
-        if (podcastEpisodeId) {
-          podcastPlaybackStartedEpisodeRef.current = podcastEpisodeId;
-          setPodcastPlaybackStatus("playing");
-          consumePendingPodcastQueueEpisode(podcastEpisodeId);
-        }
-        void resumeAudioGraph();
-      })
-      .catch(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(false);
-        if (activePlayback.kind === "podcast") setPodcastPlaybackStatus("error");
-      });
+    runPlayAttempt({
+      sourceKey,
+      podcastEpisodeId,
+      playAttempt,
+      resumeGraph: resumeAudioGraph,
+    });
   }, [activePlaybackSourceKey]);
+
+  function stopPodcastForMusic() {
+    flushPodcastProgress();
+    podcastPlaybackIntentRef.current = false;
+    audioPlayAttemptRef.current += 1;
+    audioRef.current?.pause();
+    pendingPodcastQueueConsumeRef.current = null;
+    clearActivePodcast();
+  }
 
   function playTrack(track: Track, sourceTracks = tracks) {
     cancelPodcastSessionRestore();
     setQueue(sourceTracks.map((item) => item.id));
     if (activePodcastEpisode) {
-      flushPodcastProgress();
-      podcastPlaybackIntentRef.current = false;
-      audioPlayAttemptRef.current += 1;
-      audioRef.current?.pause();
-      pendingPodcastQueueConsumeRef.current = null;
-      setActivePodcastEpisode(null);
+      stopPodcastForMusic();
       setActiveTrackId(track.id);
       return;
     }
@@ -325,12 +415,7 @@ export function usePlaybackControls({
     cancelPodcastSessionRestore();
     setQueue(targetTracks.map((track) => track.id));
     if (activePodcastEpisode) {
-      flushPodcastProgress();
-      podcastPlaybackIntentRef.current = false;
-      audioPlayAttemptRef.current += 1;
-      audioRef.current?.pause();
-      pendingPodcastQueueConsumeRef.current = null;
-      setActivePodcastEpisode(null);
+      stopPodcastForMusic();
       setActiveTrackId(targetTracks[0].id);
       return;
     }
@@ -446,16 +531,9 @@ export function usePlaybackControls({
       const progressSaved = audio
         ? persistPodcastProgress(audio.duration, audio.duration, true)
         : Promise.resolve();
-      setActivePodcastEpisode((current) => current
-        ? {
-            ...current,
-            completed: true,
-            progressSeconds: audio?.duration || current.durationSeconds || current.progressSeconds,
-          }
-        : current
-      );
+      markEpisodeCompletedOnEnd(audio?.duration || 0);
       void progressSaved.finally(() => {
-        setPodcastLibraryRevision((current) => current + 1);
+        bumpLibraryRevision();
       });
       setIsPlaying(false);
       if (
@@ -572,26 +650,7 @@ export function usePlaybackControls({
       audioPlayAttemptRef.current = playAttempt;
       const podcastEpisodeId = activePodcastEpisodeRef.current?.episodeId ?? null;
       if (podcastEpisodeId) podcastPlaybackIntentRef.current = true;
-      void audio.play().then(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(true);
-        if (podcastEpisodeId) {
-          podcastPlaybackStartedEpisodeRef.current = podcastEpisodeId;
-          setPodcastPlaybackStatus("playing");
-          consumePendingPodcastQueueEpisode(podcastEpisodeId);
-        }
-        void audioEngineRef.current?.resumeAudioGraph();
-      }).catch(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(false);
-        if (activePodcastEpisodeRef.current) setPodcastPlaybackStatus("error");
-      });
+      runPlayAttempt({ sourceKey, podcastEpisodeId, playAttempt });
     } else {
       flushPodcastProgress();
       if (activePodcastEpisodeRef.current) podcastPlaybackIntentRef.current = false;
@@ -621,23 +680,10 @@ export function usePlaybackControls({
     podcastPlaybackIntentRef.current = true;
     setPodcastPlaybackStatus("loading");
     audio.load();
-    void audio.play().then(() => {
-      if (
-        activeAudioSourceKeyRef.current !== sourceKey
-        || audioPlayAttemptRef.current !== playAttempt
-      ) return;
-      setIsPlaying(true);
-      podcastPlaybackStartedEpisodeRef.current = episode.episodeId;
-      setPodcastPlaybackStatus("playing");
-      consumePendingPodcastQueueEpisode(episode.episodeId);
-      void audioEngineRef.current?.resumeAudioGraph();
-    }).catch(() => {
-      if (
-        activeAudioSourceKeyRef.current !== sourceKey
-        || audioPlayAttemptRef.current !== playAttempt
-      ) return;
-      setIsPlaying(false);
-      setPodcastPlaybackStatus("error");
+    runPlayAttempt({
+      sourceKey,
+      podcastEpisodeId: episode.episodeId,
+      playAttempt,
     });
   }
 
@@ -655,23 +701,11 @@ export function usePlaybackControls({
     const sourceKey = activeAudioSourceKeyRef.current;
     const playAttempt = audioPlayAttemptRef.current + 1;
     audioPlayAttemptRef.current = playAttempt;
-    void audio
-      .play()
-      .then(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(true);
-        void audioEngineRef.current?.resumeAudioGraph();
-      })
-      .catch(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(false);
-      });
+    runPlayAttempt({
+      sourceKey,
+      podcastEpisodeId: null,
+      playAttempt,
+    });
   }
 
   return {
@@ -708,5 +742,10 @@ export function usePlaybackControls({
     handleAudioCanPlay,
     togglePlay,
     retryPodcastPlayback,
+    armPodcastPlay,
+    clearPlaybackIntent,
+    setPlaybackIntent,
+    clearPendingPodcastStart,
+    peekPendingResumePosition,
   };
 }

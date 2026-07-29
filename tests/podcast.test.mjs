@@ -668,8 +668,13 @@ test("episode detail preserves the full-screen now-playing return path and live 
   );
   includes(
     declaredFunctionSource(appSource, "onEnded"),
-    /progressSaved\.finally\(\(\)\s*=>\s*\{[\s\S]{0,140}setPodcastLibraryRevision\(\(current\)\s*=>\s*current\s*\+\s*1\)/,
+    /progressSaved\.finally\(\(\)\s*=>\s*\{[\s\S]{0,140}bumpLibraryRevision\(\)/,
     "episode completion must refresh cached podcast lists even when the queue advances",
+  );
+  includes(
+    declaredFunctionSource(appSource, "bumpLibraryRevision"),
+    /setPodcastLibraryRevision\(\(current\)\s*=>\s*current\s*\+\s*1\)/,
+    "library revision bumps must remain a single domain command",
   );
   includes(
     podcastViewSource,
@@ -741,13 +746,18 @@ test("podcast playback handles speed, sleep, buffering, and errors on the shared
   includes(typesSource, /"error"/, "podcast playback status must expose errors");
   includes(
     declaredFunctionSource(appSource, "retryPodcastPlayback"),
-    /audio\.load\(\)[\s\S]{0,140}audio\.play\(\)/,
+    /audio\.load\(\)[\s\S]{0,200}runPlayAttempt\(/,
     "retry must reload and play the same shared audio element",
   );
   includes(
     declaredFunctionSource(appSource, "retryPodcastPlayback"),
-    /audioPlayAttemptRef\.current\s*=\s*playAttempt[\s\S]{0,520}audioPlayAttemptRef\.current\s*!==\s*playAttempt/,
+    /audioPlayAttemptRef\.current\s*=\s*playAttempt[\s\S]{0,520}runPlayAttempt\([\s\S]{0,200}playAttempt/,
     "retry must invalidate callbacks from an older attempt on the same episode",
+  );
+  includes(
+    declaredFunctionSource(appSource, "runPlayAttempt"),
+    /activeAudioSourceKeyRef\.current\s*!==\s*sourceKey\s*\|\|\s*audioPlayAttemptRef\.current\s*!==\s*playAttempt/,
+    "play attempts must ignore stale source or generation callbacks",
   );
   includes(
     declaredFunctionSource(appSource, "togglePlay"),
