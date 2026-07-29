@@ -13,6 +13,8 @@ const playbackProgressView = readFileSync("src/components/PlaybackProgress.tsx",
 const mosaicCanvasSource = readFileSync("src/components/NowPlayingMosaicCanvas.tsx", "utf8");
 const audioGlowCanvasSource = readFileSync("src/components/AudioGlowCanvas.tsx", "utf8");
 const lyricsSource = readFileSync("src/components/LyricsStage.tsx", "utf8");
+const lyricsPaintLoopSource = readFileSync("src/components/lyricsStage/useLyricsPaintLoop.ts", "utf8");
+const lyricsSourceBrowserSource = readFileSync("src/components/lyricsStage/LyricsSourceBrowser.tsx", "utf8");
 const lyricsHookSource = readFileSync("src/hooks/useLyrics.ts", "utf8");
 const lyricsCss = readFileSync("src/styles/lyrics.css", "utf8");
 
@@ -158,9 +160,9 @@ test("now playing enters in layered Zune order without delaying transport", () =
 });
 
 test("lyrics word fill follows the media clock at animation-frame cadence", () => {
-  assert.ok(lyricsSource.includes("window.requestAnimationFrame(drawFrame)"));
-  assert.ok(lyricsSource.includes("playbackClockRef.current()"));
-  assert.ok(lyricsSource.includes("element.style.clipPath"));
+  assert.ok(lyricsPaintLoopSource.includes("window.requestAnimationFrame(drawFrame)"));
+  assert.ok(lyricsPaintLoopSource.includes("playbackClockRef.current()"));
+  assert.ok(lyricsPaintLoopSource.includes("element.style.clipPath"));
   assert.ok(!lyricsCss.includes("transition: clip-path"), "frame-driven word fill must not wait on discrete CSS transitions");
 });
 
@@ -168,7 +170,7 @@ test("lyrics keeps transliteration and timed background vocals subordinate to th
   assert.ok(lyricsSource.includes("line.transliteration"));
   assert.ok(lyricsSource.includes("backgroundLineRefs"));
   assert.ok(lyricsSource.includes("backgroundWordProgressRefs"));
-  assert.ok(lyricsSource.includes("--lyrics-background-presence"));
+  assert.ok(lyricsPaintLoopSource.includes("--lyrics-background-presence"));
   assert.ok(lyricsCss.includes(".lyrics-transliteration"));
   assert.ok(lyricsCss.includes(".lyrics-background-line"));
   assert.ok(lyricsCss.includes("opacity: var(--lyrics-background-presence, 0)"));
@@ -176,17 +178,17 @@ test("lyrics keeps transliteration and timed background vocals subordinate to th
 });
 
 test("long-note detail is real-timeline driven, restrained, and browsing safe", () => {
-  assert.ok(lyricsSource.includes("lyricsLongNoteEnvelope(word, time)"));
-  assert.ok(lyricsSource.includes("line.words?.length && lineIndex === nextActiveIndex"));
-  assert.ok(lyricsSource.includes("sustain * 0.016"));
-  assert.ok(lyricsSource.includes("sustainElement.style.opacity"));
+  assert.ok(lyricsPaintLoopSource.includes("lyricsLongNoteEnvelope(word, time)"));
+  assert.ok(lyricsPaintLoopSource.includes("line.words?.length && lineIndex === nextActiveIndex"));
+  assert.ok(lyricsPaintLoopSource.includes("sustain * 0.016"));
+  assert.ok(lyricsPaintLoopSource.includes("sustainElement.style.opacity"));
   assert.ok(lyricsCss.includes(".lyrics-stage.is-browsing .lyrics-word-sustain"));
   assert.ok(lyricsCss.includes(".lyrics-line.is-active .lyrics-word.has-long-note"));
   assert.match(motionCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.lyrics-word\.has-long-note\s*\{[\s\S]*?transform: none !important/);
 });
 
 test("lyrics calibration uses one reversible clock mapping per track and source", () => {
-  assert.ok(lyricsSource.includes("mediaTimeToLyricsTime(playbackClockRef.current(), timingOffsetMs)"));
+  assert.ok(lyricsPaintLoopSource.includes("mediaTimeToLyricsTime(playbackClockRef.current(), timingOffsetMs)"));
   assert.ok(lyricsSource.includes("lyricsTimeToMediaTime(line.start, timingOffsetMs, duration)"));
   assert.ok(lyricsHookSource.includes('const LYRICS_TIMING_STORAGE_KEY = "zone-lyrics-timing-v1"'));
   assert.ok(lyricsHookSource.includes("lyricsTimingKey(track.id, state.document.sourceId)"));
@@ -194,11 +196,11 @@ test("lyrics calibration uses one reversible clock mapping per track and source"
 });
 
 test("lyrics provider retry keeps an explicit loading state and hit area", () => {
-  assert.ok(lyricsSource.includes('disabled={onlineSearch.status === "loading"}'));
-  assert.ok(lyricsSource.includes('onlineSearch.status === "loading" ? "正在重试…" : "重新搜索"'));
-  assert.ok(lyricsSource.includes('aria-busy={onlineSearch.status === "loading"}'));
-  assert.ok(lyricsSource.includes("onPointerDown={(event) =>"));
-  assert.ok(lyricsSource.includes("if (event.detail === 0) runSourceAction(onSearchOnline)"));
+  assert.ok(lyricsSourceBrowserSource.includes('disabled={onlineSearch.status === "loading"}'));
+  assert.ok(lyricsSourceBrowserSource.includes('onlineSearch.status === "loading" ? "正在重试…" : "重新搜索"'));
+  assert.ok(lyricsSourceBrowserSource.includes('aria-busy={onlineSearch.status === "loading"}'));
+  assert.ok(lyricsSourceBrowserSource.includes("onPointerDown={(event) =>"));
+  assert.ok(lyricsSourceBrowserSource.includes("if (event.detail === 0) runSourceAction(onSearchOnline)"));
   assert.match(lyricsCss, /\.lyrics-source-refresh\s*\{[\s\S]*?min-height:\s*36px/);
   assert.match(lyricsCss, /\.lyrics-source-browser\s*\{[\s\S]*?pointer-events:\s*auto/);
 });
@@ -206,17 +208,17 @@ test("lyrics provider retry keeps an explicit loading state and hit area", () =>
 test("manual lyrics search queries every enabled provider and labels the aggregate", () => {
   assert.ok(lyricsHookSource.includes('searchLyricsProviders(activeQuery, providerConfigs, controller.signal, "all")'));
   assert.ok(lyricsHookSource.includes("selectDiverseLyricsCandidates(result.candidates, MAX_REMOTE_CANDIDATES)"));
-  assert.ok(lyricsSource.includes("来自 ${providerCount} 个来源"));
-  assert.ok(lyricsSource.includes("candidate.providerName"));
-  assert.ok(lyricsSource.includes("lyrics-provider-outcomes"));
-  assert.ok(lyricsSource.includes("providerOutcomeLabel(provider.status)"));
+  assert.ok(lyricsSourceBrowserSource.includes("来自 ${providerCount} 个来源"));
+  assert.ok(lyricsSourceBrowserSource.includes("candidate.providerName"));
+  assert.ok(lyricsSourceBrowserSource.includes("lyrics-provider-outcomes"));
+  assert.ok(lyricsSourceBrowserSource.includes("providerOutcomeLabel(provider.status)"));
   assert.ok(lyricsCss.includes(".lyrics-provider-outcomes"));
 });
 
 test("lyrics search metadata can be corrected without rewriting local tags", () => {
-  assert.ok(lyricsSource.includes("保存并搜索"));
-  assert.ok(lyricsSource.includes("恢复标签"));
-  assert.ok(lyricsSource.includes("onUpdateSearchMetadata(searchMetadataDraft)"));
+  assert.ok(lyricsSourceBrowserSource.includes("保存并搜索"));
+  assert.ok(lyricsSourceBrowserSource.includes("恢复标签"));
+  assert.ok(lyricsSourceBrowserSource.includes("onUpdateSearchMetadata(searchMetadataDraft)"));
   assert.ok(lyricsHookSource.includes("queryOverrides"));
   assert.ok(lyricsHookSource.includes("queryRef.current = nextQuery"));
   assert.ok(lyricsHookSource.includes("suppressQueryReloadKeyRef"));
