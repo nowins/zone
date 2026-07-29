@@ -3,7 +3,16 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const motionCss = readFileSync("src/styles/motion.css", "utf8");
-const appSource = readFileSync("src/App.tsx", "utf8");
+const appSource = [
+  "src/app/podcastPlaybackSettings.ts",
+  "src/hooks/useNavigation.ts",
+  "src/hooks/useMusicLibrary.ts",
+  "src/hooks/usePodcastPlayback.ts",
+  "src/hooks/usePlaybackControls.ts",
+  "src/hooks/useAudioEngine.ts",
+  "src/hooks/usePlaylists.ts",
+  "src/App.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const presenceSource = readFileSync("src/motion/presence.tsx", "utf8");
 
 // Reduced-motion exits must not leave a dead pause: CSS plays an 80ms

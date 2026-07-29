@@ -10,18 +10,26 @@ import {
   sortPodcastFeeds,
 } from "../.tmp/visualizer-tests/utils/podcastLibrary.js";
 
-const podcastViewSource = readFileSync(
-  new URL("../src/views/PodcastView.tsx", import.meta.url),
-  "utf8",
-);
+const podcastViewSource = [
+  "../src/views/PodcastView.tsx",
+  "../src/views/podcast/constants.ts",
+  "../src/views/podcast/components/Dialogs.tsx",
+].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+  .join("\n");
 const podcastStylesSource = readFileSync(
   new URL("../src/styles/podcasts.css", import.meta.url),
   "utf8",
 );
-const appSource = readFileSync(
-  new URL("../src/App.tsx", import.meta.url),
-  "utf8",
-);
+const appSource = [
+  "src/app/podcastPlaybackSettings.ts",
+  "src/hooks/useNavigation.ts",
+  "src/hooks/useMusicLibrary.ts",
+  "src/hooks/usePodcastPlayback.ts",
+  "src/hooks/usePlaybackControls.ts",
+  "src/hooks/useAudioEngine.ts",
+  "src/hooks/usePlaylists.ts",
+  "src/App.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 
 function feed(id, title, overrides = {}) {
   return {

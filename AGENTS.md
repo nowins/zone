@@ -8,7 +8,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 
 产品侧重要点：
 
-- 本地音乐播放优先。支持格式：`mp3`、`flac`、`m4a`、`aac`、`wav`、`ogg`（见 `src-tauri/src/lib.rs` 的 `is_supported_audio`）。
+- 本地音乐播放优先。支持格式：`mp3`、`flac`、`m4a`、`aac`、`wav`、`ogg`（见 `src-tauri/src/library.rs` 的 `is_supported_audio`）。
 - Zune 风格的收藏导航：专辑、艺术家、歌曲、播放列表。
 - Zune 风格的 quickplay 首页：固定（pin）的曲目/专辑/艺术家/播放列表磁贴。
 - 正式播客体验：默认以“收听 / 发现 / 资料库 / 播放列表”组织内容，使用 Apple 中国区热门榜、公开 RSS 与安全流式播放；搜索和手动 RSS 是辅助入口，下载只用于离线收听。单集详情、稍后听、待播队列、倍速与睡眠定时均使用播客独立状态，不进入本地音乐的队列、收藏或播放统计。
@@ -55,7 +55,15 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 
 ## 代码结构
 
-- `src/App.tsx`：顶层应用状态（约 2000 行）。负责曲库扫描编排、音乐与播客的独立队列、当前媒体、播客倍速/睡眠定时、随机/重复、进度、音量、播放活动统计（playCount/skip）、播放列表持久化、home pins、Web Audio 分析器搭建与可视化采样、节拍分析。
+- `src/App.tsx`：应用组合根（约 800 行）。持有唯一的 `<audio ref={audioRef}>` 与跨 hook 共享状态（queue/activeTrackId/playHistory/selectedPlaylistId、浮层与 actionNotice、playbackSessionRef 及三个 late-bound ref），按序调用 `useNavigation` → `useMusicLibrary` → `usePodcastPlayback` → `usePlaybackControls` → `useAudioEngine` → `usePlaylists`，负责 localStorage 状态恢复/持久化、卸载清理、`useSystemMedia` 接线与全部 JSX。共享 ref/state 只在 App 层或拥有它的 hook 创建一次，经参数传递；hook 间反向调用（播客 playPodcastEpisode → seek/togglePlay、播放控制 → 音频图、openNowPlaying 的媒体目标）经渲染期赋值的 late-bound ref 保持单向传参。
+- `src/app/podcastPlaybackSettings.ts`：播客倍速/活动单集/自动续播偏好（`zone-podcast-playback-v1`）的常量、类型与 read/patch 纯函数，附 `webkitAudioContext` 全局声明。
+- `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
+  - `useNavigation.ts`：page/view/搜索状态、`requestNavigation` 页面过渡、搜索导航与 Ctrl/Cmd+F/Esc 键盘 effect、`openNowPlaying`。
+  - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、albums/artists 分组与专辑选中、addFolder/rescan 与 `useLibraryWatcher` 接线。
+  - `usePodcastPlayback.ts`：播客 refs/state、队列/会话恢复、倍速与睡眠定时、播放入口与待播队列管理、进度写门与持久化、单集状态同步、自动续播。
+  - `usePlaybackControls.ts`：音乐播放会话与统计、queue/shuffle/repeat、activeTrack/activePlayback 等派生、playTrack/move/onEnded/seek/togglePlay、媒体源切换 effect 与 audio 元素事件处理。
+  - `useAudioEngine.ts`：Web Audio 图 refs、ensureAudioGraph/resumeAudioGraph、节拍预分析、可视化采样循环与启停、音量应用；以 `AudioEngineHandle` 形式经 ref 交给播放控制。
+  - `usePlaylists.ts`：playlists/homePins/收藏状态与 CRUD、homePins 对账、toggleHomePin/openHomePin。
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。
 - `src/constants.ts`：`STORAGE_KEY = "zone-player-state-v1"`、`LIBRARY_SCHEMA_VERSION = 6`、`DEFAULT_PLAYLIST_ID = "favorites"`、`MAX_HOME_PINS = 12`、`VISUALIZER_SAMPLE_COUNT = 180`。
 - `src/views/`：页面级视图。
@@ -63,12 +71,12 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `LibraryView.tsx`：收藏页标签切换（专辑/艺术家/歌曲/播放列表），保持轻薄并向下委托。
   - `ArtistBrowser.tsx`：Zune 风格艺术家导航（艺术家 → 专辑 → 歌曲）。
   - `PlaylistBrowser.tsx`：当前队列与已存播放列表（含智能播放列表）。
-  - `PodcastView.tsx`：正式播客页。默认“收听”聚合继续收听、已关注节目更新和中国区热门节目；“发现”承载榜单、搜索与辅助 RSS 入口；“资料库”展示已关注、稍后听和已下载内容；节目与单集详情支持关注、保存、播放状态、即时播放、待播与离线下载；“播放列表”管理当前单集与持久待播队列。
+  - `PodcastView.tsx`：正式播客页（主组件 state 机与六屏 JSX）。默认“收听”聚合继续收听、已关注节目更新和中国区热门节目；“发现”承载榜单、搜索与辅助 RSS 入口；“资料库”展示已关注、稍后听和已下载内容；节目与单集详情支持关注、保存、播放状态、即时播放、待播与离线下载；“播放列表”管理当前单集与持久待播队列。子组件与支撑模块在 `src/views/podcast/`：`types.ts`/`constants.ts`/`cache.ts`（模块级缓存单例，不可拆散）/`episodeModel.ts`/`preferences.ts`/`format.ts` 与 `components/`（EpisodeRows、QueueEpisodeRow、EpisodeDetail、ContinueCard、ShowCards、Dialogs、primitives）。
   - `PodcastNowPlayingView.tsx`：播客专属全屏正在播放。提供 15/30 秒跳转、0.5–3× 倍速、睡眠定时、音量、简介、保存、缓冲/错误反馈与待播管理，不复用音乐 `NowPlayingView` 的拼贴和歌词内部状态。
   - `NowPlayingView.tsx`：全屏正在播放。Canvas 封面拼贴背景、队列浮层、曲目卡片、收藏按钮、进度/走带控制、歌词模式切换。
   - `SettingsView.tsx`：音乐文件夹管理与在线歌词来源（provider）启用/优先级设置。
-- `src/components/`：可复用 UI。包括 `Cover`、`PlayerBar`、`PodcastPlayerBar`、`TransportControls`、`PlaybackProgress`、`ContextMenu`、`InfoPanel`、`Titlebar`、`EmptyState`、`PlaylistDialog`、`SmartPlaylistDialog`、`LyricsStage`（歌词舞台）、`NowPlayingMosaicCanvas` 与 `AudioGlowCanvas`（正在播放的两个 Canvas 视觉层）。
-- `src/hooks/`：
+- `src/components/`：可复用 UI。包括 `Cover`、`PlayerBar`、`PodcastPlayerBar`、`TransportControls`、`PlaybackProgress`、`ContextMenu`、`InfoPanel`、`Titlebar`、`EmptyState`、`PlaylistDialog`、`SmartPlaylistDialog`、`LyricsStage`（歌词舞台主组件；纯 helper 在 `lyricsStage/lyricsLineUtils.ts`，rAF 逐词绘制在 `lyricsStage/useLyricsPaintLoop.ts`，在线搜索与设置面板分别在 `lyricsStage/LyricsSourceBrowser.tsx`/`LyricsSettingsPanel.tsx`）、`NowPlayingMosaicCanvas` 与 `AudioGlowCanvas`（正在播放的两个 Canvas 视觉层）。
+- `src/hooks/`（独立功能 hook）：
   - `useLibraryWatcher.ts`：配置 Rust 目录监听、接收文件变化事件并在 800ms 防抖后触发曲库刷新。
   - `useLyrics.ts`：歌词加载/缓存/在线搜索状态机（本地缓存键 `zone-local-lyrics-v1`）。
   - `useLyricsDisplaySettings.ts`：歌词翻译/音译/背景人声显隐与字号偏好（键 `zone-lyrics-display-v1`）。
@@ -95,15 +103,15 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `pageTransition.ts`：页面切换编排表（pivot/push/pop），由 App 的 `requestNavigation` 消费。
   - `useReducedMotion.ts`：reduced-motion 统一 hook。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`collection`、`podcasts`、`podcast-now-playing`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`motion`（动效原语层：feather 入场、页面/浮层出入场、反馈动画、唯一 reduced-motion 块）、`animations-responsive`（正在播放入场编排与响应式）。
-- `src-tauri/src/lib.rs`（约 1700 行）：Tauri 命令、自定义协议与应用初始化接线。
-  - 命令：`select_music_folder`、`select_lyrics_file`、`export_lyrics_file`、`scan_library`、`watch_music_folders`、`load_local_lyrics`、`request_lyrics_provider`、`update_system_media`、`update_system_media_timeline`，以及 `podcast_*` 播客命令。
-  - `zone-audio` 自定义协议（`serve_audio_protocol`）：CORS 安全的本地音频播放与 Web Audio 分析，含字节范围（`Accept-Ranges`/`Content-Range`）与正确的音频 content type。
-  - 歌词：内嵌标签歌词、同目录 sidecar 歌词（`.ttml` → `.lrc` → `.txt`，文件名和扩展名大小写不敏感）、UTF-16/GBK 解码修复。
-  - 封面提取与缓存（内嵌封面写入缓存目录）。
-  - 文件内自带 Rust 单元测试（`#[cfg(test)]` 模块）。
-- `src-tauri/src/podcast.rs`：Apple 中国区热门榜与搜索、节目预览/关注、单集详情/稍后听/待播、公共 URL/DNS/重定向安全校验、20 MiB RSS 限流与解析、SQLite 存储、`zone-podcast` 分块 Range 代理、`zone-podcast-artwork` 限流图片代理、受控目录下载/续传/删除、音频魔数识别和播放进度；包含离线测试与显式启用的真实网络 smoke。
+- `src-tauri/src/lib.rs`（约 130 行）：应用初始化接线。只保留 `update_system_media`/`update_system_media_timeline` 两个薄命令与 `pub fn run()`（协议注册、setup、`generate_handler!`）；其余命令按模块以 `library::scan_library` 等前缀形式注册。
+- `src-tauri/src/library.rs`：曲库扫描与目录监听。命令 `select_music_folder`、`scan_library`、`watch_music_folders`；`LibraryWatcherState`、`MusicFolder`/`Track`/`ScanResult`/`LibraryFilesChanged`、`is_supported_audio`、`track_from_path`、封面提取与缓存（内嵌封面写入缓存目录）、GBK 乱码修复族、`stable_track_id`。
+- `src-tauri/src/lyrics.rs`：本地歌词。命令 `select_lyrics_file`、`export_lyrics_file`（`LYRICS_EXPORT_CONTENT_LIMIT` + 保存对话框写文件）、`load_local_lyrics`；内嵌标签歌词、同目录 sidecar 歌词（`.ttml` → `.lrc` → `.txt`，文件名和扩展名大小写不敏感）、UTF-16/GBK 解码修复。
+- `src-tauri/src/lyrics_provider.rs`：在线歌词中转。命令 `request_lyrics_provider`（白名单校验、超时钳制、响应上限、网关重试）与 `decrypt_qrc_lyrics`，以及全部 provider URL/请求体校验 helper。
+- `src-tauri/src/audio_protocol.rs`：`zone-audio` 自定义协议（`serve_audio_protocol`）：CORS 安全的本地音频播放与 Web Audio 分析，含字节范围（`Accept-Ranges`/`Content-Range`）与正确的音频 content type。
+- 上述 Rust 模块各自内带 `#[cfg(test)]` 单元测试。
+- `src-tauri/src/podcast/`：播客目录模块（对外路径保持 `podcast::xxx`，由 `mod.rs` re-export）。`mod.rs` 持有 `PodcastState`、跨模块共享常量与 re-export；`types.rs` 为全部 pub DTO；`util.rs` 通用小工具与 ISO8601 历法解析；`network.rs` 公共 URL/DNS/重定向 SSRF 校验、限流读取与响应工具；`apple.rs` Apple 中国区热门榜与搜索；`feed_parse.rs` 20 MiB RSS 限流拉取、字节修复、命名空间解析与归一化；`store.rs` SQLite schema/迁移与订阅/刷新写入；`query.rs` 查询侧与稍后听/已播；`chapters.rs` 单集详情与章节；`queue.rs` 待播队列；`downloads.rs` 受控目录下载/续传/删除、进度保存与文件守卫；`stream_protocol.rs` `zone-podcast` 分块 Range 代理与音频魔数识别；`artwork_protocol.rs` `zone-podcast-artwork` 限流图片代理；`commands.rs` 29 个 `#[tauri::command]` 薄壳；测试按被测代码归属下沉到各文件末尾的 `#[cfg(test)] mod tests`（共享 fixture 在 `test_support.rs`），真实网络 smoke 仍仅在 `ZONE_PODCAST_LIVE=1` 后运行。
 - `src-tauri/src/qrc.rs`：有边界限制的 QQ QRC 解密/解压实现；解密后的逐词时间轴由前端 `src/utils/qrc.ts` 转换为统一 TTML 再进入通用解析器。
-- `src-tauri/src/system_media.rs`：Windows SMTC 集成（设置 AppUserModelID、媒体信息/时间线更新、媒体按键事件转发到前端）。
+- `src-tauri/src/system_media/`：Windows SMTC 集成（`mod.rs` 为跨平台入口，`windows_impl/` 为 Windows 实现：设置 AppUserModelID、媒体信息/时间线更新、媒体按键事件转发到前端）。
 - `docs/`：设计文档（`lyrics-experience-plan.md`、`lyrics-motion-review.md`）与视觉证据截图（`docs/evidence/`），整个目录为本地未跟踪。`docs/design-qa.md` 记录歌词模式的视觉 QA。
 - `scripts/`：目前为空。
 
@@ -261,7 +269,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 两类测试：
   - 纯逻辑测试：从 `.tmp/visualizer-tests/`（由 `tsconfig.test.json` 编译）导入 util 函数做行为断言。被编译的 util 清单维护在 `tsconfig.test.json` 的 `include` 中——新增被测 util 时要同步加入。
   - 源码/CSS 守卫测试：用 `readFileSync` 读取 `src/` 下的源码与 CSS，做字符串包含/排除断言（如 `localization.test.mjs`、`nowPlayingCss.test.mjs`、`settingsCss.test.mjs`）。修改 UI 结构、CSS 类名或文案时这些测试可能失败，需同步更新。
-- Rust 单元测试在 `src-tauri/src/lib.rs` 与 `src-tauri/src/podcast.rs` 的 `#[cfg(test)]` 模块中（`cargo test --lib` 可运行）。真实播客网络 smoke 默认忽略，仅在显式设置 `ZONE_PODCAST_LIVE=1` 后运行。
+- Rust 单元测试在 `src-tauri/src/`（`library.rs`、`lyrics.rs`、`lyrics_provider.rs`、`audio_protocol.rs`、`podcast/` 目录各模块）各模块的 `#[cfg(test)]` 模块中（`cargo test --lib` 可运行）。真实播客网络 smoke 默认忽略，仅在显式设置 `ZONE_PODCAST_LIVE=1` 后运行。
 - 播客前后端接线、安全代理、单集详情、待播和独立播放边界由 `tests/podcast.test.mjs` 与 `tests/podcastPlayback.test.mjs` 守卫；修改播客模型、命令或播放分支时运行 `npm test`，修改 Rust 数据库/协议/下载逻辑时同时运行 `cargo check`。
 - 动效内核（`src/motion/`）的行为测试在 `tests/motion.test.mjs`；封面 FLIP 接线守卫在 `tests/coverFlip.test.mjs`，其运行时行为回归（手写 DOM mock + 假动画时钟）在 `tests/coverFlipBehavior.test.mjs`；可视化总线在 `tests/visualizerBus.test.mjs`。动效系统的原则与接入约定见 `docs/motion-system.md`。
 - 视觉/动效类改动同时参考 `docs/lyrics-motion-review.md` 的审查基线（Emil Kowalski 动效规范：动效有目的、时长 ≤300ms、可打断、transform/opacity、尊重减少动态效果）。
@@ -271,7 +279,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 在线歌词请求一律经 Rust 命令 `request_lyrics_provider` 中转，前端不直接 fetch：
   - URL 白名单校验（`validate_lyrics_provider_url`）：只允许已注册的 LRCLIB、AMLL TTML DB、网易云音乐和 QQ 音乐 HTTPS 主机与固定 API 路径，无端口、禁重定向；QQ 回退搜索的查询参数也逐项校验。新增 provider 必须同时注册允许规则。
   - 超时钳制在 1.5s–20s；响应体大小有上限（`LYRICS_PROVIDER_RESPONSE_LIMIT`）；仅对 502/503/504 重试一次。
-- 播客网络请求由 `src-tauri/src/podcast.rs` 专用客户端处理：Apple 搜索固定 `country=CN`；RSS/音频只允许 HTTP(S)，每次重定向重新校验并固定解析地址，拒绝凭据、fragment、非 80/443 端口与内网/环回 IP。为兼容大陆常见 Clash fake-IP，仅允许“域名解析所得”的 `198.18.0.0/15`，直接输入该网段仍被拒绝。
+- 播客网络请求由 `src-tauri/src/podcast/`（`network.rs` 与 `apple.rs`）专用客户端处理：Apple 搜索固定 `country=CN`；RSS/音频只允许 HTTP(S)，每次重定向重新校验并固定解析地址，拒绝凭据、fragment、非 80/443 端口与内网/环回 IP。为兼容大陆常见 Clash fake-IP，仅允许“域名解析所得”的 `198.18.0.0/15`，直接输入该网段仍被拒绝。
 - RSS 响应上限 20 MiB，音频上限 2 GiB；下载目标只按数据库中的 episode ID 生成，先写 `.part` 并支持 Range 续传，通过音频魔数后再原子落盘。
 - 删除播客下载只允许清理由数据库 episode ID 推导且位于受控下载目录中的最终文件与精确 `.part`；下载和删除对同一单集互斥，不能让前端传入任意文件路径。
 - `zone-podcast` 协议只接受数据库中的 64 位 episode ID，绝不接受前端传入的远程 URL；每个 Range 响应最多代理 1 MiB，带 CORS，逐跳应用相同 SSRF 校验。上游不支持 Range 且内容超过单块上限时明确失败，由用户选择离线下载。

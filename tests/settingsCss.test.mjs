@@ -5,7 +5,16 @@ import test from "node:test";
 const settingsView = readFileSync("src/views/SettingsView.tsx", "utf8");
 const appHeader = readFileSync("src/components/AppHeader.tsx", "utf8");
 const titlebar = readFileSync("src/components/Titlebar.tsx", "utf8");
-const appSource = readFileSync("src/App.tsx", "utf8");
+const appSource = [
+  "src/app/podcastPlaybackSettings.ts",
+  "src/hooks/useNavigation.ts",
+  "src/hooks/useMusicLibrary.ts",
+  "src/hooks/usePodcastPlayback.ts",
+  "src/hooks/usePlaybackControls.ts",
+  "src/hooks/useAudioEngine.ts",
+  "src/hooks/usePlaylists.ts",
+  "src/App.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const baseCss = readFileSync("src/styles/base.css", "utf8");
 const settingsCss = readFileSync("src/styles/overlays-settings.css", "utf8");
 const responsiveCss = readFileSync("src/styles/animations-responsive.css", "utf8");

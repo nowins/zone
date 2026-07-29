@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Titlebar } from "./components/Titlebar";
 import { AppHeader } from "./components/AppHeader";
 import { CollectionSearchField } from "./components/CollectionSearchField";
@@ -9,7 +8,7 @@ import { PodcastPlayerBar } from "./components/PodcastPlayerBar";
 import { ContextMenu } from "./components/ContextMenu";
 import { InfoPanel } from "./components/InfoPanel";
 import { PlaylistDialog, type PlaylistDialogState } from "./components/PlaylistDialog";
-import { SmartPlaylistDialog, type SmartPlaylistDraft } from "./components/SmartPlaylistDialog";
+import { SmartPlaylistDialog } from "./components/SmartPlaylistDialog";
 import { LibraryView } from "./views/LibraryView";
 import { SearchResultsView } from "./views/SearchResultsView";
 import { QuickplayView } from "./views/QuickplayView";
@@ -17,258 +16,259 @@ import { NowPlayingView } from "./views/NowPlayingView";
 import { PodcastNowPlayingView } from "./views/PodcastNowPlayingView";
 import { SettingsView } from "./views/SettingsView";
 import { PodcastView } from "./views/PodcastView";
-import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, MAX_HOME_PINS, STORAGE_KEY, VISUALIZER_SAMPLE_COUNT } from "./constants";
-import {
-  albumKey,
-  bestAlbumArtist,
-  compareTracksForAlbum,
-  defaultPlaylists,
-  formatCollectionPlaylistCount,
-  normalizePlaylists,
-  uniqueIds,
-} from "./utils/music";
-import { homePinForPayload, homePinStateForPayload, moveHomePin, normalizeHomePins, reconcileHomePins, shiftHomePin } from "./utils/homePins";
-import { analyzePcmBeatGrid, createIdleBeatFrame, RealtimeBeatAnalyzer, type BeatFrame, type BeatGrid } from "./utils/beatAnalysis";
-import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "./utils/visualizer";
-import { getVisualizerFrame, publishVisualizerFrame } from "./utils/visualizerBus";
-import { createShuffleOrder, haveSameQueueItems, playbackSourceKey, reconcileActiveTrack, reconcileQueueWithLibrary, resolveQueueMove, type QueueMoveResult } from "./utils/playback";
-import { createTrackActivity, isSmartPlaylist } from "./utils/smartPlaylist";
-import { movePodcastQueueItem, podcastPlaybackForEpisode } from "./utils/podcastPlayback";
-import { createPodcastProgressWriteGate } from "./utils/podcastProgress";
-import {
-  resolveSearchSurface,
-  type CollectionSearchMode,
-} from "./utils/collectionSearch";
+import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
+import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
+import { homePinStateForPayload, moveHomePin, normalizeHomePins, shiftHomePin } from "./utils/homePins";
+import { resolveSearchSurface } from "./utils/collectionSearch";
 import { useSystemMedia } from "./hooks/useSystemMedia";
-import { useLibraryWatcher } from "./hooks/useLibraryWatcher";
+import { useNavigation, type NowPlayingTargets } from "./hooks/useNavigation";
+import { useMusicLibrary } from "./hooks/useMusicLibrary";
+import { usePodcastPlayback } from "./hooks/usePodcastPlayback";
+import {
+  usePlaybackControls,
+  type PlaybackControlsHandle,
+  type PlaybackSession,
+} from "./hooks/usePlaybackControls";
+import { useAudioEngine, type AudioEngineHandle } from "./hooks/useAudioEngine";
+import { usePlaylists } from "./hooks/usePlaylists";
 import { Presence, useLastNonNull } from "./motion/presence";
-import { MOTION_DURATIONS, MOTION_DRIFT, resolveExitDurationMs } from "./motion/tokens";
-import { resolvePageTransition } from "./motion/pageTransition";
-import { useReducedMotion } from "./motion/useReducedMotion";
+import { MOTION_DURATIONS } from "./motion/tokens";
 import type {
-  AlbumGroup,
-  AppPage,
-  ArtistGroup,
   ContextMenuState,
   ContextPayload,
-  HomePin,
-  MusicFolder,
-  Playlist,
-  PodcastAutoQueueMode,
-  PodcastEpisode,
-  PodcastEpisodeDetail,
-  PodcastPlayback,
-  PodcastPlaybackStatus,
-  PodcastQueueItem,
-  PodcastSleepTimer,
-  RepeatMode,
-  ScanResult,
   SmartPlaylist,
   Track,
-  TrackActivityMap,
   ViewMode,
 } from "./types";
 
-type PlaybackSession = {
-  trackId: string;
-  maxProgress: number;
-  countedPlay: boolean;
-  countedComplete: boolean;
-};
-
-const PODCAST_PROGRESS_SAVE_INTERVAL_MS = 5_000;
-const PODCAST_PLAYBACK_SETTINGS_KEY = "zone-podcast-playback-v1";
-const PODCAST_PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
-const PODCAST_AUTO_QUEUE_MODES: PodcastAutoQueueMode[] = [
-  "off",
-  "same-feed",
-  "random-unplayed",
-];
-
-type PodcastPlaybackSettings = {
-  playbackRate: number;
-  activeEpisodeId: string | null;
-  autoQueueMode: PodcastAutoQueueMode;
-};
-
-declare global {
-  interface Window {
-    webkitAudioContext?: typeof AudioContext;
-  }
-}
-
-function readPodcastPlaybackSettings(): PodcastPlaybackSettings {
-  const fallback: PodcastPlaybackSettings = {
-    playbackRate: 1,
-    activeEpisodeId: null,
-    autoQueueMode: "off",
-  };
-  try {
-    const stored = JSON.parse(localStorage.getItem(PODCAST_PLAYBACK_SETTINGS_KEY) ?? "{}");
-    return {
-      playbackRate: PODCAST_PLAYBACK_RATES.includes(stored.playbackRate)
-        ? stored.playbackRate
-        : fallback.playbackRate,
-      activeEpisodeId:
-        typeof stored.activeEpisodeId === "string" && stored.activeEpisodeId.trim()
-          ? stored.activeEpisodeId
-          : null,
-      autoQueueMode: PODCAST_AUTO_QUEUE_MODES.includes(stored.autoQueueMode)
-        ? stored.autoQueueMode
-        : fallback.autoQueueMode,
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-function patchPodcastPlaybackSettings(
-  patch: Partial<PodcastPlaybackSettings>,
-) {
-  try {
-    localStorage.setItem(
-      PODCAST_PLAYBACK_SETTINGS_KEY,
-      JSON.stringify({ ...readPodcastPlaybackSettings(), ...patch }),
-    );
-  } catch {
-    // Playback preferences remain usable for this session when storage is blocked.
-  }
-}
-
-function readPodcastPlaybackRate(): number {
-  return readPodcastPlaybackSettings().playbackRate;
-}
-
-function readPodcastActiveEpisodeId(): string | null {
-  return readPodcastPlaybackSettings().activeEpisodeId;
-}
-
-function readPodcastAutoQueueMode(): PodcastAutoQueueMode {
-  return readPodcastPlaybackSettings().autoQueueMode;
-}
-
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const previousPageRef = useRef<"quickplay" | "collection" | "podcasts" | "settings">("quickplay");
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const outputGainRef = useRef<GainNode | null>(null);
-  const visualizerFrameRef = useRef<number | null>(null);
-  const visualizerSilenceFramesRef = useRef(0);
-  const visualizerUnavailableRef = useRef(false);
-  const visualizerEnergyRef = useRef(0.055);
-  const visualizerSamplesRef = useRef<number[]>([]);
-  const beatFrameRef = useRef<BeatFrame>(createIdleBeatFrame());
-  const realtimeBeatRef = useRef<RealtimeBeatAnalyzer | null>(null);
-  const offlineBeatGridRef = useRef<BeatGrid | null>(null);
-  const beatGridCacheRef = useRef(new Map<string, BeatGrid | null>());
-  const beatAnalysisRequestRef = useRef(0);
-  const actionNoticeTimerRef = useRef<number | null>(null);
-  const navExitTimerRef = useRef<number | null>(null);
-  const navTargetRef = useRef<AppPage | null>(null);
   const playbackSessionRef = useRef<PlaybackSession | null>(null);
-  const activeAudioSourceKeyRef = useRef<string | null>(null);
-  const audioPlayAttemptRef = useRef(0);
-  const activePodcastEpisodeRef = useRef<PodcastPlayback | null>(null);
-  const podcastAudioEpisodeRef = useRef<string | null>(null);
-  const podcastQueueRef = useRef<PodcastQueueItem[]>([]);
-  const podcastQueueRevisionRef = useRef(0);
-  const podcastQueueMutationRef = useRef<Promise<void>>(Promise.resolve());
-  const pendingPodcastQueueConsumeRef = useRef<string | null>(null);
-  const podcastPlaybackStartedEpisodeRef = useRef<string | null>(null);
-  const pendingPodcastResumeRef = useRef<{
-    episodeId: string;
-    position: number;
-    explicit?: boolean;
-  } | null>(null);
-  const pendingPodcastStartRef = useRef<{ episodeId: string; position: number } | null>(null);
-  const podcastProgressSaveRef = useRef<{
-    episodeId: string;
-    savedAt: number;
-    position: number;
-    duration: number;
-  } | null>(null);
-  const podcastProgressMutationRef = useRef<Promise<void>>(Promise.resolve());
-  const podcastProgressWriteGateRef = useRef(createPodcastProgressWriteGate());
-  const podcastProgressStartedRef = useRef(new Set<string>());
-  const podcastPlaybackIntentRef = useRef(false);
-  const podcastAutoQueueAttemptRef = useRef(0);
-  const podcastSessionHydratedRef = useRef(false);
-  const podcastSessionRestoreCancelledRef = useRef(false);
-  const podcastSleepTimerRef = useRef<number | null>(null);
-  const activityMigrationRef = useRef(false);
-  const scanInFlightRef = useRef(false);
-  const queuedScanRef = useRef<{ folders: MusicFolder[]; automatic: boolean } | null>(null);
-  const [folders, setFolders] = useState<MusicFolder[]>([]);
-  const foldersRef = useRef<MusicFolder[]>(folders);
-  const [tracks, setTracks] = useState<Track[]>([]);
-  const [query, setQuery] = useState("");
-  const [searchMode, setSearchMode] = useState<CollectionSearchMode>("results");
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const focusSearchPendingRef = useRef(false);
-  const [view, setView] = useState<ViewMode>("albums");
-  const [page, setPage] = useState<AppPage>("quickplay");
-  // Page-transition state: `navExit` is the in-flight exit direction (null when
-  // idle), `navDir` persists the latest direction so the incoming page's enter
-  // keyframe reads the same `--motion-dir` after the exit window ends. `navDrift`
-  // carries the table's per-pair amplitudes onto the shell (`--motion-drift` for
-  // the enter keyframe, `--motion-exit-drift` for the exit one), so push/pop
-  // travel further than a peer pivot instead of sharing one hardcoded distance.
-  const [navExit, setNavExit] = useState<1 | -1 | null>(null);
-  const [navDir, setNavDir] = useState<1 | -1>(1);
-  const [navDrift, setNavDrift] = useState<{ enter: number; exit: number }>({
-    enter: MOTION_DRIFT.m,
-    exit: MOTION_DRIFT.s,
+  const playbackControlsRef = useRef<PlaybackControlsHandle | null>(null);
+  const audioEngineRef = useRef<AudioEngineHandle | null>(null);
+  const nowPlayingTargetsRef = useRef<NowPlayingTargets>({
+    activePodcastEpisode: null,
+    activeTrack: null,
   });
-  const reducedMotion = useReducedMotion();
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
-  const [activePodcastEpisode, setActivePodcastEpisode] = useState<PodcastPlayback | null>(null);
-  const [podcastQueue, setPodcastQueue] = useState<PodcastQueueItem[]>([]);
-  const [podcastLibraryRevision, setPodcastLibraryRevision] = useState(0);
-  const [podcastEpisodeRequest, setPodcastEpisodeRequest] = useState<{
-    episodeId: string;
-    nonce: number;
-    returnToNowPlaying?: boolean;
-  } | null>(null);
-  const [podcastPlaybackRate, setPodcastPlaybackRate] = useState(readPodcastPlaybackRate);
-  const [podcastAutoQueueMode, setPodcastAutoQueueMode] =
-    useState<PodcastAutoQueueMode>(readPodcastAutoQueueMode);
-  const podcastAutoQueueModeRef = useRef(podcastAutoQueueMode);
-  const [podcastSleepTimer, setPodcastSleepTimer] = useState<PodcastSleepTimer>(null);
-  const [podcastPlaybackStatus, setPodcastPlaybackStatus] = useState<PodcastPlaybackStatus>("idle");
-  const [podcastSessionHydrated, setPodcastSessionHydrated] = useState(false);
   const [queue, setQueue] = useState<string[]>([]);
   const [playHistory, setPlayHistory] = useState<string[]>([]);
-  const [trackActivity, setTrackActivity] = useState<TrackActivityMap>({});
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanNote, setScanNote] = useState("");
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.8);
-  const [shuffle, setShuffle] = useState(false);
-  const [shuffleOrder, setShuffleOrder] = useState<string[]>([]);
-  const [repeat, setRepeat] = useState<RepeatMode>("off");
-  const [restored, setRestored] = useState(false);
-  const [needsMetadataRefresh, setNeedsMetadataRefresh] = useState(false);
-  const [selectedAlbumKey, setSelectedAlbumKey] = useState<string | null>(null);
-  const [selectedArtistName, setSelectedArtistName] = useState<string | null>(null);
-  const [playlists, setPlaylists] = useState<Playlist[]>(defaultPlaylists());
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(DEFAULT_PLAYLIST_ID);
-  const [homePins, setHomePins] = useState<HomePin[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [infoTarget, setInfoTarget] = useState<ContextPayload | null>(null);
   const [playlistDialog, setPlaylistDialog] = useState<PlaylistDialogState | null>(null);
   const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
-  foldersRef.current = folders;
-  activePodcastEpisodeRef.current = activePodcastEpisode;
-  podcastQueueRef.current = podcastQueue;
-  podcastAutoQueueModeRef.current = podcastAutoQueueMode;
+  const actionNoticeTimerRef = useRef<number | null>(null);
 
-  useLibraryWatcher(folders, restored, () => {
-    void rescan(folders, true);
+  function showActionNotice(message: string) {
+    setActionNotice(message);
+    if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
+    actionNoticeTimerRef.current = window.setTimeout(() => {
+      setActionNotice(null);
+      actionNoticeTimerRef.current = null;
+    }, 2_400);
+  }
+
+  const {
+    query,
+    searchMode,
+    setSearchMode,
+    searchInputRef,
+    view,
+    setView,
+    page,
+    navExit,
+    navDir,
+    navDrift,
+    navTargetRef,
+    navExitTimerRef,
+    previousPageRef,
+    selectedAlbumKey,
+    setSelectedAlbumKey,
+    selectedArtistName,
+    setSelectedArtistName,
+    requestNavigation,
+    clearCollectionSearch,
+    setCollectionSearchQuery,
+    navigatePage,
+    navigateCollection,
+    openSearchArtist,
+    openSearchAlbum,
+    openSearchPlaylist,
+    openNowPlaying,
+  } = useNavigation({
+    contextMenu,
+    infoTarget,
+    playlistDialog,
+    smartPlaylistDialog,
+    nowPlayingTargetsRef,
+    setSelectedPlaylistId,
+  });
+  const {
+    folders,
+    setFolders,
+    tracks,
+    setTracks,
+    isScanning,
+    scanNote,
+    setScanNote,
+    restored,
+    setRestored,
+    needsMetadataRefresh,
+    setNeedsMetadataRefresh,
+    trackActivity,
+    setTrackActivity,
+    activityMigrationRef,
+    albums,
+    artists,
+    addFolder,
+    rescan,
+  } = useMusicLibrary({
+    view,
+    selectedAlbumKey,
+    setSelectedAlbumKey,
+    setQueue,
+  });
+  const podcast = usePodcastPlayback({
+    audioRef,
+    showActionNotice,
+    requestNavigation,
+    playbackControlsRef,
+    playbackSessionRef,
+  });
+  const {
+    activePodcastEpisode,
+    activePodcastEpisodeRef,
+    podcastQueue,
+    podcastQueueRef,
+    podcastLibraryRevision,
+    podcastEpisodeRequest,
+    setPodcastEpisodeRequest,
+    podcastPlaybackRate,
+    setPodcastPlaybackRate,
+    podcastAutoQueueMode,
+    podcastSleepTimer,
+    setPodcastSleepTimer,
+    podcastSleepTimerRef,
+    podcastPlaybackStatus,
+    setPodcastPlaybackStatus,
+    podcastSessionHydrated,
+    playPodcastEpisode,
+    queuePodcastEpisode,
+    removePodcastQueueEpisode,
+    removePodcastQueueEpisodes,
+    clearPodcastQueue,
+    movePodcastQueueEpisode,
+    reorderPodcastQueueEpisode,
+    updatePodcastEpisode,
+    reconcileDeletedPodcastDownloads,
+    toggleActivePodcastSaved,
+    setPodcastEpisodePlayed,
+    setPodcastQueueEpisodesPlayed,
+    downloadPodcastQueueEpisodes,
+    changePodcastAutoQueueMode,
+    openActivePodcastEpisode,
+    playPodcastQueueItem,
+    playNextPodcastEpisode,
+    flushPodcastProgress,
+  } = podcast;
+  const {
+    isPlaying,
+    setIsPlaying,
+    progress,
+    duration,
+    volume,
+    setVolume,
+    shuffle,
+    setShuffle,
+    repeat,
+    setRepeat,
+    activeTrack,
+    activePlayback,
+    activePlaybackSourceKey,
+    playbackQueueIds,
+    canMovePrevious,
+    canMoveNext,
+    playTrack,
+    playTracks,
+    appendToQueue,
+    handleTimeUpdate,
+    move,
+    onEnded,
+    seek,
+    handleLoadedMetadata,
+    handleAudioPause,
+    handleAudioError,
+    handleAudioLoadStart,
+    handleAudioWaiting,
+    handleAudioCanPlay,
+    togglePlay,
+    retryPodcastPlayback,
+  } = usePlaybackControls({
+    audioRef,
+    showActionNotice,
+    audioEngineRef,
+    playbackSessionRef,
+    tracks,
+    restored,
+    setTrackActivity,
+    activeTrackId,
+    setActiveTrackId,
+    queue,
+    setQueue,
+    playHistory,
+    setPlayHistory,
+    podcast,
+  });
+  playbackControlsRef.current = { seek, togglePlay };
+  audioEngineRef.current = useAudioEngine({
+    audioRef,
+    volume,
+    progress,
+    isPlaying,
+    activePlayback,
+    activePlaybackSourceKey,
+    activeTrackId,
+  });
+  nowPlayingTargetsRef.current = { activePodcastEpisode, activeTrack };
+  const {
+    playlists,
+    setPlaylists,
+    homePins,
+    setHomePins,
+    favoriteTrackIds,
+    addToPlaylist,
+    toggleFavorite,
+    toggleFavoriteTrack,
+    toggleHomePin,
+    openHomePin,
+    openCreatePlaylistDialog,
+    openCreateSmartPlaylist,
+    openSmartPlaylistEditor,
+    saveSmartPlaylist,
+    refreshSmartPlaylist,
+    excludeFromSmartPlaylist,
+    openPlaylistDialog,
+    submitPlaylistDialog,
+    saveQueueAsPlaylist,
+  } = usePlaylists({
+    showActionNotice,
+    tracks,
+    restored,
+    playTrack,
+    navigateCollection,
+    setSelectedAlbumKey,
+    setSelectedArtistName,
+    setView,
+    playbackQueueIds,
+    activePodcastEpisode,
+    activeTrack,
+    setSelectedPlaylistId,
+    playlistDialog,
+    setPlaylistDialog,
+    smartPlaylistDialog,
+    setSmartPlaylistDialog,
   });
 
   useEffect(() => () => {
@@ -277,12 +277,6 @@ export default function App() {
     if (podcastSleepTimerRef.current !== null) window.clearTimeout(podcastSleepTimerRef.current);
     void flushPodcastProgress();
   }, []);
-
-  useEffect(() => {
-    if (page !== "collection" || !focusSearchPendingRef.current) return;
-    focusSearchPendingRef.current = false;
-    window.requestAnimationFrame(() => searchInputRef.current?.focus());
-  }, [page]);
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -319,142 +313,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    let disposed = false;
-    const revision = podcastQueueRevisionRef.current;
-    void invoke<PodcastQueueItem[]>("podcast_list_queue")
-      .then((items) => {
-        if (!disposed && podcastQueueRevisionRef.current === revision) {
-          applyPodcastQueue(items);
-        }
-      })
-      .catch((reason) => {
-        if (import.meta.env.DEV) console.warn("[podcast] queue restore failed", reason);
-      });
-    return () => {
-      disposed = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let disposed = false;
-    const episodeId = readPodcastActiveEpisodeId();
-    if (!episodeId) {
-      podcastSessionHydratedRef.current = true;
-      setPodcastSessionHydrated(true);
-      return;
-    }
-    void invoke<PodcastEpisodeDetail>("podcast_get_episode_detail", { episodeId })
-      .then((detail) => {
-        if (disposed) return;
-        podcastSessionHydratedRef.current = true;
-        if (podcastSessionRestoreCancelledRef.current || activePodcastEpisodeRef.current) {
-          setPodcastSessionHydrated(true);
-          patchPodcastPlaybackSettings({
-            activeEpisodeId: activePodcastEpisodeRef.current?.episodeId ?? null,
-          });
-          return;
-        }
-        podcastPlaybackIntentRef.current = false;
-        setActivePodcastEpisode(podcastPlaybackForEpisode(detail.episode));
-        setPodcastPlaybackStatus("paused");
-        setPodcastSessionHydrated(true);
-      })
-      .catch((reason) => {
-        if (disposed) return;
-        podcastSessionHydratedRef.current = true;
-        setPodcastSessionHydrated(true);
-        if (podcastSessionRestoreCancelledRef.current || activePodcastEpisodeRef.current) {
-          patchPodcastPlaybackSettings({
-            activeEpisodeId: activePodcastEpisodeRef.current?.episodeId ?? null,
-          });
-          return;
-        }
-        patchPodcastPlaybackSettings({ activeEpisodeId: null });
-        if (import.meta.env.DEV) {
-          console.warn("[podcast] playback session restore failed", reason);
-        }
-      });
-    return () => {
-      disposed = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!podcastSessionHydratedRef.current) return;
-    patchPodcastPlaybackSettings({
-      playbackRate: podcastPlaybackRate,
-      activeEpisodeId: activePodcastEpisode?.episodeId ?? null,
-      autoQueueMode: podcastAutoQueueMode,
-    });
-    if (activePodcastEpisode && audioRef.current) {
-      audioRef.current.playbackRate = podcastPlaybackRate;
-    }
-  }, [
-    activePodcastEpisode?.episodeId,
-    podcastAutoQueueMode,
-    podcastPlaybackRate,
-  ]);
-
-  useEffect(() => {
-    const episodeId = activePodcastEpisode?.episodeId;
-    if (
-      episodeId
-      && podcastQueue.some((item) => item.episode.id === episodeId)
-      && pendingPodcastQueueConsumeRef.current === null
-    ) {
-      pendingPodcastQueueConsumeRef.current = episodeId;
-      if (podcastPlaybackStartedEpisodeRef.current === episodeId) {
-        consumePendingPodcastQueueEpisode(episodeId);
-      }
-    }
-  }, [activePodcastEpisode?.episodeId, podcastQueue]);
-
-  useEffect(() => {
-    if (!podcastSleepTimer) return;
-    if (
-      !activePodcastEpisode
-      || (
-        podcastSleepTimer.kind === "episodeEnd"
-        && podcastSleepTimer.episodeId !== activePodcastEpisode.episodeId
-      )
-    ) {
-      setPodcastSleepTimer(null);
-    }
-  }, [activePodcastEpisode, podcastSleepTimer]);
-
-  useEffect(() => {
-    if (podcastSleepTimerRef.current !== null) {
-      window.clearTimeout(podcastSleepTimerRef.current);
-      podcastSleepTimerRef.current = null;
-    }
-    if (!activePodcastEpisode || podcastSleepTimer?.kind !== "deadline") return;
-    const remaining = Math.max(0, podcastSleepTimer.deadlineAt - Date.now());
-    podcastSleepTimerRef.current = window.setTimeout(() => {
-      podcastSleepTimerRef.current = null;
-      flushPodcastProgress();
-      podcastPlaybackIntentRef.current = false;
-      audioPlayAttemptRef.current += 1;
-      audioRef.current?.pause();
-      setPodcastSleepTimer(null);
-      setPodcastPlaybackStatus("paused");
-      showActionNotice("睡眠定时已暂停播放");
-    }, remaining);
-    return () => {
-      if (podcastSleepTimerRef.current !== null) {
-        window.clearTimeout(podcastSleepTimerRef.current);
-        podcastSleepTimerRef.current = null;
-      }
-    };
-  }, [activePodcastEpisode?.episodeId, podcastSleepTimer]);
-
-  useEffect(() => {
-    if (!restored || folders.length === 0 || tracks.length === 0) return;
-    if (!needsMetadataRefresh && "cover_path" in tracks[0]) return;
-
-    void rescan(folders);
-  }, [restored, needsMetadataRefresh]);
-
-  useEffect(() => {
     if (!restored) return;
 
     localStorage.setItem(
@@ -477,43 +335,6 @@ export default function App() {
     );
   }, [restored, needsMetadataRefresh, folders, tracks, activeTrackId, queue, playHistory, trackActivity, volume, shuffle, repeat, playlists, selectedPlaylistId, homePins]);
 
-  useEffect(() => {
-    if (!activeTrackId) return;
-    setPlayHistory((current) => [activeTrackId, ...current.filter((id) => id !== activeTrackId)].slice(0, 24));
-  }, [activeTrackId]);
-
-  useEffect(() => {
-    if (!restored) return;
-    if (activityMigrationRef.current && needsMetadataRefresh) return;
-    const now = Date.now();
-    const isMigrating = activityMigrationRef.current;
-    setTrackActivity((current) => {
-      const next: TrackActivityMap = {};
-      for (const track of tracks) {
-        const migrationBaseline = isMigrating ? track.added_at ?? now : now;
-        next[track.id] = createTrackActivity(current[track.id], migrationBaseline);
-      }
-      return next;
-    });
-    activityMigrationRef.current = false;
-  }, [needsMetadataRefresh, restored, tracks]);
-
-  useEffect(() => {
-    playbackSessionRef.current = !activePodcastEpisode && activeTrackId
-      ? { trackId: activeTrackId, maxProgress: 0, countedPlay: false, countedComplete: false }
-      : null;
-  }, [activePodcastEpisode?.episodeId, activeTrackId]);
-
-  const activeTrack = useMemo(
-    () => tracks.find((track) => track.id === activeTrackId) ?? null,
-    [tracks, activeTrackId],
-  );
-  const activePlayback = useMemo(() => {
-    if (!podcastSessionHydrated) return null;
-    if (activePodcastEpisode) return { kind: "podcast" as const, episode: activePodcastEpisode };
-    if (activeTrack) return { kind: "music" as const, track: activeTrack };
-    return null;
-  }, [activePodcastEpisode, activeTrack, podcastSessionHydrated]);
   const systemMediaItem = useMemo(() => {
     if (!podcastSessionHydrated) return null;
     if (activePodcastEpisode) {
@@ -534,1268 +355,8 @@ export default function App() {
       coverPath: activeTrack.cover_path ?? null,
     };
   }, [activePodcastEpisode, activeTrack, podcastSessionHydrated]);
-  const activePlaybackSourceKey = activePlayback?.kind === "podcast"
-    ? `podcast\0${activePlayback.episode.episodeId}\0${activePlayback.episode.playbackLocalPath ?? "stream"}`
-    : activePlayback
-      ? `music\0${playbackSourceKey(activePlayback.track)}`
-      : null;
-
-  const baseQueueIds = useMemo(
-    () => (queue.length > 0 ? queue : tracks.map((track) => track.id)),
-    [queue, tracks],
-  );
-
-  const playbackQueueIds = useMemo(
-    () => shuffle && haveSameQueueItems(shuffleOrder, baseQueueIds) ? shuffleOrder : baseQueueIds,
-    [baseQueueIds, shuffle, shuffleOrder],
-  );
-
-  const activePlaybackIndex = playbackQueueIds.indexOf(activeTrackId ?? "");
-  const canMovePrevious = !activePodcastEpisode && Boolean(activeTrack) && (
-    repeat === "all" ? playbackQueueIds.length > 1 : activePlaybackIndex > 0
-  );
-  const canMoveNext = !activePodcastEpisode && Boolean(activeTrack) && (
-    repeat === "all"
-      ? playbackQueueIds.length > 1
-      : activePlaybackIndex >= 0 && activePlaybackIndex < playbackQueueIds.length - 1
-  );
-
-  useEffect(() => {
-    if (!restored) return;
-    const libraryIds = tracks.map((track) => track.id);
-
-    setQueue((current) => reconcileQueueWithLibrary(current, libraryIds));
-    setPlayHistory((current) => {
-      const validIds = new Set(libraryIds);
-      const next = current.filter((id) => validIds.has(id));
-      return next.length === current.length ? current : next;
-    });
-    setActiveTrackId((current) => reconcileActiveTrack(current, queue, libraryIds));
-  }, [restored, tracks]);
-
-  useEffect(() => {
-    if (!restored) return;
-    setHomePins((current) => {
-      const next = reconcileHomePins(current, tracks, playlists);
-      return next.length === current.length && next.every((pin, index) => pin.id === current[index]?.id)
-        ? current
-        : next;
-    });
-  }, [playlists, restored, tracks]);
-
-  useEffect(() => {
-    if (!shuffle) {
-      setShuffleOrder([]);
-      return;
-    }
-
-    setShuffleOrder(createShuffleOrder(baseQueueIds, activeTrackId));
-  }, [baseQueueIds, shuffle]);
-
-  const favoriteTrackIds = useMemo<Set<string>>(() => {
-    const favorites = playlists.find((playlist) => playlist.id === DEFAULT_PLAYLIST_ID);
-    return new Set(favorites && !isSmartPlaylist(favorites) ? favorites.trackIds : []);
-  }, [playlists]);
 
   const isActiveTrackFavorite = activeTrack ? favoriteTrackIds.has(activeTrack.id) : false;
-
-  const albums = useMemo(() => {
-    const map = new Map<string, Track[]>();
-    for (const track of tracks) {
-      const key = albumKey(track.album, track.album_artist ?? track.artist);
-      map.set(key, [...(map.get(key) ?? []), track]);
-    }
-    return Array.from(map.entries())
-      .map(([key, albumTracks]) => {
-        const sortedTracks = [...albumTracks].sort(compareTracksForAlbum);
-        return {
-          key,
-          artist: bestAlbumArtist(sortedTracks),
-          album: sortedTracks[0]?.album ?? "未知专辑",
-          tracks: sortedTracks,
-          coverPath: sortedTracks.find((track) => track.cover_path)?.cover_path,
-        };
-      })
-      .sort((a, b) => a.album.localeCompare(b.album));
-  }, [tracks]);
-
-  useEffect(() => {
-    if (view !== "albums") return;
-    if (albums.length === 0) {
-      setSelectedAlbumKey(null);
-      return;
-    }
-
-    if (!selectedAlbumKey || !albums.some((album) => album.key === selectedAlbumKey)) {
-      setSelectedAlbumKey(albums[0].key);
-    }
-  }, [albums, selectedAlbumKey, view]);
-
-  const artists = useMemo<ArtistGroup[]>(() => {
-    const map = new Map<string, Track[]>();
-    for (const track of tracks) map.set(track.artist, [...(map.get(track.artist) ?? []), track]);
-    return Array.from(map.entries())
-      .map(([artist, artistTracks]) => ({ artist, tracks: artistTracks }))
-      .sort((a, b) => a.artist.localeCompare(b.artist));
-  }, [tracks]);
-
-  useEffect(() => {
-    if (!audioRef.current) return;
-    audioRef.current.volume = volume;
-  }, [volume]);
-
-  useEffect(() => {
-    if (!isPlaying || activePlayback?.kind !== "music") {
-      if (visualizerFrameRef.current) {
-        cancelAnimationFrame(visualizerFrameRef.current);
-        visualizerFrameRef.current = null;
-      }
-      beatFrameRef.current = createIdleBeatFrame();
-      if (activePlayback?.kind === "podcast") publishPodcastVisualizerReset();
-      else publishIdleBeatFrame();
-      return;
-    }
-
-    startVisualizer();
-    return () => {
-      if (visualizerFrameRef.current) {
-        cancelAnimationFrame(visualizerFrameRef.current);
-        visualizerFrameRef.current = null;
-      }
-    };
-  }, [activePlaybackSourceKey, isPlaying]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const sourceKey = activePlaybackSourceKey;
-    const playAttempt = audioPlayAttemptRef.current + 1;
-    audioPlayAttemptRef.current = playAttempt;
-    activeAudioSourceKeyRef.current = sourceKey;
-    if (!activePlayback) {
-      podcastAudioEpisodeRef.current = null;
-      podcastPlaybackStartedEpisodeRef.current = null;
-      pendingPodcastStartRef.current = null;
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
-      setProgress(0);
-      setDuration(0);
-      setIsPlaying(false);
-      setPodcastPlaybackStatus("idle");
-      return;
-    }
-
-    const podcastEpisodeId = activePlayback.kind === "podcast"
-      ? activePlayback.episode.episodeId
-      : null;
-    podcastAudioEpisodeRef.current = podcastEpisodeId;
-    const sourceUrl = activePlayback.kind === "podcast"
-      ? activePlayback.episode.playbackLocalPath
-        ? convertFileSrc(activePlayback.episode.playbackLocalPath, "zone-audio")
-        : convertFileSrc(activePlayback.episode.episodeId, "zone-podcast")
-      : convertFileSrc(activePlayback.track.path, "zone-audio");
-    visualizerUnavailableRef.current = false;
-    realtimeBeatRef.current = null;
-    offlineBeatGridRef.current = activePlayback.kind === "music"
-      ? beatGridCacheRef.current.get(activePlayback.track.id) ?? null
-      : null;
-    beatFrameRef.current = createIdleBeatFrame();
-    if (activePlayback.kind === "music") {
-      podcastPlaybackStartedEpisodeRef.current = null;
-      publishIdleBeatFrame();
-      pendingPodcastResumeRef.current = null;
-      pendingPodcastStartRef.current = null;
-      setPodcastPlaybackStatus("idle");
-      void preAnalyzeBeatGrid(activePlayback.track);
-    } else {
-      if (podcastPlaybackStartedEpisodeRef.current !== podcastEpisodeId) {
-        podcastPlaybackStartedEpisodeRef.current = null;
-      }
-      beatAnalysisRequestRef.current += 1;
-      publishPodcastVisualizerReset();
-      setPodcastPlaybackStatus("loading");
-      const requestedStart = pendingPodcastStartRef.current;
-      const startPosition =
-        requestedStart?.episodeId === activePlayback.episode.episodeId
-          ? requestedStart.position
-          : activePlayback.episode.savedProgressSeconds;
-      if (requestedStart?.episodeId === activePlayback.episode.episodeId) {
-        pendingPodcastStartRef.current = null;
-      }
-      pendingPodcastResumeRef.current = {
-        episodeId: activePlayback.episode.episodeId,
-        position: startPosition,
-        explicit:
-          requestedStart?.episodeId === activePlayback.episode.episodeId,
-      };
-      setProgress(Math.max(0, startPosition));
-    }
-    if (activePlayback.kind === "music") setProgress(0);
-    setDuration(
-      activePlayback.kind === "podcast"
-        ? Math.max(0, activePlayback.episode.durationSeconds ?? 0)
-        : 0,
-    );
-    audio.crossOrigin = "anonymous";
-    audio.src = sourceUrl;
-    audio.playbackRate = activePlayback.kind === "podcast" ? podcastPlaybackRate : 1;
-    audio.load();
-
-    const shouldAutoplay = activePlayback.kind === "music" || podcastPlaybackIntentRef.current;
-    if (!shouldAutoplay) {
-      setIsPlaying(false);
-      if (activePlayback.kind === "podcast") setPodcastPlaybackStatus("paused");
-      return;
-    }
-
-    void audio
-      .play()
-      .then(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(true);
-        if (podcastEpisodeId) {
-          podcastPlaybackStartedEpisodeRef.current = podcastEpisodeId;
-          setPodcastPlaybackStatus("playing");
-          consumePendingPodcastQueueEpisode(podcastEpisodeId);
-        }
-        void resumeAudioGraph();
-      })
-      .catch(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(false);
-        if (activePlayback.kind === "podcast") setPodcastPlaybackStatus("error");
-      });
-  }, [activePlaybackSourceKey]);
-
-  async function addFolder() {
-    const folder = await invoke<MusicFolder | null>("select_music_folder");
-    if (!folder || folders.some((item) => item.path === folder.path)) return;
-
-    const nextFolders = [...folders, folder];
-    setFolders(nextFolders);
-    await rescan(nextFolders);
-  }
-
-  async function rescan(targetFolders = folders, automatic = false) {
-    if (targetFolders.length === 0) return;
-    if (scanInFlightRef.current) {
-      queuedScanRef.current = { folders: targetFolders, automatic };
-      return;
-    }
-    scanInFlightRef.current = true;
-    setIsScanning(true);
-    setScanNote(automatic ? "检测到文件变化，正在同步" : "正在扫描");
-
-    try {
-      let pending: { folders: MusicFolder[]; automatic: boolean } | null = {
-        folders: targetFolders,
-        automatic,
-      };
-      while (pending) {
-        queuedScanRef.current = null;
-        setScanNote(pending.automatic ? "检测到文件变化，正在同步" : "正在扫描");
-        const result = await invoke<ScanResult>("scan_library", {
-          folders: pending.folders.map((folder) => folder.path),
-        });
-        const requestedFolders = pending.folders.map((folder) => folder.path).join("\u0000");
-        const currentFolders = foldersRef.current.map((folder) => folder.path).join("\u0000");
-        if (requestedFolders === currentFolders) {
-          const scannedIds = result.tracks.map((track) => track.id);
-          setTracks(result.tracks);
-          setQueue((current) => reconcileQueueWithLibrary(current, scannedIds));
-          setScanNote(`已索引 ${result.tracks.length} 首歌曲`);
-          setNeedsMetadataRefresh(false);
-        }
-        pending = queuedScanRef.current;
-      }
-    } catch (error) {
-      setScanNote("曲库同步失败");
-      if (import.meta.env.DEV) console.warn("[library] scan failed", error);
-    } finally {
-      scanInFlightRef.current = false;
-      setIsScanning(false);
-    }
-  }
-
-  function cancelPodcastSessionRestore() {
-    if (podcastSessionHydratedRef.current) return;
-    podcastSessionRestoreCancelledRef.current = true;
-    podcastSessionHydratedRef.current = true;
-    setPodcastSessionHydrated(true);
-  }
-
-  function suppressPodcastProgressWrites(episodeId: string) {
-    podcastProgressWriteGateRef.current.suppress(episodeId);
-    if (podcastProgressSaveRef.current?.episodeId === episodeId) {
-      podcastProgressSaveRef.current = null;
-    }
-    podcastProgressStartedRef.current.delete(episodeId);
-  }
-
-  function resumePodcastProgressWrites(episodeId: string) {
-    if (!podcastProgressWriteGateRef.current.resume(episodeId)) return;
-    podcastProgressSaveRef.current = null;
-  }
-
-  function playTrack(track: Track, sourceTracks = tracks) {
-    cancelPodcastSessionRestore();
-    setQueue(sourceTracks.map((item) => item.id));
-    if (activePodcastEpisode) {
-      flushPodcastProgress();
-      podcastPlaybackIntentRef.current = false;
-      audioPlayAttemptRef.current += 1;
-      audioRef.current?.pause();
-      pendingPodcastQueueConsumeRef.current = null;
-      setActivePodcastEpisode(null);
-      setActiveTrackId(track.id);
-      return;
-    }
-    if (track.id === activeTrackId) {
-      recordSkipIfEligible();
-      restartCurrentPlayback();
-    }
-    else {
-      recordSkipIfEligible();
-      audioPlayAttemptRef.current += 1;
-      setActiveTrackId(track.id);
-    }
-  }
-
-  function playTracks(targetTracks: Track[]) {
-    if (targetTracks.length === 0) return;
-    cancelPodcastSessionRestore();
-    setQueue(targetTracks.map((track) => track.id));
-    if (activePodcastEpisode) {
-      flushPodcastProgress();
-      podcastPlaybackIntentRef.current = false;
-      audioPlayAttemptRef.current += 1;
-      audioRef.current?.pause();
-      pendingPodcastQueueConsumeRef.current = null;
-      setActivePodcastEpisode(null);
-      setActiveTrackId(targetTracks[0].id);
-      return;
-    }
-    if (targetTracks[0].id === activeTrackId) {
-      recordSkipIfEligible();
-      restartCurrentPlayback();
-    }
-    else {
-      recordSkipIfEligible();
-      audioPlayAttemptRef.current += 1;
-      setActiveTrackId(targetTracks[0].id);
-    }
-  }
-
-  function playPodcastEpisode(
-    episode: PodcastPlayback,
-    positionSeconds?: number,
-  ) {
-    cancelPodcastSessionRestore();
-    podcastAutoQueueAttemptRef.current += 1;
-    const requestedPosition = Number.isFinite(positionSeconds)
-      ? Math.max(0, positionSeconds ?? 0)
-      : null;
-    const current = activePodcastEpisode;
-    if (
-      current?.episodeId === episode.episodeId
-      && (current.localPath ?? null) === (episode.localPath ?? null)
-    ) {
-      pendingPodcastStartRef.current = null;
-      if (requestedPosition !== null) {
-        seek(requestedPosition);
-        if (audioRef.current?.paused) togglePlay();
-      } else {
-        togglePlay();
-      }
-      return;
-    }
-
-    flushPodcastProgress();
-    resumePodcastProgressWrites(episode.episodeId);
-    pendingPodcastStartRef.current = requestedPosition === null
-      ? null
-      : { episodeId: episode.episodeId, position: requestedPosition };
-    podcastPlaybackIntentRef.current = true;
-    playbackSessionRef.current = null;
-    audioPlayAttemptRef.current += 1;
-    audioRef.current?.pause();
-    setPodcastPlaybackStatus("loading");
-    pendingPodcastQueueConsumeRef.current = podcastQueueRef.current.some(
-      (item) => item.episode.id === episode.id,
-    )
-      ? episode.id
-      : null;
-    setActivePodcastEpisode(episode);
-  }
-
-  function applyPodcastQueue(items: PodcastQueueItem[]) {
-    podcastQueueRef.current = items;
-    setPodcastQueue(items);
-  }
-
-  function beginPodcastQueueMutation(items: PodcastQueueItem[]) {
-    const revision = podcastQueueRevisionRef.current + 1;
-    podcastQueueRevisionRef.current = revision;
-    applyPodcastQueue(items);
-    return revision;
-  }
-
-  function applyPodcastQueueResult(items: PodcastQueueItem[], revision: number) {
-    if (podcastQueueRevisionRef.current === revision) {
-      applyPodcastQueue(items);
-    }
-  }
-
-  function serializePodcastQueueMutation<T>(operation: () => Promise<T>) {
-    const next = podcastQueueMutationRef.current.then(operation, operation);
-    podcastQueueMutationRef.current = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    return next;
-  }
-
-  function reloadPodcastQueue(revision: number) {
-    return invoke<PodcastQueueItem[]>("podcast_list_queue")
-      .then((items) => applyPodcastQueueResult(items, revision))
-      .catch(() => undefined);
-  }
-
-  function consumePendingPodcastQueueEpisode(episodeId: string) {
-    if (
-      pendingPodcastQueueConsumeRef.current !== episodeId
-      || activePodcastEpisodeRef.current?.episodeId !== episodeId
-      || podcastAudioEpisodeRef.current !== episodeId
-    ) {
-      return;
-    }
-    pendingPodcastQueueConsumeRef.current = null;
-    const revision = beginPodcastQueueMutation(podcastQueueRef.current
-      .filter((item) => item.episode.id !== episodeId)
-      .map((item, position) => ({ ...item, position }))
-    );
-    void serializePodcastQueueMutation(async () => {
-      try {
-        const items = await invoke<PodcastQueueItem[]>("podcast_queue_remove", { episodeId });
-        applyPodcastQueueResult(items, revision);
-      } catch (reason) {
-        await reloadPodcastQueue(revision);
-        showActionNotice("无法同步待播队列");
-        if (import.meta.env.DEV) console.warn("[podcast] queue consume failed", reason);
-      }
-    });
-  }
-
-  function queuePodcastEpisode(episode: PodcastEpisode, playNext: boolean) {
-    if (activePodcastEpisodeRef.current?.episodeId === episode.id) {
-      showActionNotice("本集正在播放");
-      return false;
-    }
-    const current = podcastQueueRef.current;
-    const existing = current.find((item) => item.episode.id === episode.id);
-    const remaining = current.filter((item) => item.episode.id !== episode.id);
-    const queueItem = existing ?? {
-      episode,
-      position: remaining.length,
-      addedAt: Date.now(),
-    };
-    const optimistic = (playNext
-      ? [queueItem, ...remaining]
-      : existing
-        ? current
-        : [...remaining, queueItem]
-    ).map((item, position) => ({ ...item, position }));
-    const revision = beginPodcastQueueMutation(optimistic);
-    return serializePodcastQueueMutation(async () => {
-      try {
-        const items = await invoke<PodcastQueueItem[]>("podcast_queue_add", {
-          episodeId: episode.id,
-          playNext,
-        });
-        applyPodcastQueueResult(items, revision);
-        showActionNotice(playNext ? "将在当前单集之后播放" : "已加入待播队列");
-        return true;
-      } catch (reason) {
-        await reloadPodcastQueue(revision);
-        showActionNotice("无法更新待播队列");
-        if (import.meta.env.DEV) console.warn("[podcast] queue add failed", reason);
-        return false;
-      }
-    });
-  }
-
-  function removePodcastQueueEpisode(episodeId: string) {
-    const optimistic = podcastQueueRef.current
-      .filter((item) => item.episode.id !== episodeId)
-      .map((item, position) => ({ ...item, position }));
-    const revision = beginPodcastQueueMutation(optimistic);
-    return serializePodcastQueueMutation(async () => {
-      try {
-        const items = await invoke<PodcastQueueItem[]>("podcast_queue_remove", { episodeId });
-        applyPodcastQueueResult(items, revision);
-      } catch (reason) {
-        await reloadPodcastQueue(revision);
-        showActionNotice("无法移除待播单集");
-        if (import.meta.env.DEV) console.warn("[podcast] queue remove failed", reason);
-      }
-    });
-  }
-
-  function removePodcastQueueEpisodes(episodeIds: string[]) {
-    const selected = new Set(episodeIds);
-    if (selected.size === 0) return Promise.resolve();
-    const optimistic = podcastQueueRef.current
-      .filter((item) => !selected.has(item.episode.id))
-      .map((item, position) => ({ ...item, position }));
-    const revision = beginPodcastQueueMutation(optimistic);
-    return serializePodcastQueueMutation(async () => {
-      try {
-        const items = await invoke<PodcastQueueItem[]>(
-          "podcast_queue_remove_many",
-          { episodeIds: [...selected] },
-        );
-        applyPodcastQueueResult(items, revision);
-      } catch (reason) {
-        await reloadPodcastQueue(revision);
-        if (import.meta.env.DEV) {
-          console.warn("[podcast] queue batch remove failed", reason);
-        }
-        throw reason;
-      }
-    });
-  }
-
-  function clearPodcastQueue() {
-    const revision = beginPodcastQueueMutation([]);
-    return serializePodcastQueueMutation(async () => {
-      try {
-        await invoke("podcast_queue_clear");
-        applyPodcastQueueResult([], revision);
-        showActionNotice("已清空待播队列");
-      } catch (reason) {
-        await reloadPodcastQueue(revision);
-        showActionNotice("无法清空待播队列");
-        if (import.meta.env.DEV) console.warn("[podcast] queue clear failed", reason);
-      }
-    });
-  }
-
-  function movePodcastQueueEpisode(episodeId: string, direction: -1 | 1) {
-    const next = movePodcastQueueItem(
-      podcastQueueRef.current,
-      episodeId,
-      direction,
-      activePodcastEpisodeRef.current?.episodeId,
-    );
-    if (next === podcastQueueRef.current) return;
-    const revision = beginPodcastQueueMutation(next);
-    return serializePodcastQueueMutation(async () => {
-      try {
-        const items = await invoke<PodcastQueueItem[]>("podcast_queue_reorder", {
-          episodeIds: next.map((item) => item.episode.id),
-        });
-        applyPodcastQueueResult(items, revision);
-      } catch (reason) {
-        await reloadPodcastQueue(revision);
-        showActionNotice("无法调整待播顺序");
-        if (import.meta.env.DEV) console.warn("[podcast] queue reorder failed", reason);
-      }
-    });
-  }
-
-  function reorderPodcastQueueEpisode(
-    episodeId: string,
-    targetEpisodeId: string,
-    placement: "before" | "after",
-  ) {
-    const current = podcastQueueRef.current;
-    const sourceIndex = current.findIndex((item) => item.episode.id === episodeId);
-    const targetIndex = current.findIndex((item) => item.episode.id === targetEpisodeId);
-    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
-    const next = [...current];
-    const [moved] = next.splice(sourceIndex, 1);
-    if (!moved) return;
-    const remainingTargetIndex = next.findIndex(
-      (item) => item.episode.id === targetEpisodeId,
-    );
-    const insertionIndex = remainingTargetIndex + (placement === "after" ? 1 : 0);
-    next.splice(insertionIndex, 0, moved);
-    const reordered = next.map((item, position) => ({ ...item, position }));
-    if (reordered.every((item, index) => item.episode.id === current[index]?.episode.id)) {
-      return;
-    }
-    const revision = beginPodcastQueueMutation(reordered);
-    return serializePodcastQueueMutation(async () => {
-      try {
-        const items = await invoke<PodcastQueueItem[]>("podcast_queue_reorder", {
-          episodeIds: reordered.map((item) => item.episode.id),
-        });
-        applyPodcastQueueResult(items, revision);
-      } catch (reason) {
-        await reloadPodcastQueue(revision);
-        showActionNotice("无法调整待播顺序");
-        if (import.meta.env.DEV) console.warn("[podcast] queue drag reorder failed", reason);
-      }
-    });
-  }
-
-  function updatePodcastEpisodes(episodes: PodcastEpisode[]) {
-    if (episodes.length === 0) return;
-    const updates = new Map(episodes.map((episode) => [episode.id, episode]));
-    for (const episode of episodes) {
-      if (!episode.completed && episode.progressSeconds <= 0) {
-        podcastProgressStartedRef.current.delete(episode.id);
-      }
-    }
-    applyPodcastQueue(podcastQueueRef.current.map((item) =>
-      updates.has(item.episode.id)
-        ? { ...item, episode: updates.get(item.episode.id)! }
-        : item
-    ));
-    setActivePodcastEpisode((current) => {
-      if (!current) return current;
-      const episode = updates.get(current.id);
-      if (!episode) return current;
-      const next = podcastPlaybackForEpisode(episode);
-      const audio = audioRef.current;
-      if (current.playbackLocalPath && !episode.localPath) {
-        return {
-          ...next,
-          savedProgressSeconds: audio?.currentTime ?? current.savedProgressSeconds,
-          playbackLocalPath: null,
-        };
-      }
-      return {
-        ...next,
-        playbackLocalPath: current.playbackLocalPath,
-        savedProgressSeconds: current.savedProgressSeconds,
-      };
-    });
-    setPodcastLibraryRevision((current) => current + 1);
-  }
-
-  function updatePodcastEpisode(episode: PodcastEpisode) {
-    updatePodcastEpisodes([episode]);
-  }
-
-  async function reconcileDeletedPodcastDownloads(episodeIds: string[]) {
-    if (episodeIds.length === 0) return;
-    const deleted = new Set(episodeIds);
-    const queueRefresh = podcastQueueRef.current.some((item) =>
-      deleted.has(item.episode.id)
-    )
-      ? reloadPodcastQueue(podcastQueueRevisionRef.current)
-      : Promise.resolve();
-    const activeEpisode = activePodcastEpisodeRef.current;
-    const activeEpisodeId = activeEpisode?.episodeId;
-    if (activeEpisode && deleted.has(activeEpisode.episodeId)) {
-      updatePodcastEpisode({
-        ...activeEpisode,
-        downloadState: "none",
-        localPath: null,
-        downloadedBytes: 0,
-        totalBytes: null,
-      });
-    }
-    const activeRefresh = activeEpisodeId && deleted.has(activeEpisodeId)
-      ? invoke<PodcastEpisodeDetail>("podcast_get_episode_detail", {
-        episodeId: activeEpisodeId,
-      }).then((detail) => {
-        if (activePodcastEpisodeRef.current?.episodeId === activeEpisodeId) {
-          updatePodcastEpisode(detail.episode);
-        }
-      }).catch((reason) => {
-        if (import.meta.env.DEV) {
-          console.warn("[podcast] deleted download refresh failed", reason);
-        }
-      })
-      : Promise.resolve();
-    await Promise.all([queueRefresh, activeRefresh]);
-  }
-
-  async function toggleActivePodcastSaved() {
-    const episode = activePodcastEpisodeRef.current;
-    if (!episode) return;
-    try {
-      const detail = await invoke<PodcastEpisodeDetail>("podcast_set_episode_saved", {
-        episodeId: episode.episodeId,
-        saved: !episode.saved,
-      });
-      updatePodcastEpisode(detail.episode);
-      showActionNotice(detail.saved ? "已加入稍后听" : "已从稍后听移除");
-    } catch (reason) {
-      showActionNotice("无法更新稍后听");
-      if (import.meta.env.DEV) console.warn("[podcast] save episode failed", reason);
-    }
-  }
-
-  function resumePodcastProgressWritesIfActivelyPlaying(episodeId: string) {
-    const stillActive =
-      activePodcastEpisodeRef.current?.episodeId === episodeId;
-    const stillPlaying = Boolean(
-      stillActive && audioRef.current && !audioRef.current.paused,
-    );
-    // Keep writes suppressed while paused so a settled "mark unplayed" cannot be
-    // resurrected by a later flush of the paused clock. Resume only when the
-    // episode is still actively playing so continued listening / onEnded can
-    // record progress under a fresh gate epoch.
-    if (stillPlaying) resumePodcastProgressWrites(episodeId);
-  }
-
-  function setPodcastEpisodePlayed(episodeId: string, played: boolean) {
-    const suppressActiveProgress =
-      activePodcastEpisodeRef.current?.episodeId === episodeId;
-    if (suppressActiveProgress) suppressPodcastProgressWrites(episodeId);
-    const operation = podcastProgressMutationRef.current.then(async () => {
-      const detail = await invoke<PodcastEpisodeDetail>("podcast_set_episode_played", {
-        episodeId,
-        played,
-      });
-      updatePodcastEpisode(detail.episode);
-      return detail;
-    });
-    podcastProgressMutationRef.current = operation.then(
-      () => undefined,
-      () => undefined,
-    );
-    return operation.then((detail) => {
-      if (suppressActiveProgress) {
-        resumePodcastProgressWritesIfActivelyPlaying(episodeId);
-      }
-      return detail;
-    }).catch((reason) => {
-      if (suppressActiveProgress) resumePodcastProgressWrites(episodeId);
-      throw reason;
-    });
-  }
-
-  function setPodcastQueueEpisodesPlayed(
-    episodeIds: string[],
-    played: boolean,
-  ) {
-    const uniqueEpisodeIds = [...new Set(episodeIds)];
-    if (uniqueEpisodeIds.length === 0) return Promise.resolve();
-    const activeEpisodeId = activePodcastEpisodeRef.current?.episodeId;
-    const suppressActiveProgress = Boolean(
-      activeEpisodeId && uniqueEpisodeIds.includes(activeEpisodeId),
-    );
-    if (suppressActiveProgress && activeEpisodeId) {
-      suppressPodcastProgressWrites(activeEpisodeId);
-    }
-    const operation = podcastProgressMutationRef.current.then(async () => {
-      const details = await invoke<PodcastEpisodeDetail[]>(
-        "podcast_set_episodes_played",
-        { episodeIds: uniqueEpisodeIds, played },
-      );
-      updatePodcastEpisodes(details.map((detail) => detail.episode));
-    });
-    podcastProgressMutationRef.current = operation.then(
-      () => undefined,
-      () => undefined,
-    );
-    return operation.then(() => {
-      if (suppressActiveProgress && activeEpisodeId) {
-        resumePodcastProgressWritesIfActivelyPlaying(activeEpisodeId);
-      }
-    }).catch((reason) => {
-      if (suppressActiveProgress && activeEpisodeId) {
-        resumePodcastProgressWrites(activeEpisodeId);
-      }
-      throw reason;
-    });
-  }
-
-  async function downloadPodcastQueueEpisodes(episodes: PodcastEpisode[]) {
-    const uniqueEpisodes = [...new Map(
-      episodes.map((episode) => [episode.id, episode]),
-    ).values()];
-    let downloadedCount = 0;
-    let failedCount = 0;
-    const refreshedEpisodes: PodcastEpisode[] = [];
-    for (const episode of uniqueEpisodes) {
-      if (episode.localPath) continue;
-      try {
-        await invoke("podcast_download_episode", { episodeId: episode.id });
-        downloadedCount += 1;
-      } catch (reason) {
-        failedCount += 1;
-        if (import.meta.env.DEV) {
-          console.warn("[podcast] queue batch download failed", episode.id, reason);
-        }
-      }
-      try {
-        const detail = await invoke<PodcastEpisodeDetail>(
-          "podcast_get_episode_detail",
-          { episodeId: episode.id },
-        );
-        refreshedEpisodes.push(detail.episode);
-      } catch (reason) {
-        if (import.meta.env.DEV) {
-          console.warn(
-            "[podcast] queue batch download refresh failed",
-            episode.id,
-            reason,
-          );
-        }
-      }
-    }
-    updatePodcastEpisodes(refreshedEpisodes);
-    return { downloadedCount, failedCount };
-  }
-
-  function openActivePodcastEpisode() {
-    const episode = activePodcastEpisodeRef.current;
-    if (!episode) return;
-    setPodcastEpisodeRequest({
-      episodeId: episode.episodeId,
-      nonce: Date.now(),
-      returnToNowPlaying: true,
-    });
-    requestNavigation("podcasts");
-  }
-
-  function playPodcastQueueItem(item: PodcastQueueItem) {
-    playPodcastEpisode(podcastPlaybackForEpisode(item.episode));
-  }
-
-  function playNextPodcastEpisode(showEmptyNotice = true) {
-    const activeEpisodeId = activePodcastEpisodeRef.current?.episodeId ?? null;
-    if (
-      activeEpisodeId
-      && podcastQueueRef.current.some((item) => item.episode.id === activeEpisodeId)
-    ) {
-      void removePodcastQueueEpisode(activeEpisodeId);
-    }
-    const next = podcastQueueRef.current.find(
-      (item) => item.episode.id !== activeEpisodeId,
-    );
-    if (!next) {
-      if (showEmptyNotice) showActionNotice("待播队列为空");
-      return false;
-    }
-    playPodcastQueueItem(next);
-    return true;
-  }
-
-  function changePodcastAutoQueueMode(mode: PodcastAutoQueueMode) {
-    if (!PODCAST_AUTO_QUEUE_MODES.includes(mode)) return;
-    podcastAutoQueueAttemptRef.current += 1;
-    podcastAutoQueueModeRef.current = mode;
-    setPodcastAutoQueueMode(mode);
-    patchPodcastPlaybackSettings({ autoQueueMode: mode });
-    if (audioRef.current?.ended) {
-      podcastPlaybackIntentRef.current = false;
-      setPodcastPlaybackStatus("paused");
-    }
-  }
-
-  function autofillPodcastQueueAfter(endedEpisodeId: string) {
-    const mode = podcastAutoQueueModeRef.current;
-    if (mode === "off") return;
-    const attempt = podcastAutoQueueAttemptRef.current + 1;
-    podcastAutoQueueAttemptRef.current = attempt;
-    const isCurrentAttempt = () =>
-      podcastAutoQueueAttemptRef.current === attempt
-      && podcastAutoQueueModeRef.current === mode
-      && activePodcastEpisodeRef.current?.episodeId === endedEpisodeId;
-    const revision = beginPodcastQueueMutation(podcastQueueRef.current);
-    setPodcastPlaybackStatus("loading");
-    void serializePodcastQueueMutation(async () => {
-      try {
-        if (!isCurrentAttempt()) return;
-        const items = await invoke<PodcastQueueItem[]>(
-          "podcast_queue_autofill",
-          { currentEpisodeId: endedEpisodeId, mode },
-        );
-        const ownsRevision = podcastQueueRevisionRef.current === revision;
-        if (ownsRevision) applyPodcastQueueResult(items, revision);
-        if (!isCurrentAttempt()) return;
-        const next = (ownsRevision ? items : podcastQueueRef.current).find(
-          (item) => item.episode.id !== endedEpisodeId,
-        );
-        if (next) {
-          playPodcastQueueItem(next);
-          return;
-        }
-        podcastPlaybackIntentRef.current = false;
-        setPodcastPlaybackStatus("paused");
-        showActionNotice(
-          mode === "same-feed"
-            ? "这个节目没有更多可续播的单集"
-            : "没有可随机续播的未听单集",
-        );
-      } catch (reason) {
-        await reloadPodcastQueue(revision);
-        if (
-          podcastAutoQueueAttemptRef.current === attempt
-          && activePodcastEpisodeRef.current?.episodeId === endedEpisodeId
-        ) {
-          podcastPlaybackIntentRef.current = false;
-          setPodcastPlaybackStatus("paused");
-        }
-        if (import.meta.env.DEV) {
-          console.warn("[podcast] queue autofill failed", reason);
-        }
-      }
-    });
-  }
-
-  function appendToQueue(targetTracks: Track[]) {
-    if (targetTracks.length === 0) return;
-    setQueue((current) => uniqueIds([...current, ...targetTracks.map((track) => track.id)]));
-    showActionNotice(`已添加 ${targetTracks.length} 首歌曲到正在播放`);
-  }
-
-  function addToPlaylist(playlistId: string, targetTracks: Track[]) {
-    const ids = targetTracks.map((track) => track.id);
-    if (ids.length === 0) return;
-    const targetPlaylist = playlists.find((playlist) => playlist.id === playlistId);
-    if (!targetPlaylist || isSmartPlaylist(targetPlaylist)) return;
-    const addedCount = ids.filter((id) => !targetPlaylist.trackIds.includes(id)).length;
-
-    setPlaylists((items) =>
-      normalizePlaylists(items).map((playlist) =>
-        playlist.id === playlistId && !isSmartPlaylist(playlist)
-          ? { ...playlist, trackIds: uniqueIds([...playlist.trackIds, ...ids]) }
-          : playlist,
-      ),
-    );
-    showActionNotice(
-      addedCount > 0
-        ? `已添加 ${addedCount} 首歌曲到“${targetPlaylist.name}”`
-        : `所选歌曲已在“${targetPlaylist.name}”中`,
-    );
-  }
-
-  function removeFromPlaylist(playlistId: string, targetTracks: Track[]) {
-    const ids = new Set(targetTracks.map((track) => track.id));
-    if (ids.size === 0) return;
-
-    setPlaylists((items) =>
-      normalizePlaylists(items).map((playlist) =>
-        playlist.id === playlistId && !isSmartPlaylist(playlist)
-          ? { ...playlist, trackIds: playlist.trackIds.filter((id) => !ids.has(id)) }
-          : playlist,
-      ),
-    );
-  }
-
-  function toggleFavorite() {
-    if (activePodcastEpisode || !activeTrack) return;
-    toggleFavoriteTrack(activeTrack);
-  }
-
-  function toggleFavoriteTrack(track: Track) {
-    if (favoriteTrackIds.has(track.id)) {
-      removeFromPlaylist(DEFAULT_PLAYLIST_ID, [track]);
-    } else {
-      addToPlaylist(DEFAULT_PLAYLIST_ID, [track]);
-    }
-  }
-
-  // Page transitions play a short exit on the outgoing page before the new one
-  // mounts (WP7 pivot/push/pop from `resolvePageTransition`). Navigating again
-  // inside the exit window jumps straight to the latest target — no queueing.
-  // `navTargetRef` records where an in-flight exit is heading so chrome (app
-  // header, player bar) can start its own exit together with the old page
-  // instead of lingering until the new page flips in.
-  function requestNavigation(next: AppPage) {
-    if (next === page) return;
-    if (navExitTimerRef.current !== null) {
-      window.clearTimeout(navExitTimerRef.current);
-      navExitTimerRef.current = null;
-      setNavExit(null);
-      const interrupted = resolvePageTransition(page, next);
-      setNavDir(interrupted.direction);
-      setNavDrift({ enter: interrupted.enterDriftPx, exit: interrupted.exitDriftPx });
-      navTargetRef.current = next;
-      setPage(next);
-      return;
-    }
-    const transition = resolvePageTransition(page, next);
-    setNavDir(transition.direction);
-    setNavDrift({ enter: transition.enterDriftPx, exit: transition.exitDriftPx });
-    navTargetRef.current = next;
-    if (transition.exitMs === 0) {
-      setPage(next);
-      return;
-    }
-    setNavExit(transition.direction);
-    navExitTimerRef.current = window.setTimeout(() => {
-      navExitTimerRef.current = null;
-      setNavExit(null);
-      setPage(next);
-    }, resolveExitDurationMs(transition.exitMs, reducedMotion));
-  }
-
-  function clearCollectionSearch() {
-    setQuery("");
-    setSearchMode("results");
-  }
-
-  function setCollectionSearchQuery(value: string) {
-    setQuery(value);
-    setSearchMode("results");
-  }
-
-  function focusCollectionSearch() {
-    if (page === "collection") {
-      window.requestAnimationFrame(() => searchInputRef.current?.focus());
-      return;
-    }
-    focusSearchPendingRef.current = true;
-    requestNavigation("collection");
-  }
-
-  function navigatePage(nextPage: "quickplay" | "collection" | "podcasts" | "settings") {
-    if (nextPage !== "collection") {
-      clearCollectionSearch();
-    }
-    requestNavigation(nextPage);
-  }
-
-  function navigateCollection(nextView: ViewMode) {
-    setView(nextView);
-    requestNavigation("collection");
-  }
-
-  function openSearchArtist(artist: string) {
-    setSelectedArtistName(artist);
-    setView("artists");
-    setSearchMode("browse");
-  }
-
-  function openSearchAlbum(key: string) {
-    setSelectedAlbumKey(key);
-    setView("albums");
-    setSearchMode("browse");
-  }
-
-  function openSearchPlaylist(playlistId: string) {
-    setSelectedPlaylistId(playlistId);
-    setView("playlists");
-    setSearchMode("browse");
-  }
-
-  useEffect(() => {
-    function handleCollectionSearchKeys(event: KeyboardEvent) {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        focusCollectionSearch();
-        return;
-      }
-
-      if (event.key !== "Escape") return;
-      if (contextMenu || infoTarget || playlistDialog || smartPlaylistDialog) return;
-
-      if (resolveSearchSurface(query, searchMode) === "results") {
-        event.preventDefault();
-        clearCollectionSearch();
-        return;
-      }
-
-      if (query.trim().length > 0 && searchMode === "browse") {
-        event.preventDefault();
-        setSearchMode("results");
-      }
-    }
-
-    window.addEventListener("keydown", handleCollectionSearchKeys, true);
-    return () => window.removeEventListener("keydown", handleCollectionSearchKeys, true);
-  }, [contextMenu, infoTarget, page, playlistDialog, query, searchMode, smartPlaylistDialog]);
-
-  function toggleHomePin(payload: ContextPayload) {
-    const pin = homePinForPayload(payload);
-    if (!pin) return;
-    const isPinned = homePins.some((item) => item.id === pin.id);
-    if (!isPinned && homePins.length >= MAX_HOME_PINS) {
-      showActionNotice(`quickplay 最多固定 ${MAX_HOME_PINS} 项内容`);
-      return;
-    }
-
-    setHomePins((current) => isPinned
-      ? current.filter((item) => item.id !== pin.id)
-      : [...current, pin]);
-    showActionNotice(isPinned ? `已从 quickplay 取消固定“${payload.title}”` : `已固定“${payload.title}”到 quickplay`);
-  }
-
-  function openHomePin(pin: HomePin) {
-    if (pin.kind === "track") {
-      const track = tracks.find((item) => item.id === pin.targetId);
-      if (track) playTrack(track, tracks);
-      return;
-    }
-    if (pin.kind === "album") {
-      setSelectedAlbumKey(pin.targetId);
-      navigateCollection("albums");
-      return;
-    }
-    if (pin.kind === "artist") {
-      setSelectedArtistName(pin.targetId);
-      navigateCollection("artists");
-      return;
-    }
-    setSelectedPlaylistId(pin.targetId);
-    navigateCollection("playlists");
-  }
-
-  function openNowPlaying() {
-    if (!activePodcastEpisode && !activeTrack) return;
-    if (page !== "nowPlaying") previousPageRef.current = page;
-    requestNavigation("nowPlaying");
-  }
-
-  function createPlaylist(name: string) {
-    const cleanName = name.trim();
-    if (!cleanName) return;
-
-    const playlist: Playlist = {
-      id: `playlist-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      name: cleanName,
-      description: "自定义播放列表",
-      kind: "manual",
-      trackIds: [],
-    };
-
-    setPlaylists((items) => [...normalizePlaylists(items), playlist]);
-    setSelectedPlaylistId(playlist.id);
-    setView("playlists");
-    showActionNotice(`已创建播放列表“${playlist.name}”`);
-  }
-
-  function renamePlaylist(playlistId: string, name: string) {
-    const cleanName = name.trim();
-    if (!cleanName || playlistId === DEFAULT_PLAYLIST_ID) return;
-
-    setPlaylists((items) =>
-      normalizePlaylists(items).map((playlist) =>
-        playlist.id === playlistId && !isSmartPlaylist(playlist) ? { ...playlist, name: cleanName } : playlist,
-      ),
-    );
-    showActionNotice(`播放列表已重命名为“${cleanName}”`);
-  }
-
-  function deletePlaylist(playlistId: string) {
-    if (playlistId === DEFAULT_PLAYLIST_ID) return;
-    const playlist = playlists.find((item) => item.id === playlistId);
-    if (!playlist) return;
-
-    setPlaylists((items) => normalizePlaylists(items).filter((item) => item.id !== playlistId));
-    setSelectedPlaylistId((current) => current === playlistId ? DEFAULT_PLAYLIST_ID : current);
-    showActionNotice(`已删除播放列表“${playlist.name}”`);
-  }
-
-  function showActionNotice(message: string) {
-    setActionNotice(message);
-    if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
-    actionNoticeTimerRef.current = window.setTimeout(() => {
-      setActionNotice(null);
-      actionNoticeTimerRef.current = null;
-    }, 2_400);
-  }
-
-  function openCreatePlaylistDialog() {
-    setPlaylistDialog({ mode: "create", playlistName: "" });
-  }
-
-  function openCreateSmartPlaylist() {
-    setPlaylistDialog(null);
-    setSmartPlaylistDialog("create");
-  }
-
-  function openSmartPlaylistEditor(playlistId: string) {
-    const playlist = playlists.find((item) => item.id === playlistId);
-    if (!playlist || !isSmartPlaylist(playlist)) return;
-    setPlaylistDialog(null);
-    setSmartPlaylistDialog(playlist);
-  }
-
-  function saveSmartPlaylist(draft: SmartPlaylistDraft) {
-    if (smartPlaylistDialog === "create") {
-      const playlist: SmartPlaylist = {
-        id: `smart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-        kind: "smart",
-        ...draft,
-      };
-      setPlaylists((items) => [...normalizePlaylists(items), playlist]);
-      setSelectedPlaylistId(playlist.id);
-      setView("playlists");
-      showActionNotice(`已创建智能播放列表“${playlist.name}”`);
-    } else if (smartPlaylistDialog) {
-      setPlaylists((items) => normalizePlaylists(items).map((playlist) =>
-        playlist.id === smartPlaylistDialog.id && isSmartPlaylist(playlist)
-          ? { ...playlist, ...draft }
-          : playlist,
-      ));
-      showActionNotice(`已更新智能播放列表“${draft.name}”`);
-    }
-    setSmartPlaylistDialog(null);
-  }
-
-  function refreshSmartPlaylist(playlistId: string) {
-    setPlaylists((items) => normalizePlaylists(items).map((playlist) =>
-      playlist.id === playlistId && isSmartPlaylist(playlist)
-        ? { ...playlist, smart: { ...playlist.smart, rotationSeed: playlist.smart.rotationSeed + 1 } }
-        : playlist,
-    ));
-    showActionNotice("已换一批歌曲");
-  }
-
-  function excludeFromSmartPlaylist(playlistId: string, targetTracks: Track[]) {
-    const ids = targetTracks.map((track) => track.id);
-    if (ids.length === 0) return;
-    setPlaylists((items) => normalizePlaylists(items).map((playlist) =>
-      playlist.id === playlistId && isSmartPlaylist(playlist)
-        ? { ...playlist, excludedTrackIds: uniqueIds([...playlist.excludedTrackIds, ...ids]) }
-        : playlist,
-    ));
-    showActionNotice(`已从智能列表中排除 ${ids.length} 首歌曲`);
-  }
-
-  function openPlaylistDialog(mode: "rename" | "delete", playlistId: string) {
-    const playlist = playlists.find((item) => item.id === playlistId);
-    if (!playlist || playlist.id === DEFAULT_PLAYLIST_ID) return;
-    if (mode === "rename" && isSmartPlaylist(playlist)) {
-      openSmartPlaylistEditor(playlistId);
-      return;
-    }
-    setPlaylistDialog({ mode, playlistId, playlistName: playlist.name });
-  }
-
-  function submitPlaylistDialog(name: string) {
-    if (!playlistDialog) return;
-    if (playlistDialog.mode === "create") createPlaylist(name);
-    if (playlistDialog.mode === "rename" && playlistDialog.playlistId) {
-      renamePlaylist(playlistDialog.playlistId, name);
-    }
-    if (playlistDialog.mode === "delete" && playlistDialog.playlistId) {
-      deletePlaylist(playlistDialog.playlistId);
-    }
-    setPlaylistDialog(null);
-  }
-
-  function saveQueueAsPlaylist(name: string) {
-    const cleanName = name.trim();
-    const trackIds = uniqueIds(playbackQueueIds);
-    if (!cleanName || trackIds.length === 0) return;
-
-    const playlist: Playlist = {
-      id: `playlist-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      name: cleanName,
-      description: "自定义播放列表",
-      kind: "manual",
-      trackIds,
-    };
-
-    setPlaylists((items) => [...normalizePlaylists(items), playlist]);
-  }
 
   function showContextMenu(event: React.MouseEvent, payload: ContextPayload) {
     event.preventDefault();
@@ -1814,607 +375,6 @@ export default function App() {
 
   function closeContextMenu() {
     setContextMenu(null);
-  }
-
-  function persistPodcastProgress(currentTime: number, trackDuration: number, force = false) {
-    const episode = activePodcastEpisodeRef.current;
-    if (!episode) return Promise.resolve();
-    if (podcastProgressWriteGateRef.current.isSuppressed(episode.episodeId)) {
-      return podcastProgressMutationRef.current;
-    }
-    const positionSeconds = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
-    const durationSeconds = Number.isFinite(trackDuration) ? Math.max(0, trackDuration) : 0;
-    const writeEpoch = podcastProgressWriteGateRef.current.capture(
-      episode.episodeId,
-    );
-    const now = Date.now();
-    const previous = podcastProgressSaveRef.current;
-    if (
-      !force
-      && previous?.episodeId === episode.episodeId
-      && now - previous.savedAt < PODCAST_PROGRESS_SAVE_INTERVAL_MS
-    ) {
-      return podcastProgressMutationRef.current;
-    }
-    if (
-      force
-      && previous?.episodeId === episode.episodeId
-      && Math.abs(previous.position - positionSeconds) < 0.25
-      && Math.abs(previous.duration - durationSeconds) < 0.25
-    ) {
-      return podcastProgressMutationRef.current;
-    }
-
-    podcastProgressSaveRef.current = {
-      episodeId: episode.episodeId,
-      savedAt: now,
-      position: positionSeconds,
-      duration: durationSeconds,
-    };
-    const save = podcastProgressMutationRef.current.then(async () => {
-      if (!podcastProgressWriteGateRef.current.allows(
-        episode.episodeId,
-        writeEpoch,
-      )) {
-        return;
-      }
-      await invoke("podcast_save_progress", {
-        episodeId: episode.episodeId,
-        positionSeconds,
-        durationSeconds,
-        force,
-      });
-      if (
-        positionSeconds > 0
-        && episode.progressSeconds <= 0
-        && !podcastProgressStartedRef.current.has(episode.episodeId)
-      ) {
-        podcastProgressStartedRef.current.add(episode.episodeId);
-        setPodcastLibraryRevision((current) => current + 1);
-      }
-    });
-    podcastProgressMutationRef.current = save.then(
-      () => undefined,
-      (reason) => {
-        if (import.meta.env.DEV) console.warn("[podcast] progress save failed", reason);
-      },
-    );
-    return podcastProgressMutationRef.current;
-  }
-
-  function flushPodcastProgress() {
-    const audio = audioRef.current;
-    if (!audio) return Promise.resolve();
-    const episode = activePodcastEpisodeRef.current;
-    const pending = pendingPodcastResumeRef.current;
-    const resumePending = Boolean(
-      episode
-      && pending
-      && pending.episodeId === episode.episodeId,
-    );
-    const currentTime = resumePending ? pending!.position : audio.currentTime;
-    const trackDuration = Number.isFinite(audio.duration) && audio.duration > 0
-      ? audio.duration
-      : episode?.durationSeconds ?? 0;
-    return persistPodcastProgress(currentTime, trackDuration, true);
-  }
-
-  function handleLoadedMetadata(audio: HTMLAudioElement) {
-    const nextDuration = Number.isFinite(audio.duration) ? Math.max(0, audio.duration) : 0;
-    setDuration(nextDuration);
-    const pending = pendingPodcastResumeRef.current;
-    const episode = activePodcastEpisodeRef.current;
-    if (!pending || !episode || pending.episodeId !== episode.episodeId) return;
-    pendingPodcastResumeRef.current = null;
-    const resumePosition = pending.explicit
-      ? Math.min(pending.position, nextDuration || pending.position)
-      : !episode.completed && pending.position > 0 && (
-          nextDuration <= 0 || pending.position < Math.max(0, nextDuration - 5)
-        )
-        ? Math.min(pending.position, nextDuration || pending.position)
-        : 0;
-    if (resumePosition > 0) audio.currentTime = resumePosition;
-    setProgress(resumePosition);
-  }
-
-  function handleAudioPause() {
-    setIsPlaying(false);
-    if (activePodcastEpisodeRef.current) {
-      setPodcastPlaybackStatus(
-        podcastPlaybackIntentRef.current ? "loading" : "paused",
-      );
-    }
-  }
-
-  function handleAudioError() {
-    setIsPlaying(false);
-    if (activePodcastEpisodeRef.current) {
-      setPodcastPlaybackStatus("error");
-      showActionNotice("播放失败，请检查网络或重新下载");
-    }
-  }
-
-  function handleAudioLoadStart() {
-    if (activePodcastEpisodeRef.current) setPodcastPlaybackStatus("loading");
-  }
-
-  function handleAudioWaiting() {
-    if (activePodcastEpisodeRef.current) {
-      setPodcastPlaybackStatus(
-        podcastPlaybackIntentRef.current ? "buffering" : "paused",
-      );
-    }
-  }
-
-  function handleAudioCanPlay() {
-    if (!activePodcastEpisodeRef.current) return;
-    if (!podcastPlaybackIntentRef.current) {
-      setPodcastPlaybackStatus("paused");
-      return;
-    }
-    setPodcastPlaybackStatus(audioRef.current?.paused ? "loading" : "playing");
-  }
-
-  function togglePlay() {
-    const audio = audioRef.current;
-    if (!audio || !activePlayback) return;
-
-    if (audio.paused) {
-      if (activePodcastEpisodeRef.current) {
-        resumePodcastProgressWrites(activePodcastEpisodeRef.current.episodeId);
-      }
-      const sourceKey = activeAudioSourceKeyRef.current;
-      const playAttempt = audioPlayAttemptRef.current + 1;
-      audioPlayAttemptRef.current = playAttempt;
-      const podcastEpisodeId = activePodcastEpisodeRef.current?.episodeId ?? null;
-      if (podcastEpisodeId) podcastPlaybackIntentRef.current = true;
-      void audio.play().then(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(true);
-        if (podcastEpisodeId) {
-          podcastPlaybackStartedEpisodeRef.current = podcastEpisodeId;
-          setPodcastPlaybackStatus("playing");
-          consumePendingPodcastQueueEpisode(podcastEpisodeId);
-        }
-        void resumeAudioGraph();
-      }).catch(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(false);
-        if (activePodcastEpisodeRef.current) setPodcastPlaybackStatus("error");
-      });
-    } else {
-      flushPodcastProgress();
-      if (activePodcastEpisodeRef.current) podcastPlaybackIntentRef.current = false;
-      audioPlayAttemptRef.current += 1;
-      audio.pause();
-      setIsPlaying(false);
-    }
-  }
-
-  function retryPodcastPlayback() {
-    const audio = audioRef.current;
-    const episode = activePodcastEpisodeRef.current;
-    if (!audio || !episode) return;
-    resumePodcastProgressWrites(episode.episodeId);
-    const currentPosition = Number.isFinite(audio.currentTime)
-      ? Math.max(0, audio.currentTime)
-      : 0;
-    const resumePosition = currentPosition > 0 ? currentPosition : progress;
-    const sourceKey = activeAudioSourceKeyRef.current;
-    const playAttempt = audioPlayAttemptRef.current + 1;
-    audioPlayAttemptRef.current = playAttempt;
-    persistPodcastProgress(resumePosition, audio.duration, true);
-    pendingPodcastResumeRef.current = {
-      episodeId: episode.episodeId,
-      position: resumePosition,
-    };
-    podcastPlaybackIntentRef.current = true;
-    setPodcastPlaybackStatus("loading");
-    audio.load();
-    void audio.play().then(() => {
-      if (
-        activeAudioSourceKeyRef.current !== sourceKey
-        || audioPlayAttemptRef.current !== playAttempt
-      ) return;
-      setIsPlaying(true);
-      podcastPlaybackStartedEpisodeRef.current = episode.episodeId;
-      setPodcastPlaybackStatus("playing");
-      consumePendingPodcastQueueEpisode(episode.episodeId);
-      void resumeAudioGraph();
-    }).catch(() => {
-      if (
-        activeAudioSourceKeyRef.current !== sourceKey
-        || audioPlayAttemptRef.current !== playAttempt
-      ) return;
-      setIsPlaying(false);
-      setPodcastPlaybackStatus("error");
-    });
-  }
-
-  function restartCurrentPlayback() {
-    const audio = audioRef.current;
-    if (!audio || activePodcastEpisode || !activeTrack) return;
-    audio.currentTime = 0;
-    setProgress(0);
-    playbackSessionRef.current = {
-      trackId: activeTrack.id,
-      maxProgress: 0,
-      countedPlay: false,
-      countedComplete: false,
-    };
-    const sourceKey = activeAudioSourceKeyRef.current;
-    const playAttempt = audioPlayAttemptRef.current + 1;
-    audioPlayAttemptRef.current = playAttempt;
-    void audio
-      .play()
-      .then(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(true);
-        void resumeAudioGraph();
-      })
-      .catch(() => {
-        if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
-        ) return;
-        setIsPlaying(false);
-      });
-  }
-
-  function ensureAudioGraph() {
-    if (visualizerUnavailableRef.current) return;
-
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) {
-      visualizerUnavailableRef.current = true;
-      return;
-    }
-
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContextClass();
-      }
-
-      if (!analyserRef.current) {
-        const analyser = audioContextRef.current.createAnalyser();
-        analyser.fftSize = 2048;
-        analyser.smoothingTimeConstant = 0.78;
-        analyserRef.current = analyser;
-      }
-
-      if (!audioSourceRef.current) {
-        audioSourceRef.current = audioContextRef.current.createMediaElementSource(audio);
-        audioSourceRef.current.connect(analyserRef.current);
-      }
-
-      if (!outputGainRef.current) {
-        const outputGain = audioContextRef.current.createGain();
-        outputGain.gain.value = 1;
-        analyserRef.current.connect(outputGain);
-        outputGain.connect(audioContextRef.current.destination);
-        outputGainRef.current = outputGain;
-      }
-
-      if (audioContextRef.current.state === "suspended") {
-        void audioContextRef.current.resume();
-      }
-    } catch (error) {
-      console.warn("Audio visualizer disabled", error);
-      visualizerUnavailableRef.current = true;
-    }
-  }
-
-  async function resumeAudioGraph() {
-    if (!audioRef.current || visualizerUnavailableRef.current) return;
-
-    ensureAudioGraph();
-    if (audioContextRef.current?.state === "suspended") {
-      await audioContextRef.current.resume().catch(() => undefined);
-    }
-  }
-
-  async function preAnalyzeBeatGrid(track: Track) {
-    if (beatGridCacheRef.current.has(track.id)) {
-      offlineBeatGridRef.current = beatGridCacheRef.current.get(track.id) ?? null;
-      return;
-    }
-
-    const requestId = beatAnalysisRequestRef.current + 1;
-    beatAnalysisRequestRef.current = requestId;
-
-    try {
-      const sourceUrl = convertFileSrc(track.path, "zone-audio");
-      const response = await fetch(sourceUrl);
-      if (!response.ok) throw new Error(`beat analysis fetch failed: ${response.status}`);
-      const bytes = await response.arrayBuffer();
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass) throw new Error("AudioContext unavailable");
-      const context = audioContextRef.current ?? new AudioContextClass();
-      const shouldClose = !audioContextRef.current;
-      const buffer = await context.decodeAudioData(bytes.slice(0));
-      const mixed = mixAudioBuffer(buffer);
-      const grid = analyzePcmBeatGrid(mixed, buffer.sampleRate);
-      beatGridCacheRef.current.set(track.id, grid);
-      if (shouldClose) void context.close();
-      if (beatAnalysisRequestRef.current === requestId && activeTrackId === track.id) {
-        offlineBeatGridRef.current = grid;
-      }
-    } catch {
-      beatGridCacheRef.current.set(track.id, null);
-      if (beatAnalysisRequestRef.current === requestId && activeTrackId === track.id) {
-        offlineBeatGridRef.current = null;
-      }
-    }
-  }
-
-  function mixAudioBuffer(buffer: AudioBuffer) {
-    const length = buffer.length;
-    const channels = Math.min(2, buffer.numberOfChannels);
-    if (channels <= 1) return new Float32Array(buffer.getChannelData(0));
-
-    const mixed = new Float32Array(length);
-    for (let channel = 0; channel < channels; channel += 1) {
-      const data = buffer.getChannelData(channel);
-      for (let index = 0; index < length; index += 1) mixed[index] += data[index] / channels;
-    }
-    return mixed;
-  }
-
-  // Keep the bus frame's beat fields at idle (samples/energy untouched) while
-  // playback is paused or switching tracks, mirroring the old beatFrame reset.
-  function publishIdleBeatFrame() {
-    const current = getVisualizerFrame();
-    publishVisualizerFrame({
-      ...current,
-      beatPulse: 0,
-      beatPhase: 0,
-      onsetStrength: 0,
-      beatConfidence: 0,
-    });
-  }
-
-  function publishPodcastVisualizerReset() {
-    publishVisualizerFrame({
-      samples: Array.from({ length: VISUALIZER_SAMPLE_COUNT }, () => 0.035),
-      energy: 0.055,
-      beatPulse: 0,
-      beatPhase: 0,
-      onsetStrength: 0,
-      beatConfidence: 0,
-    });
-  }
-
-  function startVisualizer() {
-    void resumeAudioGraph();
-    const frequencyData = new Uint8Array(analyserRef.current?.frequencyBinCount ?? 512);
-    const timeData = new Uint8Array(analyserRef.current?.fftSize ?? 1024);
-    const sample = () => {
-      const analyser = analyserRef.current;
-      let frame = createIdleVisualizerFrame(
-        VISUALIZER_SAMPLE_COUNT,
-        performance.now() * 0.001,
-        audioRef.current?.currentTime ?? progress,
-      );
-      let beat = beatFrameRef.current;
-
-      if (analyser && !visualizerUnavailableRef.current) {
-        analyser.getByteFrequencyData(frequencyData);
-        analyser.getByteTimeDomainData(timeData);
-        const audioFrame = createAudioVisualizerFrame(
-          frequencyData,
-          timeData,
-          VISUALIZER_SAMPLE_COUNT,
-          audioContextRef.current?.sampleRate,
-          analyser.fftSize,
-        );
-        visualizerSilenceFramesRef.current = audioFrame.active ? 0 : visualizerSilenceFramesRef.current + 1;
-        if (visualizerSilenceFramesRef.current < 28) frame = audioFrame;
-
-        if (!realtimeBeatRef.current) realtimeBeatRef.current = new RealtimeBeatAnalyzer();
-        beat = realtimeBeatRef.current.update(
-          frequencyData,
-          timeData,
-          audioRef.current?.currentTime ?? progress,
-          audioContextRef.current?.sampleRate,
-          analyser.fftSize,
-          offlineBeatGridRef.current,
-        );
-        beatFrameRef.current = beat;
-      }
-
-      const previousEnergy = visualizerEnergyRef.current;
-      const energy = frame.energy > previousEnergy
-        ? previousEnergy * 0.64 + frame.energy * 0.36
-        : previousEnergy * 0.9 + frame.energy * 0.1;
-      visualizerEnergyRef.current = energy;
-
-      if (visualizerSamplesRef.current.length !== VISUALIZER_SAMPLE_COUNT) {
-        visualizerSamplesRef.current = Array.from({ length: VISUALIZER_SAMPLE_COUNT }, () => 0.035);
-      }
-      const samples = visualizerSamplesRef.current.map((previous, index) => {
-        const next = frame.samples[index] ?? 0.035;
-        return next > previous
-          ? previous * 0.58 + next * 0.42
-          : previous * 0.9 + next * 0.1;
-      });
-      visualizerSamplesRef.current = samples;
-
-      publishVisualizerFrame({
-        samples,
-        energy,
-        beatPulse: beat.beatPulse,
-        beatPhase: beat.beatPhase,
-        onsetStrength: beat.onsetStrength,
-        beatConfidence: beat.confidence,
-      });
-      visualizerFrameRef.current = requestAnimationFrame(sample);
-    };
-
-    sample();
-  }
-
-  function updateTrackActivity(trackId: string, update: (current: ReturnType<typeof createTrackActivity>) => ReturnType<typeof createTrackActivity>) {
-    setTrackActivity((current) => ({
-      ...current,
-      [trackId]: update(createTrackActivity(current[trackId])),
-    }));
-  }
-
-  function markEffectivePlay() {
-    const session = playbackSessionRef.current;
-    if (!session || session.countedPlay) return;
-    session.countedPlay = true;
-    updateTrackActivity(session.trackId, (current) => ({
-      ...current,
-      playCount: current.playCount + 1,
-      lastPlayedAt: Date.now(),
-    }));
-  }
-
-  function markCompletedPlayback() {
-    const session = playbackSessionRef.current;
-    if (!session || session.countedComplete) return;
-    if (!session.countedPlay) markEffectivePlay();
-    session.countedComplete = true;
-    updateTrackActivity(session.trackId, (current) => ({
-      ...current,
-      completedCount: current.completedCount + 1,
-      lastPlayedAt: Date.now(),
-    }));
-  }
-
-  function recordSkipIfEligible() {
-    const session = playbackSessionRef.current;
-    if (!session || session.countedPlay || session.maxProgress < 3) return;
-    const trackDuration = audioRef.current?.duration || duration;
-    if (trackDuration > 0 && session.maxProgress / trackDuration >= 0.5) return;
-    session.countedPlay = true;
-    updateTrackActivity(session.trackId, (current) => ({
-      ...current,
-      skipCount: current.skipCount + 1,
-      lastSkippedAt: Date.now(),
-    }));
-  }
-
-  function handleTimeUpdate(currentTime: number, trackDuration: number) {
-    const podcastEpisode = activePodcastEpisodeRef.current;
-    if (podcastEpisode) {
-      const pending = pendingPodcastResumeRef.current;
-      if (pending?.episodeId === podcastEpisode.episodeId) {
-        setProgress(Math.max(0, pending.position));
-        return;
-      }
-      setProgress(currentTime);
-      persistPodcastProgress(currentTime, trackDuration);
-      return;
-    }
-    setProgress(currentTime);
-    const session = playbackSessionRef.current;
-    if (!session || session.trackId !== activeTrackId) return;
-    session.maxProgress = Math.max(session.maxProgress, currentTime);
-    const threshold = trackDuration > 0
-      ? Math.min(240, Math.max(30, trackDuration * 0.5))
-      : 30;
-    if (currentTime >= threshold) markEffectivePlay();
-  }
-
-  function move(delta: 1 | -1, reason: "user" | "ended" = "user"): QueueMoveResult {
-    cancelPodcastSessionRestore();
-    if (activePodcastEpisode) return { kind: "boundary" };
-    if (baseQueueIds.length === 0) return { kind: "empty" };
-    if (delta === 1 && reason === "user") recordSkipIfEligible();
-
-    let playbackOrder = playbackQueueIds;
-    if (shuffle && !haveSameQueueItems(shuffleOrder, baseQueueIds)) {
-      playbackOrder = createShuffleOrder(baseQueueIds, activeTrackId);
-      setShuffleOrder(playbackOrder);
-    }
-    const activeIndex = playbackOrder.indexOf(activeTrackId ?? "");
-    if (shuffle && repeat === "all" && delta === 1 && activeIndex === playbackOrder.length - 1 && playbackOrder.length > 1) {
-      playbackOrder = createShuffleOrder(baseQueueIds, activeTrackId);
-      setShuffleOrder(playbackOrder);
-    }
-
-    const result = resolveQueueMove(playbackOrder, activeTrackId, delta, repeat);
-    if (result.kind === "restart") restartCurrentPlayback();
-    if (result.kind === "move") setActiveTrackId(result.trackId);
-    return result;
-  }
-
-  function onEnded() {
-    if (activePodcastEpisodeRef.current) {
-      const endedEpisodeId = activePodcastEpisodeRef.current.episodeId;
-      const audio = audioRef.current;
-      const progressSaved = audio
-        ? persistPodcastProgress(audio.duration, audio.duration, true)
-        : Promise.resolve();
-      setActivePodcastEpisode((current) => current
-        ? {
-            ...current,
-            completed: true,
-            progressSeconds: audio?.duration || current.durationSeconds || current.progressSeconds,
-          }
-        : current
-      );
-      void progressSaved.finally(() => {
-        setPodcastLibraryRevision((current) => current + 1);
-      });
-      setIsPlaying(false);
-      if (
-        podcastSleepTimer?.kind === "episodeEnd"
-        && podcastSleepTimer.episodeId === endedEpisodeId
-      ) {
-        podcastPlaybackIntentRef.current = false;
-        setPodcastSleepTimer(null);
-        setPodcastPlaybackStatus("paused");
-        showActionNotice("已在本集结束后暂停");
-        return;
-      }
-      if (playNextPodcastEpisode(false)) return;
-      if (podcastAutoQueueModeRef.current !== "off") {
-        autofillPodcastQueueAfter(endedEpisodeId);
-        return;
-      }
-      podcastPlaybackIntentRef.current = false;
-      setPodcastPlaybackStatus("paused");
-      return;
-    }
-    markCompletedPlayback();
-    if (repeat === "one" && audioRef.current) {
-      restartCurrentPlayback();
-      return;
-    }
-
-    const result = move(1, "ended");
-    if (result.kind === "boundary" || result.kind === "empty") {
-      setIsPlaying(false);
-    }
-  }
-
-  function seek(value: number) {
-    if (!audioRef.current) return;
-    const podcastEpisode = activePodcastEpisodeRef.current;
-    if (podcastEpisode) resumePodcastProgressWrites(podcastEpisode.episodeId);
-    if (pendingPodcastResumeRef.current?.episodeId === podcastEpisode?.episodeId) {
-      pendingPodcastResumeRef.current = null;
-    }
-    audioRef.current.currentTime = value;
-    setProgress(value);
-    if (activePodcastEpisodeRef.current) {
-      persistPodcastProgress(value, audioRef.current.duration, true);
-    }
   }
 
   useSystemMedia({

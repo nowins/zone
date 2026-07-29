@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const appSource = readFileSync("src/App.tsx", "utf8");
+const appSource = [
+  "src/app/podcastPlaybackSettings.ts",
+  "src/hooks/useNavigation.ts",
+  "src/hooks/useMusicLibrary.ts",
+  "src/hooks/usePodcastPlayback.ts",
+  "src/hooks/usePlaybackControls.ts",
+  "src/hooks/useAudioEngine.ts",
+  "src/hooks/usePlaylists.ts",
+  "src/App.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const headerSource = readFileSync("src/components/AppHeader.tsx", "utf8");
 const titlebarSource = readFileSync("src/components/Titlebar.tsx", "utf8");
 const searchFieldSource = readFileSync("src/components/CollectionSearchField.tsx", "utf8");

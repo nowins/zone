@@ -2,10 +2,28 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const appSource = readFileSync("src/App.tsx", "utf8");
-const viewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
+const appSource = [
+  "src/app/podcastPlaybackSettings.ts",
+  "src/hooks/useNavigation.ts",
+  "src/hooks/useMusicLibrary.ts",
+  "src/hooks/usePodcastPlayback.ts",
+  "src/hooks/usePlaybackControls.ts",
+  "src/hooks/useAudioEngine.ts",
+  "src/hooks/usePlaylists.ts",
+  "src/App.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
+const viewSource = [
+  "src/views/PodcastView.tsx",
+  "src/views/podcast/constants.ts",
+  "src/views/podcast/components/QueueEpisodeRow.tsx",
+  "src/views/podcast/components/Dialogs.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const cssSource = readFileSync("src/styles/podcasts.css", "utf8");
-const rustSource = readFileSync("src-tauri/src/podcast.rs", "utf8");
+const rustSource = [
+  "src-tauri/src/podcast/commands.rs",
+  "src-tauri/src/podcast/queue.rs",
+  "src-tauri/src/podcast/query.rs",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 
 test("podcast playlist supports bounded batch editing with explicit confirmation", () => {
   assert.match(viewSource, /PODCAST_QUEUE_BATCH_LIMIT = 500/);

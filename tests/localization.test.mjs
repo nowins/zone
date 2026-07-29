@@ -2,13 +2,37 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const appSource = readFileSync("src/App.tsx", "utf8");
+const appSource = [
+  "src/app/podcastPlaybackSettings.ts",
+  "src/hooks/useNavigation.ts",
+  "src/hooks/useMusicLibrary.ts",
+  "src/hooks/usePodcastPlayback.ts",
+  "src/hooks/usePlaybackControls.ts",
+  "src/hooks/useAudioEngine.ts",
+  "src/hooks/usePlaylists.ts",
+  "src/App.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const artistSource = readFileSync("src/views/ArtistBrowser.tsx", "utf8");
 const librarySource = readFileSync("src/views/LibraryView.tsx", "utf8");
 const nowPlayingSource = readFileSync("src/views/NowPlayingView.tsx", "utf8");
 const settingsSource = readFileSync("src/views/SettingsView.tsx", "utf8");
 const playlistSource = readFileSync("src/views/PlaylistBrowser.tsx", "utf8");
-const podcastSource = readFileSync("src/views/PodcastView.tsx", "utf8");
+const podcastSource = [
+  "src/views/PodcastView.tsx",
+  "src/views/podcast/types.ts",
+  "src/views/podcast/constants.ts",
+  "src/views/podcast/cache.ts",
+  "src/views/podcast/episodeModel.ts",
+  "src/views/podcast/preferences.ts",
+  "src/views/podcast/format.ts",
+  "src/views/podcast/components/primitives.tsx",
+  "src/views/podcast/components/EpisodeRows.tsx",
+  "src/views/podcast/components/QueueEpisodeRow.tsx",
+  "src/views/podcast/components/EpisodeDetail.tsx",
+  "src/views/podcast/components/ContinueCard.tsx",
+  "src/views/podcast/components/ShowCards.tsx",
+  "src/views/podcast/components/Dialogs.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const podcastNowPlayingSource = readFileSync("src/views/PodcastNowPlayingView.tsx", "utf8");
 const emptySource = readFileSync("src/components/EmptyState.tsx", "utf8");
 const playerBarSource = readFileSync("src/components/PlayerBar.tsx", "utf8");

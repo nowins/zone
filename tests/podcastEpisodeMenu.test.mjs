@@ -6,8 +6,23 @@ const menuSource = readFileSync(
   "src/components/PodcastEpisodeContextMenu.tsx",
   "utf8",
 );
-const appSource = readFileSync("src/App.tsx", "utf8");
-const podcastViewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
+const appSource = [
+  "src/app/podcastPlaybackSettings.ts",
+  "src/hooks/useNavigation.ts",
+  "src/hooks/useMusicLibrary.ts",
+  "src/hooks/usePodcastPlayback.ts",
+  "src/hooks/usePlaybackControls.ts",
+  "src/hooks/useAudioEngine.ts",
+  "src/hooks/usePlaylists.ts",
+  "src/App.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
+const podcastViewSource = [
+  "src/views/PodcastView.tsx",
+  "src/views/podcast/format.ts",
+  "src/views/podcast/components/EpisodeRows.tsx",
+  "src/views/podcast/components/QueueEpisodeRow.tsx",
+  "src/views/podcast/components/ContinueCard.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const podcastCss = readFileSync("src/styles/podcasts.css", "utf8");
 
 test("podcast episode actions use a dedicated accessible context menu", () => {

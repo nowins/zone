@@ -5,11 +5,28 @@ import {
   findActivePodcastChapterIndex,
 } from "../.tmp/visualizer-tests/utils/podcastChapters.js";
 
-const appSource = readFileSync("src/App.tsx", "utf8");
+const appSource = [
+  "src/app/podcastPlaybackSettings.ts",
+  "src/hooks/useNavigation.ts",
+  "src/hooks/useMusicLibrary.ts",
+  "src/hooks/usePodcastPlayback.ts",
+  "src/hooks/usePlaybackControls.ts",
+  "src/hooks/useAudioEngine.ts",
+  "src/hooks/usePlaylists.ts",
+  "src/App.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const typesSource = readFileSync("src/types.ts", "utf8");
-const viewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
+const viewSource = [
+  "src/views/PodcastView.tsx",
+  "src/views/podcast/components/EpisodeDetail.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
-const rustSource = readFileSync("src-tauri/src/podcast.rs", "utf8");
+const rustSource = [
+  "src-tauri/src/podcast/mod.rs",
+  "src-tauri/src/podcast/feed_parse.rs",
+  "src-tauri/src/podcast/chapters.rs",
+  "src-tauri/src/podcast/commands.rs",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 
 test("active chapter selection respects explicit ends and adjacent starts", () => {
   const chapters = [

@@ -2,11 +2,26 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const appSource = readFileSync("src/App.tsx", "utf8");
-const viewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
+const appSource = [
+  "src/app/podcastPlaybackSettings.ts",
+  "src/hooks/useNavigation.ts",
+  "src/hooks/useMusicLibrary.ts",
+  "src/hooks/usePodcastPlayback.ts",
+  "src/hooks/usePlaybackControls.ts",
+  "src/hooks/useAudioEngine.ts",
+  "src/hooks/usePlaylists.ts",
+  "src/App.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
+const viewSource = [
+  "src/views/PodcastView.tsx",
+  "src/views/podcast/constants.ts",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
 const typesSource = readFileSync("src/types.ts", "utf8");
-const rustSource = readFileSync("src-tauri/src/podcast.rs", "utf8");
+const rustSource = [
+  "src-tauri/src/podcast/commands.rs",
+  "src-tauri/src/podcast/queue.rs",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 
 test("smart podcast continuation is a persistent mutually exclusive preference", () => {
   assert.match(

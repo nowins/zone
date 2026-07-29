@@ -3,11 +3,35 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import test from "node:test";
 
-const appSource = readFileSync("src/App.tsx", "utf8");
+const appSource = [
+  "src/app/podcastPlaybackSettings.ts",
+  "src/hooks/useNavigation.ts",
+  "src/hooks/useMusicLibrary.ts",
+  "src/hooks/usePodcastPlayback.ts",
+  "src/hooks/usePlaybackControls.ts",
+  "src/hooks/useAudioEngine.ts",
+  "src/hooks/usePlaylists.ts",
+  "src/App.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const appHeaderSource = readFileSync("src/components/AppHeader.tsx", "utf8");
 const playerBarSource = readFileSync("src/components/PlayerBar.tsx", "utf8");
 const podcastPlayerBarSource = readFileSync("src/components/PodcastPlayerBar.tsx", "utf8");
-const podcastViewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
+const podcastViewSource = [
+  "src/views/PodcastView.tsx",
+  "src/views/podcast/types.ts",
+  "src/views/podcast/constants.ts",
+  "src/views/podcast/cache.ts",
+  "src/views/podcast/episodeModel.ts",
+  "src/views/podcast/preferences.ts",
+  "src/views/podcast/format.ts",
+  "src/views/podcast/components/primitives.tsx",
+  "src/views/podcast/components/EpisodeRows.tsx",
+  "src/views/podcast/components/QueueEpisodeRow.tsx",
+  "src/views/podcast/components/EpisodeDetail.tsx",
+  "src/views/podcast/components/ContinueCard.tsx",
+  "src/views/podcast/components/ShowCards.tsx",
+  "src/views/podcast/components/Dialogs.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const podcastNowPlayingSource = readFileSync("src/views/PodcastNowPlayingView.tsx", "utf8");
 const podcastArtworkSource = readFileSync("src/utils/podcastArtwork.ts", "utf8");
 const podcastPlaybackSource = readFileSync("src/utils/podcastPlayback.ts", "utf8");
@@ -18,7 +42,12 @@ const motionCss = readFileSync("src/styles/motion.css", "utf8");
 const nowPlayingSource = readFileSync("src/views/NowPlayingView.tsx", "utf8");
 const typesSource = readFileSync("src/types.ts", "utf8");
 const rustEntrySource = readFileSync("src-tauri/src/lib.rs", "utf8");
-const podcastRustSource = readFileSync("src-tauri/src/podcast.rs", "utf8");
+const podcastRustSource = [
+  "src-tauri/src/podcast/store.rs",
+  "src-tauri/src/podcast/feed_parse.rs",
+  "src-tauri/src/podcast/downloads.rs",
+  "src-tauri/src/podcast/network.rs",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 
 const frontendSources = sourceFiles("src", /\.(?:ts|tsx)$/);
 const allFrontendSource = frontendSources.map(({ source }) => source).join("\n");
@@ -92,7 +121,7 @@ test("podcasts open on content, keep search secondary, and separate play from do
   );
   includes(
     podcastViewSource,
-    /podcastSessionSnapshot\s*=\s*\{[\s\S]{0,420}\bscreen,[\s\S]{0,420}\bselectedEpisodeDetail,/,
+    /setPodcastSessionSnapshot\(\{[\s\S]{0,420}\bscreen,[\s\S]{0,420}\bselectedEpisodeDetail,/,
     "podcasts must preserve their navigation and episode context while full-screen playback is open",
   );
   for (const label of ["收听", "发现", "资料库", "继续收听", "中国区热门节目"]) {
@@ -609,7 +638,7 @@ test("episode detail preserves the full-screen now-playing return path and live 
   );
   includes(
     declaredFunctionSource(podcastViewSource, "closeEpisodeDetail"),
-    /episodeReturnToNowPlaying[\s\S]{0,260}podcastSessionSnapshot\s*=[\s\S]{0,220}onReturnToNowPlaying\(\)/,
+    /episodeReturnToNowPlaying[\s\S]{0,260}setPodcastSessionSnapshot\([\s\S]{0,220}onReturnToNowPlaying\(\)/,
     "closing episode info must restore the podcast session before returning to now playing",
   );
   includes(
