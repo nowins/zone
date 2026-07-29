@@ -516,7 +516,7 @@ test("podcast queue is independent, durable, reorderable, and advances after an 
   );
   includes(
     consumeSource,
-    /shouldConsumePendingQueueEpisode\(\s*pendingPodcastQueueConsumeRef\.current,\s*activePodcastEpisodeRef\.current\?\.episodeId \?\? null,\s*podcastAudioEpisodeRef\.current,\s*episodeId,\s*\)/,
+    /shouldConsumePendingQueueEpisode\(\s*pendingPodcastQueueConsumeRef\.current,\s*activePodcastEpisodeRef\.current\?\.episodeId \?\? null,\s*audioEpisodeId,\s*episodeId,\s*\)/,
     "queue consumption must be gated by the shared pending/active/audio episode guard",
   );
   const playPodcastSource = declaredFunctionSource(appSource, "playPodcastEpisode");
@@ -527,7 +527,7 @@ test("podcast queue is independent, durable, reorderable, and advances after an 
   );
   includes(
     appSource,
-    /\.play\(\)[\s\S]{0,520}consumePendingPodcastQueueEpisode\(\s*podcastEpisodeId\s*\)/,
+    /\.play\(\)[\s\S]{0,520}consumePendingPodcastQueueEpisode\(\s*podcastEpisodeId,\s*podcastAudioEpisodeRef\.current\s*\)/,
     "a queued episode must be consumed only after its source successfully starts",
   );
   includes(
@@ -547,16 +547,16 @@ test("podcast queue is independent, durable, reorderable, and advances after an 
   );
   includes(
     appSource,
-    /pendingPodcastQueueConsumeRef\.current\s*=\s*episodeId;[\s\S]{0,180}podcastPlaybackStartedEpisodeRef\.current\s*===\s*episodeId[\s\S]{0,120}consumePendingPodcastQueueEpisode\(episodeId\)/,
+    /pendingPodcastQueueConsumeRef\.current\s*=\s*episodeId;[\s\S]{0,180}hasEpisodeStartedOnDevice\(episodeId\)[\s\S]{0,120}consumePendingPodcastQueueEpisode\(episodeId, episodeId\)/,
     "a queue snapshot restored after playback started must consume the already-playing episode",
   );
   includes(
     appSource,
-    /podcastPlaybackStartedEpisodeRef\.current\s*=\s*podcastEpisodeId;[\s\S]{0,140}consumePendingPodcastQueueEpisode\(podcastEpisodeId\)/,
+    /podcastPlaybackStartedEpisodeRef\.current\s*=\s*podcastEpisodeId;[\s\S]{0,140}consumePendingPodcastQueueEpisode\(podcastEpisodeId, podcastAudioEpisodeRef\.current\)/,
     "successful playback must be remembered independently from the queue restore timing",
   );
 
-  const endedSource = declaredFunctionSource(appSource, "onEnded");
+  const endedSource = declaredFunctionSource(appSource, "handleEpisodeEnded");
   includes(endedSource, /playNextPodcastEpisode/, "episode completion must advance the podcast queue");
   assert.ok(
     endedSource.indexOf('kind === "episodeEnd"') < endedSource.indexOf("playNextPodcastEpisode"),
@@ -672,7 +672,7 @@ test("episode detail preserves the full-screen now-playing return path and live 
     "a completed active episode must leave continue listening immediately",
   );
   includes(
-    declaredFunctionSource(appSource, "onEnded"),
+    declaredFunctionSource(appSource, "handleEpisodeEnded"),
     /progressSaved\.finally\(\(\)\s*=>\s*\{[\s\S]{0,140}bumpLibraryRevision\(\)/,
     "episode completion must refresh cached podcast lists even when the queue advances",
   );

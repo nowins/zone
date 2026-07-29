@@ -60,9 +60,9 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
   - `useNavigation.ts`：page/view/搜索状态、`requestNavigation` 页面过渡、搜索导航与 Ctrl/Cmd+F/Esc 键盘 effect、`openNowPlaying`。
   - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、albums/artists 分组与专辑选中、addFolder/rescan 与 `useLibraryWatcher` 接线。
-  - `usePodcastPlayback.ts`：播客会话/队列/进度 domain。对外只返回产品状态与动作，另附 `transport: PodcastTransportBridge` 给播放控制；不导出 play-attempt / intent / pending-resume 等 transport 私有 ref。
-  - `podcastTransport.ts`：`PodcastTransportBridge` 窄接口（仅 transport 可碰的播客面）。
-  - `usePlaybackControls.ts`：拥有 `audioPlayAttemptRef`、autoplay intent、pending start/resume；`runPlayAttempt` 为唯一 `audio.play()` 成功/失败门闩；音乐 queue/shuffle/repeat/统计、媒体源切换与 audio 事件；经 bridge 调用 `clearActivePodcast` / `markEpisodeCompletedOnEnd` 等命令，不拿 raw `setActivePodcastEpisode`。
+  - `usePodcastPlayback.ts`：播客会话/队列/进度 domain。对外只返回产品状态与动作（无 ref、无裸 setter），另附 `transport: PodcastTransportBridge` 给播放控制；拥有播客自然结束处理 `handleEpisodeEnded` 与待播消费判定（经 `playbackControlsRef` 的 `hasEpisodeStartedOnDevice` 回查 transport 事实）。
+  - `podcastTransport.ts`：`PodcastTransportBridge` 窄接口：零 ref，仅只读值（`activePodcastEpisode`/`podcastPlaybackRate`/`podcastSessionHydrated`）+ 语义方法（`consumePendingPodcastQueueEpisode(episodeId, audioEpisodeId)`、`cancelPendingQueueConsume`、`handleEpisodeEnded` 等）；唯一保留的裸 setter 是 `setPodcastPlaybackStatus`（controls 的 transport 状态上报）。
+  - `usePlaybackControls.ts`：拥有 `audioPlayAttemptRef`（唯一递增点在 `beginPlayAttempt`）、autoplay intent、pending start/resume、`podcastAudioEpisodeRef`/`podcastPlaybackStartedEpisodeRef` 等全部 transport ref；`runPlayAttempt` 为唯一 `audio.play()` 成功/失败门闩；音乐 queue/shuffle/repeat/统计、媒体源切换与 audio 事件；onEnded 播客分支委托 `handleEpisodeEnded`；transport 守卫/解析统一走 `src/utils/playbackTransport.ts` 纯函数（`tests/playbackTransport.test.mjs` 行为覆盖）。
   - `useAudioEngine.ts`：Web Audio 图 refs、ensureAudioGraph/resumeAudioGraph、节拍预分析、可视化采样循环与启停、音量应用；以 `AudioEngineHandle` 形式经 ref 交给播放控制。
   - `usePlaylists.ts`：playlists/homePins/收藏状态与 CRUD、homePins 对账、toggleHomePin/openHomePin。
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。

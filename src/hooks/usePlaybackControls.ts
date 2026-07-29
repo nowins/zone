@@ -55,6 +55,8 @@ export type PlaybackControlsHandle = {
   clearPendingPodcastStart: () => void;
   /** Pending resume position while media hydrates (for progress flush). */
   peekPendingResumePosition: (episodeId: string | null) => number | null;
+  /** Whether this episode is both bound to audio.src and actually started. */
+  hasEpisodeStartedOnDevice: (episodeId: string) => boolean;
 };
 
 export type ActivePlayback =
@@ -97,30 +99,26 @@ export function usePlaybackControls({
 }: UsePlaybackControlsParams) {
   const {
     activePodcastEpisode,
-    podcastAudioEpisodeRef,
-    podcastPlaybackStartedEpisodeRef,
     cancelPendingQueueConsume,
-    podcastAutoQueueModeRef,
-    podcastSleepTimer,
-    setPodcastSleepTimer,
     setPodcastPlaybackStatus,
     podcastPlaybackRate,
     podcastSessionHydrated,
     cancelPodcastSessionRestore,
     clearActivePodcast,
-    markEpisodeCompletedOnEnd,
-    bumpLibraryRevision,
     flushPodcastProgress,
     persistPodcastProgress,
     resumePodcastProgressWrites,
     consumePendingPodcastQueueEpisode,
-    playNextPodcastEpisode,
-    autofillPodcastQueueAfter,
+    handleEpisodeEnded,
   } = podcast;
 
   // Local mirror of the active podcast episode; all mutations flow through state.
   const activePodcastEpisodeRef = useRef(podcast.activePodcastEpisode);
   activePodcastEpisodeRef.current = podcast.activePodcastEpisode;
+
+  // Transport owns which episode is bound to audio.src and which actually started.
+  const podcastAudioEpisodeRef = useRef<string | null>(null);
+  const podcastPlaybackStartedEpisodeRef = useRef<string | null>(null);
 
   // Transport owns play-attempt generation, autoplay intent, and resume bookkeeping.
   const audioPlayAttemptRef = useRef(0);
@@ -245,6 +243,13 @@ export function usePlaybackControls({
     return pending.position;
   }
 
+  function hasEpisodeStartedOnDevice(episodeId: string) {
+    return (
+      podcastAudioEpisodeRef.current === episodeId
+      && podcastPlaybackStartedEpisodeRef.current === episodeId
+    );
+  }
+
   /**
    * Single success/failure gate for audio.play().
    * Callers that already bumped `audioPlayAttemptRef` pass `playAttempt`.
@@ -276,7 +281,7 @@ export function usePlaybackControls({
         if (podcastEpisodeId) {
           podcastPlaybackStartedEpisodeRef.current = podcastEpisodeId;
           setPodcastPlaybackStatus("playing");
-          consumePendingPodcastQueueEpisode(podcastEpisodeId);
+          consumePendingPodcastQueueEpisode(podcastEpisodeId, podcastAudioEpisodeRef.current);
         }
         void resumeGraph();
       })
@@ -543,33 +548,8 @@ export function usePlaybackControls({
 
   function onEnded() {
     if (activePodcastEpisodeRef.current) {
-      const endedEpisodeId = activePodcastEpisodeRef.current.episodeId;
-      const audio = audioRef.current;
-      const progressSaved = audio
-        ? persistPodcastProgress(audio.duration, audio.duration, true)
-        : Promise.resolve();
-      markEpisodeCompletedOnEnd(audio?.duration || 0);
-      void progressSaved.finally(() => {
-        bumpLibraryRevision();
-      });
       setIsPlaying(false);
-      if (
-        podcastSleepTimer?.kind === "episodeEnd"
-        && podcastSleepTimer.episodeId === endedEpisodeId
-      ) {
-        podcastPlaybackIntentRef.current = false;
-        setPodcastSleepTimer(null);
-        setPodcastPlaybackStatus("paused");
-        showActionNotice("已在本集结束后暂停");
-        return;
-      }
-      if (playNextPodcastEpisode(false)) return;
-      if (podcastAutoQueueModeRef.current !== "off") {
-        autofillPodcastQueueAfter(endedEpisodeId);
-        return;
-      }
-      podcastPlaybackIntentRef.current = false;
-      setPodcastPlaybackStatus("paused");
+      handleEpisodeEnded(audioRef.current?.duration ?? 0);
       return;
     }
     markCompletedPlayback();
@@ -759,5 +739,6 @@ export function usePlaybackControls({
     setPlaybackIntent,
     clearPendingPodcastStart,
     peekPendingResumePosition,
+    hasEpisodeStartedOnDevice,
   };
 }

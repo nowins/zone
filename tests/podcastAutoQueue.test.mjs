@@ -55,8 +55,8 @@ test("smart podcast continuation is a persistent mutually exclusive preference",
 });
 
 test("episode completion keeps sleep and manual queue ahead of smart autofill", () => {
-  const endedStart = appSource.indexOf("function onEnded()");
-  const endedEnd = appSource.indexOf("\n  function seek(", endedStart);
+  const endedStart = appSource.indexOf("function handleEpisodeEnded(");
+  const endedEnd = appSource.indexOf("\n  function ", endedStart + 1);
   const endedSource = appSource.slice(endedStart, endedEnd);
   const sleepIndex = endedSource.indexOf('podcastSleepTimer?.kind === "episodeEnd"');
   const manualIndex = endedSource.indexOf("playNextPodcastEpisode(false)");

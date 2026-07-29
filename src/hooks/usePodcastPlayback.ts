@@ -40,12 +40,10 @@ export function usePodcastPlayback({
   playbackSessionRef,
 }: UsePodcastPlaybackParams) {
   const activePodcastEpisodeRef = useRef<PodcastPlayback | null>(null);
-  const podcastAudioEpisodeRef = useRef<string | null>(null);
   const podcastQueueRef = useRef<PodcastQueueItem[]>([]);
   const podcastQueueRevisionRef = useRef(0);
   const podcastQueueMutationRef = useRef<Promise<void>>(Promise.resolve());
   const pendingPodcastQueueConsumeRef = useRef<string | null>(null);
-  const podcastPlaybackStartedEpisodeRef = useRef<string | null>(null);
   const podcastProgressSaveRef = useRef<{
     episodeId: string;
     savedAt: number;
@@ -163,8 +161,8 @@ export function usePodcastPlayback({
       && pendingPodcastQueueConsumeRef.current === null
     ) {
       pendingPodcastQueueConsumeRef.current = episodeId;
-      if (podcastPlaybackStartedEpisodeRef.current === episodeId) {
-        consumePendingPodcastQueueEpisode(episodeId);
+      if (playbackControlsRef.current?.hasEpisodeStartedOnDevice(episodeId)) {
+        consumePendingPodcastQueueEpisode(episodeId, episodeId);
       }
     }
   }, [activePodcastEpisode?.episodeId, podcastQueue]);
@@ -327,12 +325,12 @@ export function usePodcastPlayback({
     pendingPodcastQueueConsumeRef.current = null;
   }
 
-  function consumePendingPodcastQueueEpisode(episodeId: string) {
+  function consumePendingPodcastQueueEpisode(episodeId: string, audioEpisodeId: string | null) {
     if (
       !shouldConsumePendingQueueEpisode(
         pendingPodcastQueueConsumeRef.current,
         activePodcastEpisodeRef.current?.episodeId ?? null,
-        podcastAudioEpisodeRef.current,
+        audioEpisodeId,
         episodeId,
       )
     ) {
@@ -763,6 +761,33 @@ export function usePodcastPlayback({
     return true;
   }
 
+  function handleEpisodeEnded(audioDuration: number) {
+    const endedEpisodeId = activePodcastEpisodeRef.current?.episodeId;
+    if (!endedEpisodeId) return;
+    const progressSaved = persistPodcastProgress(audioDuration, audioDuration, true);
+    markEpisodeCompletedOnEnd(audioDuration || 0);
+    void progressSaved.finally(() => {
+      bumpLibraryRevision();
+    });
+    if (
+      podcastSleepTimer?.kind === "episodeEnd"
+      && podcastSleepTimer.episodeId === endedEpisodeId
+    ) {
+      playbackControlsRef.current?.setPlaybackIntent(false);
+      setPodcastSleepTimer(null);
+      setPodcastPlaybackStatus("paused");
+      showActionNotice("已在本集结束后暂停");
+      return;
+    }
+    if (playNextPodcastEpisode(false)) return;
+    if (podcastAutoQueueModeRef.current !== "off") {
+      autofillPodcastQueueAfter(endedEpisodeId);
+      return;
+    }
+    playbackControlsRef.current?.setPlaybackIntent(false);
+    setPodcastPlaybackStatus("paused");
+  }
+
   function changePodcastAutoQueueMode(mode: PodcastAutoQueueMode) {
     if (!PODCAST_AUTO_QUEUE_MODES.includes(mode)) return;
     podcastAutoQueueAttemptRef.current += 1;
@@ -914,25 +939,17 @@ export function usePodcastPlayback({
 
   const transport: PodcastTransportBridge = {
     activePodcastEpisode,
-    podcastAudioEpisodeRef,
-    podcastPlaybackStartedEpisodeRef,
-    podcastAutoQueueModeRef,
     podcastPlaybackRate,
     podcastSessionHydrated,
-    podcastSleepTimer,
     setPodcastPlaybackStatus,
-    setPodcastSleepTimer,
     cancelPodcastSessionRestore,
     clearActivePodcast,
-    markEpisodeCompletedOnEnd,
-    bumpLibraryRevision,
     resumePodcastProgressWrites,
     persistPodcastProgress,
     flushPodcastProgress,
     consumePendingPodcastQueueEpisode,
     cancelPendingQueueConsume,
-    playNextPodcastEpisode,
-    autofillPodcastQueueAfter,
+    handleEpisodeEnded,
   };
 
   return {

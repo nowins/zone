@@ -208,6 +208,7 @@ export default function App() {
     setPlaybackIntent,
     clearPendingPodcastStart,
     peekPendingResumePosition,
+    hasEpisodeStartedOnDevice,
   } = usePlaybackControls({
     audioRef,
     showActionNotice,
@@ -233,6 +234,7 @@ export default function App() {
     setPlaybackIntent,
     clearPendingPodcastStart,
     peekPendingResumePosition,
+    hasEpisodeStartedOnDevice,
   };
   audioEngineRef.current = useAudioEngine({
     audioRef,
