@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { movePodcastQueueItem, podcastPlaybackForEpisode } from "../utils/podcastPlayback";
+import { shouldConsumePendingQueueEpisode } from "../utils/playbackTransport";
 import { createPodcastProgressWriteGate } from "../utils/podcastProgress";
 import {
   PODCAST_AUTO_QUEUE_MODES,
@@ -320,9 +321,12 @@ export function usePodcastPlayback({
 
   function consumePendingPodcastQueueEpisode(episodeId: string) {
     if (
-      pendingPodcastQueueConsumeRef.current !== episodeId
-      || activePodcastEpisodeRef.current?.episodeId !== episodeId
-      || podcastAudioEpisodeRef.current !== episodeId
+      !shouldConsumePendingQueueEpisode(
+        pendingPodcastQueueConsumeRef.current,
+        activePodcastEpisodeRef.current?.episodeId ?? null,
+        podcastAudioEpisodeRef.current,
+        episodeId,
+      )
     ) {
       return;
     }

@@ -11,6 +11,14 @@ import {
   resolveQueueMove,
   type QueueMoveResult,
 } from "../utils/playback";
+import {
+  isCurrentPlayAttempt,
+  podcastStatusForCanPlay,
+  podcastStatusForPause,
+  podcastStatusForWaiting,
+  resolvePodcastResumePosition,
+  resolvePodcastStartPosition,
+} from "../utils/playbackTransport";
 import { createTrackActivity } from "../utils/smartPlaylist";
 import type { AudioEngineHandle } from "./useAudioEngine";
 import type {
@@ -255,8 +263,11 @@ export function usePlaybackControls({
       .play()
       .then(() => {
         if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
+          !isCurrentPlayAttempt(
+            { sourceKey, attempt: playAttempt },
+            audioPlayAttemptRef.current,
+            activeAudioSourceKeyRef.current,
+          )
         ) return;
         setIsPlaying(true);
         if (podcastEpisodeId) {
@@ -268,8 +279,11 @@ export function usePlaybackControls({
       })
       .catch(() => {
         if (
-          activeAudioSourceKeyRef.current !== sourceKey
-          || audioPlayAttemptRef.current !== playAttempt
+          !isCurrentPlayAttempt(
+            { sourceKey, attempt: playAttempt },
+            audioPlayAttemptRef.current,
+            activeAudioSourceKeyRef.current,
+          )
         ) return;
         setIsPlaying(false);
         if (podcastEpisodeId && activePodcastEpisodeRef.current) {
@@ -340,12 +354,12 @@ export function usePlaybackControls({
       beatAnalysisRequestRef.current += 1;
       publishPodcastVisualizerReset();
       setPodcastPlaybackStatus("loading");
-      const requestedStart = pendingPodcastStartRef.current;
-      const explicitStart =
-        requestedStart?.episodeId === activePlayback.episode.episodeId;
-      const startPosition = explicitStart
-        ? requestedStart!.position
-        : activePlayback.episode.savedProgressSeconds;
+      const { position: startPosition, explicit: explicitStart } =
+        resolvePodcastStartPosition(
+          pendingPodcastStartRef.current,
+          activePlayback.episode.episodeId,
+          activePlayback.episode.savedProgressSeconds,
+        );
       if (explicitStart) {
         pendingPodcastStartRef.current = null;
       }
@@ -588,13 +602,7 @@ export function usePlaybackControls({
     const episode = activePodcastEpisodeRef.current;
     if (!pending || !episode || pending.episodeId !== episode.episodeId) return;
     pendingPodcastResumeRef.current = null;
-    const resumePosition = pending.explicit
-      ? Math.min(pending.position, nextDuration || pending.position)
-      : !episode.completed && pending.position > 0 && (
-          nextDuration <= 0 || pending.position < Math.max(0, nextDuration - 5)
-        )
-        ? Math.min(pending.position, nextDuration || pending.position)
-        : 0;
+    const resumePosition = resolvePodcastResumePosition(pending, episode, nextDuration);
     if (resumePosition > 0) audio.currentTime = resumePosition;
     setProgress(resumePosition);
   }
@@ -603,7 +611,7 @@ export function usePlaybackControls({
     setIsPlaying(false);
     if (activePodcastEpisodeRef.current) {
       setPodcastPlaybackStatus(
-        podcastPlaybackIntentRef.current ? "loading" : "paused",
+        podcastStatusForPause(podcastPlaybackIntentRef.current),
       );
     }
   }
@@ -623,18 +631,19 @@ export function usePlaybackControls({
   function handleAudioWaiting() {
     if (activePodcastEpisodeRef.current) {
       setPodcastPlaybackStatus(
-        podcastPlaybackIntentRef.current ? "buffering" : "paused",
+        podcastStatusForWaiting(podcastPlaybackIntentRef.current),
       );
     }
   }
 
   function handleAudioCanPlay() {
     if (!activePodcastEpisodeRef.current) return;
-    if (!podcastPlaybackIntentRef.current) {
-      setPodcastPlaybackStatus("paused");
-      return;
-    }
-    setPodcastPlaybackStatus(audioRef.current?.paused ? "loading" : "playing");
+    setPodcastPlaybackStatus(
+      podcastStatusForCanPlay(
+        podcastPlaybackIntentRef.current,
+        Boolean(audioRef.current?.paused),
+      ),
+    );
   }
 
   function togglePlay() {

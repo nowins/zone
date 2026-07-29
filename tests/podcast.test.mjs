@@ -514,17 +514,11 @@ test("podcast queue is independent, durable, reorderable, and advances after an 
     appSource,
     "consumePendingPodcastQueueEpisode",
   );
-  for (const condition of [
-    "pendingPodcastQueueConsumeRef.current !== episodeId",
-    "activePodcastEpisodeRef.current?.episodeId !== episodeId",
-    "podcastAudioEpisodeRef.current !== episodeId",
-  ]) {
-    includes(
-      consumeSource,
-      new RegExp(escapeRegExp(condition)),
-      `queue consumption is missing source guard: ${condition}`,
-    );
-  }
+  includes(
+    consumeSource,
+    /shouldConsumePendingQueueEpisode\(\s*pendingPodcastQueueConsumeRef\.current,\s*activePodcastEpisodeRef\.current\?\.episodeId \?\? null,\s*podcastAudioEpisodeRef\.current,\s*episodeId,\s*\)/,
+    "queue consumption must be gated by the shared pending/active/audio episode guard",
+  );
   const playPodcastSource = declaredFunctionSource(appSource, "playPodcastEpisode");
   excludes(
     playPodcastSource,
@@ -538,12 +532,12 @@ test("podcast queue is independent, durable, reorderable, and advances after an 
   );
   includes(
     appSource,
-    /activeAudioSourceKeyRef\.current\s*!==\s*sourceKey/,
+    /isCurrentPlayAttempt\(\s*\{\s*sourceKey, attempt: playAttempt\s*\}/,
     "late play promises from a replaced source must not consume or change the new episode",
   );
   includes(
     appSource,
-    /activeAudioSourceKeyRef\.current\s*!==\s*sourceKey\s*\|\|\s*audioPlayAttemptRef\.current\s*!==\s*playAttempt/,
+    /isCurrentPlayAttempt\([\s\S]{0,160}audioPlayAttemptRef\.current,[\s\S]{0,80}activeAudioSourceKeyRef\.current,/,
     "late play promises from an older attempt on the same source must be ignored",
   );
   includes(
@@ -767,7 +761,7 @@ test("podcast playback handles speed, sleep, buffering, and errors on the shared
   );
   includes(
     declaredFunctionSource(appSource, "runPlayAttempt"),
-    /activeAudioSourceKeyRef\.current\s*!==\s*sourceKey\s*\|\|\s*audioPlayAttemptRef\.current\s*!==\s*playAttempt/,
+    /isCurrentPlayAttempt\(\s*\{\s*sourceKey, attempt: playAttempt\s*\},\s*audioPlayAttemptRef\.current,\s*activeAudioSourceKeyRef\.current,\s*\)/,
     "play attempts must ignore stale source or generation callbacks",
   );
   includes(
@@ -826,7 +820,7 @@ test("podcast playback handles speed, sleep, buffering, and errors on the shared
   );
   includes(
     appSource,
-    /const startPosition\s*=[\s\S]*?activePlayback\.episode\.savedProgressSeconds;[\s\S]*?setProgress\(Math\.max\(0,\s*startPosition\)\)/,
+    /resolvePodcastStartPosition\([\s\S]*?activePlayback\.episode\.savedProgressSeconds,?\s*\)[\s\S]*?setProgress\(Math\.max\(0,\s*startPosition\)\)/,
     "a restored episode or explicit chapter start must show its pending position before media metadata is available",
   );
   const flushProgressSource = declaredFunctionSource(appSource, "flushPodcastProgress");
