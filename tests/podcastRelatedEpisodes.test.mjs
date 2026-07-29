@@ -4,7 +4,11 @@ import test from "node:test";
 
 const viewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
 const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
-const rustSource = readFileSync("src-tauri/src/podcast.rs", "utf8");
+const rustSource = [
+  "src-tauri/src/podcast/mod.rs",
+  "src-tauri/src/podcast/commands.rs",
+  "src-tauri/src/podcast/query.rs",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 
 test("episode detail loads a bounded related list without polluting the show browser", () => {
   assert.match(viewSource, /useState<PodcastEpisode\[\]>\(\[\]\)/);

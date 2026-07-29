@@ -7,30 +7,16 @@ import {
   type DragEvent as ReactDragEvent,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ArrowLeft,
   ArrowRight,
-  Bookmark,
   Check,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Download,
-  GripVertical,
-  ListMusic,
   LoaderCircle,
-  Pause,
-  Play,
-  Podcast,
   RefreshCw,
   Rss,
   Search,
-  SkipForward,
-  Trash2,
-  X,
 } from "lucide-react";
 import {
   PodcastEpisodeContextMenu,
@@ -38,12 +24,9 @@ import {
 } from "../components/PodcastEpisodeContextMenu";
 import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
-import { formatTime } from "../utils/music";
-import { podcastArtworkSrc } from "../utils/podcastArtwork";
 import {
   filterPodcastListeningEpisodes,
   isPodcastEpisodeNew,
-  podcastEpisodePlayedPercent,
   type PodcastListenFilter,
 } from "../utils/podcastListening";
 import {
@@ -56,15 +39,11 @@ import {
 } from "../utils/podcastLibrary";
 import {
   addPodcastSearchHistory,
-  normalizePodcastSearchHistory,
   sortPodcastSearchResults,
-  splitPodcastSearchMatch,
   type PodcastDiscoverySort,
 } from "../utils/podcastDiscovery";
 import { mergePodcastEpisodePlayback } from "../utils/podcastPlayback";
-import { findActivePodcastChapterIndex } from "../utils/podcastChapters";
 import type {
-  PodcastAutoQueueMode,
   PodcastChapterDocument,
   PodcastDiscoveryShow,
   PodcastDownloadDeleteResult,
@@ -75,230 +54,96 @@ import type {
   PodcastFeed,
   PodcastHome,
   PodcastPlayback,
-  PodcastQueueItem,
   PodcastRefreshReport,
   PodcastSearchResult,
   PodcastSubscribeResult,
 } from "../types";
-
-type RequestState = "idle" | "loading" | "ready" | "error";
-type PodcastScreen =
-  | "listen"
-  | "discover"
-  | "library"
-  | "playlist"
-  | "show"
-  | "episode";
-type RootPodcastScreen = Exclude<PodcastScreen, "show" | "episode">;
-type EpisodeOriginScreen = Exclude<PodcastScreen, "episode">;
-type EpisodeRequest = {
-  episodeId: string;
-  nonce: number;
-  returnToNowPlaying?: boolean;
-};
-type ShowCandidate = Pick<
-  PodcastSearchResult,
-  "id" | "title" | "author" | "feedUrl" | "artworkUrl"
->;
-type PodcastDownloadCleanupIntent =
-  | {
-    kind: "selected";
-    episodeIds: string[];
-    downloadedBytes: number;
-  }
-  | {
-    kind: "completed";
-  };
-type PodcastQueueDropPlacement = "before" | "after";
-type PodcastQueueDropTarget = {
-  episodeId: string;
-  placement: PodcastQueueDropPlacement;
-};
-type PodcastQueueRemovalIntent = {
-  episodeIds: string[];
-};
-type PodcastDiscoveryTopic =
-  | "popular"
-  | "business"
-  | "technology"
-  | "humanities"
-  | "english";
-
-export type PodcastViewProps = {
-  queue: PodcastQueueItem[];
-  autoQueueMode: PodcastAutoQueueMode;
-  activeEpisode: PodcastPlayback | null;
-  activeEpisodeId: string | null;
-  activeProgress: number;
-  activeDuration: number;
-  libraryRevision: number;
-  episodeRequest: EpisodeRequest | null;
-  onEpisodeRequestHandled: (nonce: number) => void;
-  onReturnToNowPlaying: () => void;
-  isPlaying: boolean;
-  onPlayEpisode: (episode: PodcastPlayback) => void;
-  onPlayEpisodeAt: (episode: PodcastPlayback, positionSeconds: number) => void;
-  onQueueEpisode: (
-    episode: PodcastEpisode,
-    playNext: boolean,
-  ) => boolean | Promise<boolean>;
-  onRemoveQueueEpisode: (episodeId: string) => void | Promise<void>;
-  onMoveQueueEpisode: (
-    episodeId: string,
-    direction: -1 | 1,
-  ) => void | Promise<void>;
-  onReorderQueueEpisode: (
-    episodeId: string,
-    targetEpisodeId: string,
-    placement: PodcastQueueDropPlacement,
-  ) => void | Promise<void>;
-  onRemoveQueueEpisodes: (episodeIds: string[]) => Promise<void>;
-  onSetQueueEpisodesPlayed: (
-    episodeIds: string[],
-    played: boolean,
-  ) => Promise<void>;
-  onDownloadQueueEpisodes: (
-    episodes: PodcastEpisode[],
-  ) => Promise<{ downloadedCount: number; failedCount: number }>;
-  onClearQueue: () => void | Promise<void>;
-  onAutoQueueMode: (mode: PodcastAutoQueueMode) => void;
-  onEpisodeUpdated: (episode: PodcastEpisode) => void;
-  onSetEpisodePlayed: (
-    episodeId: string,
-    played: boolean,
-  ) => Promise<PodcastEpisodeDetail>;
-  onDownloadsDeleted: (episodeIds: string[]) => void | Promise<void>;
-};
-
-type PodcastSessionSnapshot = {
-  screen: PodcastScreen;
-  returnScreen: RootPodcastScreen;
-  query: string;
-  listenFilter: PodcastListenFilter;
-  discoveryTopic: PodcastDiscoveryTopic | null;
-  searchHeading: string;
-  searchSort: PodcastDiscoverySort;
-  searchHighlightQuery: string;
-  searchState: RequestState;
-  searchResults: PodcastSearchResult[];
-  selectedFeed: PodcastFeed | null;
-  episodes: PodcastEpisode[];
-  selectedEpisodeId: string | null;
-  selectedEpisodeDetail: PodcastEpisodeDetail | null;
-  episodeOriginScreen: EpisodeOriginScreen;
-  episodeOriginFeed: PodcastFeed | null;
-  lastPlayedEpisode: PodcastEpisode | null;
-};
-
-const EMPTY_HOME: PodcastHome = {
-  continueListening: [],
-  latestEpisodes: [],
-  unplayedEpisodes: [],
-  downloadPriorityEpisodes: [],
-  downloadedEpisodes: [],
-  savedEpisodes: [],
-  recentlyPlayedEpisodes: [],
-};
-const EMPTY_DOWNLOAD_PAGE: PodcastDownloadPage = {
-  episodes: [],
-  totalCount: 0,
-  totalBytes: 0,
-  feedCount: 0,
-  hasMore: false,
-};
-const DISCOVERY_CACHE_TTL_MS = 15 * 60 * 1_000;
-const SEARCH_CACHE_TTL_MS = 15 * 60 * 1_000;
-const PREVIEW_FEED_CACHE_TTL_MS = 30 * 60 * 1_000;
-const CHAPTER_CACHE_TTL_MS = 6 * 60 * 60 * 1_000;
-const STALE_CHAPTER_CACHE_TTL_MS = 5 * 60 * 1_000;
-const SEARCH_CACHE_LIMIT = 24;
-const CHAPTER_MEMORY_CACHE_LIMIT = 64;
-const PODCAST_DISCOVERY_STORAGE_KEY = "zone-podcast-discovery-v1";
-const PODCAST_LIBRARY_STORAGE_KEY = "zone-podcast-library-v1";
-const PODCAST_DOWNLOAD_PAGE_SIZE = 60;
-const PODCAST_DOWNLOAD_BATCH_LIMIT = 500;
-const PODCAST_DOWNLOAD_PROGRESS_POLL_MS = 800;
-const PODCAST_QUEUE_BATCH_LIMIT = 500;
-const PODCAST_AUTO_QUEUE_MODES: Array<{
-  id: PodcastAutoQueueMode;
-  label: string;
-}> = [
-  { id: "off", label: "停止" },
-  { id: "same-feed", label: "同节目下一集" },
-  { id: "random-unplayed", label: "随机未听" },
-];
-const PODCAST_LISTEN_FILTERS: Array<{
-  id: PodcastListenFilter;
-  label: string;
-}> = [
-  { id: "recent", label: "最近更新" },
-  { id: "unplayed", label: "未收听" },
-  { id: "download-first", label: "下载优先" },
-];
-const PODCAST_LIBRARY_SORTS: Array<{
-  id: PodcastLibrarySort;
-  label: string;
-}> = [
-  { id: "recent", label: "最近更新" },
-  { id: "name", label: "名称" },
-  { id: "custom", label: "手动排序" },
-];
-const PODCAST_DISCOVERY_TOPICS: Array<{
-  id: PodcastDiscoveryTopic;
-  label: string;
-  query?: string;
-}> = [
-  { id: "popular", label: "热门" },
-  { id: "business", label: "商业", query: "商业" },
-  { id: "technology", label: "科技", query: "科技" },
-  { id: "humanities", label: "人文", query: "人文" },
-  { id: "english", label: "英语", query: "英语" },
-];
-const PODCAST_DISCOVERY_SORTS: Array<{
-  id: PodcastDiscoverySort;
-  label: string;
-}> = [
-  { id: "relevance", label: "相关性" },
-  { id: "recent", label: "最近更新" },
-  { id: "episodes", label: "单集数量" },
-];
-let discoveryCache: { shows: PodcastDiscoveryShow[]; fetchedAt: number } | null = null;
-const searchCache = new Map<
-  string,
-  { results: PodcastSearchResult[]; fetchedAt: number }
->();
-const previewFeedCache = new Map<
-  string,
-  { value: PodcastFeed; fetchedAt: number }
->();
-const chapterDocumentCache = new Map<
-  string,
-  { value: PodcastChapterDocument; fetchedAt: number }
->();
-let podcastSessionSnapshot: PodcastSessionSnapshot | null = null;
-
-function rememberBoundedCacheEntry<Key, Value>(
-  cache: Map<Key, Value>,
-  key: Key,
-  value: Value,
-  limit: number,
-) {
-  cache.delete(key);
-  cache.set(key, value);
-  while (cache.size > limit) {
-    const oldest = cache.keys().next();
-    if (oldest.done) break;
-    cache.delete(oldest.value);
-  }
-}
-
-function cacheEntryIsFresh(
-  entry: { fetchedAt: number } | undefined,
-  ttlMs: number,
-  now = Date.now(),
-) {
-  return Boolean(entry && now - entry.fetchedAt < ttlMs);
-}
+import type {
+  EpisodeOriginScreen,
+  PodcastDiscoveryTopic,
+  PodcastDownloadCleanupIntent,
+  PodcastQueueDropPlacement,
+  PodcastQueueDropTarget,
+  PodcastQueueRemovalIntent,
+  PodcastScreen,
+  PodcastSessionSnapshot,
+  PodcastViewProps,
+  RequestState,
+  RootPodcastScreen,
+  ShowCandidate,
+} from "./podcast/types";
+import {
+  CHAPTER_CACHE_TTL_MS,
+  CHAPTER_MEMORY_CACHE_LIMIT,
+  DISCOVERY_CACHE_TTL_MS,
+  EMPTY_DOWNLOAD_PAGE,
+  EMPTY_HOME,
+  PODCAST_AUTO_QUEUE_MODES,
+  PODCAST_DISCOVERY_SORTS,
+  PODCAST_DISCOVERY_TOPICS,
+  PODCAST_DOWNLOAD_BATCH_LIMIT,
+  PODCAST_DOWNLOAD_PAGE_SIZE,
+  PODCAST_DOWNLOAD_PROGRESS_POLL_MS,
+  PODCAST_LIBRARY_SORTS,
+  PODCAST_LIBRARY_STORAGE_KEY,
+  PODCAST_LISTEN_FILTERS,
+  PODCAST_QUEUE_BATCH_LIMIT,
+  PREVIEW_FEED_CACHE_TTL_MS,
+  SEARCH_CACHE_LIMIT,
+  SEARCH_CACHE_TTL_MS,
+  STALE_CHAPTER_CACHE_TTL_MS,
+} from "./podcast/constants";
+import {
+  cacheEntryIsFresh,
+  chapterDocumentCache,
+  discoveryCache,
+  podcastSessionSnapshot,
+  previewFeedCache,
+  rememberBoundedCacheEntry,
+  searchCache,
+  setDiscoveryCache,
+  setPodcastSessionSnapshot,
+} from "./podcast/cache";
+import {
+  clearPodcastEpisodeDownload,
+  deduplicateEpisodes,
+  promoteEpisode,
+  rootScreenLabel,
+  upsertEpisode,
+} from "./podcast/episodeModel";
+import {
+  readPodcastLibraryPreferences,
+  readPodcastSearchHistory,
+  writePodcastSearchHistory,
+} from "./podcast/preferences";
+import {
+  copyPodcastShareUrl,
+  errorMessage,
+  formatEpisodeDate,
+  formatFileSize,
+  plainText,
+  sameStringArray,
+  shareablePodcastEpisodeUrl,
+} from "./podcast/format";
+import {
+  PodcastActivityIndicator,
+  PodcastArtwork,
+  PodcastEmpty,
+  PodcastLoading,
+  PodcastSection,
+} from "./podcast/components/primitives";
+import {
+  CurrentEpisodeRow,
+  EpisodeRow,
+} from "./podcast/components/EpisodeRows";
+import { QueueEpisodeRow } from "./podcast/components/QueueEpisodeRow";
+import { EpisodeDetail } from "./podcast/components/EpisodeDetail";
+import { ContinueCard } from "./podcast/components/ContinueCard";
+import { DiscoveryShelf, ShowCard } from "./podcast/components/ShowCards";
+import {
+  PodcastDownloadCleanupDialog,
+  PodcastQueueRemovalDialog,
+} from "./podcast/components/Dialogs";
 
 export function PodcastView({
   queue,
@@ -611,7 +456,7 @@ export function PodcastView({
         "podcast_browse_apple",
         { limit: 24 },
       );
-      discoveryCache = { shows, fetchedAt: Date.now() };
+      setDiscoveryCache({ shows, fetchedAt: Date.now() });
       setDiscoveryShows(shows);
       setDiscoveryState("ready");
     } catch {
@@ -932,7 +777,7 @@ export function PodcastView({
   }, [searchHistory]);
 
   useEffect(() => {
-    podcastSessionSnapshot = {
+    setPodcastSessionSnapshot({
       screen,
       returnScreen,
       query,
@@ -950,7 +795,7 @@ export function PodcastView({
       episodeOriginScreen,
       episodeOriginFeed,
       lastPlayedEpisode,
-    };
+    });
   }, [
     episodeOriginFeed,
     episodeOriginScreen,
@@ -2101,7 +1946,7 @@ export function PodcastView({
     setNotice(null);
     if (episodeReturnToNowPlaying) {
       if (episodeReturnSessionRef.current) {
-        podcastSessionSnapshot = episodeReturnSessionRef.current;
+        setPodcastSessionSnapshot(episodeReturnSessionRef.current);
       }
       episodeReturnSessionRef.current = null;
       onReturnToNowPlaying();
@@ -3444,1305 +3289,4 @@ export function PodcastView({
       />
     </section>
   );
-}
-
-function PodcastQueueRemovalDialog({
-  intent,
-  busy,
-  onCancel,
-  onConfirm,
-}: {
-  intent: PodcastQueueRemovalIntent;
-  busy: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape" || busy) return;
-      event.preventDefault();
-      onCancel();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [busy, onCancel]);
-
-  return (
-    <div
-      className="playlist-dialog-overlay podcast-queue-dialog-overlay"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (!busy && event.target === event.currentTarget) onCancel();
-      }}
-    >
-      <form
-        className="playlist-dialog playlist-dialog-delete podcast-queue-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="podcast-queue-dialog-title"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onConfirm();
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <span className="playlist-dialog-kicker">待播管理</span>
-        <h2 id="podcast-queue-dialog-title">
-          移除 {intent.episodeIds.length} 集待播
-        </h2>
-        <p className="playlist-dialog-message">
-          只会从当前待播队列移除，下载文件与收听进度都会保留。
-        </p>
-        <div className="playlist-dialog-actions">
-          <button
-            type="submit"
-            className="danger"
-            disabled={busy}
-          >
-            {busy ? (
-              <>
-                <LoaderCircle className="podcast-spinner" size={15} />
-                正在移除
-              </>
-            ) : "移除"}
-          </button>
-          <button type="button" onClick={onCancel} disabled={busy} autoFocus>
-            取消
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function PodcastDownloadCleanupDialog({
-  intent,
-  busy,
-  onCancel,
-  onConfirm,
-}: {
-  intent: PodcastDownloadCleanupIntent;
-  busy: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape" || busy) return;
-      event.preventDefault();
-      onCancel();
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [busy, onCancel]);
-
-  const title = intent.kind === "selected"
-    ? `删除 ${intent.episodeIds.length} 集下载`
-    : "清理已听完下载";
-
-  return (
-    <div
-      className="playlist-dialog-overlay podcast-download-dialog-overlay"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (!busy && event.target === event.currentTarget) onCancel();
-      }}
-    >
-      <form
-        className="playlist-dialog playlist-dialog-delete podcast-download-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="podcast-download-dialog-title"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onConfirm();
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <span className="playlist-dialog-kicker">下载管理</span>
-        <h2 id="podcast-download-dialog-title">{title}</h2>
-        <p className="playlist-dialog-message">
-          {intent.kind === "selected"
-            ? `将释放约 ${formatFileSize(
-              intent.downloadedBytes,
-            )}。单集和收听进度仍会保留。`
-            : "将删除所有已听完单集的离线文件。单集和收听进度仍会保留。"}
-        </p>
-        <div className="playlist-dialog-actions">
-          <button
-            type="submit"
-            className="danger"
-            disabled={busy}
-          >
-            {busy ? (
-              <>
-                <LoaderCircle className="podcast-spinner" size={15} />
-                正在删除
-              </>
-            ) : "删除"}
-          </button>
-          <button type="button" onClick={onCancel} disabled={busy} autoFocus>
-            取消
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function PodcastSection({
-  title,
-  count,
-  actionLabel,
-  onAction,
-  children,
-}: {
-  title: string;
-  count?: number;
-  actionLabel?: string;
-  onAction?: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <section className="podcast-content-section">
-      <div className="podcast-section-title">
-        <h2>{title}</h2>
-        {typeof count === "number" && count > 0 ? <span>{count}</span> : null}
-        {actionLabel && onAction ? (
-          <button type="button" onClick={onAction}>{actionLabel}</button>
-        ) : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function DiscoveryShelf({
-  state,
-  shows,
-  feeds,
-  openingId,
-  onOpen,
-  onRetry,
-}: {
-  state: RequestState;
-  shows: PodcastDiscoveryShow[];
-  feeds: PodcastFeed[];
-  openingId: string | null;
-  onOpen: (show: PodcastDiscoveryShow) => void;
-  onRetry: () => void;
-}) {
-  if (state === "idle" || state === "loading") {
-    return <PodcastLoading label="正在读取中国区热门节目" />;
-  }
-  if (state === "error") {
-    return (
-      <div className="podcast-inline-state">
-        <span>热门节目暂时不可用，资料库和搜索仍可使用</span>
-        <button type="button" onClick={onRetry}>重试</button>
-      </div>
-    );
-  }
-  if (shows.length === 0) {
-    return <PodcastEmpty label="暂时没有热门节目" />;
-  }
-  return (
-    <div className="podcast-show-shelf">
-      {shows.map((show) => (
-        <ShowCard
-          key={show.id}
-          show={show}
-          followed={feeds.some((feed) => feed.feedUrl === show.feedUrl)}
-          loading={openingId === show.id}
-          onOpen={() => onOpen(show)}
-        />
-      ))}
-    </div>
-  );
-}
-
-function ShowCard({
-  show,
-  followed,
-  highlightQuery = "",
-  loading,
-  onOpen,
-  showSearchMetadata = false,
-}: {
-  show: ShowCandidate & {
-    episodeCount?: number | null;
-    genres?: string[];
-    latestReleaseAt?: number | null;
-    rank?: number;
-  };
-  followed: boolean;
-  highlightQuery?: string;
-  loading: boolean;
-  onOpen: () => void;
-  showSearchMetadata?: boolean;
-}) {
-  const genres = show.genres?.filter(Boolean).slice(0, showSearchMetadata ? 2 : 1)
-    ?? [];
-  const episodeCount = typeof show.episodeCount === "number"
-    && Number.isFinite(show.episodeCount)
-    ? Math.max(0, Math.floor(show.episodeCount))
-    : null;
-  return (
-    <button
-      type="button"
-      className="podcast-show-card"
-      onClick={onOpen}
-      disabled={loading}
-    >
-      <PodcastArtwork url={show.artworkUrl} title={show.title} />
-      <span className="podcast-show-card-copy">
-        <strong>
-          <PodcastSearchHighlight
-            text={show.title}
-            query={highlightQuery}
-          />
-        </strong>
-        <small>
-          <PodcastSearchHighlight
-            text={show.author || "未知作者"}
-            query={highlightQuery}
-          />
-        </small>
-        {showSearchMetadata ? (
-          <>
-            {episodeCount !== null || show.latestReleaseAt ? (
-              <span className="podcast-show-card-meta">
-                {episodeCount !== null ? <span>{episodeCount} 集</span> : null}
-                {show.latestReleaseAt ? (
-                  <span>更新 {formatEpisodeDate(show.latestReleaseAt)}</span>
-                ) : null}
-              </span>
-            ) : null}
-            {genres.length > 0 ? (
-              <span className="podcast-show-card-genres">
-                {genres.map((genre, index) => (
-                  <em key={`${index}-${genre}`}>{genre}</em>
-                ))}
-              </span>
-            ) : null}
-          </>
-        ) : genres[0] ? (
-          <em>{genres[0]}</em>
-        ) : null}
-      </span>
-      {loading ? (
-        <PodcastActivityIndicator className="podcast-card-state" />
-      ) : followed ? (
-        <Check className="podcast-card-state" size={16} />
-      ) : show.rank ? (
-        <span className="podcast-card-rank">{show.rank}</span>
-      ) : null}
-    </button>
-  );
-}
-
-function PodcastSearchHighlight({
-  text,
-  query,
-}: {
-  text: string;
-  query: string;
-}) {
-  return (
-    <>
-      {splitPodcastSearchMatch(text, query).map((segment, index) =>
-        segment.matched ? (
-          <mark key={`${index}-${segment.text}`}>{segment.text}</mark>
-        ) : (
-          <span key={`${index}-${segment.text}`}>{segment.text}</span>
-        )
-      )}
-    </>
-  );
-}
-
-function podcastPlayedLabel(episode: PodcastEpisode): string | null {
-  const percentage = podcastEpisodePlayedPercent(episode);
-  if (percentage === 100) return "已播完";
-  if (percentage !== null) return `已播 ${percentage}%`;
-  return episode.progressSeconds > 0 ? "收听中" : null;
-}
-
-function podcastDownloadProgressLabel(episode: PodcastEpisode) {
-  if (episode.downloadedBytes <= 0) return null;
-  if (episode.totalBytes && episode.totalBytes > 0) {
-    const percentage = Math.min(
-      99,
-      Math.floor(episode.downloadedBytes / episode.totalBytes * 100),
-    );
-    return `${percentage}%`;
-  }
-  return formatFileSize(episode.downloadedBytes);
-}
-
-function ContinueCard({
-  episode,
-  active,
-  isPlaying,
-  onOpen,
-  onPlay,
-  onContextMenu,
-}: {
-  episode: PodcastEpisode;
-  active: boolean;
-  isPlaying: boolean;
-  onOpen: () => void;
-  onPlay: () => void;
-  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
-}) {
-  const percentage = podcastEpisodePlayedPercent(episode) ?? 0;
-  const progressLabel = podcastPlayedLabel(episode);
-  return (
-    <article
-      className={`podcast-continue-card${active ? " active" : ""}`}
-      onContextMenu={onContextMenu}
-    >
-      <div className="podcast-continue-artwork">
-        <PodcastArtwork
-          url={episode.artworkUrl ?? episode.feedArtworkUrl}
-          title={episode.feedTitle ?? episode.title}
-        />
-        {progressLabel ? (
-          <span className="podcast-cover-progress" aria-hidden="true">
-            {progressLabel}
-          </span>
-        ) : null}
-      </div>
-      <button
-        type="button"
-        className="podcast-continue-open"
-        onClick={onOpen}
-        aria-label={`查看单集：${episode.title}，${progressLabel ?? "继续收听"}`}
-      >
-        <span>{episode.feedTitle || "播客"}</span>
-        <strong>{episode.title}</strong>
-        <span
-          className="podcast-card-progress"
-          aria-hidden="true"
-        >
-          <i style={{ width: `${percentage}%` }} />
-        </span>
-        <small>
-          {episode.durationSeconds
-            ? `共 ${formatTime(episode.durationSeconds)}`
-            : "继续收听"}
-        </small>
-      </button>
-      <button
-        type="button"
-        className="podcast-play-action"
-        onClick={onPlay}
-        title={active && isPlaying ? "暂停" : "继续播放"}
-      >
-        {active && isPlaying
-          ? <Pause size={18} fill="currentColor" />
-          : <Play size={18} fill="currentColor" />}
-      </button>
-    </article>
-  );
-}
-
-function EpisodeRow({
-  episode,
-  active,
-  isPlaying,
-  downloading,
-  showFeed = false,
-  showArtwork = false,
-  showDownloadedSize = false,
-  selecting = false,
-  selected = false,
-  isNew = false,
-  onOpen,
-  onSelect,
-  onPlay,
-  onDownload,
-  onContextMenu,
-}: {
-  episode: PodcastEpisode;
-  active: boolean;
-  isPlaying: boolean;
-  downloading: boolean;
-  showFeed?: boolean;
-  showArtwork?: boolean;
-  showDownloadedSize?: boolean;
-  selecting?: boolean;
-  selected?: boolean;
-  isNew?: boolean;
-  onOpen: () => void;
-  onSelect?: () => void;
-  onPlay: () => void;
-  onDownload: () => void;
-  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
-}) {
-  const progressLabel = podcastPlayedLabel(episode);
-  const downloadProgressLabel = downloading
-    ? podcastDownloadProgressLabel(episode)
-    : null;
-  const accessibilityLabel = [
-    selecting
-      ? `${selected ? "取消选择" : "选择"}单集：${episode.title}`
-      : `查看单集：${episode.title}`,
-    isNew ? "24 小时内更新" : null,
-    progressLabel,
-  ].filter(Boolean).join("，");
-  return (
-    <article
-      className={`podcast-episode${showArtwork ? " with-artwork" : ""}${
-        active ? " active" : ""
-      }${selecting ? " selecting" : ""}${selected ? " selected" : ""
-      }`}
-      onContextMenu={onContextMenu}
-    >
-      {showArtwork ? (
-        <div className="podcast-episode-artwork">
-          <PodcastArtwork
-            url={episode.artworkUrl ?? episode.feedArtworkUrl}
-            title={episode.feedTitle ?? episode.title}
-          />
-          {progressLabel ? (
-            <span className="podcast-cover-progress" aria-hidden="true">
-              {progressLabel}
-            </span>
-          ) : null}
-        </div>
-      ) : (
-        <div className="podcast-episode-date">
-          <span>{formatEpisodeDate(episode.publishedAt)}</span>
-          <small>
-            {[
-              episode.durationSeconds
-                ? formatTime(episode.durationSeconds)
-                : "时长未知",
-              showDownloadedSize && episode.downloadedBytes > 0
-                ? formatFileSize(episode.downloadedBytes)
-                : null,
-            ].filter(Boolean).join(" · ")}
-          </small>
-        </div>
-      )}
-      <button
-        type="button"
-        className="podcast-episode-copy podcast-episode-open"
-        onClick={selecting && onSelect ? onSelect : onOpen}
-        aria-label={accessibilityLabel}
-      >
-        {showArtwork ? (
-          <span className="podcast-episode-meta">
-            {showFeed && episode.feedTitle ? (
-              <span className="podcast-episode-feed">{episode.feedTitle}</span>
-            ) : null}
-            {isNew ? <em className="podcast-new-badge">新</em> : null}
-            <span>{formatEpisodeDate(episode.publishedAt)}</span>
-            <span>
-              {episode.durationSeconds
-                ? formatTime(episode.durationSeconds)
-                : "时长未知"}
-            </span>
-          </span>
-        ) : showFeed && episode.feedTitle ? (
-          <span className="podcast-episode-feed">{episode.feedTitle}</span>
-        ) : null}
-        <strong>{episode.title}</strong>
-        {episode.description ? <p>{plainText(episode.description)}</p> : null}
-        {!showArtwork && (episode.progressSeconds > 0 || episode.completed) ? (
-          <small>
-            {episode.completed
-              ? "已播放"
-              : `已播放至 ${formatTime(episode.progressSeconds)}`}
-          </small>
-        ) : null}
-      </button>
-      <div className="podcast-episode-actions">
-        {selecting && onSelect ? (
-          <button
-            type="button"
-            className="podcast-episode-select"
-            aria-pressed={selected}
-            aria-label={`${selected ? "取消选择" : "选择"}“${episode.title}”`}
-            onClick={onSelect}
-          >
-            {selected ? <Check size={17} /> : null}
-          </button>
-        ) : (
-          <>
-            <button
-              type="button"
-              className="podcast-download-action"
-              onClick={onDownload}
-              disabled={downloading || Boolean(episode.localPath)}
-              title={
-                episode.localPath
-                  ? "已下载，可离线收听"
-                  : downloading
-                    ? downloadProgressLabel
-                      ? `正在下载 ${downloadProgressLabel}`
-                      : "正在下载"
-                    : "下载以便离线收听"
-              }
-            >
-              {downloading && downloadProgressLabel ? (
-                <span className="podcast-download-progress">
-                  {downloadProgressLabel}
-                </span>
-              ) : downloading ? (
-                <LoaderCircle className="podcast-spinner" size={16} />
-              ) : episode.localPath ? (
-                <Check size={16} />
-              ) : (
-                <Download size={16} />
-              )}
-            </button>
-            <button
-              type="button"
-              className="podcast-play-action"
-              onClick={onPlay}
-              title={
-                active && isPlaying
-                  ? "暂停"
-                  : episode.progressSeconds > 0
-                    ? "继续播放"
-                    : "播放"
-              }
-            >
-              {active && isPlaying
-                ? <Pause size={17} fill="currentColor" />
-                : <Play size={17} fill="currentColor" />}
-            </button>
-          </>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function CurrentEpisodeRow({
-  episode,
-  isPlaying,
-  onOpen,
-  onPlay,
-  onContextMenu,
-}: {
-  episode: PodcastEpisode;
-  isPlaying: boolean;
-  onOpen: () => void;
-  onPlay: () => void;
-  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
-}) {
-  return (
-    <article
-      className="podcast-current-episode"
-      onContextMenu={onContextMenu}
-    >
-      <PodcastArtwork
-        url={episode.artworkUrl ?? episode.feedArtworkUrl}
-        title={episode.feedTitle ?? episode.title}
-      />
-      <button
-        type="button"
-        className="podcast-current-copy"
-        onClick={onOpen}
-      >
-        <span>{episode.feedTitle || "播客"}</span>
-        <strong>{episode.title}</strong>
-        <small>
-          {episode.completed
-            ? "已播放"
-            : episode.progressSeconds > 0
-              ? `已播放至 ${formatTime(episode.progressSeconds)}`
-              : "正在播放"}
-        </small>
-      </button>
-      <button
-        type="button"
-        className="podcast-play-action"
-        onClick={onPlay}
-        title={isPlaying ? "暂停" : "继续播放"}
-      >
-        {isPlaying
-          ? <Pause size={18} fill="currentColor" />
-          : <Play size={18} fill="currentColor" />}
-      </button>
-    </article>
-  );
-}
-
-function QueueEpisodeRow({
-  item,
-  index,
-  count,
-  selecting,
-  selected,
-  dragging,
-  dropPlacement,
-  onSelect,
-  onOpen,
-  onPlay,
-  onMove,
-  onRemove,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
-  onContextMenu,
-}: {
-  item: PodcastQueueItem;
-  index: number;
-  count: number;
-  selecting: boolean;
-  selected: boolean;
-  dragging: boolean;
-  dropPlacement?: PodcastQueueDropPlacement;
-  onSelect: () => void;
-  onOpen: () => void;
-  onPlay: () => void;
-  onMove: (direction: -1 | 1) => void;
-  onRemove: () => void;
-  onDragStart: (event: ReactDragEvent<HTMLSpanElement>) => void;
-  onDragOver: (event: ReactDragEvent<HTMLElement>) => void;
-  onDrop: (event: ReactDragEvent<HTMLElement>) => void;
-  onDragEnd: () => void;
-  onContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
-}) {
-  const fileBytes = item.episode.localPath
-    ? item.episode.downloadedBytes
-    : item.episode.totalBytes;
-
-  return (
-    <article
-      className={[
-        "podcast-queue-episode",
-        selecting ? "selecting" : "",
-        selected ? "selected" : "",
-        dragging ? "is-dragging" : "",
-        dropPlacement ? "is-drop-target" : "",
-      ].filter(Boolean).join(" ")}
-      data-drop-position={dropPlacement}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onContextMenu={onContextMenu}
-    >
-      {selecting ? (
-        <button
-          type="button"
-          className="podcast-queue-select-control"
-          aria-label={`${selected ? "取消选择" : "选择"}“${
-            item.episode.title
-          }”`}
-          aria-pressed={selected}
-          onClick={onSelect}
-        >
-          {selected ? <Check size={15} aria-hidden="true" /> : null}
-        </button>
-      ) : (
-        <span
-          className="podcast-queue-drag"
-          draggable={count > 1}
-          aria-hidden="true"
-          data-disabled={count < 2}
-          title="拖动排序"
-          onDragStart={onDragStart}
-          onDragEnd={onDragEnd}
-        >
-          <GripVertical size={16} aria-hidden="true" />
-        </span>
-      )}
-      <span className="podcast-queue-position">
-        {String(index + 1).padStart(2, "0")}
-      </span>
-      <button
-        type="button"
-        className="podcast-queue-copy"
-        aria-pressed={selecting ? selected : undefined}
-        onClick={selecting ? onSelect : onOpen}
-      >
-        <strong>{item.episode.title}</strong>
-        <small>
-          {item.episode.feedTitle || "播客"}
-          {item.episode.durationSeconds
-            ? ` · ${formatTime(item.episode.durationSeconds)}`
-            : ""}
-          {typeof fileBytes === "number" && fileBytes > 0
-            ? ` · ${formatFileSize(fileBytes)}`
-            : ""}
-        </small>
-      </button>
-      {!selecting ? (
-        <div className="podcast-queue-actions">
-          <button type="button" onClick={onPlay} title="立即播放">
-            <Play size={15} fill="currentColor" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onMove(-1)}
-            disabled={index === 0}
-            title="上移"
-          >
-            <ChevronUp size={16} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onMove(1)}
-            disabled={index === count - 1}
-            title="下移"
-          >
-            <ChevronDown size={16} />
-          </button>
-          <button type="button" onClick={onRemove} title="从待播队列移除">
-            <X size={16} />
-          </button>
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
-function EpisodeDetail({
-  detail,
-  active,
-  isPlaying,
-  downloading,
-  action,
-  queuePosition,
-  chapterDocument,
-  chapterState,
-  chaptersOpen,
-  activeProgress,
-  onPlay,
-  onPlayNext,
-  onAddQueue,
-  onToggleSaved,
-  onDownload,
-  onDeleteDownload,
-  onTogglePlayed,
-  onOpenShow,
-  onToggleChapters,
-  onRetryChapters,
-  onPlayChapter,
-}: {
-  detail: PodcastEpisodeDetail;
-  active: boolean;
-  isPlaying: boolean;
-  downloading: boolean;
-  action: "save" | "played" | "delete" | null;
-  queuePosition: number;
-  chapterDocument: PodcastChapterDocument | null;
-  chapterState: RequestState;
-  chaptersOpen: boolean;
-  activeProgress: number;
-  onPlay: () => void;
-  onPlayNext: () => void;
-  onAddQueue: () => void;
-  onToggleSaved: () => void;
-  onDownload: () => void;
-  onDeleteDownload: () => void;
-  onTogglePlayed: () => void;
-  onOpenShow: () => void;
-  onToggleChapters: () => void;
-  onRetryChapters: () => void;
-  onPlayChapter: (positionSeconds: number) => void;
-}) {
-  const { episode, feed } = detail;
-  const currentChapterIndex = active && chapterDocument
-    ? findActivePodcastChapterIndex(
-      chapterDocument.chapters,
-      activeProgress,
-    )
-    : -1;
-  const chapterPanelId = `podcast-chapters-${episode.id}`;
-  const playLabel = active && isPlaying
-    ? "暂停"
-    : episode.progressSeconds > 0 && !episode.completed
-      ? "继续播放"
-      : "播放";
-  const downloadProgressLabel = downloading
-    ? podcastDownloadProgressLabel(episode)
-    : null;
-  return (
-    <article className="podcast-detail">
-      <section className="podcast-detail-hero">
-        <PodcastArtwork
-          url={
-            episode.artworkUrl
-            ?? episode.feedArtworkUrl
-            ?? feed.artworkUrl
-          }
-          title={episode.title}
-          large
-        />
-        <div className="podcast-detail-copy">
-          <button type="button" onClick={onOpenShow}>{feed.title}</button>
-          <h2>{episode.title}</h2>
-          <div className="podcast-detail-meta">
-            <span>{formatEpisodeFullDate(episode.publishedAt)}</span>
-            <span>
-              {episode.durationSeconds
-                ? formatTime(episode.durationSeconds)
-                : "时长未知"}
-            </span>
-            {episode.completed ? <span>已播放</span> : null}
-            {queuePosition >= 0
-              ? <span>待播第 {queuePosition + 1} 位</span>
-              : null}
-          </div>
-          {episode.progressSeconds > 0 && !episode.completed ? (
-            <div className="podcast-detail-progress">
-              <span>
-                已播放至 {formatTime(episode.progressSeconds)}
-              </span>
-              {episode.durationSeconds ? (
-                <i>
-                  <b
-                    style={{
-                      width: `${
-                        Math.min(
-                          100,
-                          episode.progressSeconds
-                            / episode.durationSeconds
-                            * 100,
-                        )
-                      }%`,
-                    }}
-                  />
-                </i>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      </section>
-
-      <div className="podcast-detail-actions" aria-label="单集操作">
-        <button
-          type="button"
-          className="primary"
-          onClick={onPlay}
-        >
-          {active && isPlaying
-            ? <Pause size={17} fill="currentColor" />
-            : <Play size={17} fill="currentColor" />}
-          {playLabel}
-        </button>
-        <button type="button" onClick={onPlayNext}>
-          <SkipForward size={16} />
-          接着播放
-        </button>
-        <button type="button" onClick={onAddQueue}>
-          <ListMusic size={16} />
-          加入待播
-        </button>
-        <button
-          type="button"
-          onClick={onToggleSaved}
-          disabled={Boolean(action)}
-          className={episode.saved ? "active" : ""}
-        >
-          {action === "save"
-            ? <LoaderCircle className="podcast-spinner" size={16} />
-            : <Bookmark size={16} fill={episode.saved ? "currentColor" : "none"} />}
-          {episode.saved ? "取消保存" : "保存"}
-        </button>
-        {episode.localPath ? (
-          <button
-            type="button"
-            onClick={onDeleteDownload}
-            disabled={Boolean(action)}
-          >
-            {action === "delete"
-              ? <LoaderCircle className="podcast-spinner" size={16} />
-              : <Trash2 size={16} />}
-            删除下载
-          </button>
-        ) : (
-          <button type="button" onClick={onDownload} disabled={downloading}>
-            {downloading
-              ? <LoaderCircle className="podcast-spinner" size={16} />
-              : <Download size={16} />}
-            {downloading
-              ? `正在下载${downloadProgressLabel ? ` ${downloadProgressLabel}` : ""}`
-              : "下载"}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onTogglePlayed}
-          disabled={Boolean(action)}
-        >
-          {action === "played"
-            ? <LoaderCircle className="podcast-spinner" size={16} />
-            : episode.completed
-              ? <RefreshCw size={16} />
-              : <CheckCircle2 size={16} />}
-          {episode.completed ? "标记为未播放" : "标记为已播放"}
-        </button>
-      </div>
-
-      <section className="podcast-detail-description">
-        <h3>简介</h3>
-        <p>
-          {episode.description
-            ? plainText(episode.description)
-            : "这集暂时没有简介。"}
-        </p>
-      </section>
-      {detail.hasChapters ? (
-        <section className="podcast-detail-chapters">
-          <button
-            type="button"
-            className="podcast-chapter-disclosure"
-            aria-expanded={chaptersOpen}
-            aria-controls={chapterPanelId}
-            onClick={onToggleChapters}
-          >
-            <span>
-              <strong>章节</strong>
-              <small>
-                {chapterState === "ready" && chapterDocument
-                  ? `${chapterDocument.chapters.length} 章`
-                  : chapterState === "loading"
-                    ? "正在读取"
-                    : chapterState === "error"
-                      ? "读取失败"
-                      : "按需读取"}
-              </small>
-            </span>
-            <ChevronDown size={18} aria-hidden="true" />
-          </button>
-          {chaptersOpen ? (
-            <div id={chapterPanelId} className="podcast-chapter-panel">
-              {chapterState === "loading" ? (
-                <PodcastLoading label="正在读取章节" />
-              ) : chapterState === "error" ? (
-                <PodcastEmpty
-                  label="暂时无法读取章节"
-                  actionLabel="重试"
-                  onAction={onRetryChapters}
-                />
-              ) : chapterDocument ? (
-                <>
-                  {chapterDocument.stale ? (
-                    <p className="podcast-chapter-cache-note">
-                      当前显示上次成功读取的章节
-                    </p>
-                  ) : null}
-                  <ol className="podcast-chapter-list">
-                    {chapterDocument.chapters.map((chapter, index) => {
-                      const current = index === currentChapterIndex;
-                      return (
-                        <li key={`${chapter.startSeconds}-${chapter.title}`}>
-                          <button
-                            type="button"
-                            className={current ? "current" : ""}
-                            aria-current={current ? "true" : undefined}
-                            aria-label={`跳到 ${chapter.title}，${formatTime(
-                              chapter.startSeconds,
-                            )}`}
-                            onClick={() =>
-                              onPlayChapter(chapter.startSeconds)}
-                          >
-                            <time>{formatTime(chapter.startSeconds)}</time>
-                            <span>{chapter.title}</span>
-                            {current ? <em>正在播放</em> : null}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </>
-              ) : null}
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-    </article>
-  );
-}
-
-function PodcastArtwork({
-  url,
-  title,
-  large = false,
-}: {
-  url?: string | null;
-  title: string;
-  large?: boolean;
-}) {
-  const artworkSrc = podcastArtworkSrc(url);
-  return (
-    <div className={`podcast-artwork${large ? " large" : ""}`}>
-      {artworkSrc ? (
-        <img src={artworkSrc} alt="" draggable={false} />
-      ) : (
-        <span>{title.trim().slice(0, 1) || <Podcast size={22} />}</span>
-      )}
-    </div>
-  );
-}
-
-function PodcastLoading({ label }: { label: string }) {
-  return (
-    <div className="podcast-inline-state podcast-loading-state" role="status">
-      <PodcastActivityIndicator />
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function PodcastActivityIndicator({
-  className = "",
-}: {
-  className?: string;
-}) {
-  return (
-    <span
-      className={`podcast-activity-indicator ${className}`.trim()}
-      aria-hidden="true"
-    >
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-    </span>
-  );
-}
-
-function PodcastEmpty({
-  label,
-  actionLabel,
-  onAction,
-}: {
-  label: string;
-  actionLabel?: string;
-  onAction?: () => void;
-}) {
-  return (
-    <div className="podcast-inline-state">
-      <span>{label}</span>
-      {actionLabel && onAction ? (
-        <button type="button" onClick={onAction}>{actionLabel}</button>
-      ) : null}
-    </div>
-  );
-}
-
-function rootScreenLabel(screen: RootPodcastScreen) {
-  if (screen === "listen") return "收听";
-  if (screen === "discover") return "发现";
-  if (screen === "library") return "资料库";
-  return "播放列表";
-}
-
-function upsertEpisode(
-  episodes: PodcastEpisode[],
-  nextEpisode: PodcastEpisode,
-) {
-  const found = episodes.some((episode) => episode.id === nextEpisode.id);
-  return found
-    ? episodes.map((episode) =>
-      episode.id === nextEpisode.id ? nextEpisode : episode)
-    : [nextEpisode, ...episodes];
-}
-
-function promoteEpisode(
-  episodes: PodcastEpisode[],
-  nextEpisode: PodcastEpisode,
-) {
-  return [
-    nextEpisode,
-    ...episodes.filter((episode) => episode.id !== nextEpisode.id),
-  ];
-}
-
-function deduplicateEpisodes(episodes: PodcastEpisode[]) {
-  const seen = new Set<string>();
-  return episodes.filter((episode) => {
-    if (seen.has(episode.id)) return false;
-    seen.add(episode.id);
-    return true;
-  });
-}
-
-function clearPodcastEpisodeDownload(
-  episode: PodcastEpisode,
-): PodcastEpisode {
-  return {
-    ...episode,
-    downloadState: "none",
-    localPath: null,
-    downloadedBytes: 0,
-    totalBytes: null,
-  };
-}
-
-function readPodcastLibraryPreferences(): {
-  sort: PodcastLibrarySort;
-  customOrder: string[];
-} {
-  try {
-    const raw = localStorage.getItem(PODCAST_LIBRARY_STORAGE_KEY);
-    if (!raw) return { sort: "recent", customOrder: [] };
-    const parsed = JSON.parse(raw) as {
-      sort?: unknown;
-      customOrder?: unknown;
-    };
-    const sort = parsed.sort === "name" || parsed.sort === "custom"
-      ? parsed.sort
-      : "recent";
-    const customOrder = Array.isArray(parsed.customOrder)
-      ? parsed.customOrder.filter(
-        (feedId): feedId is string =>
-          typeof feedId === "string" && Boolean(feedId),
-      )
-      : [];
-    return { sort, customOrder };
-  } catch {
-    return { sort: "recent", customOrder: [] };
-  }
-}
-
-function readPodcastSearchHistory() {
-  try {
-    const raw = localStorage.getItem(PODCAST_DISCOVERY_STORAGE_KEY);
-    if (!raw) return normalizePodcastSearchHistory([]);
-    const parsed = JSON.parse(raw) as { searchHistory?: unknown };
-    return normalizePodcastSearchHistory(parsed?.searchHistory);
-  } catch {
-    return normalizePodcastSearchHistory([]);
-  }
-}
-
-function writePodcastSearchHistory(searchHistory: string[]) {
-  try {
-    const raw = localStorage.getItem(PODCAST_DISCOVERY_STORAGE_KEY);
-    let current: Record<string, unknown> = {};
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as unknown;
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          current = parsed as Record<string, unknown>;
-        }
-      } catch {
-        current = {};
-      }
-    }
-    localStorage.setItem(
-      PODCAST_DISCOVERY_STORAGE_KEY,
-      JSON.stringify({
-        ...current,
-        searchHistory: normalizePodcastSearchHistory(searchHistory),
-      }),
-    );
-  } catch {
-    // Search history remains available for the current session.
-  }
-}
-
-function sameStringArray(left: readonly string[], right: readonly string[]) {
-  return left.length === right.length
-    && left.every((value, index) => value === right[index]);
-}
-
-function formatFileSize(bytes: number) {
-  const safeBytes = Number.isFinite(bytes) ? Math.max(0, bytes) : 0;
-  if (safeBytes < 1_024) return `${Math.round(safeBytes)} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = safeBytes / 1_024;
-  let unitIndex = 0;
-  while (value >= 1_024 && unitIndex < units.length - 1) {
-    value /= 1_024;
-    unitIndex += 1;
-  }
-  const formatted = new Intl.NumberFormat("zh-CN", {
-    maximumFractionDigits: value >= 100 ? 0 : value >= 10 ? 1 : 2,
-  }).format(value);
-  return `${formatted} ${units[unitIndex]}`;
-}
-
-function formatEpisodeDate(timestamp?: number | null) {
-  if (!timestamp || !Number.isFinite(timestamp)) return "日期未知";
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "short",
-    day: "numeric",
-  }).format(new Date(timestamp));
-}
-
-function formatEpisodeFullDate(timestamp?: number | null) {
-  if (!timestamp || !Number.isFinite(timestamp)) return "发布日期未知";
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  }).format(new Date(timestamp));
-}
-
-function plainText(value: string) {
-  return value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;/gi, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function shareablePodcastEpisodeUrl(
-  episode: PodcastEpisode,
-): string | null {
-  for (const candidate of [episode.webpageUrl, episode.enclosureUrl]) {
-    if (!candidate?.trim()) continue;
-    try {
-      const parsed = new URL(candidate);
-      if (
-        (parsed.protocol === "https:" || parsed.protocol === "http:")
-        && !parsed.username
-        && !parsed.password
-      ) {
-        return parsed.toString();
-      }
-    } catch {
-      // Ignore malformed feed metadata and try the enclosure fallback.
-    }
-  }
-  return null;
-}
-
-async function copyPodcastShareUrl(url: string) {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(url);
-      return;
-    } catch {
-      // Some WebView versions expose Clipboard API without granting access.
-    }
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = url;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    if (!document.execCommand("copy")) {
-      throw new Error("clipboard unavailable");
-    }
-  } finally {
-    textarea.remove();
-  }
-}
-
-function errorMessage(reason: unknown, fallback: string) {
-  if (typeof reason === "string" && reason.trim()) return reason;
-  if (reason instanceof Error && reason.message.trim()) return reason.message;
-  return fallback;
 }

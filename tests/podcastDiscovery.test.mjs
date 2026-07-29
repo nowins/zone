@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const viewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
+const viewSource = [
+  "src/views/PodcastView.tsx",
+  "src/views/podcast/constants.ts",
+  "src/views/podcast/preferences.ts",
+  "src/views/podcast/components/ShowCards.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
 const typesSource = readFileSync("src/types.ts", "utf8");
-const rustSource = readFileSync("src-tauri/src/podcast.rs", "utf8");
+const rustSource = readFileSync("src-tauri/src/podcast/apple.rs", "utf8");
 
 test("podcast discovery offers low-friction topics and durable recent searches", () => {
   assert.match(viewSource, /PODCAST_DISCOVERY_STORAGE_KEY = "zone-podcast-discovery-v1"/);
@@ -26,7 +31,7 @@ test("podcast discovery offers low-friction topics and durable recent searches",
   assert.match(viewSource, />\s*清空\s*</);
   assert.match(
     viewSource,
-    /podcastSessionSnapshot = \{[\s\S]*?discoveryTopic,[\s\S]*?searchHeading,[\s\S]*?searchState,[\s\S]*?searchResults,/,
+    /setPodcastSessionSnapshot\(\{[\s\S]*?discoveryTopic,[\s\S]*?searchHeading,[\s\S]*?searchState,[\s\S]*?searchResults,/,
   );
   assert.match(
     viewSource,

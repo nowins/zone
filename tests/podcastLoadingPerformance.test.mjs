@@ -2,10 +2,25 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const viewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
+const viewSource = [
+  "src/views/PodcastView.tsx",
+  "src/views/podcast/constants.ts",
+  "src/views/podcast/cache.ts",
+  "src/views/podcast/format.ts",
+  "src/views/podcast/components/EpisodeRows.tsx",
+].map((path) => readFileSync(path, "utf8")).join("\n");
+const podcastPrimitivesSource = readFileSync(
+  "src/views/podcast/components/primitives.tsx",
+  "utf8",
+);
 const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
 const motionSource = readFileSync("src/styles/motion.css", "utf8");
-const rustSource = readFileSync("src-tauri/src/podcast.rs", "utf8");
+const rustSource = [
+  "src-tauri/src/podcast/commands.rs",
+  "src-tauri/src/podcast/mod.rs",
+  "src-tauri/src/podcast/chapters.rs",
+  "src-tauri/src/podcast/downloads.rs",
+].map((path) => readFileSync(path, "utf8")).join("\n");
 
 test("podcast discovery and search keep cached content ahead of network refresh", () => {
   assert.match(viewSource, /const searchCache = new Map/);
@@ -68,12 +83,15 @@ test("preview and chapter requests reuse durable caches before networking", () =
 });
 
 test("content loading pairs a delayed reveal with the Metro orbit indicator", () => {
-  const loadingStart = viewSource.indexOf("function PodcastLoading(");
-  const indicatorStart = viewSource.indexOf(
+  const loadingStart = podcastPrimitivesSource.indexOf("function PodcastLoading(");
+  const indicatorStart = podcastPrimitivesSource.indexOf(
     "\nfunction PodcastActivityIndicator(",
     loadingStart,
   );
-  const loadingSource = viewSource.slice(loadingStart, indicatorStart);
+  const loadingSource = podcastPrimitivesSource.slice(
+    loadingStart,
+    indicatorStart,
+  );
   assert.match(loadingSource, /podcast-loading-state/);
   assert.match(loadingSource, /PodcastActivityIndicator/);
   assert.doesNotMatch(loadingSource, /LoaderCircle|podcast-spinner/);
