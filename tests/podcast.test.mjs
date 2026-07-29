@@ -18,6 +18,14 @@ const playerBarSource = readFileSync("src/components/PlayerBar.tsx", "utf8");
 const podcastPlayerBarSource = readFileSync("src/components/PodcastPlayerBar.tsx", "utf8");
 const podcastViewSource = [
   "src/views/PodcastView.tsx",
+  "src/views/podcast/usePodcastViewModel.ts",
+  "src/views/podcast/api.ts",
+  "src/views/podcast/screens/ListenScreen.tsx",
+  "src/views/podcast/screens/DiscoverScreen.tsx",
+  "src/views/podcast/screens/LibraryScreen.tsx",
+  "src/views/podcast/screens/PlaylistScreen.tsx",
+  "src/views/podcast/screens/ShowScreen.tsx",
+  "src/views/podcast/screens/EpisodeScreen.tsx",
   "src/views/podcast/types.ts",
   "src/views/podcast/constants.ts",
   "src/views/podcast/cache.ts",
@@ -129,23 +137,21 @@ test("podcasts open on content, keep search secondary, and separate play from do
   }
   excludes(podcastViewSource, /播客实验|下载并播放/, "probe copy must not remain in the formal experience");
 
-  const listenSurface = sourceBetween(
-    podcastViewSource,
-    '{screen === "listen" ? (',
-    '{screen === "discover" ? (',
+  const listenScreenSource = readFileSync(
+    "src/views/podcast/screens/ListenScreen.tsx",
+    "utf8",
   );
-  const discoverSurface = sourceBetween(
-    podcastViewSource,
-    '{screen === "discover" ? (',
-    '{screen === "library" ? (',
+  const discoverSurface = readFileSync(
+    "src/views/podcast/screens/DiscoverScreen.tsx",
+    "utf8",
   );
   excludes(
-    listenSurface,
-    /DiscoveryShelf|discoveryShows|中国区热门节目/,
+    listenScreenSource,
+    /DiscoveryShelf|中国区热门节目/,
     "the listening home must not duplicate the discovery catalog",
   );
   includes(
-    listenSurface,
+    listenScreenSource,
     /!hasListenContent[\s\S]{0,520}<PodcastEmpty[\s\S]{0,180}actionLabel="去发现"[\s\S]{0,180}changeRootScreen\("discover"\)/,
     "an empty listening home must guide new users into discovery",
   );
@@ -175,7 +181,7 @@ test("podcasts open on content, keep search secondary, and separate play from do
   );
   includes(
     downloadEpisodeSource,
-    /podcast_download_episode/,
+    /podcastApi\.downloadPodcastEpisode|podcast_download_episode/,
     "offline download must remain an explicit secondary action",
   );
 
@@ -306,12 +312,12 @@ test("podcast feeds refresh conditionally while cached content stays usable", ()
   }
   includes(
     podcastViewSource,
-    /invoke<PodcastRefreshReport>\(\s*"podcast_refresh_feeds",\s*\{\s*force:\s*false\s*\}/,
+    /podcastApi\.refreshPodcastFeeds\(\{\s*force:\s*false\s*\}/,
     "the podcast surface must start a throttled background refresh after loading cache",
   );
   includes(
     declaredFunctionSource(podcastViewSource, "refreshSelectedFeed"),
-    /"podcast_refresh_feeds"[\s\S]{0,120}feedId:\s*selectedFeed\.id,\s*force:\s*true/,
+    /podcastApi\.refreshPodcastFeeds\(\{\s*feedId:\s*selectedFeed\.id,\s*force:\s*true\s*\}/,
     "manual show refresh must bypass the interval for the selected feed",
   );
   excludes(
@@ -336,7 +342,7 @@ test("podcast feeds refresh conditionally while cached content stays usable", ()
   );
   includes(
     declaredFunctionSource(podcastViewSource, "refreshSelectedFeed"),
-    /!listedFeed\s*&&\s*nextEpisodes\?\.\[0\][\s\S]{0,240}"podcast_get_episode_detail"[\s\S]{0,260}selectedFeedRef\.current\?\.id\s*===\s*selectedFeed\.id/,
+    /!listedFeed\s*&&\s*nextEpisodes\?\.\[0\][\s\S]{0,240}podcastApi\.getEpisodeDetail\([\s\S]{0,260}selectedFeedRef\.current\?\.id\s*===\s*selectedFeed\.id/,
     "manual refresh must reload metadata for an unsubscribed preview without racing navigation",
   );
   for (const column of [
@@ -376,8 +382,13 @@ test("episode detail exposes saved, played, queue, and offline lifecycle actions
   includes(podcastRustSource, /CREATE TABLE IF NOT EXISTS podcast_saved_episodes/, "saved episodes must persist in SQLite");
   includes(
     podcastViewSource,
-    /invoke<PodcastEpisodeDetail\[\]>\("podcast_list_saved_episodes"\)[\s\S]{0,520}savedEpisodeDetails\.map\(\(detail\)\s*=>\s*detail\.episode\)/,
+    /podcastApi\.listSavedEpisodes\(\)[\s\S]{0,520}savedEpisodeDetails\.map\(\(detail\)\s*=>\s*detail\.episode\)/,
     "the saved-detail command must be normalized back to episode rows before rendering",
+  );
+  includes(
+    podcastViewSource,
+    /"podcast_list_saved_episodes"/,
+    "saved episode listing must still go through the Rust command surface",
   );
 
   for (const label of ["稍后听", "标记为已播放", "删除下载"]) {

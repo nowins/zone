@@ -72,7 +72,8 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `LibraryView.tsx`：收藏页标签切换（专辑/艺术家/歌曲/播放列表），保持轻薄并向下委托。
   - `ArtistBrowser.tsx`：Zune 风格艺术家导航（艺术家 → 专辑 → 歌曲）。
   - `PlaylistBrowser.tsx`：当前队列与已存播放列表（含智能播放列表）。
-  - `PodcastView.tsx`：正式播客页（主组件 state 机与六屏 JSX）。默认“收听”聚合继续收听、已关注节目更新和中国区热门节目；“发现”承载榜单、搜索与辅助 RSS 入口；“资料库”展示已关注、稍后听和已下载内容；节目与单集详情支持关注、保存、播放状态、即时播放、待播与离线下载；“播放列表”管理当前单集与持久待播队列。子组件与支撑模块在 `src/views/podcast/`：`types.ts`/`constants.ts`/`cache.ts`（模块级缓存单例，不可拆散）/`episodeModel.ts`/`preferences.ts`/`format.ts` 与 `components/`（EpisodeRows、QueueEpisodeRow、EpisodeDetail、ContinueCard、ShowCards、Dialogs、primitives）。
+  - `PodcastView.tsx`：正式播客页壳（约 230 行）。负责分区 chrome、六屏切换与浮层（菜单/确认框）；业务状态与数据加载在 `usePodcastViewModel`，各屏 JSX 在 `screens/*`。默认“收听”聚合继续收听与关注更新；“发现”承载榜单、搜索与辅助 RSS；“资料库”展示已关注、稍后听和已下载；节目/单集详情支持关注、保存、播放状态、即时播放、待播与离线下载；“播放列表”管理当前单集与持久待播队列。
+  - `src/views/podcast/`：播客视图模块。`usePodcastViewModel.ts` 持有 screen 状态机、缓存读写与 invoke 编排；`api.ts` 为全部 `podcast_*` 命令的薄封装（屏组件不得直接 `invoke`）；`screens/`（Listen/Discover/Library/Playlist/Show/Episode）为展示层；另有 `types.ts`/`constants.ts`/`cache.ts`（模块级缓存单例，不可拆散）/`episodeModel.ts`/`preferences.ts`/`format.ts` 与 `components/`（EpisodeRows、QueueEpisodeRow、EpisodeDetail、ContinueCard、ShowCards、Dialogs、primitives）。
   - `PodcastNowPlayingView.tsx`：播客专属全屏正在播放。提供 15/30 秒跳转、0.5–3× 倍速、睡眠定时、音量、简介、保存、缓冲/错误反馈与待播管理，不复用音乐 `NowPlayingView` 的拼贴和歌词内部状态。
   - `NowPlayingView.tsx`：全屏正在播放。Canvas 封面拼贴背景、队列浮层、曲目卡片、收藏按钮、进度/走带控制、歌词模式切换。
   - `SettingsView.tsx`：音乐文件夹管理与在线歌词来源（provider）启用/优先级设置。

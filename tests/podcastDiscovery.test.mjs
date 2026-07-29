@@ -4,6 +4,14 @@ import test from "node:test";
 
 const viewSource = [
   "src/views/PodcastView.tsx",
+  "src/views/podcast/usePodcastViewModel.ts",
+  "src/views/podcast/api.ts",
+  "src/views/podcast/screens/ListenScreen.tsx",
+  "src/views/podcast/screens/DiscoverScreen.tsx",
+  "src/views/podcast/screens/LibraryScreen.tsx",
+  "src/views/podcast/screens/PlaylistScreen.tsx",
+  "src/views/podcast/screens/ShowScreen.tsx",
+  "src/views/podcast/screens/EpisodeScreen.tsx",
   "src/views/podcast/constants.ts",
   "src/views/podcast/preferences.ts",
   "src/views/podcast/components/ShowCards.tsx",
@@ -45,7 +53,8 @@ test("topic and manual searches share one race-safe Apple search path", () => {
   const searchSource = viewSource.slice(searchStart, searchEnd);
 
   assert.match(searchSource, /appleSearchRequestRef\.current = requestId/);
-  assert.match(searchSource, /"podcast_search_apple"/);
+  assert.match(searchSource, /podcastApi\.searchApplePodcasts\(cleanQuery, 18\)/);
+  assert.match(viewSource, /"podcast_search_apple"/);
   assert.match(
     searchSource,
     /if \(appleSearchRequestRef\.current !== requestId\) return;[\s\S]*?setSearchResults\(results\)/,

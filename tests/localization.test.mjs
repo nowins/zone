@@ -19,6 +19,14 @@ const settingsSource = readFileSync("src/views/SettingsView.tsx", "utf8");
 const playlistSource = readFileSync("src/views/PlaylistBrowser.tsx", "utf8");
 const podcastSource = [
   "src/views/PodcastView.tsx",
+  "src/views/podcast/usePodcastViewModel.ts",
+  "src/views/podcast/api.ts",
+  "src/views/podcast/screens/ListenScreen.tsx",
+  "src/views/podcast/screens/DiscoverScreen.tsx",
+  "src/views/podcast/screens/LibraryScreen.tsx",
+  "src/views/podcast/screens/PlaylistScreen.tsx",
+  "src/views/podcast/screens/ShowScreen.tsx",
+  "src/views/podcast/screens/EpisodeScreen.tsx",
   "src/views/podcast/types.ts",
   "src/views/podcast/constants.ts",
   "src/views/podcast/cache.ts",

@@ -18,6 +18,14 @@ const appSource = [
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 const podcastViewSource = [
   "src/views/PodcastView.tsx",
+  "src/views/podcast/usePodcastViewModel.ts",
+  "src/views/podcast/api.ts",
+  "src/views/podcast/screens/ListenScreen.tsx",
+  "src/views/podcast/screens/DiscoverScreen.tsx",
+  "src/views/podcast/screens/LibraryScreen.tsx",
+  "src/views/podcast/screens/PlaylistScreen.tsx",
+  "src/views/podcast/screens/ShowScreen.tsx",
+  "src/views/podcast/screens/EpisodeScreen.tsx",
   "src/views/podcast/format.ts",
   "src/views/podcast/components/EpisodeRows.tsx",
   "src/views/podcast/components/QueueEpisodeRow.tsx",
@@ -112,7 +120,7 @@ test("sharing prefers Web Share and safely falls back from webpage to audio URL 
 test("episode shortcut mutations resolve fresh state and report queue persistence truthfully", () => {
   assert.match(
     podcastViewSource,
-    /podcast_download_episode[\s\S]{0,420}podcast_get_episode_detail[\s\S]{0,180}applyEpisodeUpdate\(nextDetail\.episode\)/,
+    /podcastApi\.downloadPodcastEpisode\([\s\S]{0,420}podcastApi\.getEpisodeDetail\([\s\S]{0,180}applyEpisodeUpdate\(nextDetail\.episode\)/,
   );
   assert.doesNotMatch(
     podcastViewSource,

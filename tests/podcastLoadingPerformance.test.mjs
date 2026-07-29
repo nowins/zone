@@ -4,6 +4,14 @@ import test from "node:test";
 
 const viewSource = [
   "src/views/PodcastView.tsx",
+  "src/views/podcast/usePodcastViewModel.ts",
+  "src/views/podcast/api.ts",
+  "src/views/podcast/screens/ListenScreen.tsx",
+  "src/views/podcast/screens/DiscoverScreen.tsx",
+  "src/views/podcast/screens/LibraryScreen.tsx",
+  "src/views/podcast/screens/PlaylistScreen.tsx",
+  "src/views/podcast/screens/ShowScreen.tsx",
+  "src/views/podcast/screens/EpisodeScreen.tsx",
   "src/views/podcast/constants.ts",
   "src/views/podcast/cache.ts",
   "src/views/podcast/format.ts",
@@ -74,7 +82,7 @@ test("preview and chapter requests reuse durable caches before networking", () =
   );
   assert.match(
     viewSource,
-    /setChapterDocument\(cachedDocument\);[\s\S]*?invoke<PodcastChapterDocument>/,
+    /setChapterDocument\(cachedDocument\);[\s\S]*?podcastApi.getEpisodeChapters/,
   );
   assert.match(
     viewSource,
@@ -132,7 +140,7 @@ test("podcast downloads expose throttled byte progress instead of an indefinite 
   );
   assert.match(
     viewSource,
-    /"podcast_get_episode_detail"[\s\S]*?applyEpisodeUpdate\(detail\.episode\)/,
+    /podcastApi\.getEpisodeDetail\([\s\S]*?applyEpisodeUpdate\(detail\.episode\)/,
   );
   assert.match(viewSource, /function podcastDownloadProgressLabel\(/);
   assert.match(viewSource, /className="podcast-download-progress"/);

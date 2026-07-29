@@ -12,6 +12,14 @@ import {
 
 const podcastViewSource = [
   "../src/views/PodcastView.tsx",
+  "../src/views/podcast/usePodcastViewModel.ts",
+  "../src/views/podcast/api.ts",
+  "../src/views/podcast/screens/ListenScreen.tsx",
+  "../src/views/podcast/screens/DiscoverScreen.tsx",
+  "../src/views/podcast/screens/LibraryScreen.tsx",
+  "../src/views/podcast/screens/PlaylistScreen.tsx",
+  "../src/views/podcast/screens/ShowScreen.tsx",
+  "../src/views/podcast/screens/EpisodeScreen.tsx",
   "../src/views/podcast/constants.ts",
   "../src/views/podcast/components/Dialogs.tsx",
 ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))

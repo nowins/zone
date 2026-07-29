@@ -18,6 +18,14 @@ const appSource = [
 const typesSource = readFileSync("src/types.ts", "utf8");
 const viewSource = [
   "src/views/PodcastView.tsx",
+  "src/views/podcast/usePodcastViewModel.ts",
+  "src/views/podcast/api.ts",
+  "src/views/podcast/screens/ListenScreen.tsx",
+  "src/views/podcast/screens/DiscoverScreen.tsx",
+  "src/views/podcast/screens/LibraryScreen.tsx",
+  "src/views/podcast/screens/PlaylistScreen.tsx",
+  "src/views/podcast/screens/ShowScreen.tsx",
+  "src/views/podcast/screens/EpisodeScreen.tsx",
   "src/views/podcast/components/EpisodeDetail.tsx",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
@@ -61,14 +69,15 @@ test("episode detail loads chapters only after the disclosure is opened", () => 
   const loadStart = viewSource.indexOf("const loadEpisodeChapters = useCallback");
   const loadEnd = viewSource.indexOf("\n\n  const loadEpisodeDetail", loadStart);
   const loadSource = viewSource.slice(loadStart, loadEnd);
-  assert.match(loadSource, /"podcast_get_episode_chapters"/);
+  assert.match(loadSource, /podcastApi\.getEpisodeChapters\(episodeId\)/);
   assert.match(loadSource, /chapterRequestRef\.current !== requestId/);
   const detailLoadStart = viewSource.indexOf("const loadEpisodeDetail = useCallback");
   const detailLoadEnd = viewSource.indexOf("\n\n  const applyEpisodeUpdate", detailLoadStart);
   assert.doesNotMatch(
     viewSource.slice(detailLoadStart, detailLoadEnd),
-    /podcast_get_episode_chapters/,
+    /getEpisodeChapters|podcast_get_episode_chapters/,
   );
+  assert.match(viewSource, /"podcast_get_episode_chapters"/);
   assert.match(
     viewSource,
     /function toggleEpisodeChapters\(\)[\s\S]*?setChaptersOpen\(true\)[\s\S]*?loadEpisodeChapters/,
