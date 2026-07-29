@@ -97,10 +97,9 @@ export function usePlaybackControls({
 }: UsePlaybackControlsParams) {
   const {
     activePodcastEpisode,
-    activePodcastEpisodeRef,
     podcastAudioEpisodeRef,
     podcastPlaybackStartedEpisodeRef,
-    pendingPodcastQueueConsumeRef,
+    cancelPendingQueueConsume,
     podcastAutoQueueModeRef,
     podcastSleepTimer,
     setPodcastSleepTimer,
@@ -118,6 +117,10 @@ export function usePlaybackControls({
     playNextPodcastEpisode,
     autofillPodcastQueueAfter,
   } = podcast;
+
+  // Local mirror of the active podcast episode; all mutations flow through state.
+  const activePodcastEpisodeRef = useRef(podcast.activePodcastEpisode);
+  activePodcastEpisodeRef.current = podcast.activePodcastEpisode;
 
   // Transport owns play-attempt generation, autoplay intent, and resume bookkeeping.
   const audioPlayAttemptRef = useRef(0);
@@ -215,7 +218,7 @@ export function usePlaybackControls({
 
   function clearPlaybackIntent() {
     podcastPlaybackIntentRef.current = false;
-    audioPlayAttemptRef.current += 1;
+    beginPlayAttempt();
   }
 
   function clearPendingPodcastStart() {
@@ -232,7 +235,7 @@ export function usePlaybackControls({
         ? null
         : { episodeId: options.episodeId, position: Math.max(0, requested) };
     podcastPlaybackIntentRef.current = true;
-    audioPlayAttemptRef.current += 1;
+    beginPlayAttempt();
     audioRef.current?.pause();
   }
 
@@ -399,9 +402,9 @@ export function usePlaybackControls({
   function stopPodcastForMusic() {
     flushPodcastProgress();
     podcastPlaybackIntentRef.current = false;
-    audioPlayAttemptRef.current += 1;
+    beginPlayAttempt();
     audioRef.current?.pause();
-    pendingPodcastQueueConsumeRef.current = null;
+    cancelPendingQueueConsume();
     clearActivePodcast();
   }
 
@@ -419,7 +422,7 @@ export function usePlaybackControls({
     }
     else {
       recordSkipIfEligible();
-      audioPlayAttemptRef.current += 1;
+      beginPlayAttempt();
       setActiveTrackId(track.id);
     }
   }
@@ -439,7 +442,7 @@ export function usePlaybackControls({
     }
     else {
       recordSkipIfEligible();
-      audioPlayAttemptRef.current += 1;
+      beginPlayAttempt();
       setActiveTrackId(targetTracks[0].id);
     }
   }
@@ -663,7 +666,7 @@ export function usePlaybackControls({
     } else {
       flushPodcastProgress();
       if (activePodcastEpisodeRef.current) podcastPlaybackIntentRef.current = false;
-      audioPlayAttemptRef.current += 1;
+      beginPlayAttempt();
       audio.pause();
       setIsPlaying(false);
     }

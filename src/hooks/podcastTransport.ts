@@ -18,10 +18,8 @@ export type PodcastPendingResume = {
  */
 export type PodcastTransportBridge = {
   activePodcastEpisode: PodcastPlayback | null;
-  activePodcastEpisodeRef: React.MutableRefObject<PodcastPlayback | null>;
   podcastAudioEpisodeRef: React.MutableRefObject<string | null>;
   podcastPlaybackStartedEpisodeRef: React.MutableRefObject<string | null>;
-  pendingPodcastQueueConsumeRef: React.MutableRefObject<string | null>;
   podcastAutoQueueModeRef: React.MutableRefObject<PodcastAutoQueueMode>;
   podcastPlaybackRate: number;
   podcastSessionHydrated: boolean;
@@ -41,6 +39,7 @@ export type PodcastTransportBridge = {
   ) => Promise<void>;
   flushPodcastProgress: () => Promise<void>;
   consumePendingPodcastQueueEpisode: (episodeId: string) => void;
+  cancelPendingQueueConsume: () => void;
   playNextPodcastEpisode: (showEmptyNotice?: boolean) => boolean;
   autofillPodcastQueueAfter: (endedEpisodeId: string) => void;
 };

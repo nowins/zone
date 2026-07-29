@@ -766,7 +766,7 @@ test("podcast playback handles speed, sleep, buffering, and errors on the shared
   );
   includes(
     declaredFunctionSource(appSource, "togglePlay"),
-    /audioPlayAttemptRef\.current\s*\+=\s*1;[\s\S]{0,80}audio\.pause\(\)/,
+    /beginPlayAttempt\(\);[\s\S]{0,80}audio\.pause\(\)/,
     "pausing must invalidate a pending play promise before it can report an error",
   );
   includes(

@@ -140,20 +140,15 @@ export default function App() {
   const {
     transport: podcastTransport,
     activePodcastEpisode,
-    activePodcastEpisodeRef,
     podcastQueue,
-    podcastQueueRef,
     podcastLibraryRevision,
     podcastEpisodeRequest,
-    setPodcastEpisodeRequest,
     podcastPlaybackRate,
     setPodcastPlaybackRate,
     podcastAutoQueueMode,
     podcastSleepTimer,
     setPodcastSleepTimer,
-    podcastSleepTimerRef,
     podcastPlaybackStatus,
-    setPodcastPlaybackStatus,
     podcastSessionHydrated,
     playPodcastEpisode,
     queuePodcastEpisode,
@@ -170,7 +165,9 @@ export default function App() {
     downloadPodcastQueueEpisodes,
     changePodcastAutoQueueMode,
     openActivePodcastEpisode,
-    playPodcastQueueItem,
+    playPodcastQueueEpisodeById,
+    markPodcastPlaying,
+    resolvePodcastEpisodeRequest,
     playNextPodcastEpisode,
     flushPodcastProgress,
   } = podcast;
@@ -289,7 +286,6 @@ export default function App() {
   useEffect(() => () => {
     if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
     if (navExitTimerRef.current !== null) window.clearTimeout(navExitTimerRef.current);
-    if (podcastSleepTimerRef.current !== null) window.clearTimeout(podcastSleepTimerRef.current);
     void flushPodcastProgress();
   }, []);
 
@@ -549,9 +545,7 @@ export default function App() {
         onLoadStart={handleAudioLoadStart}
         onPlay={() => {
           setIsPlaying(true);
-          if (activePodcastEpisodeRef.current) {
-            setPodcastPlaybackStatus("playing");
-          }
+          markPodcastPlaying();
         }}
         onPause={handleAudioPause}
         onWaiting={handleAudioWaiting}
@@ -707,9 +701,7 @@ export default function App() {
             queue={podcastQueue}
             episodeRequest={podcastEpisodeRequest}
             onEpisodeRequestHandled={(nonce) => {
-              setPodcastEpisodeRequest((current) =>
-                current?.nonce === nonce ? null : current
-              );
+              resolvePodcastEpisodeRequest(nonce);
             }}
             onPlayEpisode={playPodcastEpisode}
             onPlayEpisodeAt={(episode, positionSeconds) =>
@@ -749,8 +741,7 @@ export default function App() {
               onPlaybackRate={setPodcastPlaybackRate}
               onSleepTimer={setPodcastSleepTimer}
               onPlayQueueItem={(episodeId) => {
-                const item = podcastQueueRef.current.find((candidate) => candidate.episode.id === episodeId);
-                if (item) playPodcastQueueItem(item);
+                playPodcastQueueEpisodeById(episodeId);
               }}
               onRemoveQueueItem={removePodcastQueueEpisode}
               onMoveQueueItem={movePodcastQueueEpisode}

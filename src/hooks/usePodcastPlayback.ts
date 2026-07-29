@@ -182,6 +182,10 @@ export function usePodcastPlayback({
     }
   }, [activePodcastEpisode, podcastSleepTimer]);
 
+  useEffect(() => () => {
+    if (podcastSleepTimerRef.current !== null) window.clearTimeout(podcastSleepTimerRef.current);
+  }, []);
+
   useEffect(() => {
     if (podcastSleepTimerRef.current !== null) {
       window.clearTimeout(podcastSleepTimerRef.current);
@@ -317,6 +321,10 @@ export function usePodcastPlayback({
     return invoke<PodcastQueueItem[]>("podcast_list_queue")
       .then((items) => applyPodcastQueueResult(items, revision))
       .catch(() => undefined);
+  }
+
+  function cancelPendingQueueConsume() {
+    pendingPodcastQueueConsumeRef.current = null;
   }
 
   function consumePendingPodcastQueueEpisode(episodeId: string) {
@@ -719,6 +727,23 @@ export function usePodcastPlayback({
     playPodcastEpisode(podcastPlaybackForEpisode(item.episode));
   }
 
+  function playPodcastQueueEpisodeById(episodeId: string) {
+    const item = podcastQueueRef.current.find(
+      (candidate) => candidate.episode.id === episodeId,
+    );
+    if (item) playPodcastQueueItem(item);
+  }
+
+  function markPodcastPlaying() {
+    if (activePodcastEpisodeRef.current) setPodcastPlaybackStatus("playing");
+  }
+
+  function resolvePodcastEpisodeRequest(nonce: number) {
+    setPodcastEpisodeRequest((current) =>
+      current?.nonce === nonce ? null : current
+    );
+  }
+
   function playNextPodcastEpisode(showEmptyNotice = true) {
     const activeEpisodeId = activePodcastEpisodeRef.current?.episodeId ?? null;
     if (
@@ -889,10 +914,8 @@ export function usePodcastPlayback({
 
   const transport: PodcastTransportBridge = {
     activePodcastEpisode,
-    activePodcastEpisodeRef,
     podcastAudioEpisodeRef,
     podcastPlaybackStartedEpisodeRef,
-    pendingPodcastQueueConsumeRef,
     podcastAutoQueueModeRef,
     podcastPlaybackRate,
     podcastSessionHydrated,
@@ -907,6 +930,7 @@ export function usePodcastPlayback({
     persistPodcastProgress,
     flushPodcastProgress,
     consumePendingPodcastQueueEpisode,
+    cancelPendingQueueConsume,
     playNextPodcastEpisode,
     autofillPodcastQueueAfter,
   };
@@ -914,20 +938,15 @@ export function usePodcastPlayback({
   return {
     transport,
     activePodcastEpisode,
-    activePodcastEpisodeRef,
     podcastQueue,
-    podcastQueueRef,
     podcastLibraryRevision,
     podcastEpisodeRequest,
-    setPodcastEpisodeRequest,
     podcastPlaybackRate,
     setPodcastPlaybackRate,
     podcastAutoQueueMode,
     podcastSleepTimer,
     setPodcastSleepTimer,
-    podcastSleepTimerRef,
     podcastPlaybackStatus,
-    setPodcastPlaybackStatus,
     podcastSessionHydrated,
     playPodcastEpisode,
     queuePodcastEpisode,
@@ -944,6 +963,9 @@ export function usePodcastPlayback({
     downloadPodcastQueueEpisodes,
     openActivePodcastEpisode,
     playPodcastQueueItem,
+    playPodcastQueueEpisodeById,
+    markPodcastPlaying,
+    resolvePodcastEpisodeRequest,
     playNextPodcastEpisode,
     changePodcastAutoQueueMode,
     flushPodcastProgress,
