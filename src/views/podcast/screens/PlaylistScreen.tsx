@@ -149,6 +149,7 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
 
   return (
     <main className="podcast-screen podcast-playlist-screen">
+      <div className="podcast-playlist-content">
               <div className="podcast-auto-queue">
                 <span id="podcast-auto-queue-label">播完后</span>
                 <div
@@ -349,6 +350,7 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
                   <PodcastEmpty label="待播队列为空，可从单集详情加入" />
                 )}
               </PodcastSection>
+      </div>
             </main>
   );
 }

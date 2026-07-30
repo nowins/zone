@@ -1274,6 +1274,18 @@
   padding-top: 23px;
 }
 
+.podcast-playlist-content {
+  width: min(1240px, 100%);
+}
+
+.podcast-playlist-content .podcast-current-episode,
+.podcast-playlist-content .podcast-auto-queue,
+.podcast-playlist-content .podcast-queue-list,
+.podcast-playlist-content .podcast-queue-toolbar,
+.podcast-playlist-content .podcast-queue-batch {
+  width: 100%;
+}
+
 .podcast-current-episode {
   width: min(820px, 100%);
   min-height: 86px;

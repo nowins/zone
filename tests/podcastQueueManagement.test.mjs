@@ -80,3 +80,18 @@ test("playlist queue exposes drag ordering and useful episode metadata", () => {
     /\.podcast-queue-drag,[\s\S]*?width:\s*40px;[\s\S]*?height:\s*40px;/,
   );
 });
+
+test("podcast playlist keeps its controls and queue on one responsive content track", () => {
+  assert.match(
+    viewSource,
+    /className="podcast-playlist-content"[\s\S]*?className="podcast-auto-queue"[\s\S]*?<PodcastSection title="正在播放">[\s\S]*?title="待播队列"/,
+  );
+  assert.match(
+    cssSource,
+    /\.podcast-playlist-content\s*\{[\s\S]*?width:\s*min\(1240px,\s*100%\);[\s\S]*?\}/,
+  );
+  assert.match(
+    cssSource,
+    /\.podcast-playlist-content \.podcast-current-episode,[\s\S]*?\.podcast-playlist-content \.podcast-queue-batch\s*\{[\s\S]*?width:\s*100%;[\s\S]*?\}/,
+  );
+});
