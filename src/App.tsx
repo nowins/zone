@@ -7,6 +7,7 @@ import { PlayerBar } from "./components/PlayerBar";
 import { PodcastPlayerBar } from "./components/PodcastPlayerBar";
 import { ContextMenu } from "./components/ContextMenu";
 import { InfoPanel } from "./components/InfoPanel";
+import { AddToPlaylistDialog } from "./components/AddToPlaylistDialog";
 import { PlaylistDialog, type PlaylistDialogState } from "./components/PlaylistDialog";
 import { SmartPlaylistDialog } from "./components/SmartPlaylistDialog";
 import { LibraryView } from "./views/LibraryView";
@@ -57,6 +58,7 @@ export default function App() {
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(DEFAULT_PLAYLIST_ID);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [infoTarget, setInfoTarget] = useState<ContextPayload | null>(null);
+  const [addToPlaylistTarget, setAddToPlaylistTarget] = useState<ContextPayload | null>(null);
   const [playlistDialog, setPlaylistDialog] = useState<PlaylistDialogState | null>(null);
   const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -101,6 +103,7 @@ export default function App() {
   } = useNavigation({
     contextMenu,
     infoTarget,
+    addToPlaylistTarget,
     playlistDialog,
     smartPlaylistDialog,
     nowPlayingTargetsRef,
@@ -259,6 +262,7 @@ export default function App() {
     setHomePins,
     favoriteTrackIds,
     addToPlaylist,
+    createPlaylistWithTracks,
     toggleFavorite,
     toggleFavoriteTrack,
     toggleHomePin,
@@ -480,11 +484,11 @@ export default function App() {
   const contextMenuElement = contextMenu ? (
     <ContextMenu
       menu={contextMenu}
-      playlists={playlists}
       onClose={closeContextMenu}
       onPlay={() => playContextPayload(contextMenu.payload)}
       onAddToQueue={() => appendToQueue(contextMenu.payload.tracks)}
-      onAddToPlaylist={(playlistId) => addToPlaylist(playlistId, contextMenu.payload.tracks)}
+      onAddToPlaylist={() => setAddToPlaylistTarget(contextMenu.payload)}
+      onAddToFavorites={() => addToPlaylist(DEFAULT_PLAYLIST_ID, contextMenu.payload.tracks)}
       onRenamePlaylist={(playlistId) => openPlaylistDialog("rename", playlistId)}
       onDeletePlaylist={(playlistId) => openPlaylistDialog("delete", playlistId)}
       onExcludeFromSmartPlaylist={(playlistId) => excludeFromSmartPlaylist(playlistId, contextMenu.payload.tracks)}
@@ -495,6 +499,21 @@ export default function App() {
   ) : null;
   const infoPanelElement = infoTarget ? (
     <InfoPanel payload={infoTarget} metadata={metadata} onClose={() => setInfoTarget(null)} />
+  ) : null;
+  const addToPlaylistDialogElement = addToPlaylistTarget ? (
+    <AddToPlaylistDialog
+      payload={addToPlaylistTarget}
+      playlists={playlists}
+      onCancel={() => setAddToPlaylistTarget(null)}
+      onChoose={(playlistId) => {
+        addToPlaylist(playlistId, addToPlaylistTarget.tracks);
+        setAddToPlaylistTarget(null);
+      }}
+      onCreate={(name) => {
+        createPlaylistWithTracks(name, addToPlaylistTarget.tracks);
+        setAddToPlaylistTarget(null);
+      }}
+    />
   ) : null;
   const playlistDialogElement = playlistDialog ? (
     <PlaylistDialog
@@ -524,6 +543,7 @@ export default function App() {
   const lastPlayerBarElement = useLastNonNull(playerBarElement);
   const lastContextMenuElement = useLastNonNull(contextMenuElement);
   const lastInfoPanelElement = useLastNonNull(infoPanelElement);
+  const lastAddToPlaylistDialogElement = useLastNonNull(addToPlaylistDialogElement);
   const lastPlaylistDialogElement = useLastNonNull(playlistDialogElement);
   const lastSmartPlaylistDialogElement = useLastNonNull(smartPlaylistDialogElement);
   const lastActionToastElement = useLastNonNull(actionToastElement);
@@ -794,6 +814,7 @@ export default function App() {
             trackCount={tracks.length}
             isScanning={isScanning}
             metadataProviders={metadata.providers}
+            onToggleMetadataProvider={metadata.setProviderEnabled}
             onAddFolder={addFolder}
             onRescan={() => rescan()}
             onClear={() => {
@@ -819,6 +840,10 @@ export default function App() {
 
       <Presence show={infoPanelElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
         {infoPanelElement ?? lastInfoPanelElement ?? <span style={{ display: "none" }} />}
+      </Presence>
+
+      <Presence show={addToPlaylistDialogElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {addToPlaylistDialogElement ?? lastAddToPlaylistDialogElement ?? <span style={{ display: "none" }} />}
       </Presence>
 
       <Presence show={playlistDialogElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>

@@ -3,19 +3,29 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 mod apple;
+mod artwork;
 mod commands;
+mod manual;
+mod matching;
+mod netease;
 mod sidecar;
 mod store;
 mod types;
 
 pub(crate) use apple::*;
+pub(crate) use artwork::*;
 pub(crate) use commands::*;
+pub(crate) use manual::*;
+pub(crate) use matching::*;
+pub(crate) use netease::*;
 pub(crate) use sidecar::*;
 pub(crate) use store::*;
 pub(crate) use types::*;
 
 pub(crate) const LOCAL_SIDECAR_PROVIDER_ID: &str = "local-sidecar";
 pub(crate) const LOCAL_SIDECAR_PROVIDER_NAME: &str = "本地补充文件";
+pub(crate) const MANUAL_METADATA_PROVIDER_ID: &str = "manual-edit";
+pub(crate) const MANUAL_METADATA_PROVIDER_NAME: &str = "手动编辑";
 
 #[derive(Clone, Debug)]
 pub(crate) struct MetadataState {

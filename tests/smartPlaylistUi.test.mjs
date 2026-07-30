@@ -15,6 +15,7 @@ const appSource = [
 const editorSource = readFileSync("src/components/SmartPlaylistDialog.tsx", "utf8");
 const browserSource = readFileSync("src/views/PlaylistBrowser.tsx", "utf8");
 const menuSource = readFileSync("src/components/ContextMenu.tsx", "utf8");
+const pickerSource = readFileSync("src/components/AddToPlaylistDialog.tsx", "utf8");
 const playlistCss = readFileSync("src/styles/playlists.css", "utf8");
 
 test("smart playlist editor starts from presets and keeps a live, explainable preview", () => {
@@ -33,7 +34,7 @@ test("smart playlist playback resolves live results but queues a snapshot", () =
 });
 
 test("smart playlists cannot be manually nested and support explicit exclusions", () => {
-  assert.ok(menuSource.includes('playlist.kind !== "smart"'));
+  assert.ok(pickerSource.includes('playlist.kind !== "smart"'));
   assert.ok(menuSource.includes("从这个智能列表中排除"));
   assert.ok(appSource.includes("excludeFromSmartPlaylist"));
 });

@@ -7,6 +7,7 @@ export function SettingsView({
   trackCount,
   isScanning,
   metadataProviders,
+  onToggleMetadataProvider,
   onAddFolder,
   onRescan,
   onClear,
@@ -15,6 +16,7 @@ export function SettingsView({
   trackCount: number;
   isScanning: boolean;
   metadataProviders: MetadataProviderDescriptor[];
+  onToggleMetadataProvider: (providerId: string, enabled: boolean) => void;
   onAddFolder: () => void;
   onRescan: () => void;
   onClear: () => void;
@@ -86,13 +88,27 @@ export function SettingsView({
             </header>
             <div className="metadata-provider-list">
               {metadataProviders.map((provider) => (
-                <div className="metadata-provider-row" key={provider.id}>
+                <div
+                  className={provider.enabled ? "metadata-provider-row is-enabled" : "metadata-provider-row"}
+                  key={provider.id}
+                >
                   <FileJson2 size={20} aria-hidden="true" />
                   <div>
                     <strong>{provider.name}</strong>
                     <span>{provider.description}</span>
+                    <em>{provider.experimental ? "实验性来源" : "内置来源"}</em>
                   </div>
-                  <em>{provider.enabled ? "始终启用" : "暂不可用"}</em>
+                  <button
+                    className="provider-toggle"
+                    type="button"
+                    role="switch"
+                    aria-checked={provider.enabled}
+                    disabled={!provider.available}
+                    onClick={() => onToggleMetadataProvider(provider.id, !provider.enabled)}
+                  >
+                    <span aria-hidden="true" />
+                    {!provider.available ? "暂不可用" : provider.enabled ? "已启用" : "已关闭"}
+                  </button>
                 </div>
               ))}
               {metadataProviders.length === 0 && (

@@ -6,6 +6,7 @@ import type {
   MetadataCandidate,
   MetadataContextRecord,
   MetadataEntityKind,
+  MetadataManualField,
   MetadataProviderDescriptor,
   MetadataTrackOverlay,
   Track,
@@ -13,11 +14,15 @@ import type {
 
 type SetTracks = React.Dispatch<React.SetStateAction<Track[]>>;
 
+const METADATA_PROVIDER_STORAGE_KEY = "zone-metadata-providers-v1";
+
 export type MetadataEnrichmentApi = {
   providers: MetadataProviderDescriptor[];
+  setProviderEnabled: (providerId: string, enabled: boolean) => void;
   getContext: (payload: ContextPayload) => Promise<MetadataContextRecord | null>;
-  search: (payload: ContextPayload) => Promise<MetadataCandidate[]>;
+  search: (payload: ContextPayload, query?: string) => Promise<MetadataCandidate[]>;
   apply: (payload: ContextPayload, candidate: MetadataCandidate) => Promise<MetadataContextRecord | null>;
+  edit: (payload: ContextPayload, fields: MetadataManualField[]) => Promise<MetadataContextRecord | null>;
   clear: (payload: ContextPayload) => Promise<void>;
 };
 
@@ -32,6 +37,22 @@ function metadataInputs(payload: ContextPayload) {
   return payload.tracks.map(metadataTrackInput);
 }
 
+function readProviderPreferences(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(METADATA_PROVIDER_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, boolean] => (
+        typeof entry[1] === "boolean"
+      )),
+    );
+  } catch {
+    return {};
+  }
+}
+
 export function useMetadataEnrichment({
   tracks,
   setTracks,
@@ -41,8 +62,13 @@ export function useMetadataEnrichment({
   setTracks: SetTracks;
   restored: boolean;
 }): MetadataEnrichmentApi {
-  const [providers, setProviders] = useState<MetadataProviderDescriptor[]>([]);
+  const [providerDescriptors, setProviderDescriptors] = useState<MetadataProviderDescriptor[]>([]);
+  const [providerPreferences, setProviderPreferences] = useState(readProviderPreferences);
   const [revision, setRevision] = useState(0);
+  const providers = useMemo(() => providerDescriptors.map((provider) => ({
+    ...provider,
+    enabled: provider.available && (providerPreferences[provider.id] ?? provider.enabled),
+  })), [providerDescriptors, providerPreferences]);
   const trackIdsKey = useMemo(() => tracks.map((track) => track.id).join("\u0000"), [tracks]);
   const trackOverlayStateKey = useMemo(() => tracks.map((track) => (
     `${track.id}:${track.local_metadata ? "enriched" : "local"}`
@@ -52,7 +78,7 @@ export function useMetadataEnrichment({
     let cancelled = false;
     void invoke<MetadataProviderDescriptor[]>("metadata_list_providers")
       .then((result) => {
-        if (!cancelled) setProviders(result);
+        if (!cancelled) setProviderDescriptors(result);
       })
       .catch((error) => {
         if (import.meta.env.DEV) console.warn("[metadata] provider list failed", error);
@@ -60,6 +86,18 @@ export function useMetadataEnrichment({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const setProviderEnabled = useCallback((providerId: string, enabled: boolean) => {
+    setProviderPreferences((current) => {
+      const next = { ...current, [providerId]: enabled };
+      try {
+        localStorage.setItem(METADATA_PROVIDER_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // The current session still uses the preference when storage is unavailable.
+      }
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -91,16 +129,36 @@ export function useMetadataEnrichment({
     });
   }, []);
 
-  const search = useCallback(async (payload: ContextPayload) => {
+  const search = useCallback(async (payload: ContextPayload, query?: string) => {
     const kind = metadataKind(payload);
-    const tracks = metadataInputs(payload);
-    const requests = [
-      invoke<MetadataCandidate[]>("metadata_search_sidecars", { kind, tracks }),
-    ];
-    if (kind !== "artist") {
+    const cleanQuery = query?.trim();
+    const tracks = metadataInputs(payload).map((track) => {
+      if (!cleanQuery) return track;
+      if (kind === "track") return { ...track, title: cleanQuery };
+      if (kind === "album") return { ...track, album: cleanQuery };
+      return { ...track, artist: cleanQuery };
+    });
+    const enabled = new Set(
+      providers.filter((provider) => provider.enabled).map((provider) => provider.id),
+    );
+    const requests: Promise<MetadataCandidate[]>[] = [];
+    if (enabled.has("local-sidecar")) {
+      requests.push(
+        invoke<MetadataCandidate[]>("metadata_search_sidecars", { kind, tracks }),
+      );
+    }
+    if (kind !== "artist" && enabled.has("apple-music-cn")) {
       requests.push(
         invoke<MetadataCandidate[]>("metadata_search_apple_music", { kind, tracks }),
       );
+    }
+    if (kind === "artist" && enabled.has("netease-artist")) {
+      requests.push(
+        invoke<MetadataCandidate[]>("metadata_search_netease_artist", { kind, tracks }),
+      );
+    }
+    if (requests.length === 0) {
+      throw new Error("没有启用支持此类信息的补充来源");
     }
     const results = await Promise.allSettled(requests);
     const candidates = results
@@ -116,7 +174,7 @@ export function useMetadataEnrichment({
       if (errors.length > 0) throw new Error(errors.join("；"));
     }
     return candidates;
-  }, []);
+  }, [providers]);
 
   const apply = useCallback(async (payload: ContextPayload, candidate: MetadataCandidate) => {
     const kind = metadataKind(payload);
@@ -124,7 +182,9 @@ export function useMetadataEnrichment({
       ? "metadata_apply_sidecar"
       : candidate.providerId === "apple-music-cn"
         ? "metadata_apply_apple_music"
-        : null;
+        : candidate.providerId === "netease-artist"
+          ? "metadata_apply_netease_artist"
+          : null;
     if (!command) {
       throw new Error("这个补充来源暂不支持采用");
     }
@@ -132,6 +192,20 @@ export function useMetadataEnrichment({
       candidateId: candidate.id,
       kind,
       tracks: metadataInputs(payload),
+    });
+    setRevision((current) => current + 1);
+    return invoke<MetadataContextRecord | null>("metadata_get_context", {
+      kind,
+      trackIds: payload.tracks.map((track) => track.id),
+    });
+  }, []);
+
+  const edit = useCallback(async (payload: ContextPayload, fields: MetadataManualField[]) => {
+    const kind = metadataKind(payload);
+    await invoke("metadata_apply_manual", {
+      kind,
+      tracks: metadataInputs(payload),
+      fields,
     });
     setRevision((current) => current + 1);
     return invoke<MetadataContextRecord | null>("metadata_get_context", {
@@ -150,9 +224,11 @@ export function useMetadataEnrichment({
 
   return useMemo(() => ({
     providers,
+    setProviderEnabled,
     getContext,
     search,
     apply,
+    edit,
     clear,
-  }), [apply, clear, getContext, providers, search]);
+  }), [apply, clear, edit, getContext, providers, search, setProviderEnabled]);
 }

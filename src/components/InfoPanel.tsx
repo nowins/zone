@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { FileJson2, LoaderCircle, RotateCcw, Search, X } from "lucide-react";
+import { Pencil, RotateCcw, Search, X } from "lucide-react";
 import type { MetadataEnrichmentApi } from "../hooks/useMetadataEnrichment";
-import type {
-  ContextPayload,
-  MetadataCandidate,
-  MetadataCandidateField,
-  MetadataContextRecord,
-} from "../types";
+import { Presence, useLastNonNull } from "../motion/presence";
+import { MOTION_DURATIONS } from "../motion/tokens";
+import type { ContextPayload, MetadataCandidateField, MetadataContextRecord } from "../types";
+import { MetadataEditDialog } from "./MetadataEditDialog";
+import { MetadataSearchDialog } from "./MetadataSearchDialog";
 
 function artworkPath(fields: MetadataCandidateField[]) {
   return fields.find((field) => (
@@ -31,8 +30,8 @@ export function InfoPanel({
   const first = payload.tracks[0];
   const supportsMetadata = payload.kind !== "playlist" && payload.tracks.length > 0;
   const [context, setContext] = useState<MetadataContextRecord | null>(null);
-  const [candidates, setCandidates] = useState<MetadataCandidate[]>([]);
-  const [status, setStatus] = useState<"idle" | "loading" | "applying" | "clearing">("idle");
+  const [activeDialog, setActiveDialog] = useState<"search" | "edit" | null>(null);
+  const [status, setStatus] = useState<"idle" | "clearing">("idle");
   const [notice, setNotice] = useState("");
   const typeLabel = {
     track: "歌曲",
@@ -42,7 +41,6 @@ export function InfoPanel({
   }[payload.kind];
 
   useEffect(() => {
-    setCandidates([]);
     setNotice("");
     if (!supportsMetadata) {
       setContext(null);
@@ -61,44 +59,12 @@ export function InfoPanel({
     };
   }, [metadata, payload, supportsMetadata]);
 
-  async function searchMetadata() {
-    setStatus("loading");
-    setNotice("");
-    try {
-      const result = await metadata.search(payload);
-      setCandidates(result);
-      if (result.length === 0) {
-        setNotice("未找到匹配度足够的补充信息");
-      }
-    } catch (error) {
-      setNotice(String(error));
-    } finally {
-      setStatus("idle");
-    }
-  }
-
-  async function applyCandidate(candidate: MetadataCandidate) {
-    setStatus("applying");
-    setNotice("");
-    try {
-      const result = await metadata.apply(payload, candidate);
-      setContext(result);
-      setCandidates([]);
-      setNotice("补充信息已采用");
-    } catch (error) {
-      setNotice(String(error));
-    } finally {
-      setStatus("idle");
-    }
-  }
-
   async function clearMetadata() {
     setStatus("clearing");
     setNotice("");
     try {
       await metadata.clear(payload);
       setContext(null);
-      setCandidates([]);
       setNotice("已恢复文件中的原始信息");
     } catch (error) {
       setNotice(String(error));
@@ -106,6 +72,34 @@ export function InfoPanel({
       setStatus("idle");
     }
   }
+
+  function finishDialog(nextContext: MetadataContextRecord | null, message: string) {
+    setContext(nextContext);
+    setActiveDialog(null);
+    setNotice(message);
+  }
+
+  const searchDialogElement = activeDialog === "search" ? (
+    <MetadataSearchDialog
+      payload={payload}
+      metadata={metadata}
+      onCancel={() => setActiveDialog(null)}
+      onEdit={() => setActiveDialog("edit")}
+      onApplied={(nextContext) => finishDialog(nextContext, "补充信息已采用")}
+    />
+  ) : null;
+  const editDialogElement = activeDialog === "edit" ? (
+    <MetadataEditDialog
+      payload={payload}
+      context={context}
+      metadata={metadata}
+      onCancel={() => setActiveDialog(null)}
+      onSearch={() => setActiveDialog("search")}
+      onSaved={(nextContext) => finishDialog(nextContext, "编辑的信息已保存")}
+    />
+  ) : null;
+  const dialogElement = searchDialogElement ?? editDialogElement;
+  const lastDialogElement = useLastNonNull(dialogElement);
 
   return (
     <div className="info-panel" onClick={onClose}>
@@ -171,63 +165,35 @@ export function InfoPanel({
                 </div>
               )}
 
-              <button
-                className="info-metadata-search"
-                type="button"
-                onClick={searchMetadata}
-                disabled={status !== "idle"}
-              >
-                {status === "loading" ? (
-                  <LoaderCircle className="metadata-spinner" size={16} aria-hidden="true" />
-                ) : (
+              <div className="info-metadata-actions">
+                <button
+                  className="info-metadata-search"
+                  type="button"
+                  onClick={() => setActiveDialog("search")}
+                  disabled={status !== "idle"}
+                >
                   <Search size={16} aria-hidden="true" />
-                )}
-                {status === "loading" ? "正在查找" : "查找补充信息"}
-              </button>
-
-              {candidates.length > 0 && (
-                <div className="info-metadata-candidates">
-                  {candidates.map((candidate) => (
-                    <article key={candidate.id}>
-                      <FileJson2 size={20} aria-hidden="true" />
-                      <div>
-                        <strong>{candidate.title}</strong>
-                        <span>{candidate.providerName} · 匹配度 {candidate.confidence}%</span>
-                        <em>{candidate.subtitle}</em>
-                        {artworkPath(candidate.fields) && (
-                          <img
-                            className="info-metadata-candidate-art"
-                            src={convertFileSrc(artworkPath(candidate.fields)!)}
-                            alt=""
-                            draggable={false}
-                          />
-                        )}
-                        <dl>
-                          {candidate.fields.filter((field) => !isArtworkField(field)).map((field) => (
-                            <div key={field.key}>
-                              <dt>{field.label}</dt>
-                              <dd>{field.value}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => applyCandidate(candidate)}
-                        disabled={status !== "idle"}
-                      >
-                        采用
-                      </button>
-                    </article>
-                  ))}
-                </div>
-              )}
+                  查找补充信息
+                </button>
+                <button
+                  className="info-metadata-search"
+                  type="button"
+                  onClick={() => setActiveDialog("edit")}
+                  disabled={status !== "idle"}
+                >
+                  <Pencil size={15} aria-hidden="true" />
+                  编辑信息
+                </button>
+              </div>
 
               {notice && <p className="info-metadata-notice" role="status">{notice}</p>}
             </div>
           )}
         </div>
       </section>
+      <Presence show={dialogElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {dialogElement ?? lastDialogElement ?? <span style={{ display: "none" }} />}
+      </Presence>
     </div>
   );
 }

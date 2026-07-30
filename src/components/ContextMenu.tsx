@@ -1,15 +1,15 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { Ban, Heart, Info, ListMusic, ListPlus, Pencil, Pin, PinOff, Play, SlidersHorizontal, Trash2 } from "lucide-react";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
-import type { ContextMenuState, Playlist } from "../types";
+import type { ContextMenuState } from "../types";
 
 export function ContextMenu({
   menu,
-  playlists,
   onClose,
   onPlay,
   onAddToQueue,
   onAddToPlaylist,
+  onAddToFavorites,
   onRenamePlaylist,
   onDeletePlaylist,
   onExcludeFromSmartPlaylist,
@@ -18,11 +18,11 @@ export function ContextMenu({
   onInfo,
 }: {
   menu: ContextMenuState;
-  playlists: Playlist[];
   onClose: () => void;
   onPlay: () => void;
   onAddToQueue: () => void;
-  onAddToPlaylist: (playlistId: string) => void;
+  onAddToPlaylist: () => void;
+  onAddToFavorites: () => void;
   onRenamePlaylist: (playlistId: string) => void;
   onDeletePlaylist: (playlistId: string) => void;
   onExcludeFromSmartPlaylist: (playlistId: string) => void;
@@ -39,9 +39,6 @@ export function ContextMenu({
     && Boolean(sourcePlaylistId)
     && sourcePlaylistId !== "now"
     && sourcePlaylistId !== DEFAULT_PLAYLIST_ID;
-  const targetPlaylists = playlists.filter(
-    (playlist) => playlist.kind !== "smart" && playlist.id !== DEFAULT_PLAYLIST_ID && playlist.id !== sourcePlaylistId,
-  );
 
   useLayoutEffect(() => {
     function placeMenu() {
@@ -62,7 +59,7 @@ export function ContextMenu({
     placeMenu();
     window.addEventListener("resize", placeMenu);
     return () => window.removeEventListener("resize", placeMenu);
-  }, [menu.x, menu.y, menu.payload, playlists]);
+  }, [menu.x, menu.y, menu.payload]);
 
   function run(action: () => void) {
     action();
@@ -82,11 +79,6 @@ export function ContextMenu({
         event.stopPropagation();
       }}
     >
-      <div className="context-title">
-        <span className="context-title-kicker">{isPlaylist ? "播放列表" : "音乐"}</span>
-        <strong>{menu.payload.title}</strong>
-        <span>{menu.payload.subtitle}</span>
-      </div>
       <div className="context-actions">
         <button role="menuitem" onClick={() => run(onPlay)} disabled={menu.payload.tracks.length === 0}>
           <Play size={17} />
@@ -103,21 +95,18 @@ export function ContextMenu({
           </button>
         )}
         {!isPlaylist && (
-          <button role="menuitem" onClick={() => run(() => onAddToPlaylist(DEFAULT_PLAYLIST_ID))}>
+          <button role="menuitem" onClick={() => run(onAddToFavorites)}>
             <Heart size={17} />
             <span>添加到收藏</span>
           </button>
         )}
       </div>
-      {!isPlaylist && targetPlaylists.length > 0 && (
-        <div className="context-section">
-          <span>添加到播放列表</span>
-          {targetPlaylists.map((playlist) => (
-            <button role="menuitem" key={playlist.id} onClick={() => run(() => onAddToPlaylist(playlist.id))}>
-              <ListMusic size={16} />
-              <span>{playlist.name}</span>
-            </button>
-          ))}
+      {!isPlaylist && (
+        <div className="context-actions context-actions-secondary">
+          <button role="menuitem" onClick={() => run(onAddToPlaylist)}>
+            <ListMusic size={16} />
+            <span>添加到播放列表</span>
+          </button>
         </div>
       )}
       <div className="context-actions context-actions-secondary">

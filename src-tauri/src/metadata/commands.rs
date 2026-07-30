@@ -17,8 +17,21 @@ pub(crate) fn metadata_list_providers(
         "metadata.album".to_string(),
         "artwork.album".to_string(),
       ],
+      available: enabled,
       enabled,
       experimental: false,
+    },
+    MetadataProviderDescriptor {
+      id: NETEASE_ARTIST_PROVIDER_ID.to_string(),
+      name: NETEASE_ARTIST_PROVIDER_NAME.to_string(),
+      description: "查询歌手简介、别名、身份和歌手图片，无需账户".to_string(),
+      capabilities: vec![
+        "metadata.artist".to_string(),
+        "artwork.artist".to_string(),
+      ],
+      available: enabled,
+      enabled,
+      experimental: true,
     },
     MetadataProviderDescriptor {
       id: LOCAL_SIDECAR_PROVIDER_ID.to_string(),
@@ -33,6 +46,7 @@ pub(crate) fn metadata_list_providers(
         "artwork.album".to_string(),
         "artwork.artist".to_string(),
       ],
+      available: enabled,
       enabled,
       experimental: false,
     },
@@ -89,6 +103,40 @@ pub(crate) async fn metadata_apply_apple_music(
   tracks: Vec<MetadataTrackInput>,
 ) -> Result<(), String> {
   apply_apple_music_candidate(&state, &candidate_id, kind, &tracks).await
+}
+
+#[tauri::command]
+pub(crate) async fn metadata_search_netease_artist(
+  kind: MetadataEntityKind,
+  tracks: Vec<MetadataTrackInput>,
+) -> Result<Vec<MetadataCandidate>, String> {
+  Ok(
+    search_netease_artist_candidates(kind, &tracks)
+      .await?
+      .into_iter()
+      .map(|candidate| candidate.resolved.candidate)
+      .collect(),
+  )
+}
+
+#[tauri::command]
+pub(crate) async fn metadata_apply_netease_artist(
+  state: State<'_, MetadataState>,
+  candidate_id: String,
+  kind: MetadataEntityKind,
+  tracks: Vec<MetadataTrackInput>,
+) -> Result<(), String> {
+  apply_netease_artist_candidate(&state, &candidate_id, kind, &tracks).await
+}
+
+#[tauri::command]
+pub(crate) fn metadata_apply_manual(
+  state: State<'_, MetadataState>,
+  kind: MetadataEntityKind,
+  tracks: Vec<MetadataTrackInput>,
+  fields: Vec<MetadataManualFieldInput>,
+) -> Result<(), String> {
+  apply_manual_metadata(&state, kind, &tracks, &fields)
 }
 
 #[tauri::command]

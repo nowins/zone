@@ -3,16 +3,18 @@ use crate::podcast::{read_limited, send_public_get};
 use reqwest::Url;
 use serde::Deserialize;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::collections::HashMap;
+use std::time::Duration;
+
+#[cfg(test)]
+use std::path::Path;
+#[cfg(test)]
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) const APPLE_MUSIC_PROVIDER_ID: &str = "apple-music-cn";
 pub(crate) const APPLE_MUSIC_PROVIDER_NAME: &str = "Apple 音乐目录（中国区）";
 
 const APPLE_SEARCH_RESPONSE_LIMIT: usize = 2 * 1024 * 1024;
-const APPLE_ARTWORK_RESPONSE_LIMIT: usize = 8 * 1024 * 1024;
 const APPLE_SEARCH_LIMIT: usize = 25;
 const APPLE_CANDIDATE_LIMIT: usize = 12;
 
@@ -76,7 +78,14 @@ pub(crate) async fn apply_apple_music_candidate(
     .ok_or_else(|| "Apple 音乐候选已变化，请重新查找".to_string())?;
 
   if let Some(artwork_url) = candidate.artwork_url.as_deref() {
-    match cache_apple_artwork(state.artwork_cache_dir(), artwork_url).await {
+    match cache_provider_artwork(
+      state.artwork_cache_dir(),
+      artwork_url,
+      "Apple 专辑封面",
+      is_apple_artwork_host,
+    )
+    .await
+    {
       Ok(path) => candidate.resolved.values.push((
         "album_cover_path".to_string(),
         Value::String(path.to_string_lossy().to_string()),
@@ -515,35 +524,6 @@ fn duration_similarity(local_seconds: Option<u64>, remote_millis: Option<u64>) -
   }
 }
 
-fn text_similarity(left: &str, right: &str) -> u8 {
-  let left = normalize_match_text(left);
-  let right = normalize_match_text(right);
-  if left.is_empty() || right.is_empty() {
-    return 0;
-  }
-  if left == right {
-    return 100;
-  }
-  if left.contains(&right) || right.contains(&left) {
-    let shorter = left.chars().count().min(right.chars().count());
-    let longer = left.chars().count().max(right.chars().count());
-    return ((shorter * 85) / longer.max(1)).max(60).min(85) as u8;
-  }
-
-  let left_chars: HashSet<char> = left.chars().collect();
-  let right_chars: HashSet<char> = right.chars().collect();
-  let shared = left_chars.intersection(&right_chars).count();
-  ((shared * 200) / (left_chars.len() + right_chars.len()).max(1)).min(100) as u8
-}
-
-fn normalize_match_text(value: &str) -> String {
-  value
-    .chars()
-    .flat_map(char::to_lowercase)
-    .filter(|value| value.is_alphanumeric())
-    .collect()
-}
-
 fn search_term(parts: &[&str]) -> String {
   parts
     .iter()
@@ -628,82 +608,6 @@ fn is_apple_artwork_host(host: &str) -> bool {
     || host.ends_with(".mzstatic.com")
     || host == "itunes.apple.com"
     || host.ends_with(".itunes.apple.com")
-}
-
-async fn cache_apple_artwork(cache_dir: &Path, value: &str) -> Result<PathBuf, String> {
-  let url = Url::parse(value).map_err(|_| "Apple 封面地址无效".to_string())?;
-  if url.scheme() != "https" || !url.host_str().is_some_and(is_apple_artwork_host) {
-    return Err("Apple 封面地址不受支持".to_string());
-  }
-  let cache_key = sha256_hex(url.as_str().as_bytes());
-  for extension in ["jpg", "png", "webp"] {
-    let path = cache_dir.join(format!("{cache_key}.{extension}"));
-    if path.is_file() {
-      return Ok(path);
-    }
-  }
-
-  let public_response = send_public_get(url, Duration::from_secs(30), None)
-    .await
-    .map_err(apple_network_error)?;
-  if public_response.final_url.scheme() != "https"
-    || !public_response
-      .final_url
-      .host_str()
-      .is_some_and(is_apple_artwork_host)
-  {
-    return Err("Apple 封面重定向地址不受支持".to_string());
-  }
-  let bytes = read_limited(
-    public_response.response,
-    APPLE_ARTWORK_RESPONSE_LIMIT,
-    "Apple 专辑封面",
-  )
-  .await?;
-  let extension = image_extension(&bytes)
-    .ok_or_else(|| "Apple 封面格式不受支持".to_string())?;
-  let final_path = cache_dir.join(format!("{cache_key}.{extension}"));
-  let nonce = SystemTime::now()
-    .duration_since(UNIX_EPOCH)
-    .ok()
-    .map(|duration| duration.as_nanos())
-    .unwrap_or(0);
-  let temporary_path = cache_dir.join(format!(
-    "{cache_key}.{}-{nonce}.part",
-    std::process::id()
-  ));
-  tokio::fs::write(&temporary_path, &bytes)
-    .await
-    .map_err(|error| format!("无法缓存 Apple 专辑封面：{error}"))?;
-  if let Err(error) = tokio::fs::rename(&temporary_path, &final_path).await {
-    if !final_path.is_file() {
-      let _ = tokio::fs::remove_file(&temporary_path).await;
-      return Err(format!("无法保存 Apple 专辑封面：{error}"));
-    }
-    let _ = tokio::fs::remove_file(&temporary_path).await;
-  }
-  Ok(final_path)
-}
-
-fn image_extension(bytes: &[u8]) -> Option<&'static str> {
-  if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
-    Some("jpg")
-  } else if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-    Some("png")
-  } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
-    Some("webp")
-  } else {
-    None
-  }
-}
-
-fn sha256_hex(value: &[u8]) -> String {
-  let digest = Sha256::digest(value);
-  let mut output = String::with_capacity(64);
-  for byte in digest {
-    output.push_str(&format!("{byte:02x}"));
-  }
-  output
 }
 
 #[cfg(test)]

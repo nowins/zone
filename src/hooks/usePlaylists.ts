@@ -170,6 +170,21 @@ export function usePlaylists({
     showActionNotice(`已创建播放列表“${playlist.name}”`);
   }
 
+  function createPlaylistWithTracks(name: string, targetTracks: Track[]) {
+    const cleanName = name.trim();
+    const trackIds = uniqueIds(targetTracks.map((track) => track.id));
+    if (!cleanName || trackIds.length === 0) return;
+    const playlist: Playlist = {
+      id: `playlist-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      name: cleanName,
+      description: "自定义播放列表",
+      kind: "manual",
+      trackIds,
+    };
+    setPlaylists((items) => [...normalizePlaylists(items), playlist]);
+    showActionNotice(`已创建“${playlist.name}”并添加 ${trackIds.length} 首歌曲`);
+  }
+
   function renamePlaylist(playlistId: string, name: string) {
     const cleanName = name.trim();
     if (!cleanName || playlistId === DEFAULT_PLAYLIST_ID) return;
@@ -295,6 +310,7 @@ export function usePlaylists({
     setHomePins,
     favoriteTrackIds,
     addToPlaylist,
+    createPlaylistWithTracks,
     toggleFavorite,
     toggleFavoriteTrack,
     toggleHomePin,

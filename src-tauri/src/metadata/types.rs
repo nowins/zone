@@ -35,6 +35,13 @@ pub(crate) struct MetadataTrackInput {
   pub(crate) duration_seconds: Option<u64>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MetadataManualFieldInput {
+  pub(crate) key: String,
+  pub(crate) value: Value,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MetadataCandidateField {
@@ -72,6 +79,7 @@ pub(crate) struct MetadataProviderDescriptor {
   pub(crate) name: String,
   pub(crate) description: String,
   pub(crate) capabilities: Vec<String>,
+  pub(crate) available: bool,
   pub(crate) enabled: bool,
   pub(crate) experimental: bool,
 }

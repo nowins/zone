@@ -70,6 +70,11 @@ export type MetadataCandidateField = {
   value: string;
 };
 
+export type MetadataManualField = {
+  key: string;
+  value: string | number | string[];
+};
+
 export type MetadataCandidate = {
   id: string;
   kind: MetadataEntityKind;
@@ -87,6 +92,7 @@ export type MetadataProviderDescriptor = {
   name: string;
   description: string;
   capabilities: string[];
+  available: boolean;
   enabled: boolean;
   experimental: boolean;
 };

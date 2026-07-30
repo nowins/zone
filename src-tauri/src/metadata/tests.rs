@@ -159,6 +159,67 @@ fn track_sidecar_uses_the_audio_stem_for_its_default_artwork() {
 }
 
 #[test]
+fn manual_album_metadata_is_saved_as_an_overlay() {
+  let root = fixture_dir("manual-album");
+  let audio_path = root.join("歌曲.flac");
+  write_audio(&audio_path);
+  let state = MetadataState::initialize_at(&root.join("data")).unwrap();
+  let tracks = vec![track(&audio_path, "track-1")];
+  let fields = vec![
+    MetadataManualFieldInput {
+      key: "title".to_string(),
+      value: serde_json::json!("手动专辑"),
+    },
+    MetadataManualFieldInput {
+      key: "artist".to_string(),
+      value: serde_json::json!("手动艺术家"),
+    },
+    MetadataManualFieldInput {
+      key: "genres".to_string(),
+      value: serde_json::json!(["流行", "电子"]),
+    },
+  ];
+
+  apply_manual_metadata(&state, MetadataEntityKind::Album, &tracks, &fields).unwrap();
+  let overlays = read_track_overlays(&state, &["track-1".to_string()]).unwrap();
+  assert_eq!(overlays[0].album.as_deref(), Some("手动专辑"));
+  assert_eq!(overlays[0].album_artist.as_deref(), Some("手动艺术家"));
+  let context = read_context_metadata(
+    &state,
+    MetadataEntityKind::Album,
+    &["track-1".to_string()],
+  )
+  .unwrap()
+  .unwrap();
+  assert_eq!(context.provider_id, MANUAL_METADATA_PROVIDER_ID);
+  assert_eq!(context.source_path, "Zone 手动编辑");
+
+  fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn manual_metadata_rejects_fields_from_another_entity_kind() {
+  let root = fixture_dir("manual-invalid");
+  let audio_path = root.join("歌曲.mp3");
+  write_audio(&audio_path);
+  let state = MetadataState::initialize_at(&root.join("data")).unwrap();
+  let fields = vec![MetadataManualFieldInput {
+    key: "biography".to_string(),
+    value: serde_json::json!("不应写入专辑"),
+  }];
+  let error = apply_manual_metadata(
+    &state,
+    MetadataEntityKind::Album,
+    &[track(&audio_path, "track-1")],
+    &fields,
+  )
+  .unwrap_err();
+  assert!(error.contains("不支持"));
+
+  fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn sidecar_artwork_cannot_escape_its_directory() {
   let root = fixture_dir("artwork");
   let album_dir = root.join("专辑");

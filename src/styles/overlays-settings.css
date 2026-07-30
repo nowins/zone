@@ -279,8 +279,17 @@ h2 {
   align-items: center;
   gap: 14px;
   padding: 13px 8px 13px 2px;
-  color: rgba(255, 255, 255, 0.56);
+  color: rgba(255, 255, 255, 0.34);
   border-bottom: 1px solid rgba(255, 255, 255, 0.085);
+  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard);
+}
+
+.metadata-provider-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.metadata-provider-row.is-enabled {
+  color: rgba(255, 255, 255, 0.58);
 }
 
 .metadata-provider-row > div {
@@ -306,10 +315,16 @@ h2 {
 }
 
 .metadata-provider-row em {
+  display: block;
+  margin-top: 5px;
   color: rgba(255, 255, 255, 0.4);
   font-size: 10px;
   font-style: normal;
   letter-spacing: 0.06em;
+}
+
+.metadata-provider-row > .provider-toggle:disabled {
+  opacity: 0.48;
 }
 
 .metadata-provider-empty {
@@ -700,9 +715,15 @@ h2 {
 
 .info-metadata-search {
   min-height: 34px;
-  margin-top: 18px;
   padding: 0 11px;
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.info-metadata-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
 }
 
 .info-metadata-search:hover:not(:disabled) {

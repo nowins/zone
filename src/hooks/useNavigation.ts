@@ -22,6 +22,7 @@ export type NowPlayingTargets = {
 type UseNavigationParams = {
   contextMenu: ContextMenuState | null;
   infoTarget: ContextPayload | null;
+  addToPlaylistTarget: ContextPayload | null;
   playlistDialog: PlaylistDialogState | null;
   smartPlaylistDialog: SmartPlaylist | "create" | null;
   nowPlayingTargetsRef: React.MutableRefObject<NowPlayingTargets>;
@@ -31,6 +32,7 @@ type UseNavigationParams = {
 export function useNavigation({
   contextMenu,
   infoTarget,
+  addToPlaylistTarget,
   playlistDialog,
   smartPlaylistDialog,
   nowPlayingTargetsRef,
@@ -160,7 +162,7 @@ export function useNavigation({
       }
 
       if (event.key !== "Escape") return;
-      if (contextMenu || infoTarget || playlistDialog || smartPlaylistDialog) return;
+      if (contextMenu || infoTarget || addToPlaylistTarget || playlistDialog || smartPlaylistDialog) return;
 
       if (resolveSearchSurface(query, searchMode) === "results") {
         event.preventDefault();
@@ -176,7 +178,7 @@ export function useNavigation({
 
     window.addEventListener("keydown", handleCollectionSearchKeys, true);
     return () => window.removeEventListener("keydown", handleCollectionSearchKeys, true);
-  }, [contextMenu, infoTarget, page, playlistDialog, query, searchMode, smartPlaylistDialog]);
+  }, [addToPlaylistTarget, contextMenu, infoTarget, page, playlistDialog, query, searchMode, smartPlaylistDialog]);
 
   function openNowPlaying() {
     const { activePodcastEpisode, activeTrack } = nowPlayingTargetsRef.current;

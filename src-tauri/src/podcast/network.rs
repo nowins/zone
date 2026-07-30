@@ -185,7 +185,7 @@ fn host_without_ipv6_brackets(host: &str) -> &str {
     .unwrap_or(host)
 }
 
-fn is_public_ip(ip: IpAddr) -> bool {
+pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
   match ip {
     IpAddr::V4(ip) => is_public_ipv4(ip),
     IpAddr::V6(ip) => is_public_ipv6(ip),

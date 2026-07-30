@@ -13,6 +13,7 @@ const appSource = [
   "src/App.tsx",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 const menuSource = readFileSync("src/components/ContextMenu.tsx", "utf8");
+const pickerSource = readFileSync("src/components/AddToPlaylistDialog.tsx", "utf8");
 const browserSource = readFileSync("src/views/PlaylistBrowser.tsx", "utf8");
 const dialogSource = readFileSync("src/components/PlaylistDialog.tsx", "utf8");
 const collectionCss = readFileSync("src/styles/collection.css", "utf8");
@@ -34,7 +35,10 @@ test("playlist page presents one total and localized labels", () => {
 
 test("playlist context actions do not offer favorites or self nesting", () => {
   assert.ok(menuSource.includes('!isPlaylist && ('));
-  assert.ok(menuSource.includes("playlist.id !== sourcePlaylistId"));
+  assert.ok(pickerSource.includes("playlist.id !== payload.playlistId"));
+  assert.ok(pickerSource.includes('playlist.kind !== "smart"'));
+  assert.ok(pickerSource.includes("新建播放列表"));
+  assert.ok(appSource.includes("createPlaylistWithTracks"));
   assert.ok(menuSource.includes('sourcePlaylistId !== DEFAULT_PLAYLIST_ID'));
   assert.ok(menuSource.includes("重命名"));
   assert.ok(menuSource.includes("删除播放列表"));
@@ -57,6 +61,7 @@ test("playlist creation and edits use a modal workflow with feedback", () => {
   assert.ok(appSource.includes("showActionNotice"));
   assert.ok(appSource.includes("openPlaylistDialog"));
   assert.ok(playlistCss.includes(".playlist-dialog-overlay"));
+  assert.ok(playlistCss.includes(".playlist-picker-dialog"));
   assert.ok(playlistCss.includes(".action-toast"));
 });
 
