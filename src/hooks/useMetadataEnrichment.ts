@@ -15,6 +15,8 @@ import type {
 type SetTracks = React.Dispatch<React.SetStateAction<Track[]>>;
 
 const METADATA_PROVIDER_STORAGE_KEY = "zone-metadata-providers-v1";
+const NETEASE_MUSIC_PROVIDER_ID = "netease-music";
+const LEGACY_NETEASE_ARTIST_PROVIDER_ID = "netease-artist";
 
 export type MetadataEnrichmentApi = {
   providers: MetadataProviderDescriptor[];
@@ -43,11 +45,19 @@ function readProviderPreferences(): Record<string, boolean> {
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
+    const preferences = Object.fromEntries(
       Object.entries(parsed).filter((entry): entry is [string, boolean] => (
         typeof entry[1] === "boolean"
       )),
     );
+    if (
+      preferences[NETEASE_MUSIC_PROVIDER_ID] === undefined
+      && preferences[LEGACY_NETEASE_ARTIST_PROVIDER_ID] !== undefined
+    ) {
+      preferences[NETEASE_MUSIC_PROVIDER_ID] =
+        preferences[LEGACY_NETEASE_ARTIST_PROVIDER_ID];
+    }
+    return preferences;
   } catch {
     return {};
   }
@@ -152,9 +162,9 @@ export function useMetadataEnrichment({
         invoke<MetadataCandidate[]>("metadata_search_apple_music", { kind, tracks }),
       );
     }
-    if (kind === "artist" && enabled.has("netease-artist")) {
+    if (enabled.has(NETEASE_MUSIC_PROVIDER_ID)) {
       requests.push(
-        invoke<MetadataCandidate[]>("metadata_search_netease_artist", { kind, tracks }),
+        invoke<MetadataCandidate[]>("metadata_search_netease_music", { kind, tracks }),
       );
     }
     if (requests.length === 0) {
@@ -182,8 +192,8 @@ export function useMetadataEnrichment({
       ? "metadata_apply_sidecar"
       : candidate.providerId === "apple-music-cn"
         ? "metadata_apply_apple_music"
-        : candidate.providerId === "netease-artist"
-          ? "metadata_apply_netease_artist"
+        : candidate.providerId === NETEASE_MUSIC_PROVIDER_ID
+          ? "metadata_apply_netease_music"
           : null;
     if (!command) {
       throw new Error("这个补充来源暂不支持采用");

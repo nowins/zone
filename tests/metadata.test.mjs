@@ -104,8 +104,8 @@ test("metadata enrichment stays behind native commands and an explicit confirmat
   assert.match(hookSource, /metadata_get_track_overlays/);
   assert.match(hookSource, /metadata_search_apple_music/);
   assert.match(hookSource, /metadata_apply_apple_music/);
-  assert.match(hookSource, /metadata_search_netease_artist/);
-  assert.match(hookSource, /metadata_apply_netease_artist/);
+  assert.match(hookSource, /metadata_search_netease_music/);
+  assert.match(hookSource, /metadata_apply_netease_music/);
   assert.match(hookSource, /metadata_apply_manual/);
   assert.match(hookSource, /zone-metadata-providers-v1/);
   assert.doesNotMatch(hookSource, /\bfetch\s*\(/);
@@ -118,8 +118,8 @@ test("metadata enrichment stays behind native commands and an explicit confirmat
   assert.match(rustSource, /metadata_apply_sidecar/);
   assert.match(rustSource, /metadata_search_apple_music/);
   assert.match(rustSource, /metadata_apply_apple_music/);
-  assert.match(rustSource, /metadata_search_netease_artist/);
-  assert.match(rustSource, /metadata_apply_netease_artist/);
+  assert.match(rustSource, /metadata_search_netease_music/);
+  assert.match(rustSource, /metadata_apply_netease_music/);
   assert.match(rustSource, /metadata_apply_manual/);
   assert.match(rustSource, /metadata_clear_context/);
 });

@@ -22,11 +22,16 @@ pub(crate) fn metadata_list_providers(
       experimental: false,
     },
     MetadataProviderDescriptor {
-      id: NETEASE_ARTIST_PROVIDER_ID.to_string(),
-      name: NETEASE_ARTIST_PROVIDER_NAME.to_string(),
-      description: "查询歌手简介、别名、身份和歌手图片，无需账户".to_string(),
+      id: NETEASE_MUSIC_PROVIDER_ID.to_string(),
+      name: NETEASE_MUSIC_PROVIDER_NAME.to_string(),
+      description:
+        "查询歌曲、专辑、发行年份、专辑封面及歌手资料，无需账户"
+          .to_string(),
       capabilities: vec![
+        "metadata.track".to_string(),
+        "metadata.album".to_string(),
         "metadata.artist".to_string(),
+        "artwork.album".to_string(),
         "artwork.artist".to_string(),
       ],
       available: enabled,
@@ -106,12 +111,12 @@ pub(crate) async fn metadata_apply_apple_music(
 }
 
 #[tauri::command]
-pub(crate) async fn metadata_search_netease_artist(
+pub(crate) async fn metadata_search_netease_music(
   kind: MetadataEntityKind,
   tracks: Vec<MetadataTrackInput>,
 ) -> Result<Vec<MetadataCandidate>, String> {
   Ok(
-    search_netease_artist_candidates(kind, &tracks)
+    search_netease_music_candidates(kind, &tracks)
       .await?
       .into_iter()
       .map(|candidate| candidate.resolved.candidate)
@@ -120,13 +125,13 @@ pub(crate) async fn metadata_search_netease_artist(
 }
 
 #[tauri::command]
-pub(crate) async fn metadata_apply_netease_artist(
+pub(crate) async fn metadata_apply_netease_music(
   state: State<'_, MetadataState>,
   candidate_id: String,
   kind: MetadataEntityKind,
   tracks: Vec<MetadataTrackInput>,
 ) -> Result<(), String> {
-  apply_netease_artist_candidate(&state, &candidate_id, kind, &tracks).await
+  apply_netease_music_candidate(&state, &candidate_id, kind, &tracks).await
 }
 
 #[tauri::command]
