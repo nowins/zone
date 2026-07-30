@@ -1,11 +1,12 @@
-import { ChevronDown, ChevronUp, Folder, FolderPlus, Globe2, Music2, RefreshCw, Trash2 } from "lucide-react";
-import type { MusicFolder } from "../types";
+import { ChevronDown, ChevronUp, FileJson2, Folder, FolderPlus, Globe2, Music2, RefreshCw, Trash2 } from "lucide-react";
+import type { MetadataProviderDescriptor, MusicFolder } from "../types";
 import { useLyricsProviderSettings } from "../hooks/useLyricsProviderSettings";
 
 export function SettingsView({
   folders,
   trackCount,
   isScanning,
+  metadataProviders,
   onAddFolder,
   onRescan,
   onClear,
@@ -13,6 +14,7 @@ export function SettingsView({
   folders: MusicFolder[];
   trackCount: number;
   isScanning: boolean;
+  metadataProviders: MetadataProviderDescriptor[];
   onAddFolder: () => void;
   onRescan: () => void;
   onClear: () => void;
@@ -70,6 +72,31 @@ export function SettingsView({
                     <span className="folder-row-state">已包含</span>
                   </div>
                 ))
+              )}
+            </div>
+          </section>
+
+          <section className="settings-metadata-providers" aria-labelledby="metadata-providers-heading">
+            <header className="settings-section-heading">
+              <div>
+                <span className="settings-kicker">音乐信息</span>
+                <h2 id="metadata-providers-heading">补充来源</h2>
+                <p>补充内容保存在独立数据库中，不会改写音乐文件。查找与采用操作位于歌曲、专辑和艺术家的信息面板。</p>
+              </div>
+            </header>
+            <div className="metadata-provider-list">
+              {metadataProviders.map((provider) => (
+                <div className="metadata-provider-row" key={provider.id}>
+                  <FileJson2 size={20} aria-hidden="true" />
+                  <div>
+                    <strong>{provider.name}</strong>
+                    <span>{provider.description}</span>
+                  </div>
+                  <em>{provider.enabled ? "始终启用" : "暂不可用"}</em>
+                </div>
+              ))}
+              {metadataProviders.length === 0 && (
+                <p className="metadata-provider-empty">正在读取补充来源…</p>
               )}
             </div>
           </section>

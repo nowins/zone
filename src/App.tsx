@@ -23,6 +23,7 @@ import { resolveSearchSurface } from "./utils/collectionSearch";
 import { useSystemMedia } from "./hooks/useSystemMedia";
 import { useNavigation, type NowPlayingTargets } from "./hooks/useNavigation";
 import { useMusicLibrary } from "./hooks/useMusicLibrary";
+import { useMetadataEnrichment } from "./hooks/useMetadataEnrichment";
 import { usePodcastPlayback } from "./hooks/usePodcastPlayback";
 import {
   usePlaybackControls,
@@ -129,6 +130,11 @@ export default function App() {
     selectedAlbumKey,
     setSelectedAlbumKey,
     setQueue,
+  });
+  const metadata = useMetadataEnrichment({
+    tracks,
+    setTracks,
+    restored,
   });
   const podcast = usePodcastPlayback({
     audioRef,
@@ -488,7 +494,7 @@ export default function App() {
     />
   ) : null;
   const infoPanelElement = infoTarget ? (
-    <InfoPanel payload={infoTarget} onClose={() => setInfoTarget(null)} />
+    <InfoPanel payload={infoTarget} metadata={metadata} onClose={() => setInfoTarget(null)} />
   ) : null;
   const playlistDialogElement = playlistDialog ? (
     <PlaylistDialog
@@ -787,6 +793,7 @@ export default function App() {
             folders={folders}
             trackCount={tracks.length}
             isScanning={isScanning}
+            metadataProviders={metadata.providers}
             onAddFolder={addFolder}
             onRescan={() => rescan()}
             onClear={() => {

@@ -3,6 +3,29 @@ export type MusicFolder = {
   name: string;
 };
 
+export type TrackLocalMetadata = {
+  title: string;
+  artist: string;
+  album: string;
+  album_artist?: string;
+  year?: number | null;
+  genres?: string[];
+  cover_path?: string | null;
+};
+
+export type MetadataFieldSource = {
+  field: string;
+  providerId: string;
+  providerName: string;
+  sourcePath: string;
+  confidence: number;
+  updatedAt: number;
+};
+
+export type TrackMetadataEnrichment = {
+  sources: MetadataFieldSource[];
+};
+
 export type Track = {
   id: string;
   path: string;
@@ -19,6 +42,74 @@ export type Track = {
   added_at?: number | null;
   extension: string;
   cover_path?: string | null;
+  local_metadata?: TrackLocalMetadata;
+  metadata_enrichment?: TrackMetadataEnrichment;
+};
+
+export type MetadataEntityKind = "track" | "album" | "artist";
+
+export type MetadataTrackInput = {
+  id: string;
+  path: string;
+  title: string;
+  artist: string;
+  album: string;
+  albumArtist?: string;
+  trackNumber?: number | null;
+  discNumber?: number | null;
+  year?: number | null;
+  genres?: string[];
+  durationSeconds?: number | null;
+};
+
+export type MetadataCandidateField = {
+  key: string;
+  label: string;
+  value: string;
+};
+
+export type MetadataCandidate = {
+  id: string;
+  kind: MetadataEntityKind;
+  providerId: string;
+  providerName: string;
+  title: string;
+  subtitle: string;
+  sourcePath: string;
+  confidence: number;
+  fields: MetadataCandidateField[];
+};
+
+export type MetadataProviderDescriptor = {
+  id: string;
+  name: string;
+  description: string;
+  capabilities: string[];
+  enabled: boolean;
+  experimental: boolean;
+};
+
+export type MetadataTrackOverlay = {
+  trackId: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  albumArtist?: string;
+  year?: number;
+  genres?: string[];
+  coverPath?: string;
+  sources: MetadataFieldSource[];
+};
+
+export type MetadataContextRecord = {
+  entityId: string;
+  kind: MetadataEntityKind;
+  providerId: string;
+  providerName: string;
+  sourcePath: string;
+  confidence: number;
+  updatedAt: number;
+  fields: MetadataCandidateField[];
 };
 
 export type AlbumGroup = {

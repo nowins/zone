@@ -2,6 +2,7 @@ mod audio_protocol;
 mod library;
 mod lyrics;
 mod lyrics_provider;
+mod metadata;
 mod podcast;
 mod qrc;
 mod system_media;
@@ -65,6 +66,14 @@ pub fn run() {
         }
       };
       app.manage(podcast_state);
+      let metadata_state = match metadata::MetadataState::initialize(app.handle()) {
+        Ok(state) => state,
+        Err(error) => {
+          eprintln!("[metadata] initialization failed: {error}");
+          metadata::MetadataState::unavailable(error)
+        }
+      };
+      app.manage(metadata_state);
 
       #[cfg(target_os = "windows")]
       if let Some(window) = app.get_webview_window("main") {
@@ -89,6 +98,12 @@ pub fn run() {
       lyrics::load_local_lyrics,
       lyrics_provider::request_lyrics_provider,
       lyrics_provider::decrypt_qrc_lyrics,
+      metadata::metadata_list_providers,
+      metadata::metadata_search_sidecars,
+      metadata::metadata_apply_sidecar,
+      metadata::metadata_get_track_overlays,
+      metadata::metadata_get_context,
+      metadata::metadata_clear_context,
       update_system_media,
       update_system_media_timeline,
       podcast::podcast_search_apple,

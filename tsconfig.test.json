@@ -39,6 +39,7 @@
     "src/utils/smartPlaylist.ts",
     "src/utils/librarySearch.ts",
     "src/utils/collectionSearch.ts",
+    "src/utils/metadata.ts",
     "src/motion/math.ts",
     "src/motion/tokens.ts",
     "src/motion/spring.ts",
