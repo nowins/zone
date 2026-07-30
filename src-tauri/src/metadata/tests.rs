@@ -64,7 +64,7 @@ fn sidecar_candidate_can_be_applied_and_cleared() {
   assert_eq!(candidates.len(), 1);
   assert_eq!(candidates[0].candidate.title, "补全专辑");
 
-  persist_sidecar_candidate(&state, &candidates[0], &tracks).unwrap();
+  persist_metadata_candidate(&state, &candidates[0], &tracks).unwrap();
   let overlays = read_track_overlays(&state, &["track-1".to_string()]).unwrap();
   assert_eq!(overlays.len(), 1);
   assert_eq!(overlays[0].album.as_deref(), Some("补全专辑"));

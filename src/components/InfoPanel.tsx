@@ -68,7 +68,7 @@ export function InfoPanel({
       const result = await metadata.search(payload);
       setCandidates(result);
       if (result.length === 0) {
-        setNotice("未找到对应的本地补充文件");
+        setNotice("未找到匹配度足够的补充信息");
       }
     } catch (error) {
       setNotice(String(error));
@@ -81,7 +81,7 @@ export function InfoPanel({
     setStatus("applying");
     setNotice("");
     try {
-      const result = await metadata.apply(payload, candidate.id);
+      const result = await metadata.apply(payload, candidate);
       setContext(result);
       setCandidates([]);
       setNotice("补充信息已采用");
@@ -182,7 +182,7 @@ export function InfoPanel({
                 ) : (
                   <Search size={16} aria-hidden="true" />
                 )}
-                {status === "loading" ? "正在查找" : "查找本地补充信息"}
+                {status === "loading" ? "正在查找" : "查找补充信息"}
               </button>
 
               {candidates.length > 0 && (
@@ -192,7 +192,8 @@ export function InfoPanel({
                       <FileJson2 size={20} aria-hidden="true" />
                       <div>
                         <strong>{candidate.title}</strong>
-                        <span>{candidate.subtitle}</span>
+                        <span>{candidate.providerName} · 匹配度 {candidate.confidence}%</span>
+                        <em>{candidate.subtitle}</em>
                         {artworkPath(candidate.fields) && (
                           <img
                             className="info-metadata-candidate-art"

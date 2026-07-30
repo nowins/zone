@@ -101,6 +101,8 @@ pub fn run() {
       metadata::metadata_list_providers,
       metadata::metadata_search_sidecars,
       metadata::metadata_apply_sidecar,
+      metadata::metadata_search_apple_music,
+      metadata::metadata_apply_apple_music,
       metadata::metadata_get_track_overlays,
       metadata::metadata_get_context,
       metadata::metadata_clear_context,

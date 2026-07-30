@@ -17,7 +17,7 @@ export type MetadataEnrichmentApi = {
   providers: MetadataProviderDescriptor[];
   getContext: (payload: ContextPayload) => Promise<MetadataContextRecord | null>;
   search: (payload: ContextPayload) => Promise<MetadataCandidate[]>;
-  apply: (payload: ContextPayload, candidateId: string) => Promise<MetadataContextRecord | null>;
+  apply: (payload: ContextPayload, candidate: MetadataCandidate) => Promise<MetadataContextRecord | null>;
   clear: (payload: ContextPayload) => Promise<void>;
 };
 
@@ -92,16 +92,44 @@ export function useMetadataEnrichment({
   }, []);
 
   const search = useCallback(async (payload: ContextPayload) => {
-    return invoke<MetadataCandidate[]>("metadata_search_sidecars", {
-      kind: metadataKind(payload),
-      tracks: metadataInputs(payload),
-    });
+    const kind = metadataKind(payload);
+    const tracks = metadataInputs(payload);
+    const requests = [
+      invoke<MetadataCandidate[]>("metadata_search_sidecars", { kind, tracks }),
+    ];
+    if (kind !== "artist") {
+      requests.push(
+        invoke<MetadataCandidate[]>("metadata_search_apple_music", { kind, tracks }),
+      );
+    }
+    const results = await Promise.allSettled(requests);
+    const candidates = results
+      .filter((result): result is PromiseFulfilledResult<MetadataCandidate[]> => (
+        result.status === "fulfilled"
+      ))
+      .flatMap((result) => result.value)
+      .sort((left, right) => right.confidence - left.confidence);
+    if (candidates.length === 0) {
+      const errors = results
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => String(result.reason));
+      if (errors.length > 0) throw new Error(errors.join("；"));
+    }
+    return candidates;
   }, []);
 
-  const apply = useCallback(async (payload: ContextPayload, candidateId: string) => {
+  const apply = useCallback(async (payload: ContextPayload, candidate: MetadataCandidate) => {
     const kind = metadataKind(payload);
-    await invoke("metadata_apply_sidecar", {
-      candidateId,
+    const command = candidate.providerId === "local-sidecar"
+      ? "metadata_apply_sidecar"
+      : candidate.providerId === "apple-music-cn"
+        ? "metadata_apply_apple_music"
+        : null;
+    if (!command) {
+      throw new Error("这个补充来源暂不支持采用");
+    }
+    await invoke(command, {
+      candidateId: candidate.id,
       kind,
       tracks: metadataInputs(payload),
     });

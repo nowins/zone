@@ -100,10 +100,14 @@ test("metadata enrichment stays behind native commands and an explicit confirmat
 
   assert.match(appSource, /useMetadataEnrichment/);
   assert.match(hookSource, /metadata_get_track_overlays/);
+  assert.match(hookSource, /metadata_search_apple_music/);
+  assert.match(hookSource, /metadata_apply_apple_music/);
   assert.doesNotMatch(hookSource, /\bfetch\s*\(/);
-  assert.match(infoSource, /查找本地补充信息/);
+  assert.match(infoSource, /查找补充信息/);
   assert.match(infoSource, /采用/);
   assert.match(infoSource, /恢复本地信息/);
   assert.match(rustSource, /metadata_apply_sidecar/);
+  assert.match(rustSource, /metadata_search_apple_music/);
+  assert.match(rustSource, /metadata_apply_apple_music/);
   assert.match(rustSource, /metadata_clear_context/);
 });

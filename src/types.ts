@@ -8,6 +8,8 @@ export type TrackLocalMetadata = {
   artist: string;
   album: string;
   album_artist?: string;
+  track_number?: number | null;
+  disc_number?: number | null;
   year?: number | null;
   genres?: string[];
   cover_path?: string | null;
@@ -95,6 +97,8 @@ export type MetadataTrackOverlay = {
   artist?: string;
   album?: string;
   albumArtist?: string;
+  trackNumber?: number;
+  discNumber?: number;
   year?: number;
   genres?: string[];
   coverPath?: string;

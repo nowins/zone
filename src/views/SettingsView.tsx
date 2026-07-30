@@ -81,7 +81,7 @@ export function SettingsView({
               <div>
                 <span className="settings-kicker">音乐信息</span>
                 <h2 id="metadata-providers-heading">补充来源</h2>
-                <p>补充内容保存在独立数据库中，不会改写音乐文件。查找与采用操作位于歌曲、专辑和艺术家的信息面板。</p>
+                <p>补充内容保存在独立数据库中，不会改写音乐文件。在线查找会向对应来源发送曲名、歌手、专辑和时长。</p>
               </div>
             </header>
             <div className="metadata-provider-list">

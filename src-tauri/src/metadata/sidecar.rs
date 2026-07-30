@@ -24,6 +24,8 @@ struct SidecarDocument {
   artist: Option<String>,
   album: Option<String>,
   album_artist: Option<String>,
+  track_number: Option<u32>,
+  disc_number: Option<u32>,
   year: Option<u32>,
   genres: Option<Vec<String>>,
   description: Option<String>,
@@ -35,19 +37,11 @@ struct SidecarDocument {
   external_ids: Option<BTreeMap<String, String>>,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct ResolvedSidecarCandidate {
-  pub(crate) candidate: MetadataCandidate,
-  pub(crate) display_name: String,
-  pub(crate) values: Vec<(String, Value)>,
-  pub(crate) external_ids: Vec<(String, String)>,
-}
-
 pub(crate) fn find_sidecar_candidates(
   kind: MetadataEntityKind,
   tracks: &[MetadataTrackInput],
-) -> Result<Vec<ResolvedSidecarCandidate>, String> {
-  validate_tracks(tracks)?;
+) -> Result<Vec<ResolvedMetadataCandidate>, String> {
+  validate_metadata_tracks(tracks)?;
   let mut paths = Vec::new();
   let mut seen_paths = HashSet::new();
 
@@ -85,7 +79,7 @@ pub(crate) fn find_sidecar_candidates(
   Ok(candidates)
 }
 
-fn validate_tracks(tracks: &[MetadataTrackInput]) -> Result<(), String> {
+pub(crate) fn validate_metadata_tracks(tracks: &[MetadataTrackInput]) -> Result<(), String> {
   if tracks.is_empty() || tracks.len() > SIDECAR_TRACK_LIMIT {
     return Err("本地补充信息的歌曲范围无效".to_string());
   }
@@ -173,7 +167,7 @@ fn load_sidecar(
   kind: MetadataEntityKind,
   path: &Path,
   tracks: &[MetadataTrackInput],
-) -> Result<Option<ResolvedSidecarCandidate>, String> {
+) -> Result<Option<ResolvedMetadataCandidate>, String> {
   let metadata = fs::metadata(path).map_err(|error| format!("无法读取本地补充文件：{error}"))?;
   if metadata.len() == 0 || metadata.len() > SIDECAR_RESPONSE_LIMIT {
     return Err("本地补充文件为空或超过 256 KiB".to_string());
@@ -208,6 +202,8 @@ fn load_sidecar(
         SIDECAR_TEXT_LIMIT,
       );
       push_year(&mut values, document.year);
+      push_position(&mut values, "track_number", document.track_number);
+      push_position(&mut values, "disc_number", document.disc_number);
       push_genres(&mut values, document.genres.as_deref());
       push_string(
         &mut values,
@@ -299,7 +295,7 @@ fn load_sidecar(
     .map(|value| value.to_string_lossy().to_string())
     .unwrap_or_else(|| "本地补充文件".to_string());
 
-  Ok(Some(ResolvedSidecarCandidate {
+  Ok(Some(ResolvedMetadataCandidate {
     candidate: MetadataCandidate {
       id,
       kind,
@@ -331,6 +327,12 @@ fn push_string(
 fn push_year(values: &mut Vec<(String, Value)>, year: Option<u32>) {
   if let Some(year) = year.filter(|year| (1..=9_999).contains(year)) {
     values.push(("year".to_string(), Value::from(year)));
+  }
+}
+
+fn push_position(values: &mut Vec<(String, Value)>, key: &str, value: Option<u32>) {
+  if let Some(value) = value.filter(|value| *value > 0 && *value <= 100_000) {
+    values.push((key.to_string(), Value::from(value)));
   }
 }
 
@@ -467,6 +469,8 @@ pub(crate) fn field_label(key: &str) -> &'static str {
     "album" => "专辑",
     "album_artist" => "专辑艺术家",
     "year" => "年份",
+    "track_number" => "曲序",
+    "disc_number" => "碟号",
     "genres" => "流派",
     "description" => "介绍",
     "biography" => "歌手简介",

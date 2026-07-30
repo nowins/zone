@@ -78,9 +78,9 @@ pub(crate) fn open_database(path: &Path) -> Result<Connection, String> {
   Ok(connection)
 }
 
-pub(crate) fn persist_sidecar_candidate(
+pub(crate) fn persist_metadata_candidate(
   state: &MetadataState,
-  resolved: &ResolvedSidecarCandidate,
+  resolved: &ResolvedMetadataCandidate,
   tracks: &[MetadataTrackInput],
 ) -> Result<(), String> {
   state.ensure_ready()?;
@@ -309,6 +309,8 @@ fn effective_track_field<'a>(kind: &str, field_name: &'a str) -> Option<&'a str>
     | ("track", "artist")
     | ("track", "album")
     | ("track", "album_artist")
+    | ("track", "track_number")
+    | ("track", "disc_number")
     | ("track", "year")
     | ("track", "genres")
     | ("track", "album_cover_path") => Some(field_name),
@@ -332,6 +334,20 @@ fn apply_overlay_value(
     "artist" => set_string(&mut overlay.artist, value),
     "album" => set_string(&mut overlay.album, value),
     "album_artist" => set_string(&mut overlay.album_artist, value),
+    "track_number" => {
+      let Some(value) = value.as_u64().and_then(|value| u32::try_from(value).ok()) else {
+        return false;
+      };
+      overlay.track_number = Some(value);
+      true
+    }
+    "disc_number" => {
+      let Some(value) = value.as_u64().and_then(|value| u32::try_from(value).ok()) else {
+        return false;
+      };
+      overlay.disc_number = Some(value);
+      true
+    }
     "year" => {
       let Some(value) = value.as_u64().and_then(|value| u32::try_from(value).ok()) else {
         return false;

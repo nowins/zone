@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -56,6 +57,14 @@ pub(crate) struct MetadataCandidate {
   pub(crate) fields: Vec<MetadataCandidateField>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct ResolvedMetadataCandidate {
+  pub(crate) candidate: MetadataCandidate,
+  pub(crate) display_name: String,
+  pub(crate) values: Vec<(String, Value)>,
+  pub(crate) external_ids: Vec<(String, String)>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MetadataProviderDescriptor {
@@ -86,6 +95,8 @@ pub(crate) struct MetadataTrackOverlay {
   pub(crate) artist: Option<String>,
   pub(crate) album: Option<String>,
   pub(crate) album_artist: Option<String>,
+  pub(crate) track_number: Option<u32>,
+  pub(crate) disc_number: Option<u32>,
   pub(crate) year: Option<u32>,
   pub(crate) genres: Option<Vec<String>>,
   pub(crate) cover_path: Option<String>,
