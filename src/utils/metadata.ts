@@ -46,7 +46,7 @@ export function applyMetadataOverlays(
     const local = localMetadataForTrack(track);
     const overlay = overlaysByTrack.get(track.id);
     if (!overlay) {
-      if (!track.local_metadata && !track.metadata_enrichment) return track;
+      if (!track.local_metadata && !track.metadata_enrichment && !track.artist_image_path) return track;
       const restored: Track = {
         ...track,
         title: local.title,
@@ -59,6 +59,7 @@ export function applyMetadataOverlays(
         genres: local.genres,
         cover_path: local.cover_path,
       };
+      delete restored.artist_image_path;
       delete restored.local_metadata;
       delete restored.metadata_enrichment;
       return restored;
@@ -75,6 +76,7 @@ export function applyMetadataOverlays(
       year: overlay.year ?? local.year,
       genres: overlay.genres ?? local.genres,
       cover_path: overlay.coverPath ?? local.cover_path,
+      artist_image_path: overlay.artistImagePath ?? null,
       local_metadata: local,
       metadata_enrichment: {
         sources: overlay.sources,

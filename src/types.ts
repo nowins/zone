@@ -44,6 +44,7 @@ export type Track = {
   added_at?: number | null;
   extension: string;
   cover_path?: string | null;
+  artist_image_path?: string | null;
   local_metadata?: TrackLocalMetadata;
   metadata_enrichment?: TrackMetadataEnrichment;
 };
@@ -108,6 +109,7 @@ export type MetadataTrackOverlay = {
   year?: number;
   genres?: string[];
   coverPath?: string;
+  artistImagePath?: string;
   sources: MetadataFieldSource[];
 };
 

@@ -14,6 +14,7 @@
     "src/utils/visualizerBus.ts",
     "src/utils/nowPlayingWall.ts",
     "src/utils/nowPlayingCanvas.ts",
+    "src/utils/collectionBackdrop.ts",
     "src/utils/beatAnalysis.ts",
     "src/utils/audioGlow.ts",
     "src/utils/playback.ts",

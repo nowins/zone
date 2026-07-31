@@ -10,6 +10,7 @@ import { InfoPanel } from "./components/InfoPanel";
 import { AddToPlaylistDialog } from "./components/AddToPlaylistDialog";
 import { PlaylistDialog, type PlaylistDialogState } from "./components/PlaylistDialog";
 import { SmartPlaylistDialog } from "./components/SmartPlaylistDialog";
+import { CollectionArtworkBackdrop } from "./components/CollectionArtworkBackdrop";
 import { LibraryView } from "./views/LibraryView";
 import { SearchResultsView } from "./views/SearchResultsView";
 import { QuickplayView } from "./views/QuickplayView";
@@ -619,6 +620,12 @@ export default function App() {
           <section
             className={`content-band collection-band${showSearchResults ? " collection-searching" : ""}`}
           >
+            <CollectionArtworkBackdrop
+              tracks={tracks}
+              activeTrack={activePodcastEpisode ? null : activeTrack}
+              surfaceKey={showSearchResults ? "search" : view}
+              parallaxEnabled={!showSearchResults}
+            />
             <p className="collection-ghost" aria-hidden="true">
               collection
             </p>

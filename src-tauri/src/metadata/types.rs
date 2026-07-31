@@ -108,6 +108,7 @@ pub(crate) struct MetadataTrackOverlay {
   pub(crate) year: Option<u32>,
   pub(crate) genres: Option<Vec<String>>,
   pub(crate) cover_path: Option<String>,
+  pub(crate) artist_image_path: Option<String>,
   pub(crate) sources: Vec<MetadataFieldSource>,
 }
 

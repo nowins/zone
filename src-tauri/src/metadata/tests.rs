@@ -111,7 +111,12 @@ fn artist_sidecar_is_discovered_from_artist_folder() {
   write_audio(&audio_path);
   fs::write(
     artist_dir.join("artist.zone.json"),
-    r#"{"name":"补全艺术家","biography":"歌手简介"}"#,
+    r#"{"name":"补全艺术家","biography":"歌手简介","image":"artist.zone.jpg"}"#,
+  )
+  .unwrap();
+  fs::write(
+    artist_dir.join("artist.zone.jpg"),
+    [0xff, 0xd8, 0xff, 0x00],
   )
   .unwrap();
 
@@ -125,6 +130,21 @@ fn artist_sidecar_is_discovered_from_artist_folder() {
     .fields
     .iter()
     .any(|field| field.key == "biography"));
+  assert!(candidates[0]
+    .candidate
+    .fields
+    .iter()
+    .any(|field| field.key == "artist_image_path"));
+
+  let state = MetadataState::initialize_at(&root.join("data")).unwrap();
+  let tracks = vec![track(&audio_path, "track-1")];
+  persist_metadata_candidate(&state, &candidates[0], &tracks).unwrap();
+  let overlays = read_track_overlays(&state, &["track-1".to_string()]).unwrap();
+  assert_eq!(overlays.len(), 1);
+  assert!(overlays[0]
+    .artist_image_path
+    .as_deref()
+    .is_some_and(|path| path.ends_with("artist.zone.jpg")));
 
   fs::remove_dir_all(root).unwrap();
 }
