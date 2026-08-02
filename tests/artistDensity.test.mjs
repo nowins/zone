@@ -34,6 +34,19 @@ test("artist rows stay quiet and align with the collection total", () => {
   assert.ok(!collectionCss.includes(".artist-picker button > small"));
 });
 
+test("artist enrichment appears as a compact identity block without reducing every row", () => {
+  assert.ok(artistSource.includes("track.artist_image_path"));
+  assert.ok(artistSource.includes("track.artist_biography"));
+  assert.ok(artistSource.includes("hasArtistIdentity ?"));
+
+  const identityRule = cssRule(collectionCss, ".artist-identity");
+  const biographyRule = cssRule(collectionCss, ".artist-identity-copy p");
+  const pickerRule = cssRule(collectionCss, ".artist-picker");
+  assert.ok(identityRule.includes("74px minmax(0, 1fr)"));
+  assert.ok(biographyRule.includes("-webkit-line-clamp: 4"));
+  assert.ok(pickerRule.includes("flex: 1"));
+});
+
 function cssRule(source, selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = source.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([\\s\\S]*?)\\}`));

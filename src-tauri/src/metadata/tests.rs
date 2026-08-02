@@ -145,6 +145,7 @@ fn artist_sidecar_is_discovered_from_artist_folder() {
     .artist_image_path
     .as_deref()
     .is_some_and(|path| path.ends_with("artist.zone.jpg")));
+  assert_eq!(overlays[0].artist_biography.as_deref(), Some("歌手简介"));
 
   fs::remove_dir_all(root).unwrap();
 }

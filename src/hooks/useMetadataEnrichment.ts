@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { applyMetadataOverlays, metadataTrackInput } from "../utils/metadata";
+import {
+  applyMetadataOverlays,
+  automaticArtistTrackScope,
+  metadataTrackInput,
+  normalizeArtistIdentity,
+  selectAutomaticArtistCandidate,
+} from "../utils/metadata";
 import type {
   ContextPayload,
   MetadataCandidate,
@@ -17,6 +23,7 @@ type SetTracks = React.Dispatch<React.SetStateAction<Track[]>>;
 const METADATA_PROVIDER_STORAGE_KEY = "zone-metadata-providers-v1";
 const NETEASE_MUSIC_PROVIDER_ID = "netease-music";
 const LEGACY_NETEASE_ARTIST_PROVIDER_ID = "netease-artist";
+const AUTO_ARTIST_RETRY_MS = 30 * 60 * 1_000;
 
 export type MetadataEnrichmentApi = {
   providers: MetadataProviderDescriptor[];
@@ -26,6 +33,7 @@ export type MetadataEnrichmentApi = {
   apply: (payload: ContextPayload, candidate: MetadataCandidate) => Promise<MetadataContextRecord | null>;
   edit: (payload: ContextPayload, fields: MetadataManualField[]) => Promise<MetadataContextRecord | null>;
   clear: (payload: ContextPayload) => Promise<void>;
+  enrichArtistForPlayback: (track: Track) => Promise<boolean>;
 };
 
 function metadataKind(payload: ContextPayload): MetadataEntityKind {
@@ -75,6 +83,7 @@ export function useMetadataEnrichment({
   const [providerDescriptors, setProviderDescriptors] = useState<MetadataProviderDescriptor[]>([]);
   const [providerPreferences, setProviderPreferences] = useState(readProviderPreferences);
   const [revision, setRevision] = useState(0);
+  const automaticArtistAttemptsRef = useRef(new Map<string, number>());
   const providers = useMemo(() => providerDescriptors.map((provider) => ({
     ...provider,
     enabled: provider.available && (providerPreferences[provider.id] ?? provider.enabled),
@@ -232,6 +241,42 @@ export function useMetadataEnrichment({
     setRevision((current) => current + 1);
   }, []);
 
+  const enrichArtistForPlayback = useCallback(async (track: Track) => {
+    if (track.artist_image_path || track.artist_biography) return false;
+    const scope = automaticArtistTrackScope(tracks, track);
+    if (scope.length === 0) return false;
+    const automaticProviders = providers
+      .filter((provider) => (
+        provider.enabled
+        && (provider.id === "local-sidecar" || provider.id === NETEASE_MUSIC_PROVIDER_ID)
+      ))
+      .map((provider) => provider.id)
+      .sort();
+    if (automaticProviders.length === 0) return false;
+
+    const attemptKey = `${normalizeArtistIdentity(track.artist)}\u0000${automaticProviders.join(",")}`;
+    const now = Date.now();
+    const previousAttempt = automaticArtistAttemptsRef.current.get(attemptKey) ?? 0;
+    if (now - previousAttempt < AUTO_ARTIST_RETRY_MS) return false;
+    automaticArtistAttemptsRef.current.set(attemptKey, now);
+
+    const payload: ContextPayload = {
+      kind: "artist",
+      title: track.artist,
+      subtitle: `${scope.length} 首歌曲`,
+      tracks: scope,
+    };
+    try {
+      const candidate = selectAutomaticArtistCandidate(await search(payload));
+      if (!candidate) return false;
+      await apply(payload, candidate);
+      return true;
+    } catch (error) {
+      if (import.meta.env.DEV) console.warn("[metadata] automatic artist enrichment failed", error);
+      return false;
+    }
+  }, [apply, providers, search, tracks]);
+
   return useMemo(() => ({
     providers,
     setProviderEnabled,
@@ -240,5 +285,15 @@ export function useMetadataEnrichment({
     apply,
     edit,
     clear,
-  }), [apply, clear, edit, getContext, providers, search, setProviderEnabled]);
+    enrichArtistForPlayback,
+  }), [
+    apply,
+    clear,
+    edit,
+    enrichArtistForPlayback,
+    getContext,
+    providers,
+    search,
+    setProviderEnabled,
+  ]);
 }

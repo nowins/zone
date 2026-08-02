@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   applyMetadataOverlays,
+  automaticArtistTrackScope,
   metadataTrackInput,
+  selectAutomaticArtistCandidate,
 } from "../.tmp/visualizer-tests/utils/metadata.js";
 
 function track(overrides = {}) {
@@ -37,6 +39,7 @@ test("metadata overlays preserve the original file values", () => {
     genres: ["补全流派"],
     coverPath: "D:\\Music\\album.zone.jpg",
     artistImagePath: "D:\\Music\\artist.zone.jpg",
+    artistBiography: "补全歌手简介",
     sources: [{
       field: "title",
       providerId: "local-sidecar",
@@ -50,6 +53,7 @@ test("metadata overlays preserve the original file values", () => {
   assert.equal(enriched.title, "补全标题");
   assert.equal(enriched.cover_path, "D:\\Music\\album.zone.jpg");
   assert.equal(enriched.artist_image_path, "D:\\Music\\artist.zone.jpg");
+  assert.equal(enriched.artist_biography, "补全歌手简介");
   assert.equal(enriched.local_metadata.title, "文件标题");
   assert.equal(enriched.local_metadata.cover_path, "D:\\Music\\embedded.jpg");
   assert.equal(enriched.metadata_enrichment.sources[0].providerId, "local-sidecar");
@@ -84,6 +88,7 @@ test("clearing metadata restores the original file values", () => {
     title: "补全标题",
     year: 2024,
     artistImagePath: "D:\\Music\\artist.zone.jpg",
+    artistBiography: "补全歌手简介",
     sources: [],
   }]);
   const [restored] = applyMetadataOverlays([enriched], []);
@@ -92,8 +97,66 @@ test("clearing metadata restores the original file values", () => {
   assert.equal(restored.year, 2001);
   assert.equal(restored.cover_path, "D:\\Music\\embedded.jpg");
   assert.equal("artist_image_path" in restored, false);
+  assert.equal("artist_biography" in restored, false);
   assert.equal("local_metadata" in restored, false);
   assert.equal("metadata_enrichment" in restored, false);
+});
+
+test("automatic artist scope is exact, active-first, bounded, and skips unknown artists", () => {
+  const active = track({ id: "active", artist: " 王菲 " });
+  const related = track({ id: "related", artist: "王菲" });
+  const other = track({ id: "other", artist: "王菲菲" });
+
+  assert.deepEqual(
+    automaticArtistTrackScope([related, active, other], active).map((item) => item.id),
+    ["active", "related"],
+  );
+  assert.equal(automaticArtistTrackScope([active, related], active, 1).length, 1);
+  assert.deepEqual(
+    automaticArtistTrackScope([], track({ artist: "未知艺术家" })),
+    [],
+  );
+});
+
+test("automatic artist selection requires one unambiguous exact image candidate", () => {
+  const candidate = (overrides = {}) => ({
+    id: "netease:artist:1",
+    kind: "artist",
+    providerId: "netease-music",
+    providerName: "网易云音乐",
+    title: "王菲",
+    subtitle: "歌手资料",
+    sourcePath: "https://music.163.com/artist?id=1",
+    confidence: 100,
+    fields: [],
+    ...overrides,
+  });
+  const exact = candidate();
+
+  assert.equal(selectAutomaticArtistCandidate([exact]), exact);
+  assert.equal(selectAutomaticArtistCandidate([candidate({ confidence: 99 })]), null);
+  assert.equal(selectAutomaticArtistCandidate([
+    exact,
+    candidate({ id: "netease:artist:2" }),
+  ]), null);
+
+  const local = candidate({
+    id: "sidecar:artist",
+    providerId: "local-sidecar",
+    fields: [{ key: "artist_image_path", label: "歌手图片", value: "D:\\artist.jpg" }],
+  });
+  assert.equal(selectAutomaticArtistCandidate([exact, local]), local);
+});
+
+test("playback enrichment is silent, provider-aware, and excludes podcast playback", () => {
+  const hookSource = readFileSync(new URL("../src/hooks/useMetadataEnrichment.ts", import.meta.url), "utf8");
+  const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+
+  assert.match(hookSource, /AUTO_ARTIST_RETRY_MS = 30 \* 60 \* 1_000/);
+  assert.match(hookSource, /provider\.id === "local-sidecar"[\s\S]+NETEASE_MUSIC_PROVIDER_ID/);
+  assert.match(hookSource, /selectAutomaticArtistCandidate\(await search\(payload\)\)/);
+  assert.match(appSource, /!restored \|\| !isPlaying \|\| activePodcastEpisode \|\| !activeTrack/);
+  assert.match(appSource, /metadata\.enrichArtistForPlayback\(activeTrack\)/);
 });
 
 test("metadata enrichment stays behind native commands and an explicit confirmation", () => {

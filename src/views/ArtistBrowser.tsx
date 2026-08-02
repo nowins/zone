@@ -47,6 +47,9 @@ export function ArtistBrowser({
   }, [artist]);
   const selectedAlbum = artistAlbums.find((album) => album.key === selectedAlbumKey) ?? artistAlbums[0] ?? null;
   const visibleSongs = selectedAlbum?.tracks ?? artist?.tracks ?? [];
+  const artistImagePath = artist?.tracks.find((track) => track.artist_image_path)?.artist_image_path;
+  const artistBiography = artist?.tracks.find((track) => track.artist_biography)?.artist_biography;
+  const hasArtistIdentity = Boolean(artistImagePath || artistBiography);
 
   useEffect(() => {
     if (initialArtist && artists.some((item) => item.artist === initialArtist)) {
@@ -79,6 +82,27 @@ export function ArtistBrowser({
   return (
     <div className="artist-browser">
       <section className="artist-column">
+        {artist && hasArtistIdentity ? (
+          <div
+            className={`artist-identity${artistImagePath ? "" : " no-image"}`}
+            onContextMenu={(event) => onContextMenu(event, {
+              kind: "artist",
+              title: artist.artist,
+              subtitle: `${artist.tracks.length} 首歌曲`,
+              tracks: artist.tracks,
+            })}
+          >
+            {artistImagePath ? (
+              <div className="artist-identity-art">
+                <Cover artPath={artistImagePath} label={artist.artist} size="large" />
+              </div>
+            ) : null}
+            <div className="artist-identity-copy">
+              <strong>{artist.artist}</strong>
+              {artistBiography ? <p>{artistBiography}</p> : null}
+            </div>
+          </div>
+        ) : null}
         <div className="artist-picker">
           {artists.map((item) => (
             <button

@@ -341,11 +341,75 @@
   gap: 24px;
 }
 
-.artist-column,
 .artist-albums,
 .artist-songs {
   min-height: 0;
   overflow: hidden;
+}
+
+.artist-column {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.artist-identity {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  margin: 0 6px 20px 0;
+}
+
+.artist-identity.no-image {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.artist-identity-art {
+  width: 74px;
+  height: 92px;
+  overflow: hidden;
+}
+
+.artist-identity-art .cover {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  aspect-ratio: auto;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.artist-identity-art .cover img {
+  object-position: center 22%;
+}
+
+.artist-identity-copy {
+  min-width: 0;
+}
+
+.artist-identity-copy strong {
+  display: block;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 24px;
+  line-height: 1.08;
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artist-identity-copy p {
+  display: -webkit-box;
+  margin: 9px 0 0;
+  overflow: hidden;
+  color: rgba(247, 242, 246, 0.48);
+  font-size: 12px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
 }
 
 .artist-albums p,
@@ -371,7 +435,9 @@
 }
 
 .artist-picker {
-  max-height: 100%;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   padding-right: 6px;
 }
 

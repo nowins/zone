@@ -1,9 +1,13 @@
 import type {
+  MetadataCandidate,
   MetadataTrackInput,
   MetadataTrackOverlay,
   Track,
   TrackLocalMetadata,
 } from "../types.js";
+
+const AUTOMATIC_ARTIST_TRACK_LIMIT = 500;
+const UNKNOWN_ARTIST_LABELS = new Set(["未知艺术家", "unknownartist", "unknown"]);
 
 function localMetadataForTrack(track: Track): TrackLocalMetadata {
   return track.local_metadata ?? {
@@ -46,7 +50,12 @@ export function applyMetadataOverlays(
     const local = localMetadataForTrack(track);
     const overlay = overlaysByTrack.get(track.id);
     if (!overlay) {
-      if (!track.local_metadata && !track.metadata_enrichment && !track.artist_image_path) return track;
+      if (
+        !track.local_metadata
+        && !track.metadata_enrichment
+        && !track.artist_image_path
+        && !track.artist_biography
+      ) return track;
       const restored: Track = {
         ...track,
         title: local.title,
@@ -60,6 +69,7 @@ export function applyMetadataOverlays(
         cover_path: local.cover_path,
       };
       delete restored.artist_image_path;
+      delete restored.artist_biography;
       delete restored.local_metadata;
       delete restored.metadata_enrichment;
       return restored;
@@ -77,10 +87,49 @@ export function applyMetadataOverlays(
       genres: overlay.genres ?? local.genres,
       cover_path: overlay.coverPath ?? local.cover_path,
       artist_image_path: overlay.artistImagePath ?? null,
+      artist_biography: overlay.artistBiography ?? null,
       local_metadata: local,
       metadata_enrichment: {
         sources: overlay.sources,
       },
     };
   });
+}
+
+export function automaticArtistTrackScope(
+  tracks: Track[],
+  activeTrack: Track,
+  limit = AUTOMATIC_ARTIST_TRACK_LIMIT,
+): Track[] {
+  const identity = normalizeArtistIdentity(activeTrack.artist);
+  if (!identity || UNKNOWN_ARTIST_LABELS.has(identity)) return [];
+  const safeLimit = Math.max(1, Math.min(AUTOMATIC_ARTIST_TRACK_LIMIT, Math.floor(limit)));
+  const related = tracks.filter((track) => (
+    track.id !== activeTrack.id && normalizeArtistIdentity(track.artist) === identity
+  ));
+  return [activeTrack, ...related].slice(0, safeLimit);
+}
+
+export function selectAutomaticArtistCandidate(
+  candidates: MetadataCandidate[],
+): MetadataCandidate | null {
+  const exact = candidates.filter((candidate) => (
+    candidate.kind === "artist" && candidate.confidence === 100
+  ));
+  const localWithImage = exact.filter((candidate) => (
+    candidate.providerId === "local-sidecar"
+    && candidate.fields.some((field) => field.key === "artist_image_path")
+  ));
+  if (localWithImage.length === 1) return localWithImage[0];
+  if (localWithImage.length > 1) return null;
+
+  const netease = exact.filter((candidate) => candidate.providerId === "netease-music");
+  return netease.length === 1 ? netease[0] : null;
+}
+
+export function normalizeArtistIdentity(value: string | null | undefined) {
+  return value
+    ?.trim()
+    .toLocaleLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "") ?? "";
 }

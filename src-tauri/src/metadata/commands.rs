@@ -25,7 +25,7 @@ pub(crate) fn metadata_list_providers(
       id: NETEASE_MUSIC_PROVIDER_ID.to_string(),
       name: NETEASE_MUSIC_PROVIDER_NAME.to_string(),
       description:
-        "查询歌曲、专辑、发行年份、专辑封面及歌手资料，无需账户"
+        "查询歌曲、专辑、发行年份、专辑封面及歌手资料，播放时按需补全歌手图片"
           .to_string(),
       capabilities: vec![
         "metadata.track".to_string(),

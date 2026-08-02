@@ -303,6 +303,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!restored || !isPlaying || activePodcastEpisode || !activeTrack) return;
+    void metadata.enrichArtistForPlayback(activeTrack);
+  }, [
+    activePodcastEpisode,
+    activeTrack,
+    isPlaying,
+    metadata.enrichArtistForPlayback,
+    restored,
+  ]);
+
+  useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) {
       setRestored(true);
