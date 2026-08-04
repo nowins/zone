@@ -77,7 +77,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `PodcastNowPlayingView.tsx`：播客专属全屏正在播放。提供 15/30 秒跳转、0.5–3× 倍速、睡眠定时、音量、简介、保存、缓冲/错误反馈与待播管理，不复用音乐 `NowPlayingView` 的拼贴和歌词内部状态。
   - `NowPlayingView.tsx`：全屏正在播放。Canvas 封面拼贴背景、队列浮层、曲目卡片、收藏按钮、进度/走带控制、歌词模式切换。
   - `SettingsView.tsx`：音乐文件夹管理与在线歌词来源（provider）启用/优先级设置。
-- `src/components/`：可复用 UI。包括 `Cover`、`PlayerBar`、`PodcastPlayerBar`、`TransportControls`、`PlaybackProgress`、`ContextMenu`、`InfoPanel`、`Titlebar`、`EmptyState`、`PlaylistDialog`、`SmartPlaylistDialog`、`LyricsStage`（歌词舞台主组件；纯 helper 在 `lyricsStage/lyricsLineUtils.ts`，rAF 逐词绘制在 `lyricsStage/useLyricsPaintLoop.ts`，在线搜索与设置面板分别在 `lyricsStage/LyricsSourceBrowser.tsx`/`LyricsSettingsPanel.tsx`）、`NowPlayingMosaicCanvas` 与 `AudioGlowCanvas`（正在播放的两个 Canvas 视觉层）。
+- `src/components/`：可复用 UI。包括 `Cover`、`PlayerBar`、`PodcastPlayerBar`、`TransportControls`、`PlaybackProgress`、`ContextMenu`、`InfoPanel`、`Titlebar`、`EmptyState`、`PlaylistDialog`、`SmartPlaylistDialog`、`MetroLoader`（全局 Metro 五点绕圈加载原语，样式在 `styles/base.css` 的 `.metro-loader`/`metro-orbit`，`size`/`large` 控制尺寸，reduced-motion 在 `motion.css` 统一收敛）、`LyricsStage`（歌词舞台主组件；纯 helper 在 `lyricsStage/lyricsLineUtils.ts`，rAF 逐词绘制在 `lyricsStage/useLyricsPaintLoop.ts`，在线搜索与设置面板分别在 `lyricsStage/LyricsSourceBrowser.tsx`/`LyricsSettingsPanel.tsx`）、`NowPlayingMosaicCanvas` 与 `AudioGlowCanvas`（正在播放的两个 Canvas 视觉层）。
 - `src/hooks/`（独立功能 hook）：
   - `useLibraryWatcher.ts`：配置 Rust 目录监听、接收文件变化事件并在 800ms 防抖后触发曲库刷新。
   - `useLyrics.ts`：歌词加载/缓存/在线搜索状态机（本地缓存键 `zone-local-lyrics-v1`）。

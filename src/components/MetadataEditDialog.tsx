@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { LoaderCircle } from "lucide-react";
 import type { MetadataEnrichmentApi } from "../hooks/useMetadataEnrichment";
 import type {
   ContextPayload,
@@ -7,6 +6,7 @@ import type {
   MetadataManualField,
 } from "../types";
 import { Cover } from "./Cover";
+import { MetroLoader } from "./MetroLoader";
 
 type Draft = Record<string, string>;
 
@@ -230,7 +230,7 @@ export function MetadataEditDialog({
           <button type="button" onClick={onSearch}>查找信息</button>
           <div className="playlist-dialog-actions">
             <button type="submit" className="primary" disabled={fields.length === 0 || status !== "idle"}>
-              {status === "saving" ? <LoaderCircle className="metadata-spinner" size={14} /> : null}
+              {status === "saving" ? <MetroLoader size={14} /> : null}
               确定
             </button>
             <button type="button" onClick={onCancel}>取消</button>

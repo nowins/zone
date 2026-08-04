@@ -322,3 +322,81 @@ h2 {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
 }
+
+.metro-loader {
+  position: relative;
+  width: var(--loader-size, 16px);
+  height: var(--loader-size, 16px);
+  display: inline-block;
+  flex: none;
+  --orbit: calc(var(--loader-size, 16px) * 0.44);
+  --dot: calc(var(--loader-size, 16px) * 0.156);
+}
+
+/* Metro ring: five dots chase clockwise, two turns per pass, phased 5% apart. */
+.metro-loader > span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--dot, 2.5px);
+  height: var(--dot, 2.5px);
+  margin: calc(var(--dot, 2.5px) / -2) 0 0 calc(var(--dot, 2.5px) / -2);
+  display: block;
+  opacity: 0.3;
+  background: currentColor;
+  border-radius: 50%;
+  animation: metro-orbit var(--motion-loader, 4500ms) linear infinite;
+}
+
+.metro-loader.large {
+  --loader-size: 40px;
+}
+
+.metro-loader > span:nth-child(1) {
+  transform: rotate(0deg) translateY(var(--orbit, 7px));
+}
+
+.metro-loader > span:nth-child(2) {
+  transform: rotate(72deg) translateY(var(--orbit, 7px));
+  animation-delay: -225ms;
+}
+
+.metro-loader > span:nth-child(3) {
+  transform: rotate(144deg) translateY(var(--orbit, 7px));
+  animation-delay: -450ms;
+}
+
+.metro-loader > span:nth-child(4) {
+  transform: rotate(216deg) translateY(var(--orbit, 7px));
+  animation-delay: -675ms;
+}
+
+.metro-loader > span:nth-child(5) {
+  transform: rotate(288deg) translateY(var(--orbit, 7px));
+  animation-delay: -900ms;
+}
+
+@keyframes metro-orbit {
+  0% {
+    transform: rotate(0deg) translateY(var(--orbit, 7px));
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
+  }
+
+  38% {
+    transform: rotate(360deg) translateY(var(--orbit, 7px));
+    animation-timing-function: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  }
+
+  76% {
+    transform: rotate(720deg) translateY(var(--orbit, 7px));
+    opacity: 1;
+    animation-timing-function: linear;
+  }
+
+  76.01%,
+  100% {
+    transform: rotate(720deg) translateY(var(--orbit, 7px));
+    opacity: 0;
+  }
+}

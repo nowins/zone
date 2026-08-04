@@ -1,11 +1,11 @@
 import { Search, Rss } from "lucide-react";
+import { MetroLoader } from "../../../components/MetroLoader";
 import {
   PODCAST_DISCOVERY_SORTS,
   PODCAST_DISCOVERY_TOPICS,
 } from "../constants";
 import { DiscoveryShelf, ShowCard } from "../components/ShowCards";
 import {
-  PodcastActivityIndicator,
   PodcastEmpty,
   PodcastLoading,
   PodcastSection,
@@ -171,7 +171,7 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
                     {searchState === "loading" && discoveryTopic === null
                       ? (
                         <span className="podcast-button-loading">
-                          <PodcastActivityIndicator />
+                          <MetroLoader />
                           搜索中
                         </span>
                       )

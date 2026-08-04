@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp, FileJson2, Folder, FolderPlus, Globe2, Music2, RefreshCw, Trash2 } from "lucide-react";
 import type { MetadataProviderDescriptor, MusicFolder } from "../types";
 import { useLyricsProviderSettings } from "../hooks/useLyricsProviderSettings";
+import { MetroLoader } from "../components/MetroLoader";
 
 export function SettingsView({
   folders,
@@ -197,6 +198,7 @@ export function SettingsView({
               disabled={folderCount === 0 || isScanning}
             >
               <RefreshCw size={16} aria-hidden="true" />
+              {isScanning ? <MetroLoader size={14} /> : null}
               <span>{isScanning ? "正在扫描" : "重新扫描资料库"}</span>
             </button>
           </section>

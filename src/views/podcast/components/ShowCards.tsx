@@ -1,10 +1,10 @@
 import { Check } from "lucide-react";
+import { MetroLoader } from "../../../components/MetroLoader";
 import { splitPodcastSearchMatch } from "../../../utils/podcastDiscovery";
 import type { PodcastDiscoveryShow, PodcastFeed } from "../../../types";
 import type { RequestState, ShowCandidate } from "../types";
 import { formatEpisodeDate } from "../format";
 import {
-  PodcastActivityIndicator,
   PodcastArtwork,
   PodcastEmpty,
   PodcastLoading,
@@ -124,7 +124,7 @@ function ShowCard({
         ) : null}
       </span>
       {loading ? (
-        <PodcastActivityIndicator className="podcast-card-state" />
+        <MetroLoader className="podcast-card-state" />
       ) : followed ? (
         <Check className="podcast-card-state" size={16} />
       ) : show.rank ? (

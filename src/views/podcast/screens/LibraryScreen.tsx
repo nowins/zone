@@ -1,7 +1,8 @@
-import { ArrowLeft, ArrowRight, LoaderCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { isPodcastEpisodeNew } from "../../../utils/podcastListening";
 import { PODCAST_LIBRARY_SORTS, PODCAST_DOWNLOAD_BATCH_LIMIT } from "../constants";
 import { formatEpisodeDate, formatFileSize } from "../format";
+import { MetroLoader } from "../../../components/MetroLoader";
 import { EpisodeRow } from "../components/EpisodeRows";
 import {
   PodcastArtwork,
@@ -417,10 +418,7 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                         >
                           {loadingMoreDownloads ? (
                             <>
-                              <LoaderCircle
-                                className="podcast-spinner"
-                                size={15}
-                              />
+                              <MetroLoader size={15} />
                               正在加载
                             </>
                           ) : "加载更多"}

@@ -1,5 +1,6 @@
-import { LoaderCircle, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { plainText } from "../format";
+import { MetroLoader } from "../../../components/MetroLoader";
 import { EpisodeRow } from "../components/EpisodeRows";
 import {
   PodcastArtwork,
@@ -174,12 +175,9 @@ export function ShowScreen({ vm }: { vm: PodcastViewModel }) {
                   disabled={Boolean(openingId)}
                   title="刷新节目"
                 >
-                  <RefreshCw
-                    className={
-                      openingId === selectedFeed.id ? "podcast-spinner" : ""
-                    }
-                    size={16}
-                  />
+                  {openingId === selectedFeed.id
+                    ? <MetroLoader size={16} />
+                    : <RefreshCw size={16} />}
                   刷新
                 </button>
               </section>

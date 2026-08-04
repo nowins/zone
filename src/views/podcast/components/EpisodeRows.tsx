@@ -2,10 +2,10 @@ import { type MouseEvent as ReactMouseEvent } from "react";
 import {
   Check,
   Download,
-  LoaderCircle,
   Pause,
   Play,
 } from "lucide-react";
+import { MetroLoader } from "../../../components/MetroLoader";
 import { formatTime } from "../../../utils/music";
 import type { PodcastEpisode } from "../../../types";
 import {
@@ -161,7 +161,7 @@ function EpisodeRow({
                   {downloadProgressLabel}
                 </span>
               ) : downloading ? (
-                <LoaderCircle className="podcast-spinner" size={16} />
+                <MetroLoader size={16} />
               ) : episode.localPath ? (
                 <Check size={16} />
               ) : (

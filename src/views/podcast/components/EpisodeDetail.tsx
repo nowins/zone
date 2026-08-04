@@ -4,13 +4,13 @@ import {
   ChevronDown,
   Download,
   ListMusic,
-  LoaderCircle,
   Pause,
   Play,
   RefreshCw,
   SkipForward,
   Trash2,
 } from "lucide-react";
+import { MetroLoader } from "../../../components/MetroLoader";
 import { formatTime } from "../../../utils/music";
 import { findActivePodcastChapterIndex } from "../../../utils/podcastChapters";
 import type {
@@ -165,7 +165,7 @@ function EpisodeDetail({
           className={episode.saved ? "active" : ""}
         >
           {action === "save"
-            ? <LoaderCircle className="podcast-spinner" size={16} />
+            ? <MetroLoader size={16} />
             : <Bookmark size={16} fill={episode.saved ? "currentColor" : "none"} />}
           {episode.saved ? "取消保存" : "保存"}
         </button>
@@ -176,14 +176,14 @@ function EpisodeDetail({
             disabled={Boolean(action)}
           >
             {action === "delete"
-              ? <LoaderCircle className="podcast-spinner" size={16} />
+              ? <MetroLoader size={16} />
               : <Trash2 size={16} />}
             删除下载
           </button>
         ) : (
           <button type="button" onClick={onDownload} disabled={downloading}>
             {downloading
-              ? <LoaderCircle className="podcast-spinner" size={16} />
+              ? <MetroLoader size={16} />
               : <Download size={16} />}
             {downloading
               ? `正在下载${downloadProgressLabel ? ` ${downloadProgressLabel}` : ""}`
@@ -196,7 +196,7 @@ function EpisodeDetail({
           disabled={Boolean(action)}
         >
           {action === "played"
-            ? <LoaderCircle className="podcast-spinner" size={16} />
+            ? <MetroLoader size={16} />
             : episode.completed
               ? <RefreshCw size={16} />
               : <CheckCircle2 size={16} />}

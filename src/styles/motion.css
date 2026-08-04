@@ -417,12 +417,10 @@
   .favorite-active svg,
   .zune-play svg,
   .lyrics-source-browser.is-searching::after,
-  .podcast-spinner,
   .podcast-loading-state,
   .podcast-opening-state,
-  .podcast-activity-indicator > span,
+  .metro-loader > span,
   .podcast-now-playing-stage,
-  .podcast-now-spinner,
   .motion-page-enter,
   .motion-page-exit {
     animation: none;

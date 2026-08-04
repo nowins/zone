@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { LoaderCircle } from "lucide-react";
+import { MetroLoader } from "../../../components/MetroLoader";
 import type {
   PodcastDownloadCleanupIntent,
   PodcastQueueRemovalIntent,
@@ -61,7 +61,7 @@ function PodcastQueueRemovalDialog({
           >
             {busy ? (
               <>
-                <LoaderCircle className="podcast-spinner" size={15} />
+                <MetroLoader size={15} />
                 正在移除
               </>
             ) : "移除"}
@@ -136,7 +136,7 @@ function PodcastDownloadCleanupDialog({
           >
             {busy ? (
               <>
-                <LoaderCircle className="podcast-spinner" size={15} />
+                <MetroLoader size={15} />
                 正在删除
               </>
             ) : "删除"}

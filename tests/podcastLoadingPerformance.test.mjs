@@ -22,6 +22,7 @@ const podcastPrimitivesSource = readFileSync(
   "utf8",
 );
 const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
+const baseCss = readFileSync("src/styles/base.css", "utf8");
 const motionSource = readFileSync("src/styles/motion.css", "utf8");
 const rustSource = [
   "src-tauri/src/podcast/commands.rs",
@@ -92,37 +93,31 @@ test("preview and chapter requests reuse durable caches before networking", () =
 
 test("content loading pairs a delayed reveal with the Metro orbit indicator", () => {
   const loadingStart = podcastPrimitivesSource.indexOf("function PodcastLoading(");
-  const indicatorStart = podcastPrimitivesSource.indexOf(
-    "\nfunction PodcastActivityIndicator(",
-    loadingStart,
-  );
+  const loadingEnd = podcastPrimitivesSource.indexOf("\nfunction ", loadingStart);
   const loadingSource = podcastPrimitivesSource.slice(
     loadingStart,
-    indicatorStart,
+    loadingEnd,
   );
   assert.match(loadingSource, /podcast-loading-state/);
-  assert.match(loadingSource, /PodcastActivityIndicator/);
+  assert.match(loadingSource, /MetroLoader/);
   assert.doesNotMatch(loadingSource, /LoaderCircle|podcast-spinner/);
   assert.match(
     stylesSource,
     /\.podcast-loading-state\s*\{[\s\S]*?podcast-loading-reveal[\s\S]*?backwards/,
   );
   assert.match(
-    stylesSource,
-    /animation:\s*podcast-metro-orbit\s+var\(--motion-loader,\s*4500ms\)/,
+    baseCss,
+    /animation:\s*metro-orbit\s+var\(--motion-loader,\s*4500ms\)/,
   );
   assert.match(
-    stylesSource,
-    /@keyframes podcast-metro-orbit\s*\{[\s\S]*?rotate\(720deg\)[\s\S]*?\}/,
+    baseCss,
+    /@keyframes metro-orbit\s*\{[\s\S]*?rotate\(720deg\)[\s\S]*?\}/,
   );
   assert.doesNotMatch(
-    stylesSource.slice(
-      stylesSource.indexOf("@keyframes podcast-metro-orbit"),
-      stylesSource.indexOf("@keyframes podcast-spin"),
-    ),
+    baseCss.match(/@keyframes metro-orbit\s*\{[\s\S]*?\n\}/)[0],
     /width|height|margin|padding/,
   );
-  assert.match(motionSource, /\.podcast-activity-indicator > span/);
+  assert.match(motionSource, /\.metro-loader > span/);
 });
 
 test("podcast downloads expose throttled byte progress instead of an indefinite spinner", () => {

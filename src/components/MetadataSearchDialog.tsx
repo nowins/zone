@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { LoaderCircle, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import type { MetadataEnrichmentApi } from "../hooks/useMetadataEnrichment";
 import type {
   ContextPayload,
@@ -9,6 +9,7 @@ import type {
   MetadataContextRecord,
 } from "../types";
 import { Cover } from "./Cover";
+import { MetroLoader } from "./MetroLoader";
 
 function artworkPath(fields: MetadataCandidateField[]) {
   return fields.find((field) => (
@@ -168,12 +169,12 @@ export function MetadataSearchDialog({
           <div className="playlist-dialog-actions">
             {selected ? (
               <button type="button" className="primary" onClick={() => void applyCandidate(selected)} disabled={status !== "idle"}>
-                {status === "applying" ? <LoaderCircle className="metadata-spinner" size={14} /> : null}
+                {status === "applying" ? <MetroLoader size={14} /> : null}
                 采用
               </button>
             ) : (
               <button type="submit" className="primary" disabled={!query.trim() || status !== "idle"}>
-                {status === "searching" ? <LoaderCircle className="metadata-spinner" size={14} /> : null}
+                {status === "searching" ? <MetroLoader size={14} /> : null}
                 搜索
               </button>
             )}

@@ -1,6 +1,6 @@
-import { LoaderCircle } from "lucide-react";
 import { PODCAST_AUTO_QUEUE_MODES } from "../constants";
 import { formatEpisodeDate, plainText } from "../format";
+import { MetroLoader } from "../../../components/MetroLoader";
 import { CurrentEpisodeRow } from "../components/EpisodeRows";
 import { QueueEpisodeRow } from "../components/QueueEpisodeRow";
 import { PodcastEmpty, PodcastSection } from "../components/primitives";
@@ -228,10 +228,7 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
                         >
                           {queueBatchAction === "download" ? (
                             <>
-                              <LoaderCircle
-                                className="podcast-spinner"
-                                size={14}
-                              />
+                              <MetroLoader size={14} />
                               正在下载
                             </>
                           ) : "顺序下载"}

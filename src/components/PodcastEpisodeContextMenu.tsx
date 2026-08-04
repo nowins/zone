@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   Download,
   ListPlus,
-  LoaderCircle,
   Play,
   RotateCcw,
   Share2,
@@ -19,6 +18,7 @@ import {
 import { useLastNonNull, usePresence } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
 import type { PodcastEpisode } from "../types";
+import { MetroLoader } from "./MetroLoader";
 
 export type PodcastEpisodeMenuState = {
   x: number;
@@ -240,7 +240,7 @@ function PodcastEpisodeMenuSurface({
           disabled={updatingPlayed}
         >
           {updatingPlayed
-            ? <LoaderCircle className="podcast-spinner" size={17} />
+            ? <MetroLoader size={17} />
             : menu.episode.completed
             ? <RotateCcw size={17} />
             : <CheckCircle2 size={17} />}
@@ -261,7 +261,7 @@ function PodcastEpisodeMenuSurface({
           {downloaded ? (
             <Check size={17} />
           ) : downloading ? (
-            <LoaderCircle className="podcast-spinner" size={17} />
+            <MetroLoader size={17} />
           ) : (
             <Download size={17} />
           )}

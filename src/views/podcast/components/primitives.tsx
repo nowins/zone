@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Podcast } from "lucide-react";
+import { MetroLoader } from "../../../components/MetroLoader";
 import { podcastArtworkSrc } from "../../../utils/podcastArtwork";
 
 function PodcastSection({
@@ -53,28 +54,9 @@ function PodcastArtwork({
 function PodcastLoading({ label }: { label: string }) {
   return (
     <div className="podcast-inline-state podcast-loading-state" role="status">
-      <PodcastActivityIndicator />
+      <MetroLoader />
       <span>{label}</span>
     </div>
-  );
-}
-
-function PodcastActivityIndicator({
-  className = "",
-}: {
-  className?: string;
-}) {
-  return (
-    <span
-      className={`podcast-activity-indicator ${className}`.trim()}
-      aria-hidden="true"
-    >
-      <span />
-      <span />
-      <span />
-      <span />
-      <span />
-    </span>
   );
 }
 
@@ -98,7 +80,6 @@ function PodcastEmpty({
 }
 
 export {
-  PodcastActivityIndicator,
   PodcastArtwork,
   PodcastEmpty,
   PodcastLoading,

@@ -16,7 +16,6 @@ import {
   Gauge,
   GripVertical,
   ListMusic,
-  LoaderCircle,
   Pause,
   Play,
   Podcast,
@@ -27,6 +26,7 @@ import {
 } from "lucide-react";
 import { PlaybackProgress } from "../components/PlaybackProgress";
 import { VolumeControl } from "../components/TransportControls";
+import { MetroLoader } from "../components/MetroLoader";
 import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
 import type {
@@ -739,7 +739,7 @@ export function PodcastNowPlayingView({
               title={status === "error" ? "重试播放" : isPlaying ? "暂停" : "播放"}
             >
               {status === "loading" || status === "buffering" ? (
-                <LoaderCircle className="podcast-now-spinner" size={25} />
+                <MetroLoader size={25} />
               ) : isPlaying ? (
                 <Pause size={26} fill="currentColor" />
               ) : (
@@ -775,7 +775,7 @@ export function PodcastNowPlayingView({
             role={status === "error" ? "alert" : "status"}
           >
             {status === "loading" || status === "buffering"
-              ? <LoaderCircle className="podcast-now-spinner" size={13} />
+              ? <MetroLoader size={13} />
               : null}
             <span>{statusLabel}</span>
             {status === "error" ? (

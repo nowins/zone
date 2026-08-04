@@ -3,6 +3,7 @@ import {
   Check,
 } from "lucide-react";
 import { PodcastEpisodeContextMenu } from "../components/PodcastEpisodeContextMenu";
+import { MetroLoader } from "../components/MetroLoader";
 import { Presence } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
 import type { PodcastViewProps } from "./podcast/types";
@@ -11,7 +12,6 @@ import {
   PodcastDownloadCleanupDialog,
   PodcastQueueRemovalDialog,
 } from "./podcast/components/Dialogs";
-import { PodcastActivityIndicator } from "./podcast/components/primitives";
 import { usePodcastViewModel } from "./podcast/usePodcastViewModel";
 import { ListenScreen } from "./podcast/screens/ListenScreen";
 import { DiscoverScreen } from "./podcast/screens/DiscoverScreen";
@@ -152,7 +152,7 @@ export function PodcastView(props: PodcastViewProps) {
 
       {openingCandidate ? (
         <div className="podcast-opening-state" role="status">
-          <PodcastActivityIndicator className="large" />
+          <MetroLoader large />
           <strong>{openingCandidate.title}</strong>
           <span>正在打开节目</span>
         </div>
