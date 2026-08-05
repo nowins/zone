@@ -9,6 +9,12 @@ import { registerFlipElement } from "../motion/flip";
 import { SPRING_PRESETS } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
+import {
+  buildForgottenFavoritesBlock,
+  buildHistoryBlock,
+  buildMostPlayedBlock,
+  buildRecentAddedBlock,
+} from "../utils/quickplayBlocks";
 import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type {
   AlbumGroup,
@@ -49,13 +55,6 @@ function coverPathsForTracks(tracks: Track[], limit: number) {
     if (result.length === limit) break;
   }
   return result;
-}
-
-function albumAddedAt(album: AlbumGroup, activity: TrackActivityMap) {
-  return album.tracks.reduce(
-    (latest, track) => Math.max(latest, activity[track.id]?.addedAt ?? track.added_at ?? 0),
-    0,
-  );
 }
 
 export function QuickplayView({
@@ -107,30 +106,32 @@ export function QuickplayView({
   const [draggedPinId, setDraggedPinId] = useState<string | null>(null);
   const reducedMotion = useReducedMotion();
   const continueAlbum = albumForTrack(albums, activeTrack);
-  const recentAlbums = useMemo(
-    () => [...albums]
-      .sort((a, b) => albumAddedAt(b, activity) - albumAddedAt(a, activity) || a.album.localeCompare(b.album))
-      .slice(0, 6),
-    [activity, albums],
-  );
+  const blockInput = useMemo(() => ({
+    tracks,
+    albums,
+    playlists,
+    activity,
+    favoriteTrackIds,
+    historyIds,
+    activeTrack,
+  }), [activeTrack, activity, albums, favoriteTrackIds, historyIds, playlists, tracks]);
+  const recentAlbums = useMemo(() => {
+    const items = buildRecentAddedBlock(blockInput).items;
+    return items.flatMap((item) => {
+      if (item.kind !== "album") return [];
+      const album = albums.find((entry) => entry.key === item.id);
+      return album ? [album] : [];
+    });
+  }, [albums, blockInput]);
   const historyTracks = useMemo(() => {
-    const trackMap = new Map(tracks.map((track) => [track.id, track]));
-    const candidates = [
-      ...historyIds.map((id) => trackMap.get(id)).filter((track): track is Track => Boolean(track)),
-      ...tracks,
-    ];
-    const seenAlbums = new Set<string>();
-    const result: Track[] = [];
-
-    for (const track of candidates) {
-      if (track.album === activeTrack?.album || seenAlbums.has(track.album)) continue;
-      seenAlbums.add(track.album);
-      result.push(track);
-      if (result.length === 4) break;
-    }
-
-    return result;
-  }, [activeTrack?.album, historyIds, tracks]);
+    return buildHistoryBlock(blockInput).items.flatMap((item) => item.tracks[0] ? [item.tracks[0]] : []);
+  }, [blockInput]);
+  const mostPlayedTracks = useMemo(() => {
+    return buildMostPlayedBlock(blockInput).items.flatMap((item) => item.tracks[0] ? [item.tracks[0]] : []);
+  }, [blockInput]);
+  const forgottenFavoriteTracks = useMemo(() => {
+    return buildForgottenFavoritesBlock(blockInput).items.flatMap((item) => item.tracks[0] ? [item.tracks[0]] : []);
+  }, [blockInput]);
   const resolvedPins = useMemo(() => {
     const trackMap = new Map(tracks.map((track) => [track.id, track]));
     const albumMap = new Map(albums.map((album) => [album.key, album]));
@@ -526,6 +527,82 @@ export function QuickplayView({
             </div>
           ) : null}
         </article>
+
+        {mostPlayedTracks.length > 0 && (
+          <article className="quick-group quick-most">
+            <button className="quick-heading" onClick={() => onOpenCollection("songs")}>
+              <h2>最常播放</h2>
+            </button>
+            <div className="quick-mosaic">
+              {mostPlayedTracks.map((track, index) => (
+                <div
+                  className="quick-album"
+                  key={`most-${track.id}`}
+                  onContextMenu={(event) =>
+                    onContextMenu(event, {
+                      kind: "track",
+                      title: track.title,
+                      subtitle: `${track.artist} / ${track.album}`,
+                      tracks: [track],
+                      playbackTracks: tracks,
+                    })
+                  }
+                >
+                  <button
+                    onClick={() => onPlay(track, tracks)}
+                    onPointerDown={tiltPressDown}
+                    onPointerUp={tiltPressClear}
+                    onPointerLeave={tiltPressClear}
+                    onPointerCancel={tiltPressClear}
+                    title={`播放 ${track.title}`}
+                  >
+                    <Cover artPath={track.cover_path} label={track.album} size="large" index={index + 8} />
+                  </button>
+                  <strong>{track.title}</strong>
+                  <span>{track.artist}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+        )}
+
+        {forgottenFavoriteTracks.length > 0 && (
+          <article className="quick-group quick-forgotten">
+            <button className="quick-heading" onClick={() => onOpenCollection("playlists")}>
+              <h2>久违收藏</h2>
+            </button>
+            <div className="quick-mosaic">
+              {forgottenFavoriteTracks.map((track, index) => (
+                <div
+                  className="quick-album"
+                  key={`forgotten-${track.id}`}
+                  onContextMenu={(event) =>
+                    onContextMenu(event, {
+                      kind: "track",
+                      title: track.title,
+                      subtitle: `${track.artist} / ${track.album}`,
+                      tracks: [track],
+                      playbackTracks: tracks,
+                    })
+                  }
+                >
+                  <button
+                    onClick={() => onPlay(track, tracks)}
+                    onPointerDown={tiltPressDown}
+                    onPointerUp={tiltPressClear}
+                    onPointerLeave={tiltPressClear}
+                    onPointerCancel={tiltPressClear}
+                    title={`播放 ${track.title}`}
+                  >
+                    <Cover artPath={track.cover_path} label={track.album} size="large" index={index + 14} />
+                  </button>
+                  <strong>{track.title}</strong>
+                  <span>{track.artist}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+        )}
 
         <article className="quick-group quick-recent">
           <button className="quick-heading" onClick={() => onOpenCollection("albums")}>

@@ -311,7 +311,9 @@
 
 .quick-continue,
 .quick-recent,
-.quick-history {
+.quick-history,
+.quick-most,
+.quick-forgotten {
   padding-top: 28px;
 }
 
