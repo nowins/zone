@@ -29,6 +29,7 @@ import {
   musicSaveTrackActivity,
   musicAnalyzeFeatures,
   musicListTrackFeatures,
+  musicGetRadioSession,
 } from "./app/musicLibraryApi";
 import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
 import { seedFromTracks } from "./utils/smartDj";
@@ -216,6 +217,7 @@ export default function App() {
     appendToQueue,
     playNext,
     startSmartDj,
+    restoreSmartDjSession,
     handleTimeUpdate,
     move,
     onEnded,
@@ -441,6 +443,24 @@ export default function App() {
       }
     }
     void hydrateFeatures();
+    return () => {
+      cancelled = true;
+    };
+  }, [restored, tracks.length]);
+
+  useEffect(() => {
+    if (!restored || tracks.length === 0) return;
+    let cancelled = false;
+    async function resumeSmartDjIfNeeded() {
+      try {
+        const record = await musicGetRadioSession();
+        if (cancelled || !record || record.status !== "playing") return;
+        restoreSmartDjSession(record);
+      } catch (error) {
+        if (import.meta.env.DEV) console.warn("[smartdj] resume failed", error);
+      }
+    }
+    void resumeSmartDjIfNeeded();
     return () => {
       cancelled = true;
     };

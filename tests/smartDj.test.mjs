@@ -4,10 +4,12 @@ import {
   advanceSmartDjSession,
   buildSmartDjQueue,
   createSmartDjSession,
+  fromPersistedSmartDjSession,
   noteSmartDjSkip,
   rankSmartDjCandidates,
   seedFromTracks,
   syncSmartDjSessionWithQueue,
+  toRadioSessionUpsert,
 } from "../.tmp/visualizer-tests/utils/smartDj.js";
 
 function track(id, overrides = {}) {
@@ -165,4 +167,38 @@ test("feature similarity boosts near vectors over weak metadata matches", () => 
   }, new Set([seedTrack.id]));
   assert.equal(ranked[0].track.id, "strong");
   assert.ok(ranked[0].reasons.includes("听感相似"));
+});
+
+
+test("smart dj session serializes and restores enough state to continue", () => {
+  const seedTrack = track("seed", { artist: "Aiko", album: "Dawn" });
+  const tracks = [
+    seedTrack,
+    track("a", { artist: "Aiko", album: "Dawn" }),
+    track("b", { artist: "Miki", album: "Soft", genres: ["Pop"] }),
+  ];
+  const session = createSmartDjSession(
+    seedFromTracks("track", seedTrack.id, seedTrack.title, [seedTrack]),
+    { horizon: 4 },
+  );
+  const queue = buildSmartDjQueue(session, {
+    tracks,
+    activity: {},
+    favoriteTrackIds: new Set(),
+  });
+  const live = {
+    ...session,
+    queuedIds: queue.map((item) => item.id),
+    playedIds: [seedTrack.id],
+    bannedIds: ["a"],
+    status: "playing",
+  };
+  const payload = toRadioSessionUpsert(live, ["a"]);
+  const restored = fromPersistedSmartDjSession(payload, tracks);
+  assert.ok(restored);
+  assert.equal(restored.id, live.id);
+  assert.equal(restored.seed.label, live.seed.label);
+  assert.deepEqual(restored.playedIds, [seedTrack.id]);
+  assert.ok(restored.bannedIds.includes("a"));
+  assert.ok(restored.queuedIds.length >= 1);
 });

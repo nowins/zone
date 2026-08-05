@@ -128,3 +128,28 @@ pub(crate) fn music_list_track_features(
   }
   Ok(map)
 }
+
+
+#[tauri::command]
+pub(crate) fn music_upsert_radio_session(
+  state: State<'_, MusicState>,
+  session: RadioSessionUpsertInput,
+) -> Result<RadioSessionRecord, String> {
+  upsert_radio_session(state.inner(), session)
+}
+
+#[tauri::command]
+pub(crate) fn music_get_radio_session(
+  state: State<'_, MusicState>,
+  session_id: Option<String>,
+) -> Result<Option<RadioSessionRecord>, String> {
+  get_radio_session(state.inner(), session_id)
+}
+
+#[tauri::command]
+pub(crate) fn music_stop_radio_session(
+  state: State<'_, MusicState>,
+  session_id: Option<String>,
+) -> Result<(), String> {
+  stop_radio_session(state.inner(), session_id)
+}

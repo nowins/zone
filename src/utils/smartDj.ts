@@ -445,3 +445,79 @@ export function cosineSimilarity(left?: number[] | null, right?: number[] | null
   if (leftNorm <= 1e-9 || rightNorm <= 1e-9) return 0;
   return Math.max(-1, Math.min(1, dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))));
 }
+
+
+export type PersistedSmartDjSession = {
+  id: string;
+  kind?: string;
+  seed: {
+    kind: SmartDjSeedKind | string;
+    id: string;
+    label: string;
+    trackIds: string[];
+  };
+  status: SmartDjSession["status"] | string;
+  playedIds: string[];
+  bannedIds: string[];
+  queuedIds: string[];
+  skippedIds?: string[];
+  constraints?: Partial<SmartDjConstraints> | Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
+  lastActiveAt?: number;
+};
+
+export function toRadioSessionUpsert(session: SmartDjSession, skippedIds: string[] = []) {
+  return {
+    id: session.id,
+    kind: "smartdj",
+    seed: {
+      kind: session.seed.kind,
+      id: session.seed.id,
+      label: session.seed.label,
+      trackIds: session.seed.tracks.map((track) => track.id),
+    },
+    status: session.status,
+    playedIds: session.playedIds,
+    bannedIds: session.bannedIds,
+    queuedIds: session.queuedIds,
+    skippedIds,
+    constraints: session.constraints,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    lastActiveAt: session.updatedAt,
+  };
+}
+
+export function fromPersistedSmartDjSession(
+  record: PersistedSmartDjSession,
+  allTracks: Track[],
+): SmartDjSession | null {
+  const trackMap = new Map(allTracks.map((track) => [track.id, track]));
+  const seedTracks = (record.seed.trackIds ?? [])
+    .map((id) => trackMap.get(id))
+    .filter((track): track is Track => Boolean(track));
+  if (seedTracks.length === 0) {
+    // Fall back to first queued/played track as seed carrier so session can still resume.
+    const fallbackId = record.queuedIds[0] ?? record.playedIds[0];
+    const fallback = fallbackId ? trackMap.get(fallbackId) : null;
+    if (!fallback) return null;
+    seedTracks.push(fallback);
+  }
+  return {
+    id: record.id,
+    seed: {
+      kind: (record.seed.kind as SmartDjSeedKind) || "track",
+      id: record.seed.id,
+      label: record.seed.label || seedTracks[0]?.title || "SmartDJ",
+      tracks: seedTracks,
+    },
+    status: (record.status as SmartDjSession["status"]) || "playing",
+    playedIds: record.playedIds ?? [],
+    bannedIds: uniqueIds([...(record.bannedIds ?? []), ...(record.skippedIds ?? [])]),
+    queuedIds: record.queuedIds ?? [],
+    constraints: defaultSmartDjConstraints(record.constraints as Partial<SmartDjConstraints> | undefined),
+    createdAt: record.createdAt || Date.now(),
+    updatedAt: record.updatedAt || Date.now(),
+  };
+}

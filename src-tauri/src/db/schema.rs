@@ -221,6 +221,8 @@ fn ensure_radio_schema(connection: &Connection) -> Result<(), String> {
           seed_kind IN ('track', 'album', 'artist', 'playlist', 'mixed')
         ),
         seed_id TEXT NOT NULL,
+        seed_label TEXT NOT NULL DEFAULT '',
+        seed_track_ids_json TEXT NOT NULL DEFAULT '[]',
         status TEXT NOT NULL CHECK(
           status IN ('idle', 'playing', 'exhausted', 'stopped')
         ),
@@ -242,6 +244,18 @@ fn ensure_radio_schema(connection: &Connection) -> Result<(), String> {
       ",
     )
     .map_err(|error| format!("无法初始化电台表：{error}"))?;
+  ensure_database_column(
+    connection,
+    "radio_sessions",
+    "seed_label",
+    "seed_label TEXT NOT NULL DEFAULT ''",
+  )?;
+  ensure_database_column(
+    connection,
+    "radio_sessions",
+    "seed_track_ids_json",
+    "seed_track_ids_json TEXT NOT NULL DEFAULT '[]'",
+  )?;
   Ok(())
 }
 

@@ -164,3 +164,57 @@ export async function musicListSimilarTracks(trackId: string, limit = 24) {
 export async function musicListTrackFeatures(trackIds?: string[]) {
   return invoke<Record<string, number[]>>("music_list_track_features", { trackIds });
 }
+
+
+export type RadioSeedRecord = {
+  kind: "track" | "album" | "artist" | "playlist" | "mixed" | string;
+  id: string;
+  label: string;
+  trackIds: string[];
+};
+
+export type RadioSessionRecord = {
+  id: string;
+  kind: string;
+  seed: RadioSeedRecord;
+  status: "idle" | "playing" | "exhausted" | "stopped" | string;
+  playedIds: string[];
+  bannedIds: string[];
+  queuedIds: string[];
+  skippedIds: string[];
+  constraints: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
+  lastActiveAt: number;
+};
+
+export type RadioSessionUpsertInput = {
+  id: string;
+  kind?: string;
+  seed: RadioSeedRecord;
+  status: string;
+  playedIds?: string[];
+  bannedIds?: string[];
+  queuedIds?: string[];
+  skippedIds?: string[];
+  constraints?: Record<string, unknown>;
+  createdAt?: number;
+  updatedAt?: number;
+  lastActiveAt?: number;
+};
+
+export async function musicUpsertRadioSession(session: RadioSessionUpsertInput) {
+  return invoke<RadioSessionRecord>("music_upsert_radio_session", { session });
+}
+
+export async function musicGetRadioSession(sessionId?: string | null) {
+  return invoke<RadioSessionRecord | null>("music_get_radio_session", {
+    sessionId: sessionId ?? null,
+  });
+}
+
+export async function musicStopRadioSession(sessionId?: string | null) {
+  return invoke<void>("music_stop_radio_session", {
+    sessionId: sessionId ?? null,
+  });
+}

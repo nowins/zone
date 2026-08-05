@@ -33,11 +33,19 @@ import {
   materializeSmartDjQueue,
   noteSmartDjSkip,
   syncSmartDjSessionWithQueue,
+  toRadioSessionUpsert,
+  type PersistedSmartDjSession,
+  fromPersistedSmartDjSession,
   type SmartDjContext,
   type SmartDjSeed,
   type SmartDjSession,
 } from "../utils/smartDj";
-import { musicSessionEnd, musicSessionStart } from "../app/musicLibraryApi";
+import {
+  musicSessionEnd,
+  musicSessionStart,
+  musicStopRadioSession,
+  musicUpsertRadioSession,
+} from "../app/musicLibraryApi";
 import type { AudioEngineHandle } from "./useAudioEngine";
 import type {
   PodcastPendingResume,
@@ -516,6 +524,7 @@ export function usePlaybackControls({
         ...materialized.session,
         status: "exhausted",
       };
+      persistSmartDjSession(smartDjSessionRef.current);
       showActionNotice("SmartDJ 已播完当前可推荐歌曲");
       return;
     }
@@ -527,6 +536,7 @@ export function usePlaybackControls({
         setShuffleOrder(materialized.tracks.map((track) => track.id));
       }
     }
+    persistSmartDjSession(materialized.session);
     if (options?.notice) showActionNotice(options.notice);
   }
 
@@ -547,8 +557,42 @@ export function usePlaybackControls({
     });
   }
 
-  function clearSmartDjSession() {
+  function clearSmartDjSession(options?: { persistStop?: boolean }) {
+    const current = smartDjSessionRef.current;
     smartDjSessionRef.current = null;
+    if (options?.persistStop !== false) {
+      void musicStopRadioSession(current?.id ?? null).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[smartdj] stop session failed", error);
+      });
+    }
+  }
+
+  function persistSmartDjSession(session: SmartDjSession | null) {
+    if (!session) return;
+    void musicUpsertRadioSession(toRadioSessionUpsert(session)).catch((error) => {
+      if (import.meta.env.DEV) console.warn("[smartdj] persist session failed", error);
+    });
+  }
+
+  function restoreSmartDjSession(record: PersistedSmartDjSession) {
+    const restoredSession = fromPersistedSmartDjSession(record, tracks);
+    if (!restoredSession) {
+      showActionNotice("无法恢复 SmartDJ 会话");
+      return false;
+    }
+    if (shuffle) setShuffle(false);
+    if (repeat !== "off") setRepeat("off");
+    const materialized = materializeSmartDjQueue(restoredSession, smartDjContext());
+    smartDjSessionRef.current = materialized.session;
+    if (materialized.tracks.length === 0) {
+      showActionNotice("SmartDJ 会话没有可继续的歌曲");
+      return false;
+    }
+    // Resume without forcing autoplay intent beyond normal playTracks path.
+    playTracks(materialized.tracks, { preserveSmartDj: true });
+    persistSmartDjSession(materialized.session);
+    showActionNotice(`已恢复 SmartDJ：${materialized.session.seed.label}`);
+    return true;
   }
 
   function maintainSmartDjAfterMove(reason: "user" | "ended", skippedTrackId: string | null) {
@@ -581,6 +625,7 @@ export function usePlaybackControls({
       return merged;
     });
     smartDjSessionRef.current = nextSession;
+    persistSmartDjSession(nextSession);
     if (nextSession.status === "exhausted") {
       showActionNotice("SmartDJ 可推荐歌曲已接近播完");
     }
@@ -588,7 +633,7 @@ export function usePlaybackControls({
 
   function playTracks(targetTracks: Track[], options?: { preserveSmartDj?: boolean }) {
     if (targetTracks.length === 0) return;
-    if (!options?.preserveSmartDj) smartDjSessionRef.current = null;
+    if (!options?.preserveSmartDj) clearSmartDjSession();
     cancelPodcastSessionRestore();
     setQueue(targetTracks.map((track) => track.id));
     if (activePodcastEpisode) {
@@ -1003,6 +1048,7 @@ export function usePlaybackControls({
     playNext,
     startSmartDj,
     clearSmartDjSession,
+    restoreSmartDjSession,
     queueInsertMode,
     adaptivePrevious,
     updatePlaybackBehavior,
