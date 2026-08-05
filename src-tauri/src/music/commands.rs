@@ -63,3 +63,20 @@ pub(crate) fn music_save_playback_state(
 pub(crate) fn music_clear_library(state: State<'_, MusicState>) -> Result<(), String> {
   clear_library(state.inner())
 }
+
+#[tauri::command]
+pub(crate) fn music_session_start(
+  state: State<'_, MusicState>,
+  session: MusicPlaySessionStartInput,
+) -> Result<(), String> {
+  start_play_session(state.inner(), session)
+}
+
+#[tauri::command]
+pub(crate) fn music_session_end(
+  state: State<'_, MusicState>,
+  session: MusicPlaySessionEndInput,
+) -> Result<MusicPlaySessionEndResult, String> {
+  end_play_session(state.inner(), session)
+}
+

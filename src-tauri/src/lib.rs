@@ -113,6 +113,8 @@ pub fn run() {
       music::music_save_track_activity,
       music::music_save_playback_state,
       music::music_clear_library,
+      music::music_session_start,
+      music::music_session_end,
       lyrics::load_local_lyrics,
       lyrics_provider::request_lyrics_provider,
       lyrics_provider::decrypt_qrc_lyrics,

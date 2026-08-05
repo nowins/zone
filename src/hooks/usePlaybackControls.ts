@@ -20,6 +20,7 @@ import {
   resolvePodcastStartPosition,
 } from "../utils/playbackTransport";
 import { createTrackActivity } from "../utils/smartPlaylist";
+import { musicSessionEnd, musicSessionStart } from "../app/musicLibraryApi";
 import type { AudioEngineHandle } from "./useAudioEngine";
 import type {
   PodcastPendingResume,
@@ -33,10 +34,18 @@ import type {
 } from "../types";
 
 export type PlaybackSession = {
+  sessionId: string;
   trackId: string;
+  startedAt: number;
+  startPosition: number;
   maxProgress: number;
+  listenedMs: number;
+  lastTickAt: number | null;
+  source: string;
+  durationHint: number | null;
   countedPlay: boolean;
   countedComplete: boolean;
+  finalized: boolean;
 };
 
 /** Late-bound surface for podcast domain → transport (seek / arm / intent). */
@@ -141,9 +150,39 @@ export function usePlaybackControls({
   }, [activeTrackId]);
 
   useEffect(() => {
-    playbackSessionRef.current = !activePodcastEpisode && activeTrackId
-      ? { trackId: activeTrackId, maxProgress: 0, countedPlay: false, countedComplete: false }
-      : null;
+    const previous = playbackSessionRef.current;
+    if (previous && !previous.finalized) {
+      finalizeSession(previous, "replaced");
+    }
+
+    if (!activePodcastEpisode && activeTrackId) {
+      const sessionId = `music-${activeTrackId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const startedAt = Date.now();
+      playbackSessionRef.current = {
+        sessionId,
+        trackId: activeTrackId,
+        startedAt,
+        startPosition: 0,
+        maxProgress: 0,
+        listenedMs: 0,
+        lastTickAt: null,
+        source: "queue",
+        durationHint: null,
+        countedPlay: false,
+        countedComplete: false,
+        finalized: false,
+      };
+      void musicSessionStart({
+        sessionId,
+        trackId: activeTrackId,
+        startPositionMs: 0,
+        source: "queue",
+      }).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[stats] session start failed", error);
+      });
+    } else {
+      playbackSessionRef.current = null;
+    }
   }, [activePodcastEpisode?.episodeId, activeTrackId]);
 
   const activeTrack = useMemo(
@@ -458,6 +497,52 @@ export function usePlaybackControls({
     showActionNotice(`已添加 ${targetTracks.length} 首歌曲到正在播放`);
   }
 
+  function applyActivityFromServer(trackId: string, activity: ReturnType<typeof createTrackActivity>) {
+    setTrackActivity((current) => ({
+      ...current,
+      [trackId]: createTrackActivity(activity),
+    }));
+  }
+
+  function finalizeSession(
+    session: PlaybackSession,
+    outcome: "completed" | "skipped" | "replaced" | "stopped" | "error",
+  ) {
+    if (session.finalized) return;
+    session.finalized = true;
+    if (session.lastTickAt != null && isPlaying) {
+      session.listenedMs += Math.max(0, Date.now() - session.lastTickAt);
+      session.lastTickAt = null;
+    }
+    const durationMs = Math.round((session.durationHint ?? duration ?? 0) * 1000);
+    void musicSessionEnd({
+      sessionId: session.sessionId,
+      trackId: session.trackId,
+      startPositionMs: Math.round(session.startPosition * 1000),
+      endPositionMs: Math.round(session.maxProgress * 1000),
+      durationMs: durationMs > 0 ? durationMs : undefined,
+      listenedMs: Math.round(session.listenedMs),
+      outcome,
+      source: session.source,
+      maxProgressMs: Math.round(session.maxProgress * 1000),
+    }).then((result) => {
+      applyActivityFromServer(result.trackId, {
+        addedAt: result.activity.addedAt,
+        playCount: result.activity.playCount,
+        completedCount: result.activity.completedCount,
+        skipCount: result.activity.skipCount,
+        lastPlayedAt: result.activity.lastPlayedAt,
+        lastSkippedAt: result.activity.lastSkippedAt,
+      });
+      if (playbackSessionRef.current?.sessionId === session.sessionId) {
+        playbackSessionRef.current.countedPlay = result.countedPlay;
+        playbackSessionRef.current.countedComplete = result.countedComplete;
+      }
+    }).catch((error) => {
+      if (import.meta.env.DEV) console.warn("[stats] session end failed", error);
+    });
+  }
+
   function updateTrackActivity(trackId: string, update: (current: ReturnType<typeof createTrackActivity>) => ReturnType<typeof createTrackActivity>) {
     setTrackActivity((current) => ({
       ...current,
@@ -466,39 +551,32 @@ export function usePlaybackControls({
   }
 
   function markEffectivePlay() {
+    // Play counting is finalized by Rust play_sessions aggregation.
     const session = playbackSessionRef.current;
     if (!session || session.countedPlay) return;
+    // Optimistic local marker only; authoritative counters come from session end.
     session.countedPlay = true;
-    updateTrackActivity(session.trackId, (current) => ({
-      ...current,
-      playCount: current.playCount + 1,
-      lastPlayedAt: Date.now(),
-    }));
   }
 
   function markCompletedPlayback() {
     const session = playbackSessionRef.current;
-    if (!session || session.countedComplete) return;
-    if (!session.countedPlay) markEffectivePlay();
-    session.countedComplete = true;
-    updateTrackActivity(session.trackId, (current) => ({
-      ...current,
-      completedCount: current.completedCount + 1,
-      lastPlayedAt: Date.now(),
-    }));
+    if (!session || session.finalized) return;
+    finalizeSession(session, "completed");
   }
 
   function recordSkipIfEligible() {
     const session = playbackSessionRef.current;
-    if (!session || session.countedPlay || session.maxProgress < 3) return;
+    if (!session || session.finalized) return;
+    if (session.maxProgress < 3) {
+      finalizeSession(session, "replaced");
+      return;
+    }
     const trackDuration = audioRef.current?.duration || duration;
-    if (trackDuration > 0 && session.maxProgress / trackDuration >= 0.5) return;
-    session.countedPlay = true;
-    updateTrackActivity(session.trackId, (current) => ({
-      ...current,
-      skipCount: current.skipCount + 1,
-      lastSkippedAt: Date.now(),
-    }));
+    if (trackDuration > 0 && session.maxProgress / trackDuration >= 0.5) {
+      finalizeSession(session, "replaced");
+      return;
+    }
+    finalizeSession(session, "skipped");
   }
 
   function handleTimeUpdate(currentTime: number, trackDuration: number) {
@@ -515,8 +593,16 @@ export function usePlaybackControls({
     }
     setProgress(currentTime);
     const session = playbackSessionRef.current;
-    if (!session || session.trackId !== activeTrackId) return;
+    if (!session || session.trackId !== activeTrackId || session.finalized) return;
     session.maxProgress = Math.max(session.maxProgress, currentTime);
+    session.durationHint = trackDuration > 0 ? trackDuration : session.durationHint;
+    if (isPlaying) {
+      const now = Date.now();
+      if (session.lastTickAt != null) {
+        session.listenedMs += Math.max(0, now - session.lastTickAt);
+      }
+      session.lastTickAt = now;
+    }
     const threshold = trackDuration > 0
       ? Math.min(240, Math.max(30, trackDuration * 0.5))
       : 30;
@@ -637,6 +723,10 @@ export function usePlaybackControls({
       if (activePodcastEpisodeRef.current) {
         resumePodcastProgressWrites(activePodcastEpisodeRef.current.episodeId);
       }
+      const musicSession = playbackSessionRef.current;
+      if (musicSession && !musicSession.finalized) {
+        musicSession.lastTickAt = Date.now();
+      }
       const sourceKey = activeAudioSourceKeyRef.current;
       const playAttempt = audioPlayAttemptRef.current + 1;
       audioPlayAttemptRef.current = playAttempt;
@@ -646,6 +736,11 @@ export function usePlaybackControls({
     } else {
       flushPodcastProgress();
       if (activePodcastEpisodeRef.current) podcastPlaybackIntentRef.current = false;
+      const musicSession = playbackSessionRef.current;
+      if (musicSession && !musicSession.finalized && musicSession.lastTickAt != null) {
+        musicSession.listenedMs += Math.max(0, Date.now() - musicSession.lastTickAt);
+        musicSession.lastTickAt = null;
+      }
       beginPlayAttempt();
       audio.pause();
       setIsPlaying(false);
@@ -684,12 +779,32 @@ export function usePlaybackControls({
     if (!audio || activePodcastEpisode || !activeTrack) return;
     audio.currentTime = 0;
     setProgress(0);
+    const previous = playbackSessionRef.current;
+    if (previous && !previous.finalized) finalizeSession(previous, "replaced");
+    const sessionId = `music-${activeTrack.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     playbackSessionRef.current = {
+      sessionId,
       trackId: activeTrack.id,
+      startedAt: Date.now(),
+      startPosition: 0,
       maxProgress: 0,
+      listenedMs: 0,
+      lastTickAt: null,
+      source: "restart",
+      durationHint: duration || null,
       countedPlay: false,
       countedComplete: false,
+      finalized: false,
     };
+    void musicSessionStart({
+      sessionId,
+      trackId: activeTrack.id,
+      startPositionMs: 0,
+      durationMs: duration > 0 ? Math.round(duration * 1000) : undefined,
+      source: "restart",
+    }).catch((error) => {
+      if (import.meta.env.DEV) console.warn("[stats] session start failed", error);
+    });
     const sourceKey = activeAudioSourceKeyRef.current;
     const playAttempt = audioPlayAttemptRef.current + 1;
     audioPlayAttemptRef.current = playAttempt;

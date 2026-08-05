@@ -963,6 +963,305 @@ pub(crate) fn clear_library(state: &MusicState) -> Result<(), String> {
   Ok(())
 }
 
+
+fn classify_session_outcome(
+  outcome: &str,
+  listened_ms: i64,
+  max_progress_ms: i64,
+  duration_ms: Option<i64>,
+) -> (String, bool, bool, bool) {
+  let duration = duration_ms.unwrap_or(0).max(0);
+  let progress = max_progress_ms.max(0);
+  let listened = listened_ms.max(0);
+
+  // Effective play: listened beyond max(3s, 1% duration).
+  let effective_threshold = if duration > 0 {
+    (duration / 100).max(3_000)
+  } else {
+    3_000
+  };
+  // Complete: natural completed, or progress/listen reaches 90%.
+  let complete_threshold = if duration > 0 {
+    ((duration as f64) * 0.9).round() as i64
+  } else {
+    i64::MAX
+  };
+  // Skip window: early abandon before max(15s, 20% duration).
+  let skip_window = if duration > 0 {
+    ((duration as f64) * 0.2).round() as i64
+  } else {
+    15_000
+  }
+  .max(15_000);
+
+  let mut normalized = match outcome {
+    "completed" | "skipped" | "replaced" | "stopped" | "error" | "playing" => outcome.to_string(),
+    _ => "stopped".to_string(),
+  };
+
+  let counted_complete = normalized == "completed"
+    || progress >= complete_threshold
+    || listened >= complete_threshold;
+  if counted_complete {
+    normalized = "completed".to_string();
+  }
+
+  // Explicit early skip should not be upgraded to play just because it passed 3s.
+  let explicit_skip = matches!(normalized.as_str(), "skipped" | "replaced")
+    && progress >= 3_000
+    && progress < skip_window
+    && listened < effective_threshold.max(skip_window);
+
+  let counted_skip = !counted_complete
+    && (
+      (normalized == "skipped" && progress >= 3_000 && progress < skip_window)
+        || (normalized != "completed"
+          && progress >= 3_000
+          && progress < skip_window
+          && listened < effective_threshold)
+    );
+
+  let counted_play = counted_complete
+    || (!counted_skip && (listened >= effective_threshold || progress >= effective_threshold));
+
+  if counted_skip {
+    normalized = "skipped".to_string();
+  } else if counted_play && normalized == "skipped" {
+    // Long "skip" gestures after meaningful listen become a normal stop/replace.
+    normalized = "stopped".to_string();
+  }
+
+  let _ = explicit_skip;
+  (normalized, counted_play, counted_complete, counted_skip)
+}
+
+pub(crate) fn start_play_session(
+  state: &MusicState,
+  input: MusicPlaySessionStartInput,
+) -> Result<(), String> {
+  let connection = open_music_db(state)?;
+  if !track_exists(&connection, &input.track_id) {
+    return Ok(());
+  }
+  let now = unix_millis();
+  connection
+    .execute(
+      "
+      INSERT INTO music_play_sessions (
+        id, track_id, started_at, ended_at, start_position_ms, end_position_ms,
+        duration_ms, listened_ms, outcome, source, session_kind
+      ) VALUES (?1, ?2, ?3, NULL, ?4, NULL, ?5, 0, 'playing', ?6, 'music')
+      ON CONFLICT(id) DO UPDATE SET
+        track_id = excluded.track_id,
+        started_at = excluded.started_at,
+        start_position_ms = excluded.start_position_ms,
+        duration_ms = excluded.duration_ms,
+        outcome = 'playing',
+        source = excluded.source,
+        ended_at = NULL,
+        end_position_ms = NULL,
+        listened_ms = 0
+      ",
+      params![
+        input.session_id,
+        input.track_id,
+        now,
+        input.start_position_ms.unwrap_or(0).max(0),
+        input.duration_ms,
+        input.source.unwrap_or_else(|| "queue".to_string()),
+      ],
+    )
+    .map_err(|error| format!("无法开始播放会话：{error}"))?;
+  Ok(())
+}
+
+pub(crate) fn end_play_session(
+  state: &MusicState,
+  input: MusicPlaySessionEndInput,
+) -> Result<MusicPlaySessionEndResult, String> {
+  let mut connection = open_music_db(state)?;
+  if !track_exists(&connection, &input.track_id) {
+    return Ok(MusicPlaySessionEndResult {
+      track_id: input.track_id,
+      activity: TrackActivityRecord {
+        added_at: 0,
+        play_count: 0,
+        completed_count: 0,
+        skip_count: 0,
+        last_played_at: None,
+        last_skipped_at: None,
+      },
+      outcome: "stopped".to_string(),
+      counted_play: false,
+      counted_complete: false,
+      counted_skip: false,
+    });
+  }
+
+  let transaction = connection
+    .transaction_with_behavior(TransactionBehavior::Immediate)
+    .map_err(|error| format!("无法结束播放会话：{error}"))?;
+  let now = unix_millis();
+  let listened_ms = input.listened_ms.unwrap_or(0).max(0);
+  let max_progress_ms = input
+    .max_progress_ms
+    .or(input.end_position_ms)
+    .unwrap_or(0)
+    .max(0);
+  let (outcome, counted_play, counted_complete, counted_skip) = classify_session_outcome(
+    &input.outcome,
+    listened_ms,
+    max_progress_ms,
+    input.duration_ms,
+  );
+
+  // Ensure a start row exists even if start event was missed.
+  transaction
+    .execute(
+      "
+      INSERT INTO music_play_sessions (
+        id, track_id, started_at, ended_at, start_position_ms, end_position_ms,
+        duration_ms, listened_ms, outcome, source, session_kind
+      ) VALUES (?1, ?2, ?3, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'music')
+      ON CONFLICT(id) DO UPDATE SET
+        ended_at = excluded.ended_at,
+        end_position_ms = excluded.end_position_ms,
+        duration_ms = COALESCE(excluded.duration_ms, music_play_sessions.duration_ms),
+        listened_ms = excluded.listened_ms,
+        outcome = excluded.outcome,
+        source = COALESCE(excluded.source, music_play_sessions.source)
+      ",
+      params![
+        input.session_id,
+        input.track_id,
+        now,
+        input.start_position_ms.unwrap_or(0).max(0),
+        input.end_position_ms.unwrap_or(max_progress_ms).max(0),
+        input.duration_ms,
+        listened_ms,
+        outcome,
+        input.source.unwrap_or_else(|| "queue".to_string()),
+      ],
+    )
+    .map_err(|error| format!("无法写入播放会话：{error}"))?;
+
+  // Load current stats
+  let current = transaction
+    .query_row(
+      "
+      SELECT
+        COALESCE(t.added_at, 0),
+        COALESCE(s.play_count, 0),
+        COALESCE(s.complete_count, 0),
+        COALESCE(s.skip_count, 0),
+        s.first_played_at,
+        s.last_played_at,
+        s.last_completed_at,
+        s.last_skipped_at,
+        COALESCE(s.total_listen_ms, 0)
+      FROM music_tracks t
+      LEFT JOIN music_track_stats s ON s.track_id = t.id
+      WHERE t.id = ?1
+      ",
+      params![input.track_id],
+      |row| {
+        Ok((
+          row.get::<_, i64>(0)?,
+          row.get::<_, i64>(1)?,
+          row.get::<_, i64>(2)?,
+          row.get::<_, i64>(3)?,
+          row.get::<_, Option<i64>>(4)?,
+          row.get::<_, Option<i64>>(5)?,
+          row.get::<_, Option<i64>>(6)?,
+          row.get::<_, Option<i64>>(7)?,
+          row.get::<_, i64>(8)?,
+        ))
+      },
+    )
+    .map_err(|error| format!("无法读取曲目统计：{error}"))?;
+
+  let (
+    added_at,
+    mut play_count,
+    mut complete_count,
+    mut skip_count,
+    first_played_at,
+    mut last_played_at,
+    mut last_completed_at,
+    mut last_skipped_at,
+    mut total_listen_ms,
+  ) = current;
+
+  if counted_play {
+    play_count += 1;
+    last_played_at = Some(now);
+  }
+  if counted_complete {
+    complete_count += 1;
+    last_completed_at = Some(now);
+    last_played_at = Some(now);
+  }
+  if counted_skip {
+    skip_count += 1;
+    last_skipped_at = Some(now);
+  }
+  total_listen_ms = total_listen_ms.saturating_add(listened_ms);
+
+  transaction
+    .execute(
+      "
+      INSERT INTO music_track_stats (
+        track_id, play_count, complete_count, skip_count, favorite,
+        first_played_at, last_played_at, last_completed_at, last_skipped_at,
+        total_listen_ms, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9, ?10)
+      ON CONFLICT(track_id) DO UPDATE SET
+        play_count = excluded.play_count,
+        complete_count = excluded.complete_count,
+        skip_count = excluded.skip_count,
+        first_played_at = COALESCE(music_track_stats.first_played_at, excluded.first_played_at),
+        last_played_at = excluded.last_played_at,
+        last_completed_at = excluded.last_completed_at,
+        last_skipped_at = excluded.last_skipped_at,
+        total_listen_ms = excluded.total_listen_ms,
+        updated_at = excluded.updated_at
+      ",
+      params![
+        input.track_id,
+        play_count,
+        complete_count,
+        skip_count,
+        first_played_at.or(last_played_at),
+        last_played_at,
+        last_completed_at,
+        last_skipped_at,
+        total_listen_ms,
+        now
+      ],
+    )
+    .map_err(|error| format!("无法更新曲目统计：{error}"))?;
+
+  transaction
+    .commit()
+    .map_err(|error| format!("无法提交播放会话：{error}"))?;
+
+  Ok(MusicPlaySessionEndResult {
+    track_id: input.track_id,
+    activity: TrackActivityRecord {
+      added_at,
+      play_count,
+      completed_count: complete_count,
+      skip_count,
+      last_played_at,
+      last_skipped_at,
+    },
+    outcome,
+    counted_play,
+    counted_complete,
+    counted_skip,
+  })
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -997,6 +1296,102 @@ mod tests {
       extension: "mp3".to_string(),
       cover_path: None,
     }
+  }
+
+  #[test]
+  fn classifies_completed_and_skipped_sessions() {
+    let root = test_root("sessions");
+    let state = MusicState::initialize_at(&root).expect("init music state");
+    let music_dir = root.join("Music");
+    fs::create_dir_all(&music_dir).expect("create music dir");
+    let track_path = music_dir.join("a.mp3");
+    fs::write(&track_path, b"id3").expect("write fake track");
+
+    // Seed one track through legacy import.
+    let legacy = LegacyPlayerStateV1 {
+      library_schema_version: Some(6),
+      folders: vec![MusicFolder {
+        path: music_dir.to_string_lossy().to_string(),
+        name: "Music".to_string(),
+      }],
+      tracks: vec![sample_track("track-1", &track_path.to_string_lossy())],
+      active_track_id: None,
+      queue: vec![],
+      play_history: vec![],
+      track_activity: HashMap::new(),
+      volume: Some(0.8),
+      shuffle: Some(false),
+      repeat: Some("off".to_string()),
+      playlists: vec![],
+      selected_playlist_id: None,
+      home_pins: vec![],
+    };
+    import_legacy_player_state(&state, legacy).expect("import");
+
+    start_play_session(
+      &state,
+      MusicPlaySessionStartInput {
+        session_id: "s1".to_string(),
+        track_id: "track-1".to_string(),
+        start_position_ms: Some(0),
+        duration_ms: Some(200_000),
+        source: Some("queue".to_string()),
+      },
+    )
+    .expect("start");
+
+    let completed = end_play_session(
+      &state,
+      MusicPlaySessionEndInput {
+        session_id: "s1".to_string(),
+        track_id: "track-1".to_string(),
+        start_position_ms: Some(0),
+        end_position_ms: Some(190_000),
+        duration_ms: Some(200_000),
+        listened_ms: Some(190_000),
+        outcome: "completed".to_string(),
+        source: Some("queue".to_string()),
+        max_progress_ms: Some(190_000),
+      },
+    )
+    .expect("complete");
+    assert!(completed.counted_play);
+    assert!(completed.counted_complete);
+    assert!(!completed.counted_skip);
+    assert_eq!(completed.activity.play_count, 1);
+    assert_eq!(completed.activity.completed_count, 1);
+
+    start_play_session(
+      &state,
+      MusicPlaySessionStartInput {
+        session_id: "s2".to_string(),
+        track_id: "track-1".to_string(),
+        start_position_ms: Some(0),
+        duration_ms: Some(200_000),
+        source: Some("queue".to_string()),
+      },
+    )
+    .expect("start skip session");
+    let skipped = end_play_session(
+      &state,
+      MusicPlaySessionEndInput {
+        session_id: "s2".to_string(),
+        track_id: "track-1".to_string(),
+        start_position_ms: Some(0),
+        end_position_ms: Some(8_000),
+        duration_ms: Some(200_000),
+        listened_ms: Some(8_000),
+        outcome: "skipped".to_string(),
+        source: Some("queue".to_string()),
+        max_progress_ms: Some(8_000),
+      },
+    )
+    .expect("skip");
+    assert!(!skipped.counted_play);
+    assert!(!skipped.counted_complete);
+    assert!(skipped.counted_skip);
+    assert_eq!(skipped.activity.play_count, 1);
+    assert_eq!(skipped.activity.skip_count, 1);
   }
 
   #[test]

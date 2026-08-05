@@ -93,3 +93,41 @@ export async function musicSavePlaybackState(playback: MusicPlaybackStateInput) 
 export async function musicClearLibrary() {
   return invoke<void>("music_clear_library");
 }
+
+export type MusicPlaySessionStartInput = {
+  sessionId: string;
+  trackId: string;
+  startPositionMs?: number;
+  durationMs?: number;
+  source?: string;
+};
+
+export type MusicPlaySessionEndInput = {
+  sessionId: string;
+  trackId: string;
+  startPositionMs?: number;
+  endPositionMs?: number;
+  durationMs?: number;
+  listenedMs?: number;
+  outcome: "playing" | "completed" | "skipped" | "replaced" | "stopped" | "error";
+  source?: string;
+  maxProgressMs?: number;
+};
+
+export type MusicPlaySessionEndResult = {
+  trackId: string;
+  activity: import("../types").TrackActivity;
+  outcome: string;
+  countedPlay: boolean;
+  countedComplete: boolean;
+  countedSkip: boolean;
+};
+
+export async function musicSessionStart(session: MusicPlaySessionStartInput) {
+  return invoke<void>("music_session_start", { session });
+}
+
+export async function musicSessionEnd(session: MusicPlaySessionEndInput) {
+  return invoke<MusicPlaySessionEndResult>("music_session_end", { session });
+}
+

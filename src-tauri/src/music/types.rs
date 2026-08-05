@@ -177,3 +177,48 @@ pub(crate) struct MusicScanWriteResult {
   pub skipped: usize,
   pub library_revision: i64,
 }
+
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MusicPlaySessionStartInput {
+  pub session_id: String,
+  pub track_id: String,
+  #[serde(default)]
+  pub start_position_ms: Option<i64>,
+  #[serde(default)]
+  pub duration_ms: Option<i64>,
+  #[serde(default)]
+  pub source: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MusicPlaySessionEndInput {
+  pub session_id: String,
+  pub track_id: String,
+  #[serde(default)]
+  pub start_position_ms: Option<i64>,
+  #[serde(default)]
+  pub end_position_ms: Option<i64>,
+  #[serde(default)]
+  pub duration_ms: Option<i64>,
+  #[serde(default)]
+  pub listened_ms: Option<i64>,
+  pub outcome: String,
+  #[serde(default)]
+  pub source: Option<String>,
+  #[serde(default)]
+  pub max_progress_ms: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MusicPlaySessionEndResult {
+  pub track_id: String,
+  pub activity: TrackActivityRecord,
+  pub outcome: String,
+  pub counted_play: bool,
+  pub counted_complete: bool,
+  pub counted_skip: bool,
+}
