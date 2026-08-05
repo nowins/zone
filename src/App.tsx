@@ -29,6 +29,7 @@ import {
   musicSaveTrackActivity,
 } from "./app/musicLibraryApi";
 import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
+import { buildSmartDjQueue, createSmartDjSession, seedFromTracks } from "./utils/smartDj";
 import { homePinStateForPayload, moveHomePin, normalizeHomePins, shiftHomePin } from "./utils/homePins";
 import { resolveSearchSurface } from "./utils/collectionSearch";
 import { useSystemMedia } from "./hooks/useSystemMedia";
@@ -484,6 +485,39 @@ export default function App() {
     playTracks(payload.tracks);
   }
 
+  function startSmartDjFromPayload(payload: ContextPayload) {
+    if (payload.tracks.length === 0) {
+      showActionNotice("没有可用于 SmartDJ 的歌曲");
+      return;
+    }
+    const seedTrack = payload.tracks[0];
+    const seedId = payload.kind === "track"
+      ? seedTrack.id
+      : payload.kind === "playlist"
+        ? (payload.playlistId ?? seedTrack.id)
+        : payload.title;
+    const seed = seedFromTracks(
+      payload.kind === "album" || payload.kind === "artist" || payload.kind === "playlist"
+        ? payload.kind
+        : "track",
+      seedId,
+      payload.title,
+      payload.tracks,
+    );
+    const session = createSmartDjSession(seed);
+    const queueTracks = buildSmartDjQueue(session, {
+      tracks,
+      activity: trackActivity,
+      favoriteTrackIds,
+    });
+    if (queueTracks.length === 0) {
+      showActionNotice("暂时无法开始 SmartDJ");
+      return;
+    }
+    playTracks(queueTracks);
+    showActionNotice(`已开始 SmartDJ：${seed.label}`);
+  }
+
   function closeContextMenu() {
     setContextMenu(null);
   }
@@ -576,6 +610,7 @@ export default function App() {
       onPlay={() => playContextPayload(contextMenu.payload)}
       onPlayNext={() => playNext(contextMenu.payload.tracks)}
       onAddToQueue={() => appendToQueue(contextMenu.payload.tracks)}
+      onStartSmartDj={() => startSmartDjFromPayload(contextMenu.payload)}
       onAddToPlaylist={() => setAddToPlaylistTarget(contextMenu.payload)}
       onAddToFavorites={() => addToPlaylist(DEFAULT_PLAYLIST_ID, contextMenu.payload.tracks)}
       onRenamePlaylist={(playlistId) => openPlaylistDialog("rename", playlistId)}

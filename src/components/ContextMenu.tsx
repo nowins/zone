@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { Ban, Heart, Info, ListMusic, ListPlus, Pencil, Pin, PinOff, Play, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Ban, Heart, Info, ListMusic, ListPlus, Pencil, Pin, PinOff, Play, Radio, SlidersHorizontal, Trash2 } from "lucide-react";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import type { ContextMenuState } from "../types";
 
@@ -9,6 +9,7 @@ export function ContextMenu({
   onPlay,
   onAddToQueue,
   onPlayNext,
+  onStartSmartDj,
   onAddToPlaylist,
   onAddToFavorites,
   onRenamePlaylist,
@@ -23,6 +24,7 @@ export function ContextMenu({
   onPlay: () => void;
   onAddToQueue: () => void;
   onPlayNext: () => void;
+  onStartSmartDj: () => void;
   onAddToPlaylist: () => void;
   onAddToFavorites: () => void;
   onRenamePlaylist: (playlistId: string) => void;
@@ -93,6 +95,10 @@ export function ContextMenu({
         <button role="menuitem" onClick={() => run(onAddToQueue)} disabled={menu.payload.tracks.length === 0}>
           <ListMusic size={17} />
           <span>添加到队列末尾</span>
+        </button>
+        <button role="menuitem" onClick={() => run(onStartSmartDj)} disabled={menu.payload.tracks.length === 0}>
+          <Radio size={17} />
+          <span>开始 SmartDJ</span>
         </button>
         {homePinState && (
           <button role="menuitem" onClick={() => run(onToggleHomePin)}>

@@ -39,6 +39,7 @@
     "src/utils/homePins.ts",
     "src/utils/quickplayBlocks.ts",
     "src/utils/smartPlaylist.ts",
+    "src/utils/smartDj.ts",
     "src/utils/librarySearch.ts",
     "src/utils/collectionSearch.ts",
     "src/utils/metadata.ts",
