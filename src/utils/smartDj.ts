@@ -120,7 +120,6 @@ export function refillSmartDjSession(
     ...session.bannedIds,
     ...session.queuedIds,
   ]);
-  if (session.seed.tracks[0]) blocked.add(session.seed.tracks[0].id);
 
   const nextQueued = [...session.queuedIds];
   const recent = recentTracks(session, context);
@@ -291,6 +290,80 @@ export function rankSmartDjCandidates(
     return left.track.title.localeCompare(right.track.title, "zh-Hans");
   });
   return scored;
+}
+
+export function syncSmartDjSessionWithQueue(
+  session: SmartDjSession,
+  queueIds: string[],
+  activeTrackId: string | null,
+  context: SmartDjContext,
+): SmartDjSession {
+  const activeIndex = activeTrackId ? queueIds.indexOf(activeTrackId) : -1;
+  const playedFromQueue = activeIndex >= 0 ? queueIds.slice(0, activeIndex) : [];
+  const upcoming = activeIndex >= 0 ? queueIds.slice(activeIndex + 1) : queueIds.slice();
+  const playedIds = uniqueIds([...session.playedIds, ...playedFromQueue]);
+  const queuedIds = uniqueIds([
+    ...(activeTrackId ? [activeTrackId] : []),
+    ...upcoming,
+  ]).filter((id) => !session.bannedIds.includes(id));
+
+  return refillSmartDjSession(
+    {
+      ...session,
+      playedIds,
+      queuedIds,
+      status: "playing",
+    },
+    context,
+    session.constraints.horizon,
+  );
+}
+
+export function materializeSmartDjQueue(
+  session: SmartDjSession,
+  context: SmartDjContext,
+): { session: SmartDjSession; tracks: Track[] } {
+  const filled = refillSmartDjSession(session, context, session.constraints.horizon);
+  const trackMap = new Map(context.tracks.map((track) => [track.id, track]));
+  const seedFirst = filled.seed.tracks[0]?.id;
+  const ids = uniqueIds([
+    ...(seedFirst ? [seedFirst] : []),
+    ...filled.queuedIds,
+  ]);
+  const tracks = ids
+    .map((id) => trackMap.get(id))
+    .filter((track): track is Track => Boolean(track));
+  return {
+    session: {
+      ...filled,
+      queuedIds: tracks.map((track) => track.id),
+      status: tracks.length > 0 ? "playing" : "exhausted",
+    },
+    tracks,
+  };
+}
+
+export function noteSmartDjSkip(
+  session: SmartDjSession,
+  trackId: string,
+  context: SmartDjContext,
+  options?: { ban?: boolean },
+): SmartDjSession {
+  const playedIds = uniqueIds([...session.playedIds, trackId]);
+  const bannedIds = options?.ban
+    ? uniqueIds([...session.bannedIds, trackId])
+    : session.bannedIds;
+  const queuedIds = session.queuedIds.filter((id) => id !== trackId);
+  return refillSmartDjSession(
+    {
+      ...session,
+      playedIds,
+      bannedIds,
+      queuedIds,
+    },
+    context,
+    session.constraints.horizon,
+  );
 }
 
 export function seedFromTracks(

@@ -29,7 +29,7 @@ import {
   musicSaveTrackActivity,
 } from "./app/musicLibraryApi";
 import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
-import { buildSmartDjQueue, createSmartDjSession, seedFromTracks } from "./utils/smartDj";
+import { seedFromTracks } from "./utils/smartDj";
 import { homePinStateForPayload, moveHomePin, normalizeHomePins, shiftHomePin } from "./utils/homePins";
 import { resolveSearchSurface } from "./utils/collectionSearch";
 import { useSystemMedia } from "./hooks/useSystemMedia";
@@ -211,6 +211,8 @@ export default function App() {
     playTrack,
     playTracks,
     appendToQueue,
+    playNext,
+    startSmartDj,
     handleTimeUpdate,
     move,
     onEnded,
@@ -237,6 +239,11 @@ export default function App() {
     tracks,
     restored,
     setTrackActivity,
+    getSmartDjContext: () => ({
+      tracks,
+      activity: trackActivity,
+      favoriteTrackIds,
+    }),
     activeTrackId,
     setActiveTrackId,
     queue,
@@ -504,18 +511,7 @@ export default function App() {
       payload.title,
       payload.tracks,
     );
-    const session = createSmartDjSession(seed);
-    const queueTracks = buildSmartDjQueue(session, {
-      tracks,
-      activity: trackActivity,
-      favoriteTrackIds,
-    });
-    if (queueTracks.length === 0) {
-      showActionNotice("暂时无法开始 SmartDJ");
-      return;
-    }
-    playTracks(queueTracks);
-    showActionNotice(`已开始 SmartDJ：${seed.label}`);
+    startSmartDj(seed);
   }
 
   function closeContextMenu() {

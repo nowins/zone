@@ -4,8 +4,10 @@ import {
   advanceSmartDjSession,
   buildSmartDjQueue,
   createSmartDjSession,
+  noteSmartDjSkip,
   rankSmartDjCandidates,
   seedFromTracks,
+  syncSmartDjSessionWithQueue,
 } from "../.tmp/visualizer-tests/utils/smartDj.js";
 
 function track(id, overrides = {}) {
@@ -92,4 +94,55 @@ test("advanceSmartDjSession consumes played track and refills", () => {
   assert.ok(advanced.playedIds.includes("seed"));
   assert.ok(!advanced.queuedIds.includes("seed"));
   assert.ok(advanced.queuedIds.length >= 1);
+});
+
+
+test("skip ban removes track and refills upcoming recommendations", () => {
+  const seedTrack = track("seed", { artist: "Aiko", album: "Dawn", genres: ["Pop"] });
+  const tracks = [
+    seedTrack,
+    track("skip-me", { artist: "Aiko", album: "Dawn", genres: ["Pop"] }),
+    track("keep-1", { artist: "Aiko", album: "Other", genres: ["Pop"] }),
+    track("keep-2", { artist: "Miki", album: "Soft", genres: ["Pop"] }),
+    track("keep-3", { artist: "Neko", album: "City", genres: ["Pop"] }),
+  ];
+  let session = createSmartDjSession(
+    seedFromTracks("track", seedTrack.id, seedTrack.title, [seedTrack]),
+    { horizon: 4, maxPerArtist: 3, maxPerAlbum: 2 },
+  );
+  const context = { tracks, activity: {}, favoriteTrackIds: new Set() };
+  const queue = buildSmartDjQueue(session, context).map((item) => item.id);
+  session = {
+    ...session,
+    queuedIds: queue,
+    status: "playing",
+  };
+  const next = noteSmartDjSkip(session, "skip-me", context, { ban: true });
+  assert.ok(next.bannedIds.includes("skip-me"));
+  assert.ok(!next.queuedIds.includes("skip-me"));
+  assert.ok(next.queuedIds.length >= 2);
+});
+
+test("syncSmartDjSessionWithQueue marks played prefix and keeps active track", () => {
+  const seedTrack = track("seed", { artist: "Aiko", album: "Dawn" });
+  const tracks = [
+    seedTrack,
+    track("a", { artist: "Aiko", album: "Dawn" }),
+    track("b", { artist: "Aiko", album: "Night" }),
+    track("c", { artist: "Miki", album: "Soft", genres: ["Pop"] }),
+  ];
+  let session = createSmartDjSession(
+    seedFromTracks("track", seedTrack.id, seedTrack.title, [seedTrack]),
+    { horizon: 4, maxPerArtist: 3, maxPerAlbum: 2 },
+  );
+  const context = { tracks, activity: {}, favoriteTrackIds: new Set() };
+  const queue = buildSmartDjQueue(session, context).map((item) => item.id);
+  session = { ...session, queuedIds: queue, status: "playing" };
+  const synced = syncSmartDjSessionWithQueue(session, queue, queue[1] ?? queue[0], context);
+  if (queue[0] && queue[1]) {
+    assert.ok(synced.playedIds.includes(queue[0]));
+    assert.ok(synced.queuedIds.includes(queue[1]));
+  } else {
+    assert.ok(synced.queuedIds.length >= 1);
+  }
 });

@@ -28,6 +28,15 @@ import {
   resolvePodcastStartPosition,
 } from "../utils/playbackTransport";
 import { createTrackActivity } from "../utils/smartPlaylist";
+import {
+  createSmartDjSession,
+  materializeSmartDjQueue,
+  noteSmartDjSkip,
+  syncSmartDjSessionWithQueue,
+  type SmartDjContext,
+  type SmartDjSeed,
+  type SmartDjSession,
+} from "../utils/smartDj";
 import { musicSessionEnd, musicSessionStart } from "../app/musicLibraryApi";
 import type { AudioEngineHandle } from "./useAudioEngine";
 import type {
@@ -89,6 +98,7 @@ type UsePlaybackControlsParams = {
   tracks: Track[];
   restored: boolean;
   setTrackActivity: React.Dispatch<React.SetStateAction<TrackActivityMap>>;
+  getSmartDjContext?: () => SmartDjContext;
   activeTrackId: string | null;
   setActiveTrackId: React.Dispatch<React.SetStateAction<string | null>>;
   queue: string[];
@@ -106,6 +116,7 @@ export function usePlaybackControls({
   tracks,
   restored,
   setTrackActivity,
+  getSmartDjContext,
   activeTrackId,
   setActiveTrackId,
   queue,
@@ -157,6 +168,8 @@ export function usePlaybackControls({
   const [adaptivePrevious, setAdaptivePrevious] = useState(
     () => readPlaybackBehaviorSettings().adaptivePrevious,
   );
+  const smartDjSessionRef = useRef<SmartDjSession | null>(null);
+  const trackActivityRef = useRef<TrackActivityMap>({});
 
   useEffect(() => {
     if (!activeTrackId) return;
@@ -485,8 +498,97 @@ export function usePlaybackControls({
     }
   }
 
-  function playTracks(targetTracks: Track[]) {
+
+  function smartDjContext(): SmartDjContext {
+    if (getSmartDjContext) return getSmartDjContext();
+    return {
+      tracks,
+      activity: trackActivityRef.current,
+      favoriteTrackIds: new Set<string>(),
+    };
+  }
+
+  function applySmartDjSession(session: SmartDjSession, options?: { restart?: boolean; notice?: string }) {
+    const materialized = materializeSmartDjQueue(session, smartDjContext());
+    smartDjSessionRef.current = materialized.session;
+    if (materialized.tracks.length === 0) {
+      smartDjSessionRef.current = {
+        ...materialized.session,
+        status: "exhausted",
+      };
+      showActionNotice("SmartDJ 已播完当前可推荐歌曲");
+      return;
+    }
+    if (options?.restart !== false) {
+      playTracks(materialized.tracks, { preserveSmartDj: true });
+    } else {
+      setQueue(materialized.tracks.map((track) => track.id));
+      if (shuffle) {
+        setShuffleOrder(materialized.tracks.map((track) => track.id));
+      }
+    }
+    if (options?.notice) showActionNotice(options.notice);
+  }
+
+  function startSmartDj(seed: SmartDjSeed) {
+    if (seed.tracks.length === 0) {
+      showActionNotice("没有可用于 SmartDJ 的歌曲");
+      return;
+    }
+    cancelPodcastSessionRestore();
+    if (activePodcastEpisode) stopPodcastForMusic();
+    // Disable shuffle/repeat semantics that fight radio continuation.
+    if (shuffle) setShuffle(false);
+    if (repeat !== "off") setRepeat("off");
+    const session = createSmartDjSession(seed);
+    applySmartDjSession(session, {
+      restart: true,
+      notice: `已开始 SmartDJ：${seed.label}`,
+    });
+  }
+
+  function clearSmartDjSession() {
+    smartDjSessionRef.current = null;
+  }
+
+  function maintainSmartDjAfterMove(reason: "user" | "ended", skippedTrackId: string | null) {
+    const session = smartDjSessionRef.current;
+    if (!session || session.status === "stopped") return;
+    const context = smartDjContext();
+    let nextSession = session;
+    if (reason === "user" && skippedTrackId) {
+      nextSession = noteSmartDjSkip(session, skippedTrackId, context, { ban: true });
+    } else if (skippedTrackId) {
+      nextSession = noteSmartDjSkip(session, skippedTrackId, context, { ban: false });
+    }
+    nextSession = syncSmartDjSessionWithQueue(
+      nextSession,
+      queue.length > 0 ? queue : playbackQueueIds,
+      activeTrackId,
+      context,
+    );
+    // Append only newly suggested upcoming tracks, keep current queue head stable.
+    const trackMap = new Map(context.tracks.map((track) => [track.id, track]));
+    const upcoming = nextSession.queuedIds.filter((id) => id !== activeTrackId);
+    setQueue((current) => {
+      const base = current.length > 0 ? current : playbackQueueIds;
+      const activeIndex = activeTrackId ? base.indexOf(activeTrackId) : -1;
+      const head = activeIndex >= 0 ? base.slice(0, activeIndex + 1) : base;
+      const merged = [...head];
+      for (const id of upcoming) {
+        if (!merged.includes(id) && trackMap.has(id)) merged.push(id);
+      }
+      return merged;
+    });
+    smartDjSessionRef.current = nextSession;
+    if (nextSession.status === "exhausted") {
+      showActionNotice("SmartDJ 可推荐歌曲已接近播完");
+    }
+  }
+
+  function playTracks(targetTracks: Track[], options?: { preserveSmartDj?: boolean }) {
     if (targetTracks.length === 0) return;
+    if (!options?.preserveSmartDj) smartDjSessionRef.current = null;
     cancelPodcastSessionRestore();
     setQueue(targetTracks.map((track) => track.id));
     if (activePodcastEpisode) {
@@ -534,10 +636,14 @@ export function usePlaybackControls({
   }
 
   function applyActivityFromServer(trackId: string, activity: ReturnType<typeof createTrackActivity>) {
-    setTrackActivity((current) => ({
-      ...current,
-      [trackId]: createTrackActivity(activity),
-    }));
+    setTrackActivity((current) => {
+      const next = {
+        ...current,
+        [trackId]: createTrackActivity(activity),
+      };
+      trackActivityRef.current = next;
+      return next;
+    });
   }
 
   function finalizeSession(
@@ -580,10 +686,14 @@ export function usePlaybackControls({
   }
 
   function updateTrackActivity(trackId: string, update: (current: ReturnType<typeof createTrackActivity>) => ReturnType<typeof createTrackActivity>) {
-    setTrackActivity((current) => ({
-      ...current,
-      [trackId]: update(createTrackActivity(current[trackId])),
-    }));
+    setTrackActivity((current) => {
+      const next = {
+        ...current,
+        [trackId]: update(createTrackActivity(current[trackId])),
+      };
+      trackActivityRef.current = next;
+      return next;
+    });
   }
 
   function markEffectivePlay() {
@@ -669,9 +779,19 @@ export function usePlaybackControls({
       setShuffleOrder(playbackOrder);
     }
 
+    const skippedTrackId = delta === 1 ? activeTrackId : null;
     const result = resolveQueueMove(playbackOrder, activeTrackId, delta, repeat);
     if (result.kind === "restart") restartCurrentPlayback();
-    if (result.kind === "move") setActiveTrackId(result.trackId);
+    if (result.kind === "move") {
+      setActiveTrackId(result.trackId);
+      if (smartDjSessionRef.current) {
+        // Defer maintenance until state settles.
+        window.setTimeout(() => maintainSmartDjAfterMove(reason, reason === "user" ? skippedTrackId : skippedTrackId), 0);
+      }
+    }
+    if ((result.kind === "boundary" || result.kind === "empty") && smartDjSessionRef.current) {
+      window.setTimeout(() => maintainSmartDjAfterMove(reason, skippedTrackId), 0);
+    }
     return result;
   }
 
@@ -881,6 +1001,8 @@ export function usePlaybackControls({
     playTracks,
     appendToQueue,
     playNext,
+    startSmartDj,
+    clearSmartDjSession,
     queueInsertMode,
     adaptivePrevious,
     updatePlaybackBehavior,
