@@ -80,3 +80,51 @@ pub(crate) fn music_session_end(
   end_play_session(state.inner(), session)
 }
 
+
+
+#[tauri::command]
+pub(crate) fn music_analyze_features(
+  state: State<'_, MusicState>,
+  limit: Option<u32>,
+) -> Result<FeatureJobStatus, String> {
+  let connection = open_music_db(state.inner())?;
+  let batch = limit.unwrap_or(64).clamp(1, 500) as usize;
+  let _ = enqueue_missing_feature_jobs(&connection, batch)?;
+  let _ = process_feature_jobs(&connection, batch)?;
+  feature_status(&connection)
+}
+
+#[tauri::command]
+pub(crate) fn music_feature_status(
+  state: State<'_, MusicState>,
+) -> Result<FeatureJobStatus, String> {
+  let connection = open_music_db(state.inner())?;
+  feature_status(&connection)
+}
+
+#[tauri::command]
+pub(crate) fn music_list_similar_tracks(
+  state: State<'_, MusicState>,
+  track_id: String,
+  limit: Option<u32>,
+) -> Result<Vec<SimilarTrackMatch>, String> {
+  let connection = open_music_db(state.inner())?;
+  // Best-effort: ensure seed has features.
+  if !load_feature_map(&connection)?.contains_key(&track_id) {
+    let _ = analyze_and_store_track(&connection, &track_id);
+  }
+  find_similar_tracks(&connection, &track_id, limit.unwrap_or(24).clamp(1, 100) as usize)
+}
+
+#[tauri::command]
+pub(crate) fn music_list_track_features(
+  state: State<'_, MusicState>,
+  track_ids: Option<Vec<String>>,
+) -> Result<HashMap<String, Vec<f32>>, String> {
+  let connection = open_music_db(state.inner())?;
+  let mut map = load_feature_map(&connection)?;
+  if let Some(ids) = track_ids {
+    map.retain(|track_id, _| ids.iter().any(|id| id == track_id));
+  }
+  Ok(map)
+}

@@ -34,7 +34,7 @@ pub(crate) fn ensure_default_playlist(db_path: &Path) -> Result<(), String> {
   Ok(())
 }
 
-fn open_music_db(state: &MusicState) -> Result<Connection, String> {
+pub(crate) fn open_music_db(state: &MusicState) -> Result<Connection, String> {
   state.ensure_ready()?;
   open_zone_database(state.db_path())
 }
@@ -102,7 +102,7 @@ fn folder_for_path(folders: &[MusicFolder], path: &str) -> Option<String> {
     .map(|folder| folder.path.clone())
 }
 
-fn track_exists(connection: &Connection, track_id: &str) -> bool {
+pub(crate) fn track_exists(connection: &Connection, track_id: &str) -> bool {
   connection
     .query_row(
       "SELECT COUNT(*) FROM music_tracks WHERE id = ?1",
@@ -1452,4 +1452,14 @@ mod tests {
     assert!(snapshot.playback.shuffle);
     assert_eq!(snapshot.track_activity.get("track-1").map(|item| item.play_count), Some(3));
   }
+}
+
+
+#[allow(dead_code)]
+pub(crate) fn open_music_db_path(db_path: &std::path::Path) -> Result<Connection, String> {
+  crate::db::open_zone_database(db_path)
+}
+
+pub(crate) fn track_exists_on(connection: &Connection, track_id: &str) -> bool {
+  track_exists(connection, track_id)
 }

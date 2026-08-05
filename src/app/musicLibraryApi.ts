@@ -131,3 +131,36 @@ export async function musicSessionEnd(session: MusicPlaySessionEndInput) {
   return invoke<MusicPlaySessionEndResult>("music_session_end", { session });
 }
 
+
+
+export type FeatureJobStatus = {
+  pending: number;
+  running: number;
+  done: number;
+  failed: number;
+  cancelled: number;
+  totalTracks: number;
+  analyzerVersion: number;
+};
+
+export type SimilarTrackMatch = {
+  trackId: string;
+  score: number;
+  distance: number;
+};
+
+export async function musicAnalyzeFeatures(limit = 64) {
+  return invoke<FeatureJobStatus>("music_analyze_features", { limit });
+}
+
+export async function musicFeatureStatus() {
+  return invoke<FeatureJobStatus>("music_feature_status");
+}
+
+export async function musicListSimilarTracks(trackId: string, limit = 24) {
+  return invoke<SimilarTrackMatch[]>("music_list_similar_tracks", { trackId, limit });
+}
+
+export async function musicListTrackFeatures(trackIds?: string[]) {
+  return invoke<Record<string, number[]>>("music_list_track_features", { trackIds });
+}

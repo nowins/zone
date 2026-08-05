@@ -146,3 +146,23 @@ test("syncSmartDjSessionWithQueue marks played prefix and keeps active track", (
     assert.ok(synced.queuedIds.length >= 1);
   }
 });
+
+
+test("feature similarity boosts near vectors over weak metadata matches", () => {
+  const seedTrack = track("seed", { artist: "Aiko", album: "Dawn", genres: ["Pop"] });
+  const weakMeta = track("weak", { artist: "Other", album: "Else", genres: ["Jazz"] });
+  const strongFeature = track("strong", { artist: "Other", album: "Else", genres: ["Jazz"] });
+  const session = createSmartDjSession(seedFromTracks("track", seedTrack.id, seedTrack.title, [seedTrack]));
+  const ranked = rankSmartDjCandidates(session, {
+    tracks: [seedTrack, weakMeta, strongFeature],
+    activity: {},
+    favoriteTrackIds: new Set(),
+    featureVectors: {
+      seed: [1, 0, 0, 0],
+      weak: [0, 1, 0, 0],
+      strong: [0.97, 0.03, 0, 0],
+    },
+  }, new Set([seedTrack.id]));
+  assert.equal(ranked[0].track.id, "strong");
+  assert.ok(ranked[0].reasons.includes("听感相似"));
+});

@@ -27,6 +27,8 @@ import {
   musicSavePlaybackState,
   musicSavePlaylists,
   musicSaveTrackActivity,
+  musicAnalyzeFeatures,
+  musicListTrackFeatures,
 } from "./app/musicLibraryApi";
 import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
 import { seedFromTracks } from "./utils/smartDj";
@@ -73,6 +75,7 @@ export default function App() {
   const [playlistDialog, setPlaylistDialog] = useState<PlaylistDialogState | null>(null);
   const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [featureVectors, setFeatureVectors] = useState<Record<string, number[]>>({});
   const actionNoticeTimerRef = useRef<number | null>(null);
 
   function showActionNotice(message: string) {
@@ -243,6 +246,7 @@ export default function App() {
       tracks,
       activity: trackActivity,
       favoriteTrackIds,
+      featureVectors,
     }),
     activeTrackId,
     setActiveTrackId,
@@ -423,6 +427,24 @@ export default function App() {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [restored, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId]);
+
+  useEffect(() => {
+    if (!restored || tracks.length === 0) return;
+    let cancelled = false;
+    async function hydrateFeatures() {
+      try {
+        await musicAnalyzeFeatures(80);
+        const vectors = await musicListTrackFeatures();
+        if (!cancelled) setFeatureVectors(vectors ?? {});
+      } catch (error) {
+        if (import.meta.env.DEV) console.warn("[features] hydrate failed", error);
+      }
+    }
+    void hydrateFeatures();
+    return () => {
+      cancelled = true;
+    };
+  }, [restored, tracks.length]);
 
   useEffect(() => {
     if (!restored) return;

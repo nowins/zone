@@ -34,6 +34,7 @@ export type SmartDjContext = {
   tracks: Track[];
   activity: TrackActivityMap;
   favoriteTrackIds: ReadonlySet<string>;
+  featureVectors?: Record<string, number[]>;
   now?: number;
 };
 
@@ -254,6 +255,22 @@ export function rankSmartDjCandidates(
       }
     }
 
+    // True-similarity boost when feature vectors are available.
+    const seedVectors = seedTracks
+      .map((item) => context.featureVectors?.[item.id])
+      .filter((vector): vector is number[] => Array.isArray(vector) && vector.length > 0);
+    const trackVector = context.featureVectors?.[track.id];
+    if (trackVector && seedVectors.length > 0) {
+      let best = 0;
+      for (const seedVector of seedVectors) {
+        best = Math.max(best, cosineSimilarity(seedVector, trackVector));
+      }
+      if (best > 0.08) {
+        score += best * 48;
+        if (best >= 0.55) reasons.push("听感相似");
+      }
+    }
+
     if (session.constraints.preferFavorites && context.favoriteTrackIds.has(track.id)) {
       score += 16;
       reasons.push("收藏加分");
@@ -411,4 +428,20 @@ function uniqueIds(ids: string[]) {
 
 function normalize(value: string | null | undefined) {
   return (value ?? "").trim().toLocaleLowerCase();
+}
+
+export function cosineSimilarity(left?: number[] | null, right?: number[] | null) {
+  if (!left || !right || left.length === 0 || left.length !== right.length) return 0;
+  let dot = 0;
+  let leftNorm = 0;
+  let rightNorm = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    const a = left[index] ?? 0;
+    const b = right[index] ?? 0;
+    dot += a * b;
+    leftNorm += a * a;
+    rightNorm += b * b;
+  }
+  if (leftNorm <= 1e-9 || rightNorm <= 1e-9) return 0;
+  return Math.max(-1, Math.min(1, dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))));
 }
