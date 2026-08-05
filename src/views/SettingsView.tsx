@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, FileJson2, Folder, FolderPlus, Globe2, Music2, 
 import type { MetadataProviderDescriptor, MusicFolder } from "../types";
 import { useLyricsProviderSettings } from "../hooks/useLyricsProviderSettings";
 import { MetroLoader } from "../components/MetroLoader";
+import type { QueueInsertMode } from "../app/playbackSettings";
 
 export function SettingsView({
   folders,
@@ -9,6 +10,10 @@ export function SettingsView({
   isScanning,
   metadataProviders,
   onToggleMetadataProvider,
+  queueInsertMode,
+  adaptivePrevious,
+  onQueueInsertModeChange,
+  onAdaptivePreviousChange,
   onAddFolder,
   onRescan,
   onClear,
@@ -18,6 +23,10 @@ export function SettingsView({
   isScanning: boolean;
   metadataProviders: MetadataProviderDescriptor[];
   onToggleMetadataProvider: (providerId: string, enabled: boolean) => void;
+  queueInsertMode: QueueInsertMode;
+  adaptivePrevious: boolean;
+  onQueueInsertModeChange: (mode: QueueInsertMode) => void;
+  onAdaptivePreviousChange: (enabled: boolean) => void;
   onAddFolder: () => void;
   onRescan: () => void;
   onClear: () => void;
@@ -76,6 +85,61 @@ export function SettingsView({
                   </div>
                 ))
               )}
+            </div>
+          </section>
+
+
+          <section className="settings-playback" aria-labelledby="playback-behavior-heading">
+            <header className="settings-section-heading">
+              <div>
+                <span className="settings-kicker">播放</span>
+                <h2 id="playback-behavior-heading">播放行为</h2>
+                <p>调整加入队列的默认位置，以及“上一首”在进度靠后时是否重播当前曲目。</p>
+              </div>
+            </header>
+
+            <div className="settings-behavior-list">
+              <div className="settings-behavior-row">
+                <div>
+                  <strong>加入队列</strong>
+                  <span>默认把歌曲放到“下一首”或“队列末尾”。右键菜单仍可临时选择另一种方式。</span>
+                </div>
+                <div className="settings-segmented" role="group" aria-label="加入队列方式">
+                  <button
+                    type="button"
+                    className={queueInsertMode === "play_next" ? "is-active" : undefined}
+                    aria-pressed={queueInsertMode === "play_next"}
+                    onClick={() => onQueueInsertModeChange("play_next")}
+                  >
+                    下一首
+                  </button>
+                  <button
+                    type="button"
+                    className={queueInsertMode === "append_end" ? "is-active" : undefined}
+                    aria-pressed={queueInsertMode === "append_end"}
+                    onClick={() => onQueueInsertModeChange("append_end")}
+                  >
+                    队列末尾
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-behavior-row">
+                <div>
+                  <strong>智能上一首</strong>
+                  <span>播放超过约 3 秒后再按上一首，会回到当前歌曲开头。</span>
+                </div>
+                <button
+                  className="provider-toggle"
+                  type="button"
+                  role="switch"
+                  aria-checked={adaptivePrevious}
+                  onClick={() => onAdaptivePreviousChange(!adaptivePrevious)}
+                >
+                  <span aria-hidden="true" />
+                  {adaptivePrevious ? "已启用" : "已关闭"}
+                </button>
+              </div>
             </div>
           </section>
 

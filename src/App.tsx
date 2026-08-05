@@ -574,6 +574,7 @@ export default function App() {
       menu={contextMenu}
       onClose={closeContextMenu}
       onPlay={() => playContextPayload(contextMenu.payload)}
+      onPlayNext={() => playNext(contextMenu.payload.tracks)}
       onAddToQueue={() => appendToQueue(contextMenu.payload.tracks)}
       onAddToPlaylist={() => setAddToPlaylistTarget(contextMenu.payload)}
       onAddToFavorites={() => addToPlaylist(DEFAULT_PLAYLIST_ID, contextMenu.payload.tracks)}
@@ -909,6 +910,10 @@ export default function App() {
             isScanning={isScanning}
             metadataProviders={metadata.providers}
             onToggleMetadataProvider={metadata.setProviderEnabled}
+            queueInsertMode={queueInsertMode}
+            adaptivePrevious={adaptivePrevious}
+            onQueueInsertModeChange={(mode) => updatePlaybackBehavior({ queueInsertMode: mode })}
+            onAdaptivePreviousChange={(enabled) => updatePlaybackBehavior({ adaptivePrevious: enabled })}
             onAddFolder={addFolder}
             onRescan={() => rescan()}
             onClear={() => {

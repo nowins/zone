@@ -5,12 +5,20 @@ import { createIdleBeatFrame } from "../utils/beatAnalysis";
 import {
   createShuffleOrder,
   haveSameQueueItems,
+  insertTracksIntoQueue,
   playbackSourceKey,
   reconcileActiveTrack,
   reconcileQueueWithLibrary,
+  resolvePreviousAction,
   resolveQueueMove,
+  type QueueInsertMode,
   type QueueMoveResult,
 } from "../utils/playback";
+import {
+  patchPlaybackBehaviorSettings,
+  readPlaybackBehaviorSettings,
+  type PlaybackBehaviorSettings,
+} from "../app/playbackSettings";
 import {
   isCurrentPlayAttempt,
   podcastStatusForCanPlay,
@@ -143,6 +151,12 @@ export function usePlaybackControls({
   const [shuffle, setShuffle] = useState(false);
   const [shuffleOrder, setShuffleOrder] = useState<string[]>([]);
   const [repeat, setRepeat] = useState<RepeatMode>("off");
+  const [queueInsertMode, setQueueInsertMode] = useState<QueueInsertMode>(
+    () => readPlaybackBehaviorSettings().queueInsertMode,
+  );
+  const [adaptivePrevious, setAdaptivePrevious] = useState(
+    () => readPlaybackBehaviorSettings().adaptivePrevious,
+  );
 
   useEffect(() => {
     if (!activeTrackId) return;
@@ -491,10 +505,32 @@ export function usePlaybackControls({
     }
   }
 
-  function appendToQueue(targetTracks: Track[]) {
+  function appendToQueue(targetTracks: Track[], mode: QueueInsertMode = queueInsertMode) {
     if (targetTracks.length === 0) return;
-    setQueue((current) => uniqueIds([...current, ...targetTracks.map((track) => track.id)]));
-    showActionNotice(`已添加 ${targetTracks.length} 首歌曲到正在播放`);
+    const trackIds = targetTracks.map((track) => track.id);
+    setQueue((current) => insertTracksIntoQueue(current, activeTrackId, trackIds, mode));
+    // Keep shuffle order coherent when inserting relative to current track.
+    if (shuffle) {
+      setShuffleOrder((current) => {
+        const base = current.length > 0 ? current : playbackQueueIds;
+        return insertTracksIntoQueue(base, activeTrackId, trackIds, mode);
+      });
+    }
+    showActionNotice(
+      mode === "play_next"
+        ? `已将 ${targetTracks.length} 首歌曲设为下一首播放`
+        : `已添加 ${targetTracks.length} 首歌曲到正在播放`,
+    );
+  }
+
+  function playNext(targetTracks: Track[]) {
+    appendToQueue(targetTracks, "play_next");
+  }
+
+  function updatePlaybackBehavior(patch: Partial<PlaybackBehaviorSettings>) {
+    const next = patchPlaybackBehaviorSettings(patch);
+    setQueueInsertMode(next.queueInsertMode);
+    setAdaptivePrevious(next.adaptivePrevious);
   }
 
   function applyActivityFromServer(trackId: string, activity: ReturnType<typeof createTrackActivity>) {
@@ -614,6 +650,13 @@ export function usePlaybackControls({
     if (activePodcastEpisode) return { kind: "boundary" };
     if (baseQueueIds.length === 0) return { kind: "empty" };
     if (delta === 1 && reason === "user") recordSkipIfEligible();
+    if (delta === -1 && reason === "user") {
+      const currentTime = audioRef.current?.currentTime ?? progress;
+      if (resolvePreviousAction(currentTime, adaptivePrevious) === "restart" && activeTrackId) {
+        restartCurrentPlayback();
+        return { kind: "restart", trackId: activeTrackId };
+      }
+    }
 
     let playbackOrder = playbackQueueIds;
     if (shuffle && !haveSameQueueItems(shuffleOrder, baseQueueIds)) {
@@ -837,6 +880,10 @@ export function usePlaybackControls({
     playTrack,
     playTracks,
     appendToQueue,
+    playNext,
+    queueInsertMode,
+    adaptivePrevious,
+    updatePlaybackBehavior,
     handleTimeUpdate,
     move,
     onEnded,

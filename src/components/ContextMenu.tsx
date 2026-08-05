@@ -8,6 +8,7 @@ export function ContextMenu({
   onClose,
   onPlay,
   onAddToQueue,
+  onPlayNext,
   onAddToPlaylist,
   onAddToFavorites,
   onRenamePlaylist,
@@ -21,6 +22,7 @@ export function ContextMenu({
   onClose: () => void;
   onPlay: () => void;
   onAddToQueue: () => void;
+  onPlayNext: () => void;
   onAddToPlaylist: () => void;
   onAddToFavorites: () => void;
   onRenamePlaylist: (playlistId: string) => void;
@@ -84,9 +86,13 @@ export function ContextMenu({
           <Play size={17} />
           <span>播放</span>
         </button>
-        <button role="menuitem" onClick={() => run(onAddToQueue)} disabled={menu.payload.tracks.length === 0}>
+        <button role="menuitem" onClick={() => run(onPlayNext)} disabled={menu.payload.tracks.length === 0}>
           <ListPlus size={17} />
-          <span>添加到正在播放</span>
+          <span>下一首播放</span>
+        </button>
+        <button role="menuitem" onClick={() => run(onAddToQueue)} disabled={menu.payload.tracks.length === 0}>
+          <ListMusic size={17} />
+          <span>添加到队列末尾</span>
         </button>
         {homePinState && (
           <button role="menuitem" onClick={() => run(onToggleHomePin)}>
