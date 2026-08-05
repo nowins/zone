@@ -97,7 +97,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
   - `lyricsProviders.ts` / `lyricsProviderSearch.ts` / `lyricsSearch.ts`：候选打分与多样性裁剪、多来源搜索策略、按曲目保存的搜索信息修正。
   - `lyricsTiming.ts` / `lyricsExport.ts` / `lyricsMotion.ts`：时间校准、TTML/LRC 导出与真实逐词时间驱动的长音包络。
   - `demoLyrics.ts`：仅动效原型用的演示歌词。
-- `src/motion/`：自研动效内核（完整说明见 `docs/motion-system.md`）。
+- `src/motion/`：自研动效内核（完整说明见 `design/motion-system.md`）。
   - `tokens.ts`：动效 token 唯一事实源（时长/缓动/幅度/弹簧预设），`applyMotionTokens()` 启动时注入 `:root` CSS 变量，CSS 只消费不定义。
   - `math.ts` / `spring.ts` / `tween.ts` / `animate.ts`：共享数学、半隐式欧拉弹簧、缓动求值与共享 rAF 动画器（`animateValue`，可 retarget 惯性接力）。
   - `flip.ts` / `coverFlip.ts`：FLIP registry 与封面共享元素飞行编排（播放条 ↔ 正在播放曲目卡，`cover:{trackId}`）。
@@ -114,7 +114,8 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - `src-tauri/src/podcast/`：播客目录模块（对外路径保持 `podcast::xxx`，由 `mod.rs` re-export）。`mod.rs` 持有 `PodcastState`、跨模块共享常量与 re-export；`types.rs` 为全部 pub DTO；`util.rs` 通用小工具与 ISO8601 历法解析；`network.rs` 公共 URL/DNS/重定向 SSRF 校验、限流读取与响应工具；`apple.rs` Apple 中国区热门榜与搜索；`feed_parse.rs` 20 MiB RSS 限流拉取、字节修复、命名空间解析与归一化；`store.rs` SQLite schema/迁移与订阅/刷新写入；`query.rs` 查询侧与稍后听/已播；`chapters.rs` 单集详情与章节；`queue.rs` 待播队列；`downloads.rs` 受控目录下载/续传/删除、进度保存与文件守卫；`stream_protocol.rs` `zone-podcast` 分块 Range 代理与音频魔数识别；`artwork_protocol.rs` `zone-podcast-artwork` 限流图片代理；`commands.rs` 29 个 `#[tauri::command]` 薄壳；测试按被测代码归属下沉到各文件末尾的 `#[cfg(test)] mod tests`（共享 fixture 在 `test_support.rs`），真实网络 smoke 仍仅在 `ZONE_PODCAST_LIVE=1` 后运行。
 - `src-tauri/src/qrc.rs`：有边界限制的 QQ QRC 解密/解压实现；解密后的逐词时间轴由前端 `src/utils/qrc.ts` 转换为统一 TTML 再进入通用解析器。
 - `src-tauri/src/system_media/`：Windows SMTC 集成（`mod.rs` 为跨平台入口，`windows_impl/` 为 Windows 实现：设置 AppUserModelID、媒体信息/时间线更新、媒体按键事件转发到前端）。
-- `docs/`：设计文档（`lyrics-experience-plan.md`、`lyrics-motion-review.md`）与视觉证据截图（`docs/evidence/`），整个目录为本地未跟踪。`docs/design-qa.md` 记录歌词模式的视觉 QA。
+- `docs/`：探索性设计文档（`lyrics-experience-plan.md`、`lyrics-motion-review.md`）与视觉证据截图（`docs/evidence/`），整个目录为本地未跟踪。`docs/design-qa.md` 记录歌词模式的视觉 QA。
+- `design/`：约束性规范，纳入 git 管理（`motion-system.md` 动效系统说明书、`component-guidelines.md` 组件与设计规范）。新组件/动效先对照 `design/component-guidelines.md`。
 - `scripts/`：一次性重构 codemod（PodcastView 拆分时使用的提取/接线/测试路径迁移脚本），仅作历史留档，不在构建链路中。
 
 ### 模块导入约定
@@ -239,7 +240,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 
 ## 动效系统
 
-动效系统已统一为自研内核 + CSS 原语层，完整说明书见 `docs/motion-system.md`（原则、token 表、内核 API、新组件接入指南）。核心约定：
+动效系统已统一为自研内核 + CSS 原语层，完整说明书见 `design/motion-system.md`（原则、token 表、内核 API、新组件接入指南）。核心约定：
 
 - 六条原则：短（≤260ms）、物理感（惯性/减速、可打断接力）、页面间延续、内容分级幅度（`--motion-drift-s/m/l`）、服务内容、目的明确（反馈/引导/解释关系）。
 - token 唯一事实源是 `src/motion/tokens.ts`，启动时注入 CSS 变量；CSS 与 TS 都不得硬编码时长/缓动。
@@ -261,7 +262,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 可创建手动播放列表与规则驱动的智能播放列表。
 - 正在播放页的收藏按钮切换当前曲目在收藏列表中的状态。
 - 歌词模式：本地（内嵌/sidecar/手动绑定）与在线歌词，支持逐行/逐词同步、音译、TTML 背景人声、长音细节、滚轮浏览、点按跳转、在线搜索信息映射、手动选词与 TTML/LRC 导出。
-- 统一动效系统：页面 pivot/push/pop 成对过渡、浮层成对出入场、封面在播放条与正在播放页之间 FLIP 飞行、feather 错峰入场、reduced-motion 统一收敛（见 `docs/motion-system.md`）。
+- 统一动效系统：页面 pivot/push/pop 成对过渡、浮层成对出入场、封面在播放条与正在播放页之间 FLIP 飞行、feather 错峰入场、reduced-motion 统一收敛（见 `design/motion-system.md`）。
 - Windows 系统媒体控制（SMTC）：媒体信息、时间线、媒体按键与收藏同步。
 - 播客正式链路：默认页直接展示继续收听、关注更新与 Apple 中国区热门节目；发现结果可先预览再关注，关注、稍后听与下载状态相互独立。未下载单集通过受控 `zone-podcast` Range 代理即时播放，已下载单集通过 `zone-audio` 本地播放，进度每 5 秒节流且按调用顺序保存；使用独立播客底栏、全屏正在播放和可跨重启恢复的当前单集与待播队列。待播项只在对应音源实际开始播放后消费；单集自然结束会进入待播首项，睡眠定时可在指定分钟或本集结束后暂停。
 
@@ -273,7 +274,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
   - 源码/CSS 守卫测试：用 `readFileSync` 读取 `src/` 下的源码与 CSS，做字符串包含/排除断言（如 `localization.test.mjs`、`nowPlayingCss.test.mjs`、`settingsCss.test.mjs`）。修改 UI 结构、CSS 类名或文案时这些测试可能失败，需同步更新。
 - Rust 单元测试在 `src-tauri/src/`（`library.rs`、`lyrics.rs`、`lyrics_provider.rs`、`audio_protocol.rs`、`podcast/` 目录各模块）各模块的 `#[cfg(test)]` 模块中（`cargo test --lib` 可运行）。真实播客网络 smoke 默认忽略，仅在显式设置 `ZONE_PODCAST_LIVE=1` 后运行。
 - 播客前后端接线、安全代理、单集详情、待播和独立播放边界由 `tests/podcast.test.mjs` 与 `tests/podcastPlayback.test.mjs` 守卫；修改播客模型、命令或播放分支时运行 `npm test`，修改 Rust 数据库/协议/下载逻辑时同时运行 `cargo check`。
-- 动效内核（`src/motion/`）的行为测试在 `tests/motion.test.mjs`；封面 FLIP 接线守卫在 `tests/coverFlip.test.mjs`，其运行时行为回归（手写 DOM mock + 假动画时钟）在 `tests/coverFlipBehavior.test.mjs`；可视化总线在 `tests/visualizerBus.test.mjs`。动效系统的原则与接入约定见 `docs/motion-system.md`。
+- 动效内核（`src/motion/`）的行为测试在 `tests/motion.test.mjs`；封面 FLIP 接线守卫在 `tests/coverFlip.test.mjs`，其运行时行为回归（手写 DOM mock + 假动画时钟）在 `tests/coverFlipBehavior.test.mjs`；可视化总线在 `tests/visualizerBus.test.mjs`。动效系统的原则与接入约定见 `design/motion-system.md`。
 - 视觉/动效类改动同时参考 `docs/lyrics-motion-review.md` 的审查基线（Emil Kowalski 动效规范：动效有目的、时长 ≤300ms、可打断、transform/opacity、尊重减少动态效果）。
 
 ## 安全约束

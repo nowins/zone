@@ -58,4 +58,3 @@ src-tauri/*.log
 tmp/
 # Agent design specs / plans (local only)
 docs/
-
