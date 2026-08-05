@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   applyMetadataOverlays,
+  appliedArtistProviderIds,
+  artistNeedsAutomaticEnrichment,
   automaticArtistTrackScope,
   metadataTrackInput,
   selectAutomaticArtistCandidate,
@@ -39,6 +41,21 @@ test("metadata overlays preserve the original file values", () => {
     genres: ["补全流派"],
     coverPath: "D:\\Music\\album.zone.jpg",
     artistImagePath: "D:\\Music\\artist.zone.jpg",
+    artistImages: [{
+      path: "D:\\Music\\artist.zone.jpg",
+      providerId: "local-sidecar",
+      providerName: "本地补充文件",
+      sourcePath: "D:\\Music\\artist.zone.json",
+      confidence: 100,
+      updatedAt: 1,
+    }, {
+      path: "D:\\Music\\artist-portrait.jpg",
+      providerId: "netease-music",
+      providerName: "网易云音乐",
+      sourcePath: "https://music.163.com/artist?id=1",
+      confidence: 100,
+      updatedAt: 2,
+    }],
     artistBiography: "补全歌手简介",
     sources: [{
       field: "title",
@@ -53,6 +70,10 @@ test("metadata overlays preserve the original file values", () => {
   assert.equal(enriched.title, "补全标题");
   assert.equal(enriched.cover_path, "D:\\Music\\album.zone.jpg");
   assert.equal(enriched.artist_image_path, "D:\\Music\\artist.zone.jpg");
+  assert.deepEqual(
+    enriched.artist_images.map((image) => image.path),
+    ["D:\\Music\\artist.zone.jpg", "D:\\Music\\artist-portrait.jpg"],
+  );
   assert.equal(enriched.artist_biography, "补全歌手简介");
   assert.equal(enriched.local_metadata.title, "文件标题");
   assert.equal(enriched.local_metadata.cover_path, "D:\\Music\\embedded.jpg");
@@ -88,6 +109,7 @@ test("clearing metadata restores the original file values", () => {
     title: "补全标题",
     year: 2024,
     artistImagePath: "D:\\Music\\artist.zone.jpg",
+    artistImages: [],
     artistBiography: "补全歌手简介",
     sources: [],
   }]);
@@ -97,6 +119,7 @@ test("clearing metadata restores the original file values", () => {
   assert.equal(restored.year, 2001);
   assert.equal(restored.cover_path, "D:\\Music\\embedded.jpg");
   assert.equal("artist_image_path" in restored, false);
+  assert.equal("artist_images" in restored, false);
   assert.equal("artist_biography" in restored, false);
   assert.equal("local_metadata" in restored, false);
   assert.equal("metadata_enrichment" in restored, false);
@@ -118,7 +141,7 @@ test("automatic artist scope is exact, active-first, bounded, and skips unknown 
   );
 });
 
-test("automatic artist selection requires one unambiguous exact image candidate", () => {
+test("automatic artist selection requires one unambiguous exact artist candidate", () => {
   const candidate = (overrides = {}) => ({
     id: "netease:artist:1",
     kind: "artist",
@@ -146,6 +169,47 @@ test("automatic artist selection requires one unambiguous exact image candidate"
     fields: [{ key: "artist_image_path", label: "歌手图片", value: "D:\\artist.jpg" }],
   });
   assert.equal(selectAutomaticArtistCandidate([exact, local]), local);
+  assert.equal(
+    selectAutomaticArtistCandidate([exact, local], ["local-sidecar"]),
+    exact,
+  );
+  const localBiography = candidate({
+    id: "sidecar:biography",
+    providerId: "local-sidecar",
+    fields: [{ key: "biography", label: "歌手简介", value: "本地简介" }],
+  });
+  assert.equal(selectAutomaticArtistCandidate([exact, localBiography]), localBiography);
+});
+
+test("automatic artist enrichment fills missing fields and secondary images provider by provider", () => {
+  const localOnly = track({
+    artist_image_path: "D:\\artist.jpg",
+    artist_images: [{
+      path: "D:\\artist.jpg",
+      providerId: "local-sidecar",
+      providerName: "本地补充文件",
+      sourcePath: "D:\\artist.zone.json",
+      confidence: 100,
+      updatedAt: 1,
+    }],
+    artist_biography: "本地简介",
+    metadata_enrichment: {
+      sources: [{
+        field: "artist_image_path",
+        providerId: "local-sidecar",
+        providerName: "本地补充文件",
+        sourcePath: "D:\\artist.zone.json",
+        confidence: 100,
+        updatedAt: 1,
+      }],
+    },
+  });
+  assert.equal(artistNeedsAutomaticEnrichment(localOnly), true);
+  assert.deepEqual([...appliedArtistProviderIds(localOnly)], ["local-sidecar"]);
+  assert.equal(artistNeedsAutomaticEnrichment(track({
+    artist_images: [{ path: "one", providerId: "a" }, { path: "two", providerId: "b" }],
+    artist_biography: "已有简介",
+  })), false);
 });
 
 test("playback enrichment is silent, provider-aware, and excludes podcast playback", () => {
@@ -154,7 +218,7 @@ test("playback enrichment is silent, provider-aware, and excludes podcast playba
 
   assert.match(hookSource, /AUTO_ARTIST_RETRY_MS = 30 \* 60 \* 1_000/);
   assert.match(hookSource, /provider\.id === "local-sidecar"[\s\S]+NETEASE_MUSIC_PROVIDER_ID/);
-  assert.match(hookSource, /selectAutomaticArtistCandidate\(await search\(payload\)\)/);
+  assert.match(hookSource, /selectAutomaticArtistCandidate\([\s\S]+await search\(payload\),[\s\S]+appliedProviderIds/);
   assert.match(appSource, /!restored \|\| !isPlaying \|\| activePodcastEpisode \|\| !activeTrack/);
   assert.match(appSource, /metadata\.enrichArtistForPlayback\(activeTrack\)/);
 });

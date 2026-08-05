@@ -47,7 +47,10 @@ export function ArtistBrowser({
   }, [artist]);
   const selectedAlbum = artistAlbums.find((album) => album.key === selectedAlbumKey) ?? artistAlbums[0] ?? null;
   const visibleSongs = selectedAlbum?.tracks ?? artist?.tracks ?? [];
-  const artistImagePath = artist?.tracks.find((track) => track.artist_image_path)?.artist_image_path;
+  const artistImagePath = artist?.tracks
+    .flatMap((track) => track.artist_images ?? [])
+    .find((image) => image.path)?.path
+    ?? artist?.tracks.find((track) => track.artist_image_path)?.artist_image_path;
   const artistBiography = artist?.tracks.find((track) => track.artist_biography)?.artist_biography;
   const hasArtistIdentity = Boolean(artistImagePath || artistBiography);
 

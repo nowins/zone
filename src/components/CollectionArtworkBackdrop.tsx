@@ -35,6 +35,7 @@ export function CollectionArtworkBackdrop({
     tracks,
     activeTrack,
     artistImagePath: activeTrack?.artist_image_path,
+    artistImagePaths: activeTrack?.artist_images?.map((image) => image.path),
   }), [activeTrack, tracks]);
   const sceneSignature = scene
     ? `${scene.sceneKey}\u0000${scene.assetKey}`

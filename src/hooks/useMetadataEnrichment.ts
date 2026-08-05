@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   applyMetadataOverlays,
+  appliedArtistProviderIds,
+  artistNeedsAutomaticEnrichment,
   automaticArtistTrackScope,
   metadataTrackInput,
   normalizeArtistIdentity,
@@ -242,7 +244,7 @@ export function useMetadataEnrichment({
   }, []);
 
   const enrichArtistForPlayback = useCallback(async (track: Track) => {
-    if (track.artist_image_path || track.artist_biography) return false;
+    if (!artistNeedsAutomaticEnrichment(track)) return false;
     const scope = automaticArtistTrackScope(tracks, track);
     if (scope.length === 0) return false;
     const automaticProviders = providers
@@ -254,7 +256,9 @@ export function useMetadataEnrichment({
       .sort();
     if (automaticProviders.length === 0) return false;
 
-    const attemptKey = `${normalizeArtistIdentity(track.artist)}\u0000${automaticProviders.join(",")}`;
+    const appliedProviderIds = appliedArtistProviderIds(track);
+    const appliedProvidersKey = [...appliedProviderIds].sort().join(",");
+    const attemptKey = `${normalizeArtistIdentity(track.artist)}\u0000${automaticProviders.join(",")}\u0000${appliedProvidersKey}`;
     const now = Date.now();
     const previousAttempt = automaticArtistAttemptsRef.current.get(attemptKey) ?? 0;
     if (now - previousAttempt < AUTO_ARTIST_RETRY_MS) return false;
@@ -267,7 +271,10 @@ export function useMetadataEnrichment({
       tracks: scope,
     };
     try {
-      const candidate = selectAutomaticArtistCandidate(await search(payload));
+      const candidate = selectAutomaticArtistCandidate(
+        await search(payload),
+        appliedProviderIds,
+      );
       if (!candidate) return false;
       await apply(payload, candidate);
       return true;

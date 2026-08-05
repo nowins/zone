@@ -14,11 +14,10 @@ pub(crate) fn apply_manual_metadata(
   fields: &[MetadataManualFieldInput],
 ) -> Result<(), String> {
   validate_metadata_tracks(tracks)?;
-  let mut values = normalize_manual_fields(kind, fields)?;
+  let values = normalize_manual_fields(kind, fields)?;
   if values.is_empty() {
     return Err("请至少填写一项信息".to_string());
   }
-  preserve_read_only_fields(state, kind, tracks, &mut values)?;
 
   let display_name = values
     .iter()
@@ -59,38 +58,6 @@ pub(crate) fn apply_manual_metadata(
     external_ids: Vec::new(),
   };
   persist_metadata_candidate(state, &resolved, tracks)
-}
-
-fn preserve_read_only_fields(
-  state: &MetadataState,
-  kind: MetadataEntityKind,
-  tracks: &[MetadataTrackInput],
-  values: &mut Vec<(String, Value)>,
-) -> Result<(), String> {
-  let track_ids: Vec<String> = tracks.iter().map(|track| track.id.clone()).collect();
-  let Some(context) = read_context_metadata(state, kind, &track_ids)? else {
-    return Ok(());
-  };
-  let mut existing: HashSet<String> = values.iter().map(|(key, _)| key.clone()).collect();
-  for field in context.fields {
-    if existing.contains(&field.key) {
-      continue;
-    }
-    let value = match field.key.as_str() {
-      "album_cover_path" | "artist_image_path" => Some(Value::String(field.value)),
-      "album_count" | "song_count" | "mv_count" => field
-        .value
-        .parse::<u64>()
-        .ok()
-        .map(Value::from),
-      _ => None,
-    };
-    if let Some(value) = value {
-      existing.insert(field.key.clone());
-      values.push((field.key, value));
-    }
-  }
-  Ok(())
 }
 
 fn normalize_manual_fields(

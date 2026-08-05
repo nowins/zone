@@ -66,6 +66,26 @@ test("collection backdrop follows album artist aliases and reuses an artist imag
   ]);
 });
 
+test("collection backdrop consumes the ordered multi-image artist model", () => {
+  const active = track("active", "王菲", "寓言", "D:\\covers\\active.jpg", {
+    artist_images: [
+      { path: "D:\\artists\\cover.jpg", providerId: "netease-music" },
+      { path: "D:\\artists\\portrait.jpg", providerId: "local-sidecar" },
+    ],
+  });
+  const scene = buildCollectionBackdropScene({ tracks: [active], activeTrack: active });
+
+  assert.ok(scene);
+  assert.deepEqual(scene.assets.slice(0, 2).map((asset) => asset.path), [
+    "D:\\artists\\cover.jpg",
+    "D:\\artists\\portrait.jpg",
+  ]);
+  assert.deepEqual(scene.assets.slice(0, 2).map((asset) => asset.role), [
+    "artist",
+    "artist",
+  ]);
+});
+
 test("collection backdrop keeps an artist layout stable while the active album changes", () => {
   const first = track("first", "王菲", "寓言", "D:\\covers\\first.jpg");
   const second = track("second", "王菲", "天空", "D:\\covers\\second.jpg");

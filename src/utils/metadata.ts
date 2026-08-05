@@ -54,6 +54,7 @@ export function applyMetadataOverlays(
         !track.local_metadata
         && !track.metadata_enrichment
         && !track.artist_image_path
+        && !track.artist_images?.length
         && !track.artist_biography
       ) return track;
       const restored: Track = {
@@ -69,6 +70,7 @@ export function applyMetadataOverlays(
         cover_path: local.cover_path,
       };
       delete restored.artist_image_path;
+      delete restored.artist_images;
       delete restored.artist_biography;
       delete restored.local_metadata;
       delete restored.metadata_enrichment;
@@ -87,6 +89,7 @@ export function applyMetadataOverlays(
       genres: overlay.genres ?? local.genres,
       cover_path: overlay.coverPath ?? local.cover_path,
       artist_image_path: overlay.artistImagePath ?? null,
+      artist_images: overlay.artistImages,
       artist_biography: overlay.artistBiography ?? null,
       local_metadata: local,
       metadata_enrichment: {
@@ -112,19 +115,43 @@ export function automaticArtistTrackScope(
 
 export function selectAutomaticArtistCandidate(
   candidates: MetadataCandidate[],
+  excludedProviderIds: Iterable<string> = [],
 ): MetadataCandidate | null {
+  const excluded = new Set(excludedProviderIds);
   const exact = candidates.filter((candidate) => (
     candidate.kind === "artist" && candidate.confidence === 100
+    && !excluded.has(candidate.providerId)
   ));
-  const localWithImage = exact.filter((candidate) => (
+  const localWithArtistDetails = exact.filter((candidate) => (
     candidate.providerId === "local-sidecar"
-    && candidate.fields.some((field) => field.key === "artist_image_path")
+    && candidate.fields.some((field) => (
+      field.key === "artist_image_path"
+      || field.key === "artist_image_paths"
+      || field.key === "biography"
+    ))
   ));
-  if (localWithImage.length === 1) return localWithImage[0];
-  if (localWithImage.length > 1) return null;
+  if (localWithArtistDetails.length === 1) return localWithArtistDetails[0];
+  if (localWithArtistDetails.length > 1) return null;
 
   const netease = exact.filter((candidate) => candidate.providerId === "netease-music");
   return netease.length === 1 ? netease[0] : null;
+}
+
+export function artistNeedsAutomaticEnrichment(track: Track) {
+  const imageCount = track.artist_images?.length
+    ?? (track.artist_image_path ? 1 : 0);
+  return imageCount < 2 || !track.artist_biography?.trim();
+}
+
+export function appliedArtistProviderIds(track: Track) {
+  return new Set(
+    track.metadata_enrichment?.sources
+      .filter((source) => (
+        source.field === "artist_image_path"
+        || source.field === "artist_biography"
+      ))
+      .map((source) => source.providerId) ?? [],
+  );
 }
 
 export function normalizeArtistIdentity(value: string | null | undefined) {

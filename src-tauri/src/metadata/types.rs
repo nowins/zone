@@ -95,6 +95,17 @@ pub(crate) struct MetadataFieldSource {
   pub(crate) updated_at: i64,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MetadataImageAsset {
+  pub(crate) path: String,
+  pub(crate) provider_id: String,
+  pub(crate) provider_name: String,
+  pub(crate) source_path: String,
+  pub(crate) confidence: u8,
+  pub(crate) updated_at: i64,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MetadataTrackOverlay {
@@ -109,6 +120,7 @@ pub(crate) struct MetadataTrackOverlay {
   pub(crate) genres: Option<Vec<String>>,
   pub(crate) cover_path: Option<String>,
   pub(crate) artist_image_path: Option<String>,
+  pub(crate) artist_images: Vec<MetadataImageAsset>,
   pub(crate) artist_biography: Option<String>,
   pub(crate) sources: Vec<MetadataFieldSource>,
 }
@@ -124,4 +136,5 @@ pub(crate) struct MetadataContextRecord {
   pub(crate) confidence: u8,
   pub(crate) updated_at: i64,
   pub(crate) fields: Vec<MetadataCandidateField>,
+  pub(crate) sources: Vec<MetadataFieldSource>,
 }

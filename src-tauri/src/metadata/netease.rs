@@ -140,7 +140,7 @@ struct NeteaseArtistDetail {
 #[derive(Clone, Debug)]
 pub(crate) struct NeteaseResolvedCandidate {
   pub(crate) resolved: ResolvedMetadataCandidate,
-  artwork_url: Option<String>,
+  artwork_urls: Vec<String>,
 }
 
 pub(crate) async fn search_netease_music_candidates(
@@ -205,12 +205,12 @@ pub(crate) async fn apply_netease_music_candidate(
   .filter(|candidate| candidate.resolved.candidate.id == candidate_id)
   .ok_or_else(|| "网易云音乐候选已变化，请重新查找".to_string())?;
 
-  if let Some(artwork_url) = candidate.artwork_url.as_deref() {
-    let (field, label) = match kind {
-      MetadataEntityKind::Artist => ("artist_image_path", "网易云歌手图片"),
-      MetadataEntityKind::Track | MetadataEntityKind::Album => {
-        ("album_cover_path", "网易云专辑封面")
-      }
+  let mut artwork_paths = Vec::new();
+  let artwork_limit = if kind == MetadataEntityKind::Artist { 6 } else { 1 };
+  for artwork_url in candidate.artwork_urls.iter().take(artwork_limit) {
+    let label = match kind {
+      MetadataEntityKind::Artist => "网易云歌手图片",
+      MetadataEntityKind::Track | MetadataEntityKind::Album => "网易云专辑封面",
     };
     match cache_provider_artwork(
       state.artwork_cache_dir(),
@@ -220,12 +220,20 @@ pub(crate) async fn apply_netease_music_candidate(
     )
     .await
     {
-      Ok(path) => candidate.resolved.values.push((
-        field.to_string(),
-        Value::String(path.to_string_lossy().to_string()),
-      )),
+      Ok(path) => artwork_paths.push(path.to_string_lossy().to_string()),
       Err(error) => eprintln!("[metadata:netease] artwork cache failed: {error}"),
     }
+  }
+  if kind == MetadataEntityKind::Artist && !artwork_paths.is_empty() {
+    candidate.resolved.values.push((
+      "artist_image_paths".to_string(),
+      Value::Array(artwork_paths.into_iter().map(Value::String).collect()),
+    ));
+  } else if let Some(path) = artwork_paths.into_iter().next() {
+    candidate.resolved.values.push((
+      "album_cover_path".to_string(),
+      Value::String(path),
+    ));
   }
 
   persist_metadata_candidate(state, &candidate.resolved, tracks)
@@ -587,11 +595,13 @@ fn track_candidate(
   }
 
   let album_id = song.album.as_ref().map(|album| album.id);
-  let artwork_url = song
+  let artwork_urls = song
     .album
     .as_ref()
     .and_then(|album| album.pic_url.as_deref())
-    .and_then(netease_artwork_url);
+    .and_then(netease_artwork_url)
+    .into_iter()
+    .collect();
   Some(NeteaseResolvedCandidate {
     resolved: ResolvedMetadataCandidate {
       candidate: metadata_candidate(
@@ -611,7 +621,7 @@ fn track_candidate(
         song.artists.first().map(|artist| artist.id),
       ),
     },
-    artwork_url,
+    artwork_urls,
   })
 }
 
@@ -663,7 +673,12 @@ fn album_candidate_with_confidence(
     values.push(("description".to_string(), Value::String(description)));
   }
 
-  let artwork_url = album.pic_url.as_deref().and_then(netease_artwork_url);
+  let artwork_urls = album
+    .pic_url
+    .as_deref()
+    .and_then(netease_artwork_url)
+    .into_iter()
+    .collect();
   let subtitle = match album.size {
     Some(size) => format!("{artist} · {size} 首歌曲"),
     None => artist.clone(),
@@ -692,7 +707,7 @@ fn album_candidate_with_confidence(
           .or_else(|| album.artists.first().map(|artist| artist.id)),
       ),
     },
-    artwork_url,
+    artwork_urls,
   })
 }
 
@@ -997,13 +1012,12 @@ fn artist_candidate_from_detail(
     return None;
   }
   let biography = clean_text(detail.brief_desc.as_deref(), NETEASE_BIOGRAPHY_LIMIT);
-  let artwork_url = detail
-    .cover
-    .as_deref()
-    .and_then(netease_artwork_url)
-    .or_else(|| detail.avatar.as_deref().and_then(netease_artwork_url))
-    .or_else(|| summary.pic_url.as_deref().and_then(netease_artwork_url))
-    .or_else(|| summary.img1v1_url.as_deref().and_then(netease_artwork_url));
+  let artwork_urls = collect_netease_artwork_urls(&[
+    detail.cover.as_deref(),
+    detail.avatar.as_deref(),
+    summary.pic_url.as_deref(),
+    summary.img1v1_url.as_deref(),
+  ]);
   Some(build_artist_candidate(
     detail.id,
     name,
@@ -1014,7 +1028,7 @@ fn artist_candidate_from_detail(
     detail.music_size,
     detail.mv_size,
     confidence,
-    artwork_url,
+    artwork_urls,
   ))
 }
 
@@ -1031,11 +1045,10 @@ fn artist_candidate_from_summary(
   if confidence < 60 {
     return None;
   }
-  let artwork_url = summary
-    .pic_url
-    .as_deref()
-    .and_then(netease_artwork_url)
-    .or_else(|| summary.img1v1_url.as_deref().and_then(netease_artwork_url));
+  let artwork_urls = collect_netease_artwork_urls(&[
+    summary.pic_url.as_deref(),
+    summary.img1v1_url.as_deref(),
+  ]);
   Some(build_artist_candidate(
     summary.id,
     name,
@@ -1046,7 +1059,7 @@ fn artist_candidate_from_summary(
     None,
     None,
     confidence,
-    artwork_url,
+    artwork_urls,
   ))
 }
 
@@ -1061,7 +1074,7 @@ fn build_artist_candidate(
   music_size: Option<u32>,
   mv_size: Option<u32>,
   confidence: u8,
-  artwork_url: Option<String>,
+  artwork_urls: Vec<String>,
 ) -> NeteaseResolvedCandidate {
   let mut values = vec![("name".to_string(), Value::String(name.clone()))];
   if !aliases.is_empty() {
@@ -1133,8 +1146,18 @@ fn build_artist_candidate(
         id.to_string(),
       )],
     },
-    artwork_url,
+    artwork_urls,
   }
+}
+
+fn collect_netease_artwork_urls(values: &[Option<&str>]) -> Vec<String> {
+  let mut seen = HashSet::new();
+  values
+    .iter()
+    .filter_map(|value| value.and_then(netease_artwork_url))
+    .filter(|url| seen.insert(url.clone()))
+    .take(6)
+    .collect()
 }
 
 fn candidate_biography(value: &str) -> String {
@@ -1323,8 +1346,8 @@ mod tests {
       .iter()
       .any(|(key, value)| key == "track_number" && value.as_u64() == Some(15)));
     assert_eq!(
-      candidate.artwork_url.as_deref(),
-      Some("https://p1.music.126.net/album.jpg")
+      candidate.artwork_urls,
+      ["https://p1.music.126.net/album.jpg"]
     );
   }
 

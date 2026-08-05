@@ -62,11 +62,13 @@ export function buildCollectionBackdropScene({
   tracks,
   activeTrack,
   artistImagePath,
+  artistImagePaths,
   maxAssets = DEFAULT_MAX_ASSETS,
 }: {
   tracks: Track[];
   activeTrack: Track | null;
   artistImagePath?: string | null;
+  artistImagePaths?: readonly string[] | null;
   maxAssets?: number;
 }): CollectionBackdropScene | null {
   if (!activeTrack) return null;
@@ -98,9 +100,17 @@ export function buildCollectionBackdropScene({
     [normalizeIdentity(track.artist), normalizeIdentity(track.album_artist)]
       .some((identity) => identity && artistIdentities.has(identity))
   ));
-  const resolvedArtistImagePath = artistImagePath
-    ?? relatedTracks.find((track) => track.artist_image_path)?.artist_image_path;
-  pushAsset(resolvedArtistImagePath, "artist", artistLabel, sceneKey);
+  const resolvedArtistImagePaths = [
+    ...(artistImagePaths ?? []),
+    artistImagePath,
+    ...relatedTracks.flatMap((track) => (
+      track.artist_images?.map((image) => image.path) ?? []
+    )),
+    ...relatedTracks.map((track) => track.artist_image_path),
+  ];
+  resolvedArtistImagePaths.forEach((path, index) => {
+    pushAsset(path, "artist", artistLabel, `${sceneKey}:image:${index}`);
+  });
 
   const currentAlbumKey = albumKey(
     activeTrack.album,

@@ -28,6 +28,15 @@ export type TrackMetadataEnrichment = {
   sources: MetadataFieldSource[];
 };
 
+export type MetadataImageAsset = {
+  path: string;
+  providerId: string;
+  providerName: string;
+  sourcePath: string;
+  confidence: number;
+  updatedAt: number;
+};
+
 export type Track = {
   id: string;
   path: string;
@@ -45,6 +54,7 @@ export type Track = {
   extension: string;
   cover_path?: string | null;
   artist_image_path?: string | null;
+  artist_images?: MetadataImageAsset[];
   artist_biography?: string | null;
   local_metadata?: TrackLocalMetadata;
   metadata_enrichment?: TrackMetadataEnrichment;
@@ -111,6 +121,7 @@ export type MetadataTrackOverlay = {
   genres?: string[];
   coverPath?: string;
   artistImagePath?: string;
+  artistImages: MetadataImageAsset[];
   artistBiography?: string;
   sources: MetadataFieldSource[];
 };
@@ -124,6 +135,7 @@ export type MetadataContextRecord = {
   confidence: number;
   updatedAt: number;
   fields: MetadataCandidateField[];
+  sources: MetadataFieldSource[];
 };
 
 export type AlbumGroup = {

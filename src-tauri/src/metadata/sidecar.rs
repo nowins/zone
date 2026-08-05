@@ -33,6 +33,7 @@ struct SidecarDocument {
   image: Option<String>,
   cover: Option<String>,
   artist_image: Option<String>,
+  artist_images: Option<Vec<String>>,
   album_cover: Option<String>,
   external_ids: Option<BTreeMap<String, String>>,
 }
@@ -262,12 +263,18 @@ fn load_sidecar(
       if let Some(biography) = biography {
         values.push(("biography".to_string(), Value::String(biography)));
       }
-      let artwork = resolve_artwork(
-        base_dir,
-        document.artist_image.as_deref().or(document.image.as_deref()),
-        "artist.zone",
-      )?;
-      push_path(&mut values, "artist_image_path", artwork.as_deref());
+      let artworks = resolve_artist_artworks(base_dir, &document)?;
+      if !artworks.is_empty() {
+        values.push((
+          "artist_image_paths".to_string(),
+          Value::Array(
+            artworks
+              .into_iter()
+              .map(|path| Value::String(path.to_string_lossy().to_string()))
+              .collect(),
+          ),
+        ));
+      }
       name.unwrap_or_else(|| first.artist.clone())
     }
   };
@@ -284,9 +291,22 @@ fn load_sidecar(
   let fields = values
     .iter()
     .map(|(key, value)| MetadataCandidateField {
-      key: key.clone(),
+      key: if key == "artist_image_paths" {
+        "artist_image_path".to_string()
+      } else {
+        key.clone()
+      },
       label: field_label(key).to_string(),
-      value: display_value(value),
+      value: if key == "artist_image_paths" {
+        value
+          .as_array()
+          .and_then(|paths| paths.first())
+          .and_then(Value::as_str)
+          .unwrap_or_default()
+          .to_string()
+      } else {
+        display_value(value)
+      },
     })
     .collect();
   let external_ids = normalize_external_ids(document.external_ids);
@@ -432,6 +452,37 @@ fn resolve_artwork(
   Ok(Some(canonical))
 }
 
+fn resolve_artist_artworks(
+  base_dir: &Path,
+  document: &SidecarDocument,
+) -> Result<Vec<PathBuf>, String> {
+  let mut requested = document.artist_images.clone().unwrap_or_default();
+  if let Some(legacy) = document
+    .artist_image
+    .as_ref()
+    .or(document.image.as_ref())
+  {
+    requested.push(legacy.clone());
+  }
+  let mut artworks = Vec::new();
+  let mut seen = HashSet::new();
+  for value in requested.into_iter().take(8) {
+    let Some(path) = resolve_artwork(base_dir, Some(&value), "artist.zone")? else {
+      continue;
+    };
+    let key = path.to_string_lossy().to_lowercase();
+    if seen.insert(key) {
+      artworks.push(path);
+    }
+  }
+  if artworks.is_empty() {
+    if let Some(path) = resolve_artwork(base_dir, None, "artist.zone")? {
+      artworks.push(path);
+    }
+  }
+  Ok(artworks)
+}
+
 fn validate_artwork(path: &Path) -> Result<(), String> {
   let metadata = fs::metadata(path).map_err(|error| format!("无法读取本地补充图片：{error}"))?;
   if metadata.len() == 0 || metadata.len() > SIDECAR_ARTWORK_LIMIT {
@@ -480,6 +531,7 @@ pub(crate) fn field_label(key: &str) -> &'static str {
     "song_count" => "歌曲数",
     "mv_count" => "MV 数",
     "artist_image_path" => "歌手图片",
+    "artist_image_paths" => "歌手图片",
     "album_cover_path" => "专辑封面",
     _ => "补充信息",
   }

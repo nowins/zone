@@ -20,6 +20,60 @@ fn write_audio(path: &Path) {
   fs::write(path, b"ID3-test-audio").unwrap();
 }
 
+#[test]
+fn legacy_entity_links_are_migrated_for_field_merging() {
+  let root = fixture_dir("field-merge-migration");
+  let database_path = root.join("music-metadata.sqlite");
+  let connection = rusqlite::Connection::open(&database_path).unwrap();
+  connection
+    .execute_batch(
+      "
+      PRAGMA foreign_keys = ON;
+      CREATE TABLE metadata_entities (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        provider_name TEXT NOT NULL,
+        source_path TEXT NOT NULL,
+        confidence INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE metadata_entity_links (
+        track_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        entity_id TEXT NOT NULL REFERENCES metadata_entities(id) ON DELETE CASCADE,
+        linked_at INTEGER NOT NULL,
+        PRIMARY KEY(track_id, kind)
+      );
+      ",
+    )
+    .unwrap();
+  drop(connection);
+
+  let connection = open_database(&database_path).unwrap();
+  let mut statement = connection
+    .prepare("PRAGMA table_info(metadata_entity_links)")
+    .unwrap();
+  let mut primary_key = statement
+    .query_map([], |row| {
+      Ok((row.get::<_, String>(1)?, row.get::<_, u32>(5)?))
+    })
+    .unwrap()
+    .map(Result::unwrap)
+    .filter(|(_, position)| *position > 0)
+    .collect::<Vec<_>>();
+  primary_key.sort_by_key(|(_, position)| *position);
+  assert_eq!(
+    primary_key.into_iter().map(|(name, _)| name).collect::<Vec<_>>(),
+    ["track_id", "kind", "entity_id"]
+  );
+
+  drop(statement);
+  drop(connection);
+  fs::remove_dir_all(root).unwrap();
+}
+
 fn track(path: &Path, id: &str) -> MetadataTrackInput {
   MetadataTrackInput {
     id: id.to_string(),
@@ -111,12 +165,17 @@ fn artist_sidecar_is_discovered_from_artist_folder() {
   write_audio(&audio_path);
   fs::write(
     artist_dir.join("artist.zone.json"),
-    r#"{"name":"补全艺术家","biography":"歌手简介","image":"artist.zone.jpg"}"#,
+    r#"{"name":"补全艺术家","biography":"歌手简介","artistImages":["artist.zone.jpg","portrait.png"]}"#,
   )
   .unwrap();
   fs::write(
     artist_dir.join("artist.zone.jpg"),
     [0xff, 0xd8, 0xff, 0x00],
+  )
+  .unwrap();
+  fs::write(
+    artist_dir.join("portrait.png"),
+    [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
   )
   .unwrap();
 
@@ -145,7 +204,50 @@ fn artist_sidecar_is_discovered_from_artist_folder() {
     .artist_image_path
     .as_deref()
     .is_some_and(|path| path.ends_with("artist.zone.jpg")));
+  assert_eq!(overlays[0].artist_images.len(), 2);
+  assert!(overlays[0]
+    .artist_images
+    .iter()
+    .any(|image| image.path.ends_with("portrait.png")));
   assert_eq!(overlays[0].artist_biography.as_deref(), Some("歌手简介"));
+
+  apply_manual_metadata(
+    &state,
+    MetadataEntityKind::Artist,
+    &tracks,
+    &[MetadataManualFieldInput {
+      key: "biography".to_string(),
+      value: serde_json::json!("手动简介"),
+    }],
+  )
+  .unwrap();
+  let overlays = read_track_overlays(&state, &["track-1".to_string()]).unwrap();
+  assert_eq!(overlays[0].artist_biography.as_deref(), Some("手动简介"));
+  assert_eq!(overlays[0].artist_images.len(), 2);
+  assert!(overlays[0].sources.iter().any(|source| {
+    source.field == "artist_biography"
+      && source.provider_id == MANUAL_METADATA_PROVIDER_ID
+  }));
+  assert!(overlays[0].sources.iter().any(|source| {
+    source.field == "artist_image_path"
+      && source.provider_id == LOCAL_SIDECAR_PROVIDER_ID
+  }));
+  let context = read_context_metadata(
+    &state,
+    MetadataEntityKind::Artist,
+    &["track-1".to_string()],
+  )
+  .unwrap()
+  .unwrap();
+  assert_eq!(context.provider_name, "多个来源");
+  assert_eq!(context.source_path, "按字段合并");
+  assert!(context.sources.iter().any(|source| {
+    source.field == "biography" && source.provider_id == MANUAL_METADATA_PROVIDER_ID
+  }));
+  assert!(context.sources.iter().any(|source| {
+    source.field == "artist_image_path"
+      && source.provider_id == LOCAL_SIDECAR_PROVIDER_ID
+  }));
 
   fs::remove_dir_all(root).unwrap();
 }
