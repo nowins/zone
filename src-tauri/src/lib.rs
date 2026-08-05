@@ -1,4 +1,5 @@
 mod audio_protocol;
+mod db;
 mod library;
 mod lyrics;
 mod lyrics_provider;
@@ -144,3 +145,4 @@ pub fn run() {
     .run(tauri::generate_context!())
     .expect("error while running Zone");
 }
+

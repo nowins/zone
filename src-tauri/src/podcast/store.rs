@@ -1,215 +1,13 @@
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 use super::*;
 
 pub(crate) fn open_database(path: &Path) -> Result<Connection, String> {
-  let connection = Connection::open(path).map_err(|error| format!("无法打开播客数据库：{error}"))?;
-  connection
-    .busy_timeout(Duration::from_secs(5))
-    .map_err(|error| format!("无法配置播客数据库：{error}"))?;
-  connection
-    .execute_batch(
-      "
-      PRAGMA foreign_keys = ON;
-      PRAGMA journal_mode = WAL;
-
-      CREATE TABLE IF NOT EXISTS podcast_feeds (
-        id TEXT PRIMARY KEY,
-        feed_url TEXT NOT NULL UNIQUE,
-        title TEXT NOT NULL,
-        author TEXT,
-        description TEXT,
-        artwork_url TEXT,
-        etag TEXT,
-        last_modified TEXT,
-        last_fetched_at INTEGER NOT NULL,
-        subscribed INTEGER NOT NULL DEFAULT 1,
-        subscribed_at INTEGER,
-        last_checked_at INTEGER,
-        last_refresh_error TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS podcast_episodes (
-        id TEXT PRIMARY KEY,
-        feed_id TEXT NOT NULL REFERENCES podcast_feeds(id) ON DELETE CASCADE,
-        identity_key TEXT NOT NULL,
-        guid TEXT,
-        title TEXT NOT NULL,
-        description TEXT,
-        published_at INTEGER,
-        duration_seconds REAL,
-        enclosure_url TEXT NOT NULL,
-        enclosure_type TEXT,
-        artwork_url TEXT,
-        expected_bytes INTEGER,
-        first_seen_at INTEGER NOT NULL,
-        webpage_url TEXT,
-        UNIQUE(feed_id, identity_key)
-      );
-
-      CREATE TABLE IF NOT EXISTS podcast_downloads (
-        episode_id TEXT PRIMARY KEY REFERENCES podcast_episodes(id) ON DELETE CASCADE,
-        local_path TEXT,
-        state TEXT NOT NULL CHECK(state IN ('downloading', 'downloaded', 'failed')),
-        downloaded_bytes INTEGER NOT NULL DEFAULT 0,
-        total_bytes INTEGER,
-        error_message TEXT,
-        updated_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS podcast_progress (
-        episode_id TEXT PRIMARY KEY REFERENCES podcast_episodes(id) ON DELETE CASCADE,
-        position_seconds REAL NOT NULL,
-        duration_seconds REAL,
-        completed INTEGER NOT NULL DEFAULT 0,
-        updated_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS podcast_saved_episodes (
-        episode_id TEXT PRIMARY KEY NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,
-        saved_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS podcast_queue (
-        episode_id TEXT PRIMARY KEY NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,
-        position INTEGER NOT NULL CHECK(position >= 0),
-        added_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS podcast_episode_resources (
-        id TEXT PRIMARY KEY,
-        episode_id TEXT NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,
-        kind TEXT NOT NULL CHECK(kind IN ('chapters', 'transcript')),
-        source_kind TEXT NOT NULL CHECK(
-          source_kind IN ('podcast-json', 'psc', 'podcast-transcript')
-        ),
-        url TEXT,
-        mime_type TEXT,
-        language TEXT,
-        relation TEXT,
-        ordinal INTEGER NOT NULL DEFAULT 0 CHECK(ordinal >= 0),
-        etag TEXT,
-        last_modified TEXT,
-        fetched_at INTEGER,
-        error_message TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS podcast_chapters (
-        resource_id TEXT NOT NULL REFERENCES podcast_episode_resources(id) ON DELETE CASCADE,
-        ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
-        start_ms INTEGER NOT NULL CHECK(start_ms >= 0),
-        end_ms INTEGER,
-        title TEXT NOT NULL,
-        href TEXT,
-        image_url TEXT,
-        visible INTEGER NOT NULL DEFAULT 1,
-        PRIMARY KEY(resource_id, ordinal)
-      );
-
-      CREATE INDEX IF NOT EXISTS podcast_episodes_feed_published
-        ON podcast_episodes(feed_id, published_at DESC);
-      CREATE INDEX IF NOT EXISTS podcast_saved_episodes_saved_at
-        ON podcast_saved_episodes(saved_at DESC);
-      CREATE INDEX IF NOT EXISTS podcast_queue_position
-        ON podcast_queue(position, added_at, episode_id);
-      CREATE INDEX IF NOT EXISTS podcast_episode_resources_episode
-        ON podcast_episode_resources(episode_id, kind, ordinal);
-      CREATE INDEX IF NOT EXISTS podcast_chapters_resource_start
-        ON podcast_chapters(resource_id, start_ms, ordinal);
-      ",
-    )
-    .map_err(|error| format!("无法初始化播客数据库：{error}"))?;
-  ensure_database_column(
-    &connection,
-    "podcast_feeds",
-    "subscribed",
-    "subscribed INTEGER NOT NULL DEFAULT 1",
-  )?;
-  ensure_database_column(
-    &connection,
-    "podcast_feeds",
-    "subscribed_at",
-    "subscribed_at INTEGER",
-  )?;
-  ensure_database_column(
-    &connection,
-    "podcast_feeds",
-    "last_checked_at",
-    "last_checked_at INTEGER",
-  )?;
-  ensure_database_column(
-    &connection,
-    "podcast_feeds",
-    "last_refresh_error",
-    "last_refresh_error TEXT",
-  )?;
-  ensure_database_column(
-    &connection,
-    "podcast_episodes",
-    "first_seen_at",
-    "first_seen_at INTEGER NOT NULL DEFAULT 0",
-  )?;
-  ensure_database_column(
-    &connection,
-    "podcast_episodes",
-    "webpage_url",
-    "webpage_url TEXT",
-  )?;
-  connection
-    .execute_batch(
-      "
-      UPDATE podcast_feeds SET
-        subscribed_at = CASE
-          WHEN subscribed = 1 THEN COALESCE(subscribed_at, last_fetched_at)
-          ELSE NULL
-        END,
-        last_checked_at = COALESCE(last_checked_at, last_fetched_at);
-
-      UPDATE podcast_episodes SET
-        first_seen_at = COALESCE(
-          NULLIF(first_seen_at, 0),
-          (SELECT last_fetched_at FROM podcast_feeds WHERE id = podcast_episodes.feed_id),
-          published_at,
-          0
-        )
-      WHERE first_seen_at = 0;
-
-      CREATE INDEX IF NOT EXISTS podcast_feeds_subscribed_title
-        ON podcast_feeds(subscribed, title COLLATE NOCASE);
-      CREATE INDEX IF NOT EXISTS podcast_feeds_refresh
-        ON podcast_feeds(subscribed, last_checked_at);
-      CREATE INDEX IF NOT EXISTS podcast_episodes_first_seen
-        ON podcast_episodes(feed_id, first_seen_at DESC);
-      ",
-    )
-    .map_err(|error| format!("无法初始化播客数据库索引：{error}"))?;
-  Ok(connection)
+  // Podcast state shares the unified zone.sqlite file.
+  crate::db::open_zone_database(path)
 }
 
-fn ensure_database_column(
-  connection: &Connection,
-  table: &str,
-  column: &str,
-  definition: &str,
-) -> Result<(), String> {
-  let mut statement = connection
-    .prepare(&format!("PRAGMA table_info({table})"))
-    .map_err(|error| format!("无法检查播客数据库结构：{error}"))?;
-  let columns = statement
-    .query_map([], |row| row.get::<_, String>(1))
-    .map_err(|error| format!("无法检查播客数据库结构：{error}"))?;
-  for existing in columns {
-    if existing.map_err(|error| format!("无法检查播客数据库结构：{error}"))? == column {
-      return Ok(());
-    }
-  }
-  connection
-    .execute(&format!("ALTER TABLE {table} ADD COLUMN {definition}"), [])
-    .map_err(|error| format!("无法迁移播客数据库：{error}"))?;
-  Ok(())
-}
 pub(crate) fn store_subscription(db_path: &Path, parsed: ParsedPodcast) -> Result<PodcastSubscribeResult, String> {
   store_feed(db_path, &podcast_downloads_dir_for_db(db_path), parsed, true)
 }
@@ -975,9 +773,9 @@ mod tests {
   #[test]
   fn legacy_database_migration_marks_existing_feeds_as_subscribed() {
     let directory = test_directory("legacy-migration");
-    let db_path = directory.join("podcasts.sqlite");
+    let legacy_path = directory.join("podcasts.sqlite");
     {
-      let connection = Connection::open(&db_path).expect("open legacy database");
+      let connection = Connection::open(&legacy_path).expect("open legacy database");
       connection
         .execute_batch(
           "
@@ -1038,8 +836,9 @@ mod tests {
         .expect("create legacy schema");
     }
 
+    let db_path = crate::db::initialize_zone_database(&directory).expect("import legacy into zone db");
     {
-      let connection = open_database(&db_path).expect("migrate database");
+      let connection = open_database(&db_path).expect("open unified database");
       let subscribed = connection
         .query_row(
           "SELECT subscribed FROM podcast_feeds WHERE title = '旧版节目'",

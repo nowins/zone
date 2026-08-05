@@ -49,7 +49,7 @@ impl MetadataState {
     let artwork_cache_dir = app_data_dir.join("music-metadata-artwork");
     fs::create_dir_all(&artwork_cache_dir)
       .map_err(|error| format!("无法创建音乐信息图片缓存：{error}"))?;
-    let db_path = app_data_dir.join("music-metadata.sqlite");
+    let db_path = crate::db::initialize_zone_database(app_data_dir)?;
     let _ = open_database(&db_path)?;
     Ok(Self {
       db_path,
@@ -81,3 +81,4 @@ impl MetadataState {
 
 #[cfg(test)]
 mod tests;
+

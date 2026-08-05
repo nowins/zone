@@ -3,79 +3,11 @@ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) fn open_database(path: &Path) -> Result<Connection, String> {
-  let connection =
-    Connection::open(path).map_err(|error| format!("无法打开音乐信息数据库：{error}"))?;
-  connection
-    .busy_timeout(Duration::from_secs(5))
-    .map_err(|error| format!("无法配置音乐信息数据库：{error}"))?;
-  connection
-    .execute_batch(
-      "
-      PRAGMA foreign_keys = ON;
-      PRAGMA journal_mode = WAL;
-
-      CREATE TABLE IF NOT EXISTS metadata_entities (
-        id TEXT PRIMARY KEY,
-        kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist')),
-        display_name TEXT NOT NULL,
-        provider_id TEXT NOT NULL,
-        provider_name TEXT NOT NULL,
-        source_path TEXT NOT NULL,
-        confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
-        updated_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS metadata_entity_links (
-        track_id TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist')),
-        entity_id TEXT NOT NULL REFERENCES metadata_entities(id) ON DELETE CASCADE,
-        linked_at INTEGER NOT NULL,
-        PRIMARY KEY(track_id, kind)
-      );
-
-      CREATE TABLE IF NOT EXISTS metadata_fields (
-        entity_id TEXT NOT NULL REFERENCES metadata_entities(id) ON DELETE CASCADE,
-        field_name TEXT NOT NULL,
-        value_json TEXT NOT NULL,
-        provider_id TEXT NOT NULL,
-        confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
-        fetched_at INTEGER NOT NULL,
-        expires_at INTEGER,
-        selected INTEGER NOT NULL DEFAULT 1,
-        PRIMARY KEY(entity_id, field_name, provider_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS metadata_provider_bindings (
-        entity_id TEXT NOT NULL REFERENCES metadata_entities(id) ON DELETE CASCADE,
-        provider_id TEXT NOT NULL,
-        external_id TEXT NOT NULL,
-        confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
-        matched_at INTEGER NOT NULL,
-        PRIMARY KEY(entity_id, provider_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS metadata_artwork_cache (
-        cache_key TEXT PRIMARY KEY,
-        entity_id TEXT REFERENCES metadata_entities(id) ON DELETE CASCADE,
-        provider_id TEXT NOT NULL,
-        source_url TEXT NOT NULL,
-        local_path TEXT NOT NULL,
-        content_type TEXT,
-        byte_length INTEGER,
-        updated_at INTEGER NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS metadata_entity_links_entity
-        ON metadata_entity_links(entity_id);
-      CREATE INDEX IF NOT EXISTS metadata_fields_entity
-        ON metadata_fields(entity_id);
-      ",
-    )
-    .map_err(|error| format!("无法初始化音乐信息数据库：{error}"))?;
-  Ok(connection)
+  // Metadata shares the unified zone.sqlite file.
+  crate::db::open_zone_database(path)
 }
 
 pub(crate) fn persist_metadata_candidate(
