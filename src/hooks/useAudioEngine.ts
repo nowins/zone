@@ -9,7 +9,7 @@ import {
   type BeatGrid,
 } from "../utils/beatAnalysis";
 import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "../utils/visualizer";
-import { getVisualizerFrame, publishVisualizerFrame } from "../utils/visualizerBus";
+import { getVisualizerFrame, isDocumentVisible, isVisualizerSurfaceActive, publishVisualizerFrame } from "../utils/visualizerBus";
 import type { ActivePlayback } from "./usePlaybackControls";
 import type { Track } from "../types";
 
@@ -66,25 +66,33 @@ export function useAudioEngine({
   }, [volume]);
 
   useEffect(() => {
-    if (!isPlaying || activePlayback?.kind !== "music") {
-      if (visualizerFrameRef.current) {
-        cancelAnimationFrame(visualizerFrameRef.current);
-        visualizerFrameRef.current = null;
-      }
-      beatFrameRef.current = createIdleBeatFrame();
-      if (activePlayback?.kind === "podcast") publishPodcastVisualizerReset();
-      else publishIdleBeatFrame();
-      return;
-    }
-
-    startVisualizer();
-    return () => {
+    const stopLoop = () => {
       if (visualizerFrameRef.current) {
         cancelAnimationFrame(visualizerFrameRef.current);
         visualizerFrameRef.current = null;
       }
     };
-  }, [activePlaybackSourceKey, isPlaying]);
+
+    const syncLoop = () => {
+      const shouldRun = isVisualizerSurfaceActive(isPlaying) && activePlayback?.kind === "music";
+      if (!shouldRun) {
+        stopLoop();
+        beatFrameRef.current = createIdleBeatFrame();
+        if (activePlayback?.kind === "podcast") publishPodcastVisualizerReset();
+        else publishIdleBeatFrame();
+        return;
+      }
+      if (!visualizerFrameRef.current) startVisualizer();
+    };
+
+    syncLoop();
+    const onVisibility = () => syncLoop();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      stopLoop();
+    };
+  }, [activePlaybackSourceKey, isPlaying, activePlayback?.kind]);
 
   function ensureAudioGraph() {
     if (visualizerUnavailableRef.current) return;
@@ -217,6 +225,11 @@ export function useAudioEngine({
     const frequencyData = new Uint8Array(analyserRef.current?.frequencyBinCount ?? 512);
     const timeData = new Uint8Array(analyserRef.current?.fftSize ?? 1024);
     const sample = () => {
+      if (!isDocumentVisible() || !isPlaying) {
+        visualizerFrameRef.current = null;
+        publishIdleBeatFrame();
+        return;
+      }
       const analyser = analyserRef.current;
       let frame = createIdleVisualizerFrame(
         VISUALIZER_SAMPLE_COUNT,

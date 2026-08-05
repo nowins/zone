@@ -218,3 +218,19 @@ export async function musicStopRadioSession(sessionId?: string | null) {
     sessionId: sessionId ?? null,
   });
 }
+
+
+export type PcmFeatureSummary = {
+  rms?: number;
+  peak?: number;
+  zeroCrossingRate?: number;
+  spectralCentroid?: number;
+  tempoBpm?: number;
+};
+
+export async function musicAnalyzeTrackPcm(trackId: string, pcm?: PcmFeatureSummary | null) {
+  return invoke<{ trackId: string; vector: number[] }>("music_analyze_track_pcm", {
+    trackId,
+    pcm: pcm ?? null,
+  });
+}

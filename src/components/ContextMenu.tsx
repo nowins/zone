@@ -10,6 +10,7 @@ export function ContextMenu({
   onAddToQueue,
   onPlayNext,
   onStartSmartDj,
+  onDislikeSmartDj,
   onAddToPlaylist,
   onAddToFavorites,
   onRenamePlaylist,
@@ -25,6 +26,7 @@ export function ContextMenu({
   onAddToQueue: () => void;
   onPlayNext: () => void;
   onStartSmartDj: () => void;
+  onDislikeSmartDj?: () => void;
   onAddToPlaylist: () => void;
   onAddToFavorites: () => void;
   onRenamePlaylist: (playlistId: string) => void;
@@ -100,6 +102,12 @@ export function ContextMenu({
           <Radio size={17} />
           <span>开始 SmartDJ</span>
         </button>
+        {onDislikeSmartDj && (
+          <button role="menuitem" onClick={() => run(onDislikeSmartDj)}>
+            <Ban size={17} />
+            <span>SmartDJ 不喜欢这首</span>
+          </button>
+        )}
         {homePinState && (
           <button role="menuitem" onClick={() => run(onToggleHomePin)}>
             {homePinState === "pinned" ? <PinOff size={17} /> : <Pin size={17} />}

@@ -10,7 +10,7 @@ mod qrc;
 mod system_media;
 
 use tauri::http::{header, Response, StatusCode};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[tauri::command]
 fn update_system_media(state: system_media::SystemMediaState) -> Result<(), String> {
@@ -23,6 +23,105 @@ fn update_system_media_timeline(
   position_seconds: f64,
 ) -> Result<(), String> {
   system_media::update_timeline(duration_seconds, position_seconds)
+}
+
+
+fn setup_system_tray(app: &tauri::App) {
+  use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager,
+  };
+
+  let show_item = match MenuItem::with_id(app, "show", "显示 Zone", true, None::<&str>) {
+    Ok(item) => item,
+    Err(error) => {
+      eprintln!("[tray] menu item failed: {error}");
+      return;
+    }
+  };
+  let play_item = match MenuItem::with_id(app, "toggle", "播放/暂停", true, None::<&str>) {
+    Ok(item) => item,
+    Err(error) => {
+      eprintln!("[tray] menu item failed: {error}");
+      return;
+    }
+  };
+  let prev_item = match MenuItem::with_id(app, "previous", "上一首", true, None::<&str>) {
+    Ok(item) => item,
+    Err(error) => {
+      eprintln!("[tray] menu item failed: {error}");
+      return;
+    }
+  };
+  let next_item = match MenuItem::with_id(app, "next", "下一首", true, None::<&str>) {
+    Ok(item) => item,
+    Err(error) => {
+      eprintln!("[tray] menu item failed: {error}");
+      return;
+    }
+  };
+  let quit_item = match MenuItem::with_id(app, "quit", "退出", true, None::<&str>) {
+    Ok(item) => item,
+    Err(error) => {
+      eprintln!("[tray] menu item failed: {error}");
+      return;
+    }
+  };
+  let menu = match Menu::with_items(app, &[&show_item, &play_item, &prev_item, &next_item, &quit_item]) {
+    Ok(menu) => menu,
+    Err(error) => {
+      eprintln!("[tray] menu failed: {error}");
+      return;
+    }
+  };
+
+  let tray_result = TrayIconBuilder::new()
+    .menu(&menu)
+    .tooltip("Zone")
+    .on_menu_event(|app, event| {
+      match event.id.as_ref() {
+        "show" => {
+          if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.set_focus();
+          }
+        }
+        "quit" => {
+          app.exit(0);
+        }
+        "toggle" | "previous" | "next" => {
+          if let Some(window) = app.get_webview_window("main") {
+            let event_name = match event.id.as_ref() {
+              "toggle" => "zone://tray-toggle",
+              "previous" => "zone://tray-previous",
+              _ => "zone://tray-next",
+            };
+            let _ = window.emit(event_name, ());
+          }
+        }
+        _ => {}
+      }
+    })
+    .on_tray_icon_event(|tray, event| {
+      if let TrayIconEvent::Click {
+        button: MouseButton::Left,
+        button_state: MouseButtonState::Up,
+        ..
+      } = event
+      {
+        let app = tray.app_handle();
+        if let Some(window) = app.get_webview_window("main") {
+          let _ = window.show();
+          let _ = window.set_focus();
+        }
+      }
+    })
+    .build(app);
+
+  if let Err(error) = tray_result {
+    eprintln!("[tray] unavailable: {error}");
+  }
 }
 
 pub fn run() {
@@ -84,6 +183,7 @@ pub fn run() {
         }
       };
       app.manage(music_state);
+      setup_system_tray(app);
 
       #[cfg(target_os = "windows")]
       if let Some(window) = app.get_webview_window("main") {
@@ -119,6 +219,7 @@ pub fn run() {
       music::music_feature_status,
       music::music_list_similar_tracks,
       music::music_list_track_features,
+      music::music_analyze_track_pcm,
       music::music_upsert_radio_session,
       music::music_get_radio_session,
       music::music_stop_radio_session,

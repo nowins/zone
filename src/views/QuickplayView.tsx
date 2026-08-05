@@ -15,6 +15,7 @@ import {
   buildMostPlayedBlock,
   buildRecentAddedBlock,
 } from "../utils/quickplayBlocks";
+import { pickCoverCandidates } from "../utils/nowPlayingWall";
 import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type {
   AlbumGroup,
@@ -45,7 +46,9 @@ function albumForTrack(albums: AlbumGroup[], track: Track | null) {
   return albums.find((album) => album.tracks.some((item) => item.id === track.id)) ?? albums[0] ?? null;
 }
 
-function coverPathsForTracks(tracks: Track[], limit: number) {
+function coverPathsForTracks(tracks: Track[], limit: number, preferredArtist?: string | null) {
+  const preferred = pickCoverCandidates(tracks, limit, preferredArtist);
+  if (preferred.length > 0) return preferred;
   const seen = new Set<string>();
   const result: string[] = [];
   for (const track of tracks) {
@@ -196,7 +199,7 @@ export function QuickplayView({
           title: artist.artist,
           subtitle: `${artist.tracks.length} 首歌曲`,
           tracks: artist.tracks,
-          artPaths: coverPathsForTracks(artist.tracks, 4),
+          artPaths: coverPathsForTracks(artist.tracks, 4, artist.artist),
           payload,
           isWide: true,
           isSmart: false,

@@ -3,6 +3,8 @@ import type { MetadataProviderDescriptor, MusicFolder } from "../types";
 import { useLyricsProviderSettings } from "../hooks/useLyricsProviderSettings";
 import { MetroLoader } from "../components/MetroLoader";
 import type { QueueInsertMode } from "../app/playbackSettings";
+import { musicAnalyzeFeatures, musicFeatureStatus, type FeatureJobStatus } from "../app/musicLibraryApi";
+import { useEffect, useState } from "react";
 
 export function SettingsView({
   folders,
@@ -33,6 +35,20 @@ export function SettingsView({
 }) {
   const folderCount = folders.length;
   const { configs, providers, setEnabled, move } = useLyricsProviderSettings();
+  const [featureStatus, setFeatureStatus] = useState<FeatureJobStatus | null>(null);
+  const [featureBusy, setFeatureBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void musicFeatureStatus()
+      .then((status) => {
+        if (!cancelled) setFeatureStatus(status);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const configById = new Map(configs.map((config) => [config.id, config]));
   const orderedProviders = [...providers].sort((left, right) => (
     (configById.get(left.id)?.priority ?? left.defaultPriority)
@@ -139,6 +155,42 @@ export function SettingsView({
                   <span aria-hidden="true" />
                   {adaptivePrevious ? "已启用" : "已关闭"}
                 </button>
+              </div>
+            </div>
+          </section>
+
+
+          <section className="settings-smartdj" aria-labelledby="smartdj-features-heading">
+            <header className="settings-section-heading">
+              <div>
+                <span className="settings-kicker">SmartDJ</span>
+                <h2 id="smartdj-features-heading">听感分析</h2>
+                <p>后台会为曲库建立特征，用于更接近“听感相似”的电台推荐。</p>
+              </div>
+              <button
+                className="settings-add-folder"
+                type="button"
+                disabled={featureBusy}
+                onClick={() => {
+                  setFeatureBusy(true);
+                  void musicAnalyzeFeatures(120)
+                    .then((status) => setFeatureStatus(status))
+                    .finally(() => setFeatureBusy(false));
+                }}
+              >
+                <span>{featureBusy ? "分析中…" : "立即分析一批"}</span>
+              </button>
+            </header>
+            <div className="settings-behavior-list">
+              <div className="settings-behavior-row">
+                <div>
+                  <strong>特征覆盖</strong>
+                  <span>
+                    {featureStatus
+                      ? `已完成 ${featureStatus.done} / 共 ${featureStatus.totalTracks} 首；待处理 ${featureStatus.pending}，失败 ${featureStatus.failed}`
+                      : "正在读取分析状态…"}
+                  </span>
+                </div>
               </div>
             </div>
           </section>

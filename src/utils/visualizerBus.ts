@@ -34,3 +34,13 @@ export function publishVisualizerFrame(frame: VisualizerFrameData): void {
 export function getVisualizerFrame(): VisualizerFrameData {
   return latestFrame;
 }
+
+
+export function isDocumentVisible() {
+  if (typeof document === "undefined") return true;
+  return document.visibilityState !== "hidden";
+}
+
+export function isVisualizerSurfaceActive(isPlaying: boolean) {
+  return isPlaying && isDocumentVisible();
+}

@@ -153,3 +153,14 @@ pub(crate) fn music_stop_radio_session(
 ) -> Result<(), String> {
   stop_radio_session(state.inner(), session_id)
 }
+
+
+#[tauri::command]
+pub(crate) fn music_analyze_track_pcm(
+  state: State<'_, MusicState>,
+  track_id: String,
+  pcm: Option<PcmFeatureSummary>,
+) -> Result<TrackFeatureVector, String> {
+  let connection = open_music_db(state.inner())?;
+  analyze_and_store_track_with_pcm(&connection, &track_id, pcm)
+}

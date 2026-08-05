@@ -42,6 +42,41 @@ pub(crate) struct SimilarTrackMatch {
   pub distance: f32,
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PcmFeatureSummary {
+  pub rms: Option<f32>,
+  pub peak: Option<f32>,
+  pub zero_crossing_rate: Option<f32>,
+  pub spectral_centroid: Option<f32>,
+  pub tempo_bpm: Option<f32>,
+}
+
+pub(crate) fn enrich_vector_with_pcm(mut vector: Vec<f32>, pcm: &PcmFeatureSummary) -> Vec<f32> {
+  if vector.len() < FEATURE_DIM {
+    vector.resize(FEATURE_DIM, 0.0);
+  }
+  // Reuse trailing slots with real acoustic measurements when available.
+  if let Some(rms) = pcm.rms {
+    vector[18] = vector[18] * 0.35 + rms.clamp(0.0, 1.0) * 0.65;
+  }
+  if let Some(peak) = pcm.peak {
+    vector[19] = vector[19] * 0.35 + peak.clamp(0.0, 1.0) * 0.65;
+  }
+  if let Some(zcr) = pcm.zero_crossing_rate {
+    vector[20] = vector[20] * 0.4 + zcr.clamp(0.0, 1.0) * 0.6;
+  }
+  if let Some(centroid) = pcm.spectral_centroid {
+    vector[21] = vector[21] * 0.4 + centroid.clamp(0.0, 1.0) * 0.6;
+  }
+  if let Some(tempo) = pcm.tempo_bpm {
+    vector[22] = ((tempo - 60.0) / 140.0).clamp(0.0, 1.0);
+  }
+  l2_normalize(&mut vector);
+  vector
+}
+
 pub(crate) fn build_feature_vector(
   track: &Track,
   activity: Option<&TrackActivityRecord>,
@@ -247,12 +282,23 @@ pub(crate) fn analyze_and_store_track(
   connection: &Connection,
   track_id: &str,
 ) -> Result<TrackFeatureVector, String> {
+  analyze_and_store_track_with_pcm(connection, track_id, None)
+}
+
+pub(crate) fn analyze_and_store_track_with_pcm(
+  connection: &Connection,
+  track_id: &str,
+  pcm: Option<PcmFeatureSummary>,
+) -> Result<TrackFeatureVector, String> {
   if !track_exists_on(connection, track_id) {
     return Err("曲目不存在".to_string());
   }
   let track = load_track(connection, track_id)?;
   let activity = load_activity(connection, track_id)?;
-  let vector = build_feature_vector(&track, activity.as_ref());
+  let mut vector = build_feature_vector(&track, activity.as_ref());
+  if let Some(summary) = pcm.as_ref() {
+    vector = enrich_vector_with_pcm(vector, summary);
+  }
   let now = unix_millis();
   let vector_json = serde_json::to_string(&vector)
     .map_err(|error| format!("无法序列化特征向量：{error}"))?;

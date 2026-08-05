@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Titlebar } from "./components/Titlebar";
 import { AppHeader } from "./components/AppHeader";
 import { CollectionSearchField } from "./components/CollectionSearchField";
@@ -30,12 +31,15 @@ import {
   musicAnalyzeFeatures,
   musicListTrackFeatures,
   musicGetRadioSession,
+  musicAnalyzeTrackPcm,
 } from "./app/musicLibraryApi";
 import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
 import { seedFromTracks } from "./utils/smartDj";
+import { extractPcmFeatureSummary } from "./utils/pcmFeatures";
 import { homePinStateForPayload, moveHomePin, normalizeHomePins, shiftHomePin } from "./utils/homePins";
 import { resolveSearchSurface } from "./utils/collectionSearch";
 import { useSystemMedia } from "./hooks/useSystemMedia";
+import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useNavigation, type NowPlayingTargets } from "./hooks/useNavigation";
 import { useMusicLibrary } from "./hooks/useMusicLibrary";
 import { useMetadataEnrichment } from "./hooks/useMetadataEnrichment";
@@ -218,6 +222,8 @@ export default function App() {
     playNext,
     startSmartDj,
     restoreSmartDjSession,
+    dislikeSmartDjTrack,
+    getIsSmartDjActive,
     handleTimeUpdate,
     move,
     onEnded,
@@ -554,11 +560,82 @@ export default function App() {
       payload.tracks,
     );
     startSmartDj(seed);
+    const seedTrack = payload.tracks[0];
+    if (seedTrack) {
+      void extractPcmFeatureSummary(seedTrack)
+        .then(async (pcm) => {
+          if (!pcm) return;
+          await musicAnalyzeTrackPcm(seedTrack.id, pcm);
+          const vectors = await musicListTrackFeatures([seedTrack.id]);
+          setFeatureVectors((current) => ({ ...current, ...vectors }));
+        })
+        .catch((error) => {
+          if (import.meta.env.DEV) console.warn("[features] pcm enrich failed", error);
+        });
+    }
   }
 
   function closeContextMenu() {
     setContextMenu(null);
   }
+
+
+  useEffect(() => {
+    let unlisteners: Array<() => void> = [];
+    let cancelled = false;
+    async function bindTrayEvents() {
+      try {
+        const pairs: Array<[string, () => void]> = [
+          ["zone://tray-toggle", () => togglePlay()],
+          ["zone://tray-previous", () => {
+            if (activePodcastEpisode) seek(Math.max(0, progress - 15));
+            else move(-1);
+          }],
+          ["zone://tray-next", () => {
+            if (activePodcastEpisode) playNextPodcastEpisode();
+            else move(1);
+          }],
+        ];
+        for (const [eventName, handler] of pairs) {
+          const unlisten = await listen(eventName, handler);
+          if (cancelled) {
+            unlisten();
+            return;
+          }
+          unlisteners.push(unlisten);
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) console.warn("[tray] listen failed", error);
+      }
+    }
+    void bindTrayEvents();
+    return () => {
+      cancelled = true;
+      for (const unlisten of unlisteners) unlisten();
+    };
+  }, [activePodcastEpisode, progress, togglePlay, move, seek, playNextPodcastEpisode]);
+
+  useAppHotkeys({
+    onTogglePlay: togglePlay,
+    onPrevious: () => {
+      if (activePodcastEpisode) seek(Math.max(0, progress - 15));
+      else move(-1);
+    },
+    onNext: () => {
+      if (activePodcastEpisode) playNextPodcastEpisode();
+      else move(1);
+    },
+    onVolumeUp: () => setVolume((value) => Math.min(1, Number((value + 0.05).toFixed(2)))),
+    onVolumeDown: () => setVolume((value) => Math.max(0, Number((value - 0.05).toFixed(2)))),
+    onSeekLeft: () => seek(Math.max(0, progress - 5)),
+    onSeekRight: () => {
+      const total = duration > 0 ? duration : progress + 5;
+      seek(Math.min(total, progress + 5));
+    },
+    onDislikeSmartDj: () => {
+      if (!activePodcastEpisode) dislikeSmartDjTrack();
+    },
+  });
 
   useSystemMedia({
     media: systemMediaItem,
@@ -649,6 +726,7 @@ export default function App() {
       onPlayNext={() => playNext(contextMenu.payload.tracks)}
       onAddToQueue={() => appendToQueue(contextMenu.payload.tracks)}
       onStartSmartDj={() => startSmartDjFromPayload(contextMenu.payload)}
+      onDislikeSmartDj={() => dislikeSmartDjTrack()}
       onAddToPlaylist={() => setAddToPlaylistTarget(contextMenu.payload)}
       onAddToFavorites={() => addToPlaylist(DEFAULT_PLAYLIST_ID, contextMenu.payload.tracks)}
       onRenamePlaylist={(playlistId) => openPlaylistDialog("rename", playlistId)}

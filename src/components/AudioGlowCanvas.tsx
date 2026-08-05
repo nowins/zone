@@ -5,7 +5,7 @@ import {
   type ZuneMountainPoint,
 } from "../utils/audioGlow";
 import { createIdleVisualizerFrame } from "../utils/visualizer";
-import { getVisualizerFrame } from "../utils/visualizerBus";
+import { getVisualizerFrame, isDocumentVisible } from "../utils/visualizerBus";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { VISUALIZER_SAMPLE_COUNT } from "../constants";
 
@@ -113,11 +113,25 @@ export function AudioGlowCanvas({
         volumeRef.current,
         frame.beatConfidence,
       );
-      frameRef.current = window.requestAnimationFrame(draw);
+      if (isDocumentVisible()) {
+        frameRef.current = window.requestAnimationFrame(draw);
+      } else {
+        frameRef.current = null;
+      }
     };
 
-    frameRef.current = window.requestAnimationFrame(draw);
+    const sync = () => {
+      if (!isDocumentVisible()) {
+        if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+        return;
+      }
+      if (!frameRef.current) frameRef.current = window.requestAnimationFrame(draw);
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
     return () => {
+      document.removeEventListener("visibilitychange", sync);
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
       lastTimeRef.current = null;
     };

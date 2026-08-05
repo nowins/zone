@@ -557,6 +557,20 @@ export function usePlaybackControls({
     });
   }
 
+  function dislikeSmartDjTrack() {
+    const session = smartDjSessionRef.current;
+    if (!session || !activeTrackId) {
+      showActionNotice("当前不在 SmartDJ");
+      return;
+    }
+    // Soft-ban current and jump next.
+    const nextSession = noteSmartDjSkip(session, activeTrackId, smartDjContext(), { ban: true });
+    smartDjSessionRef.current = nextSession;
+    persistSmartDjSession(nextSession);
+    showActionNotice("已从 SmartDJ 减少类似歌曲");
+    move(1, "user");
+  }
+
   function clearSmartDjSession(options?: { persistStop?: boolean }) {
     const current = smartDjSessionRef.current;
     smartDjSessionRef.current = null;
@@ -1049,6 +1063,8 @@ export function usePlaybackControls({
     startSmartDj,
     clearSmartDjSession,
     restoreSmartDjSession,
+    dislikeSmartDjTrack,
+    getIsSmartDjActive: () => Boolean(smartDjSessionRef.current && smartDjSessionRef.current.status === "playing"),
     queueInsertMode,
     adaptivePrevious,
     updatePlaybackBehavior,
