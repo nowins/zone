@@ -4,6 +4,7 @@ mod library;
 mod lyrics;
 mod lyrics_provider;
 mod metadata;
+mod music;
 mod podcast;
 mod qrc;
 mod system_media;
@@ -75,6 +76,14 @@ pub fn run() {
         }
       };
       app.manage(metadata_state);
+      let music_state = match music::MusicState::initialize(app.handle()) {
+        Ok(state) => state,
+        Err(error) => {
+          eprintln!("[music] initialization failed: {error}");
+          music::MusicState::unavailable(error)
+        }
+      };
+      app.manage(music_state);
 
       #[cfg(target_os = "windows")]
       if let Some(window) = app.get_webview_window("main") {
@@ -96,6 +105,14 @@ pub fn run() {
       lyrics::export_lyrics_file,
       library::scan_library,
       library::watch_music_folders,
+      music::music_get_library_snapshot,
+      music::music_import_legacy_player_state,
+      music::music_scan_library,
+      music::music_save_playlists,
+      music::music_save_home_pins,
+      music::music_save_track_activity,
+      music::music_save_playback_state,
+      music::music_clear_library,
       lyrics::load_local_lyrics,
       lyrics_provider::request_lyrics_provider,
       lyrics_provider::decrypt_qrc_lyrics,

@@ -19,6 +19,15 @@ import { PodcastNowPlayingView } from "./views/PodcastNowPlayingView";
 import { SettingsView } from "./views/SettingsView";
 import { PodcastView } from "./views/PodcastView";
 import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
+import {
+  musicClearLibrary,
+  musicGetLibrarySnapshot,
+  musicImportLegacyPlayerState,
+  musicSaveHomePins,
+  musicSavePlaybackState,
+  musicSavePlaylists,
+  musicSaveTrackActivity,
+} from "./app/musicLibraryApi";
 import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
 import { homePinStateForPayload, moveHomePin, normalizeHomePins, shiftHomePin } from "./utils/homePins";
 import { resolveSearchSurface } from "./utils/collectionSearch";
@@ -314,61 +323,128 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) {
-      setRestored(true);
-      return;
+    let cancelled = false;
+
+    async function restoreLibrary() {
+      try {
+        let snapshot = await musicGetLibrarySnapshot();
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (!snapshot.hasLibrary && saved) {
+          try {
+            const legacy = JSON.parse(saved);
+            snapshot = await musicImportLegacyPlayerState(legacy);
+            localStorage.removeItem(STORAGE_KEY);
+          } catch (error) {
+            if (import.meta.env.DEV) console.warn("[library] legacy import failed", error);
+            localStorage.removeItem(STORAGE_KEY);
+          }
+        } else if (saved) {
+          // DB is source of truth once populated.
+          localStorage.removeItem(STORAGE_KEY);
+        }
+
+        if (cancelled) return;
+
+        setFolders(snapshot.folders ?? []);
+        setTracks(snapshot.tracks ?? []);
+        setActiveTrackId(snapshot.playback.activeTrackId ?? null);
+        setQueue(snapshot.playback.queue ?? []);
+        setPlayHistory(snapshot.playback.playHistory ?? []);
+        setTrackActivity(snapshot.trackActivity ?? {});
+        setVolume(snapshot.playback.volume ?? 0.8);
+        setShuffle(snapshot.playback.shuffle ?? false);
+        setRepeat(snapshot.playback.repeat ?? "off");
+        setPlaylists(normalizePlaylists(snapshot.playlists));
+        setSelectedPlaylistId(snapshot.playback.selectedPlaylistId ?? DEFAULT_PLAYLIST_ID);
+        setHomePins(normalizeHomePins(snapshot.homePins));
+        setNeedsMetadataRefresh(false);
+      } catch (error) {
+        if (import.meta.env.DEV) console.warn("[library] restore failed", error);
+        // Fallback to legacy localStorage if DB path is unavailable.
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          try {
+            const state = JSON.parse(saved);
+            setFolders(state.folders ?? []);
+            setTracks(state.tracks ?? []);
+            setActiveTrackId(state.activeTrackId ?? null);
+            setQueue(state.queue ?? []);
+            setPlayHistory(state.playHistory ?? []);
+            activityMigrationRef.current = !state.trackActivity || (
+              state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION
+              && Object.keys(state.trackActivity ?? {}).length === 0
+              && (state.tracks?.length ?? 0) > 0
+            );
+            setTrackActivity(state.trackActivity ?? {});
+            setVolume(state.volume ?? 0.8);
+            setShuffle(state.shuffle ?? false);
+            setRepeat(state.repeat ?? "off");
+            setPlaylists(normalizePlaylists(state.playlists));
+            setSelectedPlaylistId(state.selectedPlaylistId ?? DEFAULT_PLAYLIST_ID);
+            setHomePins(normalizeHomePins(state.homePins));
+            setNeedsMetadataRefresh(state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION);
+          } catch {
+            localStorage.removeItem(STORAGE_KEY);
+          }
+        }
+      } finally {
+        if (!cancelled) setRestored(true);
+      }
     }
 
-    try {
-      const state = JSON.parse(saved);
-      setFolders(state.folders ?? []);
-      setTracks(state.tracks ?? []);
-      setActiveTrackId(state.activeTrackId ?? null);
-      setQueue(state.queue ?? []);
-      setPlayHistory(state.playHistory ?? []);
-      activityMigrationRef.current = !state.trackActivity || (
-        state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION
-        && Object.keys(state.trackActivity ?? {}).length === 0
-        && (state.tracks?.length ?? 0) > 0
-      );
-      setTrackActivity(state.trackActivity ?? {});
-      setVolume(state.volume ?? 0.8);
-      setShuffle(state.shuffle ?? false);
-      setRepeat(state.repeat ?? "off");
-      setPlaylists(normalizePlaylists(state.playlists));
-      setSelectedPlaylistId(state.selectedPlaylistId ?? DEFAULT_PLAYLIST_ID);
-      setHomePins(normalizeHomePins(state.homePins));
-      setNeedsMetadataRefresh(state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION);
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      setRestored(true);
-    }
+    void restoreLibrary();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!restored) return;
-
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        librarySchemaVersion: needsMetadataRefresh ? LIBRARY_SCHEMA_VERSION - 1 : LIBRARY_SCHEMA_VERSION,
-        folders,
-        tracks,
+    const timer = window.setTimeout(() => {
+      void musicSavePlaybackState({
         activeTrackId,
         queue,
         playHistory,
-        trackActivity,
         volume,
         shuffle,
         repeat,
-        playlists,
         selectedPlaylistId,
-        homePins,
-      }),
-    );
-  }, [restored, needsMetadataRefresh, folders, tracks, activeTrackId, queue, playHistory, trackActivity, volume, shuffle, repeat, playlists, selectedPlaylistId, homePins]);
+      }).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[library] save playback state failed", error);
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [restored, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId]);
+
+  useEffect(() => {
+    if (!restored) return;
+    const timer = window.setTimeout(() => {
+      void musicSaveTrackActivity(trackActivity).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[library] save track activity failed", error);
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [restored, trackActivity]);
+
+  useEffect(() => {
+    if (!restored) return;
+    const timer = window.setTimeout(() => {
+      void musicSavePlaylists(playlists).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[library] save playlists failed", error);
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [restored, playlists]);
+
+  useEffect(() => {
+    if (!restored) return;
+    const timer = window.setTimeout(() => {
+      void musicSaveHomePins(homePins).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[library] save home pins failed", error);
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [restored, homePins]);
 
   const systemMediaItem = useMemo(() => {
     if (!podcastSessionHydrated) return null;
@@ -836,13 +912,23 @@ export default function App() {
             onAddFolder={addFolder}
             onRescan={() => rescan()}
             onClear={() => {
-              setFolders([]);
-              setTracks([]);
-              setQueue([]);
-              setTrackActivity({});
-              setActiveTrackId(null);
-              setScanNote("");
-              localStorage.removeItem(STORAGE_KEY);
+              void musicClearLibrary()
+                .catch((error) => {
+                  if (import.meta.env.DEV) console.warn("[library] clear failed", error);
+                })
+                .finally(() => {
+                  setFolders([]);
+                  setTracks([]);
+                  setQueue([]);
+                  setPlayHistory([]);
+                  setTrackActivity({});
+                  setActiveTrackId(null);
+                  setHomePins([]);
+                  setPlaylists(normalizePlaylists(undefined));
+                  setSelectedPlaylistId(DEFAULT_PLAYLIST_ID);
+                  setScanNote("");
+                  localStorage.removeItem(STORAGE_KEY);
+                });
             }}
           />
         )}

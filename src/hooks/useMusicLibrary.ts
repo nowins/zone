@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { musicScanLibrary } from "../app/musicLibraryApi";
 import { useLibraryWatcher } from "./useLibraryWatcher";
 import { albumKey, bestAlbumArtist, compareTracksForAlbum } from "../utils/music";
 import { reconcileQueueWithLibrary } from "../utils/playback";
@@ -7,7 +8,6 @@ import { createTrackActivity } from "../utils/smartPlaylist";
 import type {
   ArtistGroup,
   MusicFolder,
-  ScanResult,
   Track,
   TrackActivityMap,
   ViewMode,
@@ -133,9 +133,7 @@ export function useMusicLibrary({
       while (pending) {
         queuedScanRef.current = null;
         setScanNote(pending.automatic ? "检测到文件变化，正在同步" : "正在扫描");
-        const result = await invoke<ScanResult>("scan_library", {
-          folders: pending.folders.map((folder) => folder.path),
-        });
+        const result = await musicScanLibrary(pending.folders);
         const requestedFolders = pending.folders.map((folder) => folder.path).join("\u0000");
         const currentFolders = foldersRef.current.map((folder) => folder.path).join("\u0000");
         if (requestedFolders === currentFolders) {
