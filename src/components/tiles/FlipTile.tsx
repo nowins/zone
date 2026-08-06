@@ -24,6 +24,7 @@ function nextDelay(): number {
 export function FlipTile({
   size = "medium",
   className = "",
+  glass = false,
   front,
   back,
   onPress,
@@ -35,6 +36,7 @@ export function FlipTile({
 }: {
   size?: TileSize;
   className?: string;
+  glass?: boolean;
   front: ReactNode;
   back: ReactNode;
   onPress?: () => void;
@@ -107,6 +109,7 @@ export function FlipTile({
     <Tile
       size={size}
       className={`tile-flip ${showBack ? "is-back" : "is-front"} ${className}`.trim()}
+      glass={glass}
       onPress={onPress}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}

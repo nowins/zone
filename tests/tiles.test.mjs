@@ -42,3 +42,16 @@ test("quickplay pins are built on the shared FlipTile", () => {
   assert.ok(quickplaySource.includes("<FlipTile"));
   assert.ok(quickplaySource.includes("paused={editingPins}"));
 });
+
+test("surface N motion: glass variant, staggered entrance, peek back", () => {
+  // Restrained glass material (flat-dominant).
+  assert.ok(tilesCss.includes(".tile-glass"));
+  assert.ok(tilesCss.includes("backdrop-filter"));
+  // Staggered turnstile entrance from the bottom edge.
+  assert.ok(tilesCss.includes("tile-rise"));
+  assert.ok(tilesCss.includes("--tile-stagger-delay"));
+  assert.ok(quickplaySource.includes("--tile-stagger-delay"));
+  // Peek reveal back face.
+  assert.ok(tilesCss.includes("tile-back-kicker"));
+  assert.ok(quickplaySource.includes("tile-back-kicker"));
+});

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react";
+import type { CSSProperties, DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { GripVertical, Pin, PinOff, Play, Sparkles } from "lucide-react";
 import { Cover } from "../components/Cover";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
@@ -108,6 +108,7 @@ export function QuickplayView({
   });
   const [editingPins, setEditingPins] = useState(false);
   const [draggedPinId, setDraggedPinId] = useState<string | null>(null);
+  const pinsGridRef = useRef<HTMLDivElement | null>(null);
   const reducedMotion = useReducedMotion();
   const continueAlbum = albumForTrack(albums, activeTrack);
   const blockInput = useMemo(() => ({
@@ -248,6 +249,19 @@ export function QuickplayView({
   useEffect(() => {
     if (resolvedPins.length === 0) setEditingPins(false);
   }, [resolvedPins.length]);
+
+  // Play the staggered tile entrance once when the pins first mount, then
+  // release the class so re-renders/drag/edit don't replay the reveal.
+  useEffect(() => {
+    const grid = pinsGridRef.current;
+    if (!grid) return undefined;
+    grid.classList.add("tiles-enter");
+    const timer = window.setTimeout(() => grid.classList.remove("tiles-enter"), 900);
+    return () => {
+      window.clearTimeout(timer);
+      grid.classList.remove("tiles-enter");
+    };
+  }, [resolvedPins.length > 0]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -426,11 +440,12 @@ export function QuickplayView({
               <span>固定音乐到这里</span>
             </button>
           ) : (
-            <div className={`quick-pins-grid ${editingPins ? "editing" : ""}`}>
+            <div ref={pinsGridRef} className={`quick-pins-grid ${editingPins ? "editing" : ""}`}>
               {resolvedPins.map((item, index) => (
                 <article
                   className={`quick-pin ${item.isWide ? "wide" : "square"} ${draggedPinId === item.pin.id ? "dragging" : ""}`}
                   key={item.pin.id}
+                  style={{ "--tile-stagger-delay": `${Math.min(index * 46, 460)}ms` } as CSSProperties}
                   draggable={editingPins}
                   onDragStart={(event) => {
                     event.dataTransfer.effectAllowed = "move";
@@ -447,6 +462,7 @@ export function QuickplayView({
                   <FlipTile
                     size={item.isWide ? "wide" : "medium"}
                     className="quick-pin-tile"
+                    glass
                     title={`打开 ${item.title}`}
                     paused={editingPins}
                     disabled={editingPins}
@@ -464,6 +480,7 @@ export function QuickplayView({
                       }
                       back={
                         <>
+                          <span className="tile-back-kicker">{item.isSmart ? "智能" : "已固定"}</span>
                           <strong>{item.title}</strong>
                           <small>{item.subtitle}</small>
                           {item.tracks.length > 0 && (

@@ -13,6 +13,7 @@ export type TileSize = "medium" | "wide";
 export function Tile({
   size = "medium",
   className = "",
+  glass = false,
   children,
   onPress,
   onContextMenu,
@@ -25,6 +26,7 @@ export function Tile({
 }: {
   size?: TileSize;
   className?: string;
+  glass?: boolean;
   children: ReactNode;
   onPress?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
@@ -36,7 +38,7 @@ export function Tile({
   disabled?: boolean;
 }) {
   useReducedMotion();
-  const classes = `tile tile-${size} ${className}`.trim();
+  const classes = `tile tile-${size} ${glass ? "tile-glass" : ""} ${className}`.trim();
 
   function handlePointerDown(event: PointerEvent<HTMLElement>) {
     tiltPressDown(event, tiltSelector);
