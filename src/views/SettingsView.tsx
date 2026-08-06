@@ -5,6 +5,7 @@ import { MetroLoader } from "../components/MetroLoader";
 import type { QueueInsertMode } from "../app/playbackSettings";
 import { musicAnalyzeFeatures, musicFeatureStatus, type FeatureJobStatus } from "../app/musicLibraryApi";
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 export function SettingsView({
   folders,
@@ -49,8 +50,16 @@ export function SettingsView({
         if (!cancelled) setFeatureStatus(status);
       })
       .catch(() => undefined);
+    let unlisten: (() => void) | undefined;
+    void listen<FeatureJobStatus>("feature-status-changed", ({ payload }) => {
+      if (!cancelled) setFeatureStatus(payload);
+    }).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    });
     return () => {
       cancelled = true;
+      unlisten?.();
     };
   }, []);
   const configById = new Map(configs.map((config) => [config.id, config]));
@@ -199,7 +208,7 @@ export function SettingsView({
                     .finally(() => setFeatureBusy(false));
                 }}
               >
-                <span>{featureBusy ? "分析中…" : "立即分析一批"}</span>
+                <span>{featureBusy ? "已加入分析队列" : "立即分析"}</span>
               </button>
             </header>
             <div className="settings-behavior-list">
@@ -208,7 +217,9 @@ export function SettingsView({
                   <strong>特征覆盖</strong>
                   <span>
                     {featureStatus
-                      ? `已完成 ${featureStatus.done} / 共 ${featureStatus.totalTracks} 首；待处理 ${featureStatus.pending}，失败 ${featureStatus.failed}`
+                      ? featureStatus.pending + featureStatus.running > 0
+                        ? `分析中 ${featureStatus.done} / 共 ${featureStatus.totalTracks} 首`
+                        : `已完成 ${featureStatus.done} / 共 ${featureStatus.totalTracks} 首${featureStatus.failed > 0 ? `，失败 ${featureStatus.failed}` : ""}`
                       : "正在读取分析状态…"}
                   </span>
                 </div>

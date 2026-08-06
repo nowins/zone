@@ -11,7 +11,8 @@ const app = readFileSync("src/App.tsx", "utf8");
 const lib = readFileSync("src-tauri/src/lib.rs", "utf8");
 const settings = readFileSync("src/views/SettingsView.tsx", "utf8");
 const menu = readFileSync("src/components/ContextMenu.tsx", "utf8");
-const pcm = readFileSync("src/utils/pcmFeatures.ts", "utf8");
+const worker = readFileSync("src-tauri/src/music/worker.rs", "utf8");
+const pcm = readFileSync("src-tauri/src/music/pcm.rs", "utf8");
 
 test("visualizer sampling pauses when document is hidden", () => {
   assert.ok(audioEngine.includes("visibilitychange"));
@@ -46,10 +47,11 @@ test("smart dj polish includes dislike action and feature progress", () => {
   assert.ok(app.includes("dislikeSmartDjTrack"));
 });
 
-test("pcm feature extraction path exists for seed enrichment", () => {
-  assert.ok(pcm.includes("extractPcmFeatureSummary"));
-  assert.ok(app.includes("musicAnalyzeTrackPcm"));
-  assert.ok(lib.includes("music_analyze_track_pcm"));
+test("background acoustic feature worker decodes PCM from path", () => {
+  assert.ok(pcm.includes("summarize_pcm_from_path"));
+  assert.ok(worker.includes("start_feature_worker"));
+  assert.ok(worker.includes("feature-status-changed"));
+  assert.ok(lib.includes("start_feature_worker"));
 });
 
 

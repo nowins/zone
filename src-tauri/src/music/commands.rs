@@ -88,9 +88,11 @@ pub(crate) fn music_analyze_features(
   limit: Option<u32>,
 ) -> Result<FeatureJobStatus, String> {
   let connection = open_music_db(state.inner())?;
-  let batch = limit.unwrap_or(64).clamp(1, 500) as usize;
+  // Enqueue candidates only; the background worker does the actual decoding
+  // so this command never blocks the UI on a large library.
+  let batch = limit.unwrap_or(256).clamp(1, 2000) as usize;
   let _ = enqueue_missing_feature_jobs(&connection, batch)?;
-  let _ = process_feature_jobs(&connection, batch)?;
+  request_feature_analysis();
   feature_status(&connection)
 }
 

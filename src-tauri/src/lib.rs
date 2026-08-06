@@ -183,6 +183,7 @@ pub fn run() {
         }
       };
       app.manage(music_state);
+      music::start_feature_worker(app.handle().clone(), app.state::<music::MusicState>().inner().clone());
       setup_system_tray(app);
 
       #[cfg(target_os = "windows")]

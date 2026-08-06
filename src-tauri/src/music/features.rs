@@ -8,7 +8,8 @@ use super::store::track_exists_on;
 use crate::db::unix_millis;
 use crate::library::Track;
 
-pub(crate) const FEATURE_ANALYZER_VERSION: i64 = 1;
+// Version 2 enriches vectors with real acoustic measurements decoded in Rust.
+pub(crate) const FEATURE_ANALYZER_VERSION: i64 = 2;
 pub(crate) const FEATURE_DIM: usize = 24;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,6 +210,9 @@ pub(crate) fn enqueue_missing_feature_jobs(
   Ok(queued)
 }
 
+// Synchronous foreground batch processing kept for tests/manual use; the app
+// uses the background worker so large libraries never block the UI.
+#[allow(dead_code)]
 pub(crate) fn process_feature_jobs(
   connection: &Connection,
   limit: usize,

@@ -32,11 +32,9 @@ import {
   musicAnalyzeFeatures,
   musicListTrackFeatures,
   musicGetRadioSession,
-  musicAnalyzeTrackPcm,
 } from "./app/musicLibraryApi";
 import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
 import { seedFromTracks } from "./utils/smartDj";
-import { extractPcmFeatureSummary } from "./utils/pcmFeatures";
 import { homePinStateForPayload, moveHomePin, normalizeHomePins, shiftHomePin } from "./utils/homePins";
 import { resolveSearchSurface } from "./utils/collectionSearch";
 import { useSystemMedia } from "./hooks/useSystemMedia";
@@ -565,19 +563,8 @@ export default function App() {
       payload.tracks,
     );
     startSmartDj(seed);
-    const seedTrack = payload.tracks[0];
-    if (seedTrack) {
-      void extractPcmFeatureSummary(seedTrack)
-        .then(async (pcm) => {
-          if (!pcm) return;
-          await musicAnalyzeTrackPcm(seedTrack.id, pcm);
-          const vectors = await musicListTrackFeatures([seedTrack.id]);
-          setFeatureVectors((current) => ({ ...current, ...vectors }));
-        })
-        .catch((error) => {
-          if (import.meta.env.DEV) console.warn("[features] pcm enrich failed", error);
-        });
-    }
+    // Acoustic features are produced by the background Rust worker for the
+    // whole library; SmartDJ picks them up via the hydrate effect below.
   }
 
   function closeContextMenu() {
