@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { animateValue } from "../../motion/animate";
+import type { AnimationHandle } from "../../motion/animate";
+import { MOTION_DURATIONS } from "../../motion/tokens";
 import { useReducedMotion } from "../../motion/useReducedMotion";
 import { Tile } from "./Tile";
 import type { TileSize } from "./Tile";
 
-const FLIP_HALF_MS = 200;
+// Total flip is split across the apex; each half stays well inside the
+// sub-260ms content tier so the whole reveal lands under the WP budget.
+const FLIP_HALF_MS = Math.round(MOTION_DURATIONS.content / 2);
 const MIN_INTERVAL_MS = 6_000;
 const MAX_INTERVAL_MS = 14_000;
 
@@ -15,16 +19,19 @@ function nextDelay(): number {
 
 /**
  * WP7 flip tile: a front and back face that periodically trade places with a
- * restrained half-flip, signalling "content updated" rather than decorating.
- * Each instance picks its own jittered cadence so a wall of tiles drifts out
- * of phase instead of flipping in lockstep.
+ * restrained flip, signalling "content updated" rather than decorating. The
+ * surface rotates 0° -> 180°; the front is visible for the first half and the
+ * back for the second (each backface-hidden), so neither face is ever culled
+ * at rest. Motion is a single physical sweep — accelerating into the apex,
+ * easing out as it lands — not two soft halves.
  *
- * Under reduced motion the faces cross-fade (opacity only), never rotate.
+ * Each instance picks its own jittered cadence so a wall drifts out of phase
+ * instead of flipping in lockstep. Under reduced motion the faces cross-fade
+ * (opacity only), never rotate.
  */
 export function FlipTile({
   size = "medium",
   className = "",
-  glass = false,
   front,
   back,
   onPress,
@@ -36,7 +43,6 @@ export function FlipTile({
 }: {
   size?: TileSize;
   className?: string;
-  glass?: boolean;
   front: ReactNode;
   back: ReactNode;
   onPress?: () => void;
@@ -50,13 +56,19 @@ export function FlipTile({
   const reducedMotion = useReducedMotion();
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const flippingRef = useRef(false);
+  const animationRef = useRef<AnimationHandle | null>(null);
 
   useEffect(() => {
     if (paused) return undefined;
     let timer: number | undefined;
     let cancelled = false;
 
+    const setAngle = (value: number) => {
+      surfaceRef.current?.style.setProperty("--tile-flip", `${value.toFixed(2)}deg`);
+    };
+
     const schedule = () => {
+      if (cancelled) return;
       timer = window.setTimeout(runFlip, nextDelay());
     };
 
@@ -73,23 +85,25 @@ export function FlipTile({
         schedule();
         return;
       }
-      animateValue({
-        from: 0,
-        to: 90,
-        tween: { durationMs: FLIP_HALF_MS, easing: easeInOut },
-        onUpdate: (value) => {
-          surface.style.setProperty("--tile-flip", `${value.toFixed(2)}deg`);
-        },
+      const from = showBack ? 180 : 0;
+      const to = showBack ? 0 : 180;
+      const apex = (from + to) / 2;
+      // Accelerate into the apex, swap faces, then ease out to landing.
+      animationRef.current = animateValue({
+        from,
+        to: apex,
+        tween: { durationMs: FLIP_HALF_MS, easing: accelerate },
+        onUpdate: setAngle,
         onComplete: () => {
+          if (cancelled) return;
           setShowBack((value) => !value);
-          animateValue({
-            from: 90,
-            to: 0,
-            tween: { durationMs: FLIP_HALF_MS, easing: easeInOut },
-            onUpdate: (value) => {
-              surface.style.setProperty("--tile-flip", `${value.toFixed(2)}deg`);
-            },
+          animationRef.current = animateValue({
+            from: apex,
+            to,
+            tween: { durationMs: FLIP_HALF_MS, easing: decelerate },
+            onUpdate: setAngle,
             onComplete: () => {
+              if (cancelled) return;
               flippingRef.current = false;
               schedule();
             },
@@ -101,15 +115,18 @@ export function FlipTile({
     schedule();
     return () => {
       cancelled = true;
+      flippingRef.current = false;
       if (timer !== undefined) window.clearTimeout(timer);
+      animationRef.current?.cancel();
+      animationRef.current = null;
+      setAngle(0);
     };
-  }, [paused, reducedMotion]);
+  }, [paused, reducedMotion, showBack]);
 
   return (
     <Tile
       size={size}
       className={`tile-flip ${showBack ? "is-back" : "is-front"} ${className}`.trim()}
-      glass={glass}
       onPress={onPress}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
@@ -128,6 +145,11 @@ export function FlipTile({
   );
 }
 
-function easeInOut(t: number): number {
-  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+// First half: ease in so the edge accelerates toward the viewer.
+function accelerate(t: number): number {
+  return t * t * t;
+}
+// Second half: ease out so the new face lands crisply.
+function decelerate(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
 }

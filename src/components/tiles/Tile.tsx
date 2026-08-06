@@ -1,5 +1,4 @@
 import type { CSSProperties, ReactNode } from "react";
-import { useReducedMotion } from "../../motion/useReducedMotion";
 import { tiltPressClear, tiltPressDown } from "../../utils/tiltPress";
 import type { KeyboardEvent, PointerEvent } from "react";
 
@@ -13,7 +12,6 @@ export type TileSize = "medium" | "wide";
 export function Tile({
   size = "medium",
   className = "",
-  glass = false,
   children,
   onPress,
   onContextMenu,
@@ -26,7 +24,6 @@ export function Tile({
 }: {
   size?: TileSize;
   className?: string;
-  glass?: boolean;
   children: ReactNode;
   onPress?: () => void;
   onContextMenu?: (event: React.MouseEvent) => void;
@@ -37,8 +34,7 @@ export function Tile({
   style?: CSSProperties;
   disabled?: boolean;
 }) {
-  useReducedMotion();
-  const classes = `tile tile-${size} ${glass ? "tile-glass" : ""} ${className}`.trim();
+  const classes = `tile tile-${size} ${className}`.trim();
 
   function handlePointerDown(event: PointerEvent<HTMLElement>) {
     tiltPressDown(event, tiltSelector);
@@ -60,7 +56,7 @@ export function Tile({
       className={classes}
       style={style}
       title={title}
-      disabled={disabled}
+      aria-disabled={disabled || undefined}
       onClick={onPress}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}

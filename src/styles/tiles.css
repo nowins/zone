@@ -8,57 +8,42 @@
   overflow: hidden;
   text-align: left;
   background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
+  outline: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
   transition: transform var(--motion-content) var(--motion-ease-emphasis),
     filter var(--motion-micro) var(--motion-ease-standard);
   -webkit-user-drag: none;
 }
-
-/* Restrained glass variant: flat Metro stays dominant, but the tile gains a
-   whisper of acrylic — a translucent tint, a soft backdrop blur, a hairline
-   light edge, and a faint inner glow. Kept deliberately subtle so it reads as
-   "holographic" without breaking the Zune flat baseline. */
-.tile-glass {
-  background: linear-gradient(
-    160deg,
-    rgba(255, 255, 255, 0.075),
-    rgba(255, 255, 255, 0.03) 55%,
-    rgba(255, 255, 255, 0.05)
-  );
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow:
-    0 8px 28px rgba(0, 0, 0, 0.32),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09),
-    inset 0 0 24px rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(14px) saturate(1.15);
-  -webkit-backdrop-filter: blur(14px) saturate(1.15);
-}
 .tile:hover,
 .tile:focus-visible {
   filter: brightness(1.08);
+}
+.tile[aria-disabled="true"] {
+  cursor: default;
+  filter: none;
 }
 .tile.tilt-pressed {
   transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
   transition: transform var(--motion-press) var(--motion-ease-standard);
 }
 
-/* Turnstile-style entrance: tiles stream up from the bottom edge with a
-   staggered cadence. Each tile sets --tile-stagger-delay; the host wraps a
-   batch in .tiles-enter to trigger the reveal once on mount. */
+/* Turnstile-style entrance: tiles pivot in from the bottom edge with a
+   staggered cadence, like the WP7 start screen. Each tile sets
+   --tile-stagger-delay; the host wraps a batch in .tiles-enter to trigger the
+   reveal once on mount. */
 @keyframes tile-rise {
   from {
     opacity: 0;
-    transform: translateY(26px) scale(0.97);
+    transform: perspective(900px) rotateX(-38deg) translateY(18px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: perspective(900px) rotateX(0deg) translateY(0);
   }
 }
 .tiles-enter .tile {
   opacity: 0;
+  transform-origin: 50% 100%;
   animation: tile-rise var(--motion-page) var(--motion-ease-entrance) both;
   animation-delay: var(--tile-stagger-delay, 0ms);
 }
@@ -86,10 +71,6 @@
 .tile-face-back {
   transform: rotateX(180deg);
   background: linear-gradient(180deg, rgba(10, 10, 12, 0.0), rgba(8, 8, 10, 0.42) 34%, rgba(8, 8, 10, 0.6));
-}
-.tile-flip.is-front .tile-face-back,
-.tile-flip.is-back .tile-face-front {
-  visibility: hidden;
 }
 .tile-face strong {
   display: block;
@@ -145,6 +126,68 @@
   text-transform: uppercase;
 }
 
+/* WP8 cycle tile: stacked frames cross-fade as the active index advances. */
+.tile-cycle-frames {
+  position: absolute;
+  inset: 0;
+}
+.tile-cycle-frame {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity var(--motion-content) var(--motion-ease-standard);
+}
+.tile-cycle-frame.is-active {
+  opacity: 1;
+}
+.tile-cycle-frame > * {
+  width: 100%;
+  height: 100%;
+}
+.tile-cycle-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.55));
+}
+
+/* WP8 iconic tile: centered icon, corner count, bottom label. */
+.tile-iconic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tile-accent, rgba(128, 35, 76, 0.7));
+}
+.tile-iconic-icon {
+  color: rgba(255, 255, 255, 0.94);
+  display: flex;
+}
+.tile-iconic-count {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  color: rgba(20, 20, 22, 0.95);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tile-iconic-label {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 7px 10px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* quickplay host: tiles keep the existing pin grid rhythm. */
 .quick-pin-tile {
   width: 100%;
@@ -167,6 +210,10 @@
   .tile-flip-surface {
     transform: none !important;
   }
+  /* Reduced motion: the back face is never rotated; faces cross-fade. */
+  .tile-face-back {
+    transform: none;
+  }
   .tile-face {
     backface-visibility: visible;
     transition: opacity var(--motion-micro) linear;
@@ -176,5 +223,8 @@
     visibility: visible;
     opacity: 0;
     pointer-events: none;
+  }
+  .tile-cycle-frame {
+    transition: none;
   }
 }

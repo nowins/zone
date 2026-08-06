@@ -251,8 +251,9 @@ export function QuickplayView({
   }, [resolvedPins.length]);
 
   // Play the staggered tile entrance once when the pins first mount, then
-  // release the class so re-renders/drag/edit don't replay the reveal.
-  useEffect(() => {
+  // release the class so re-renders/drag/edit don't replay the reveal. Run in
+  // layout effect so the initial (hidden) state is set before paint.
+  useLayoutEffect(() => {
     const grid = pinsGridRef.current;
     if (!grid) return undefined;
     grid.classList.add("tiles-enter");
@@ -462,7 +463,6 @@ export function QuickplayView({
                   <FlipTile
                     size={item.isWide ? "wide" : "medium"}
                     className="quick-pin-tile"
-                    glass
                     title={`打开 ${item.title}`}
                     paused={editingPins}
                     disabled={editingPins}
