@@ -13,6 +13,7 @@ const appSource = [
   "src/App.tsx",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
+const quickplayBlocksSource = readFileSync("src/utils/quickplayBlocks.ts", "utf8");
 const menuSource = readFileSync("src/components/ContextMenu.tsx", "utf8");
 const quickplayCss = readFileSync("src/styles/quickplay.css", "utf8");
 
@@ -24,7 +25,8 @@ test("quickplay is a keyboard and mouse-wheel accessible horizontal panorama", (
   assert.ok(quickplaySource.includes("viewport.scrollLeft = nextScrollLeft"), "reduced motion keeps the direct jump");
   assert.ok(quickplaySource.includes("spring: SPRING_PRESETS.snappy"), "wheel pans ride the motion kernel spring for inertia");
   assert.ok(quickplaySource.includes("running.retarget(nextScrollLeft)"), "consecutive wheel ticks retarget the in-flight spring");
-  assert.ok(quickplaySource.includes('window.removeEventListener("wheel", handleWheel, true);\n      scrollAnimRef.current.handle?.cancel();'));
+  assert.ok(quickplaySource.includes('window.removeEventListener("wheel", handleWheel, true);'));
+  assert.ok(quickplaySource.includes("scrollAnimRef.current.handle?.cancel();"), "cleanup cancels the in-flight spring");
   assert.ok(quickplaySource.includes("}, [tracks.length, reducedMotion]);"));
   assert.ok(!quickplaySource.includes("handlePanoramaPointerDown"));
   assert.ok(!quickplaySource.includes("handlePanoramaPointerMove"));
@@ -53,7 +55,7 @@ test("home pins persist and support all durable collection entity types", () => 
 });
 
 test("recent albums use persisted addition timestamps instead of alphabetical array position", () => {
-  assert.ok(quickplaySource.includes("albumAddedAt(b, activity) - albumAddedAt(a, activity)"));
+  assert.ok(quickplayBlocksSource.includes("albumAddedAt(b, input.activity) - albumAddedAt(a, input.activity)"));
   assert.ok(!quickplaySource.includes("albums.slice(-6).reverse()"));
 });
 

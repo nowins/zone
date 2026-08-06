@@ -55,6 +55,7 @@ const podcastRustSource = [
   "src-tauri/src/podcast/feed_parse.rs",
   "src-tauri/src/podcast/downloads.rs",
   "src-tauri/src/podcast/network.rs",
+  "src-tauri/src/db/schema.rs",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 
 const frontendSources = sourceFiles("src", /\.(?:ts|tsx)$/);
