@@ -38,6 +38,8 @@ type ResolvedPin = {
   payload: ContextPayload;
   isWide: boolean;
   isSmart: boolean;
+  /** Glanceable live line for the tile back (e.g. "12 首 · 3 天前听过"). */
+  liveLine: string;
 };
 
 let quickplayScrollPosition = 0;
@@ -143,6 +145,24 @@ export function QuickplayView({
     const artistMap = new Map(artists.map((artist) => [artist.artist, artist]));
     const playlistMap = new Map(playlists.map((playlist) => [playlist.id, playlist]));
 
+    const latestActivityAt = (items: Track[]): number | null => {
+      let latest: number | null = null;
+      for (const item of items) {
+        const at = activity[item.id]?.lastPlayedAt;
+        if (at && (!latest || at > latest)) latest = at;
+      }
+      return latest;
+    };
+
+    const liveLineFor = (items: Track[], count: number, fallback: string): string => {
+      const latest = latestActivityAt(items);
+      const countText = count > 0 ? `${count} 首` : fallback;
+      if (!latest) return countText;
+      const days = Math.floor((Date.now() - latest) / 86_400_000);
+      const when = days <= 0 ? "今天听过" : days === 1 ? "昨天听过" : days < 30 ? `${days} 天前听过` : "很久以前听过";
+      return `${countText} · ${when}`;
+    };
+
     return homePins.flatMap<ResolvedPin>((pin) => {
       if (pin.kind === "track") {
         const track = trackMap.get(pin.targetId);
@@ -163,6 +183,7 @@ export function QuickplayView({
           payload,
           isWide: false,
           isSmart: false,
+          liveLine: liveLineFor([track], 0, track.album),
         }];
       }
 
@@ -184,6 +205,7 @@ export function QuickplayView({
           payload,
           isWide: false,
           isSmart: false,
+          liveLine: liveLineFor(album.tracks, album.tracks.length, "专辑"),
         }];
       }
 
@@ -205,6 +227,7 @@ export function QuickplayView({
           payload,
           isWide: true,
           isSmart: false,
+          liveLine: liveLineFor(artist.tracks, artist.tracks.length, "艺术家"),
         }];
       }
 
@@ -233,6 +256,7 @@ export function QuickplayView({
         payload,
         isWide: true,
         isSmart: smart,
+        liveLine: liveLineFor(result.tracks, result.tracks.length, "歌单"),
       }];
     });
   }, [activity, albums, artists, favoriteTrackIds, homePins, playlists, tracks]);
@@ -471,6 +495,7 @@ export function QuickplayView({
                     }}
                     onKeyDown={(event) => handlePinKey(event, item.pin.id)}
                     onContextMenu={(event) => onContextMenu(event, item.payload)}
+                    live={item.isWide || item.tracks.length > 1}
                       front={
                         <>
                           <span className="tile-face-art">
@@ -480,15 +505,10 @@ export function QuickplayView({
                       }
                       back={
                         <>
-                          <span className="tile-back-kicker">{item.isSmart ? "智能" : "已固定"}</span>
+                          <span className="tile-back-kicker">{item.isSmart ? "智能歌单" : "我的音乐"}</span>
                           <strong>{item.title}</strong>
+                          <span className="tile-back-live">{item.liveLine}</span>
                           <small>{item.subtitle}</small>
-                          {item.tracks.length > 0 && (
-                            <span className="tile-back-action">
-                              <Play size={14} fill="currentColor" aria-hidden="true" />
-                              <span>{item.tracks.length} 首</span>
-                            </span>
-                          )}
                         </>
                       }
                     />

@@ -78,6 +78,22 @@ test("flat Metro baseline: no acrylic glass variant, sharp edges", () => {
   assert.ok(!quickplaySource.includes("glass"), "quickplay must not enable a glass prop");
 });
 
+test("tiles flip sparingly and only when there is live content to reveal", () => {
+  // Slow, WP-like cadence (tens of seconds), not a constant blink.
+  assert.ok(flipSource.includes("MIN_INTERVAL_MS = 45_000"));
+  assert.ok(flipSource.includes("MAX_INTERVAL_MS = 110_000"));
+  // A live gate: tiles with nothing to reveal never flip on their own.
+  assert.ok(flipSource.includes("live?: boolean"));
+  assert.ok(/if \(paused \|\| !live\) return undefined;/.test(flipSource));
+  // Quickplay reveals a real glanceable line (recent-play/stats), not a static
+  // "已固定" placeholder.
+  assert.ok(quickplaySource.includes("liveLine"));
+  assert.ok(quickplaySource.includes("tile-back-live"));
+  assert.ok(!quickplaySource.includes("已固定"), "static placeholder must be gone");
+  // The back face is opaque so the cover never bleeds through.
+  assert.ok(/rgba\(16, 16, 18, 0\.97\)/.test(tilesCss));
+});
+
 test("cycle and iconic templates model WP8", () => {
   // Cycle caps at nine frames and cross-fades, jittered per instance.
   assert.ok(cycleSource.includes("MAX_CYCLE_IMAGES"));

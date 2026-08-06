@@ -10,8 +10,10 @@ import type { TileSize } from "./Tile";
 // Total flip is split across the apex; each half stays well inside the
 // sub-260ms content tier so the whole reveal lands under the WP budget.
 const FLIP_HALF_MS = Math.round(MOTION_DURATIONS.content / 2);
-const MIN_INTERVAL_MS = 6_000;
-const MAX_INTERVAL_MS = 14_000;
+// Live tiles flip sparingly and only when there's something to glance at —
+// tens of seconds to minutes, like WP, not a constant blink.
+const MIN_INTERVAL_MS = 45_000;
+const MAX_INTERVAL_MS = 110_000;
 
 function nextDelay(): number {
   return MIN_INTERVAL_MS + Math.random() * (MAX_INTERVAL_MS - MIN_INTERVAL_MS);
@@ -40,6 +42,7 @@ export function FlipTile({
   title,
   paused = false,
   disabled = false,
+  live = true,
 }: {
   size?: TileSize;
   className?: string;
@@ -51,6 +54,8 @@ export function FlipTile({
   title?: string;
   paused?: boolean;
   disabled?: boolean;
+  /** When false the tile never flips on its own (nothing live to reveal). */
+  live?: boolean;
 }) {
   const [showBack, setShowBack] = useState(false);
   const reducedMotion = useReducedMotion();
@@ -59,7 +64,7 @@ export function FlipTile({
   const animationRef = useRef<AnimationHandle | null>(null);
 
   useEffect(() => {
-    if (paused) return undefined;
+    if (paused || !live) return undefined;
     let timer: number | undefined;
     let cancelled = false;
 
@@ -121,7 +126,7 @@ export function FlipTile({
       animationRef.current = null;
       setAngle(0);
     };
-  }, [paused, reducedMotion, showBack]);
+  }, [paused, live, reducedMotion, showBack]);
 
   return (
     <Tile
