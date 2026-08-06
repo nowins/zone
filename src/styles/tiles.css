@@ -1,0 +1,125 @@
+/* Reusable Metro tile system. Self-contained so tiles can be dropped into any
+   surface (quickplay, collection, podcasts) without inheriting page chrome. */
+.tile {
+  position: relative;
+  display: block;
+  padding: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.045);
+  outline: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: transform var(--motion-content) var(--motion-ease-emphasis),
+    filter var(--motion-micro) var(--motion-ease-standard);
+  -webkit-user-drag: none;
+}
+.tile:hover,
+.tile:focus-visible {
+  filter: brightness(1.08);
+}
+.tile.tilt-pressed {
+  transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
+  transition: transform var(--motion-press) var(--motion-ease-standard);
+}
+
+/* Flip tile: front/back faces share one clipped surface; the flip angle is
+   driven per-frame from JS via --tile-flip. */
+.tile-flip {
+  perspective: 900px;
+}
+.tile-flip-surface {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: perspective(900px) rotateX(var(--tile-flip, 0deg));
+}
+.tile-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 10px 12px;
+  backface-visibility: hidden;
+}
+.tile-face-back {
+  transform: rotateX(180deg);
+  background: rgba(0, 0, 0, 0.28);
+}
+.tile-flip.is-front .tile-face-back,
+.tile-flip.is-back .tile-face-front {
+  visibility: hidden;
+}
+.tile-face strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 13px;
+  font-weight: 400;
+}
+.tile-face small {
+  display: block;
+  min-width: 0;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+.tile-face .tile-face-art {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+}
+.tile-face .tile-face-art > .cover,
+.tile-face .tile-face-art > .quick-pin-art,
+.tile-face .tile-face-art .quick-pin-collage {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  margin: 0;
+  outline: 0;
+}
+.tile-back-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+}
+
+/* quickplay host: tiles keep the existing pin grid rhythm. */
+.quick-pin-tile {
+  width: 100%;
+  height: var(--quick-pin-art);
+}
+.quick-pin.wide .quick-pin-tile {
+  grid-column: span 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile,
+  .tile.tilt-pressed {
+    transform: none;
+    transition: opacity var(--motion-instant) linear;
+  }
+  .tile-flip-surface {
+    transform: none !important;
+  }
+  .tile-face {
+    backface-visibility: visible;
+    transition: opacity var(--motion-micro) linear;
+  }
+  .tile-flip.is-front .tile-face-back,
+  .tile-flip.is-back .tile-face-front {
+    visibility: visible;
+    opacity: 0;
+    pointer-events: none;
+  }
+}

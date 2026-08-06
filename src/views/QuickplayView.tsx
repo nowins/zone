@@ -16,6 +16,7 @@ import {
   buildRecentAddedBlock,
 } from "../utils/quickplayBlocks";
 import { pickCoverCandidates } from "../utils/nowPlayingWall";
+import { FlipTile } from "../components/tiles";
 import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type {
   AlbumGroup,
@@ -361,16 +362,6 @@ export function QuickplayView({
     }
   }
 
-  // Metro-style tile tilt: press tilts the pin around the pressed point.
-  function handlePinTiltDown(event: PointerEvent<HTMLButtonElement>) {
-    if (editingPins) return;
-    tiltPressDown(event, ".quick-pin");
-  }
-
-  function clearPinTilt(event: PointerEvent<HTMLButtonElement>) {
-    tiltPressClear(event, ".quick-pin");
-  }
-
   function handleDrop(event: DragEvent<HTMLElement>, targetId: string) {
     if (!editingPins) return;
     event.preventDefault();
@@ -453,36 +444,37 @@ export function QuickplayView({
                   onDrop={(event) => handleDrop(event, item.pin.id)}
                   onContextMenu={(event) => onContextMenu(event, item.payload)}
                 >
-                  <button
-                    className="quick-pin-main"
-                    onClick={() => {
+                  <FlipTile
+                    size={item.isWide ? "wide" : "medium"}
+                    className="quick-pin-tile"
+                    title={`打开 ${item.title}`}
+                    paused={editingPins}
+                    disabled={editingPins}
+                    onPress={() => {
                       if (!editingPins) onOpenPin(item.pin);
                     }}
                     onKeyDown={(event) => handlePinKey(event, item.pin.id)}
-                    onPointerDown={handlePinTiltDown}
-                    onPointerUp={clearPinTilt}
-                    onPointerLeave={clearPinTilt}
-                    onPointerCancel={clearPinTilt}
-                    title={`打开 ${item.title}`}
-                  >
-                    <PinArtwork item={item} index={index} />
-                    <span className="quick-pin-caption">
-                      <strong>{item.title}</strong>
-                      <small>{item.subtitle}</small>
-                    </span>
-                  </button>
-                  {item.tracks.length > 0 && !editingPins && (
-                    <button
-                      className="quick-pin-play"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onPlayTracks(item.tracks);
-                      }}
-                      title={`播放 ${item.title}`}
-                    >
-                      <Play size={18} fill="currentColor" />
-                    </button>
-                  )}
+                    onContextMenu={(event) => onContextMenu(event, item.payload)}
+                      front={
+                        <>
+                          <span className="tile-face-art">
+                            <PinArtwork item={item} index={index} />
+                          </span>
+                        </>
+                      }
+                      back={
+                        <>
+                          <strong>{item.title}</strong>
+                          <small>{item.subtitle}</small>
+                          {item.tracks.length > 0 && (
+                            <span className="tile-back-action">
+                              <Play size={14} fill="currentColor" aria-hidden="true" />
+                              <span>{item.tracks.length} 首</span>
+                            </span>
+                          )}
+                        </>
+                      }
+                    />
                   {editingPins && (
                     <div className="quick-pin-edit-tools">
                       <GripVertical size={17} aria-hidden="true" />

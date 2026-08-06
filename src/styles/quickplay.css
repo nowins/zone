@@ -111,7 +111,9 @@
   min-width: 100%;
   display: inline-grid;
   grid-auto-flow: column dense;
-  grid-template-rows: repeat(3, var(--quick-pin-row));
+  /* Tile captions live inside the tile back face now, so rows are pure art
+     height (no extra caption band). */
+  grid-template-rows: repeat(3, var(--quick-pin-art));
   grid-auto-columns: var(--quick-pin-art);
   gap: 8px 10px;
   align-items: start;
