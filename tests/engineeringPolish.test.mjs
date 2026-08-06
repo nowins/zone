@@ -51,3 +51,24 @@ test("pcm feature extraction path exists for seed enrichment", () => {
   assert.ok(app.includes("musicAnalyzeTrackPcm"));
   assert.ok(lib.includes("music_analyze_track_pcm"));
 });
+
+
+test("close-to-tray setting and titlebar hide path exist", () => {
+  const settings = readFileSync("src/views/SettingsView.tsx", "utf8");
+  const titlebar = readFileSync("src/components/Titlebar.tsx", "utf8");
+  const playbackSettings = readFileSync("src/app/playbackSettings.ts", "utf8");
+  assert.ok(playbackSettings.includes("closeToTray"));
+  assert.ok(settings.includes("关闭到托盘"));
+  assert.ok(titlebar.includes("closeToTray"));
+  assert.ok(titlebar.includes("appWindow.hide()"));
+});
+
+test("system media keys map play/pause/previous/next and debounce repeats", () => {
+  const smtc = readFileSync("src-tauri/src/system_media/windows_impl/smtc.rs", "utf8");
+  const systemMedia = readFileSync("src/hooks/useSystemMedia.ts", "utf8");
+  assert.ok(smtc.includes("SystemMediaTransportControlsButton::Play"));
+  assert.ok(smtc.includes("SystemMediaTransportControlsButton::Pause"));
+  assert.ok(smtc.includes("SystemMediaTransportControlsButton::Previous"));
+  assert.ok(smtc.includes("SystemMediaTransportControlsButton::Next"));
+  assert.ok(systemMedia.includes("lastCommandAtRef"));
+});

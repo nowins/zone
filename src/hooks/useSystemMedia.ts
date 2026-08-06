@@ -59,6 +59,7 @@ export function useSystemMedia({
   });
   const lastTimelineUpdateRef = useRef(0);
   const lastTimelineTrackRef = useRef<string | null>(null);
+  const lastCommandAtRef = useRef(0);
 
   callbacksRef.current = {
     onPlay,
@@ -76,6 +77,10 @@ export function useSystemMedia({
 
     void listen<SystemMediaCommand>("system-media-command", ({ payload }) => {
       const callbacks = callbacksRef.current;
+      // Debounce rapid hardware key repeats so adaptive-previous can observe progress.
+      const now = performance.now();
+      if (payload.action !== "seek" && now - lastCommandAtRef.current < 120) return;
+      lastCommandAtRef.current = now;
       switch (payload.action) {
         case "play":
           callbacks.onPlay();

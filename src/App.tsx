@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Titlebar } from "./components/Titlebar";
 import { AppHeader } from "./components/AppHeader";
 import { CollectionSearchField } from "./components/CollectionSearchField";
@@ -224,6 +225,10 @@ export default function App() {
     restoreSmartDjSession,
     dislikeSmartDjTrack,
     getIsSmartDjActive,
+    queueInsertMode,
+    adaptivePrevious,
+    closeToTray,
+    updatePlaybackBehavior,
     handleTimeUpdate,
     move,
     onEnded,
@@ -615,6 +620,25 @@ export default function App() {
     };
   }, [activePodcastEpisode, progress, togglePlay, move, seek, playNextPodcastEpisode]);
 
+
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void appWindow.onCloseRequested(async (event) => {
+      if (!closeToTray) return;
+      event.preventDefault();
+      await appWindow.hide();
+    }).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [closeToTray]);
+
   useAppHotkeys({
     onTogglePlay: togglePlay,
     onPrevious: () => {
@@ -825,6 +849,7 @@ export default function App() {
       <Titlebar
         isSettings={page === "settings"}
         onOpenSettings={() => navigatePage("settings")}
+        closeToTray={closeToTray}
       />
 
       <main className="workspace">
@@ -1065,6 +1090,8 @@ export default function App() {
             adaptivePrevious={adaptivePrevious}
             onQueueInsertModeChange={(mode) => updatePlaybackBehavior({ queueInsertMode: mode })}
             onAdaptivePreviousChange={(enabled) => updatePlaybackBehavior({ adaptivePrevious: enabled })}
+            closeToTray={closeToTray}
+            onCloseToTrayChange={(enabled) => updatePlaybackBehavior({ closeToTray: enabled })}
             onAddFolder={addFolder}
             onRescan={() => rescan()}
             onClear={() => {

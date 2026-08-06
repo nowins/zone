@@ -4,9 +4,11 @@ import { Minus, Settings2, Square, X } from "lucide-react";
 export function Titlebar({
   isSettings,
   onOpenSettings,
+  closeToTray = true,
 }: {
   isSettings: boolean;
   onOpenSettings: () => void;
+  closeToTray?: boolean;
 }) {
   const appWindow = getCurrentWindow();
 
@@ -29,7 +31,13 @@ export function Titlebar({
         <button onClick={() => appWindow.toggleMaximize()} title="最大化">
           <Square size={12} />
         </button>
-        <button onClick={() => appWindow.close()} title="关闭">
+        <button
+          onClick={() => {
+            if (closeToTray) void appWindow.hide();
+            else void appWindow.close();
+          }}
+          title={closeToTray ? "关闭到托盘" : "关闭"}
+        >
           <X size={15} />
         </button>
       </div>

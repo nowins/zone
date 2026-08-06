@@ -14,8 +14,10 @@ export function SettingsView({
   onToggleMetadataProvider,
   queueInsertMode,
   adaptivePrevious,
+  closeToTray,
   onQueueInsertModeChange,
   onAdaptivePreviousChange,
+  onCloseToTrayChange,
   onAddFolder,
   onRescan,
   onClear,
@@ -27,8 +29,10 @@ export function SettingsView({
   onToggleMetadataProvider: (providerId: string, enabled: boolean) => void;
   queueInsertMode: QueueInsertMode;
   adaptivePrevious: boolean;
+  closeToTray: boolean;
   onQueueInsertModeChange: (mode: QueueInsertMode) => void;
   onAdaptivePreviousChange: (enabled: boolean) => void;
+  onCloseToTrayChange: (enabled: boolean) => void;
   onAddFolder: () => void;
   onRescan: () => void;
   onClear: () => void;
@@ -154,6 +158,23 @@ export function SettingsView({
                 >
                   <span aria-hidden="true" />
                   {adaptivePrevious ? "已启用" : "已关闭"}
+                </button>
+              </div>
+
+              <div className="settings-behavior-row">
+                <div>
+                  <strong>关闭到托盘</strong>
+                  <span>点击窗口关闭时隐藏到托盘，而不是退出应用。</span>
+                </div>
+                <button
+                  className="provider-toggle"
+                  type="button"
+                  role="switch"
+                  aria-checked={closeToTray}
+                  onClick={() => onCloseToTrayChange(!closeToTray)}
+                >
+                  <span aria-hidden="true" />
+                  {closeToTray ? "已启用" : "已关闭"}
                 </button>
               </div>
             </div>

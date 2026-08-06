@@ -3,6 +3,7 @@ export type QueueInsertMode = "play_next" | "append_end";
 export type PlaybackBehaviorSettings = {
   queueInsertMode: QueueInsertMode;
   adaptivePrevious: boolean;
+  closeToTray: boolean;
 };
 
 const STORAGE_KEY = "zone-playback-behavior-v1";
@@ -10,6 +11,7 @@ const STORAGE_KEY = "zone-playback-behavior-v1";
 export const DEFAULT_PLAYBACK_BEHAVIOR: PlaybackBehaviorSettings = {
   queueInsertMode: "append_end",
   adaptivePrevious: true,
+  closeToTray: true,
 };
 
 export function readPlaybackBehaviorSettings(): PlaybackBehaviorSettings {
@@ -20,6 +22,7 @@ export function readPlaybackBehaviorSettings(): PlaybackBehaviorSettings {
     return {
       queueInsertMode: parsed.queueInsertMode === "play_next" ? "play_next" : "append_end",
       adaptivePrevious: parsed.adaptivePrevious !== false,
+      closeToTray: parsed.closeToTray !== false,
     };
   } catch {
     return { ...DEFAULT_PLAYBACK_BEHAVIOR };

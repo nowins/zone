@@ -176,6 +176,9 @@ export function usePlaybackControls({
   const [adaptivePrevious, setAdaptivePrevious] = useState(
     () => readPlaybackBehaviorSettings().adaptivePrevious,
   );
+  const [closeToTray, setCloseToTray] = useState(
+    () => readPlaybackBehaviorSettings().closeToTray,
+  );
   const smartDjSessionRef = useRef<SmartDjSession | null>(null);
   const trackActivityRef = useRef<TrackActivityMap>({});
 
@@ -692,6 +695,7 @@ export function usePlaybackControls({
     const next = patchPlaybackBehaviorSettings(patch);
     setQueueInsertMode(next.queueInsertMode);
     setAdaptivePrevious(next.adaptivePrevious);
+    setCloseToTray(next.closeToTray);
   }
 
   function applyActivityFromServer(trackId: string, activity: ReturnType<typeof createTrackActivity>) {
@@ -1067,6 +1071,7 @@ export function usePlaybackControls({
     getIsSmartDjActive: () => Boolean(smartDjSessionRef.current && smartDjSessionRef.current.status === "playing"),
     queueInsertMode,
     adaptivePrevious,
+    closeToTray,
     updatePlaybackBehavior,
     handleTimeUpdate,
     move,
