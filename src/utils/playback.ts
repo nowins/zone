@@ -1,5 +1,7 @@
 import type { RepeatMode } from "../types";
 
+export type QueueInsertMode = "play_next" | "append_end";
+
 export type QueueMoveResult =
   | { kind: "move"; trackId: string }
   | { kind: "restart"; trackId: string }
@@ -93,4 +95,51 @@ export function reconcileActiveTrack(
   const validIds = new Set(libraryIds);
   if (activeTrackId && validIds.has(activeTrackId)) return activeTrackId;
   return queue.find((id) => validIds.has(id)) ?? libraryIds[0] ?? null;
+}
+
+
+export function insertTracksIntoQueue(
+  queue: string[],
+  activeTrackId: string | null,
+  trackIds: string[],
+  mode: QueueInsertMode,
+) {
+  const incoming = uniqueQueueIds(trackIds);
+  if (incoming.length === 0) return queue;
+
+  if (mode === "append_end") {
+    return uniqueQueueIds([...queue, ...incoming]);
+  }
+
+  // play_next: insert after current track; if current missing, prepend.
+  const withoutIncoming = queue.filter((id) => !incoming.includes(id));
+  const currentIndex = activeTrackId ? withoutIncoming.indexOf(activeTrackId) : -1;
+  if (currentIndex < 0) {
+    return uniqueQueueIds([...incoming, ...withoutIncoming]);
+  }
+  return [
+    ...withoutIncoming.slice(0, currentIndex + 1),
+    ...incoming,
+    ...withoutIncoming.slice(currentIndex + 1),
+  ];
+}
+
+export function resolvePreviousAction(
+  currentTimeSeconds: number,
+  adaptivePrevious: boolean,
+  thresholdSeconds = 3,
+): "restart" | "previous" {
+  if (!adaptivePrevious) return "previous";
+  return currentTimeSeconds > thresholdSeconds ? "restart" : "previous";
+}
+
+function uniqueQueueIds(ids: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const id of ids) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    result.push(id);
+  }
+  return result;
 }

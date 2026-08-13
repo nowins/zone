@@ -4,7 +4,7 @@ use lofty::prelude::{Accessor, ItemKey};
 use lofty::read_from_path;
 use notify::event::{CreateKind, ModifyKind, RemoveKind};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -17,36 +17,36 @@ pub(crate) struct LibraryWatcherState {
   watcher: Mutex<Option<RecommendedWatcher>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct MusicFolder {
-  path: String,
-  name: String,
+  pub path: String,
+  pub name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Track {
-  id: String,
-  path: String,
-  file_name: String,
-  title: String,
-  artist: String,
-  album: String,
-  album_artist: String,
-  track_number: Option<u32>,
-  disc_number: Option<u32>,
-  year: Option<u32>,
-  genres: Vec<String>,
-  duration_seconds: Option<u64>,
-  added_at: Option<u64>,
-  extension: String,
-  cover_path: Option<String>,
+  pub id: String,
+  pub path: String,
+  pub file_name: String,
+  pub title: String,
+  pub artist: String,
+  pub album: String,
+  pub album_artist: String,
+  pub track_number: Option<u32>,
+  pub disc_number: Option<u32>,
+  pub year: Option<u32>,
+  pub genres: Vec<String>,
+  pub duration_seconds: Option<u64>,
+  pub added_at: Option<u64>,
+  pub extension: String,
+  pub cover_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct ScanResult {
-  folders: Vec<String>,
-  tracks: Vec<Track>,
-  skipped: usize,
+  pub folders: Vec<String>,
+  pub tracks: Vec<Track>,
+  pub skipped: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]

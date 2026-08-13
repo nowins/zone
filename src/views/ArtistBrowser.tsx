@@ -148,6 +148,7 @@ export function ArtistBrowser({
                   title: album.album,
                   subtitle: album.artist,
                   tracks: album.tracks,
+                  targetId: album.key,
                 })
               }
             >

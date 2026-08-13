@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { Ban, Heart, Info, ListMusic, ListPlus, Pencil, Pin, PinOff, Play, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Ban, FolderOpen, Heart, Info, ListMusic, ListPlus, Pencil, Pin, PinOff, Play, Radio, SlidersHorizontal, Trash2 } from "lucide-react";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import type { ContextMenuState } from "../types";
 
@@ -8,6 +8,9 @@ export function ContextMenu({
   onClose,
   onPlay,
   onAddToQueue,
+  onPlayNext,
+  onStartSmartDj,
+  onDislikeSmartDj,
   onAddToPlaylist,
   onAddToFavorites,
   onRenamePlaylist,
@@ -15,12 +18,16 @@ export function ContextMenu({
   onExcludeFromSmartPlaylist,
   homePinState,
   onToggleHomePin,
+  onOpenInCollection,
   onInfo,
 }: {
   menu: ContextMenuState;
   onClose: () => void;
   onPlay: () => void;
   onAddToQueue: () => void;
+  onPlayNext: () => void;
+  onStartSmartDj: () => void;
+  onDislikeSmartDj?: () => void;
   onAddToPlaylist: () => void;
   onAddToFavorites: () => void;
   onRenamePlaylist: (playlistId: string) => void;
@@ -28,6 +35,7 @@ export function ContextMenu({
   onExcludeFromSmartPlaylist: (playlistId: string) => void;
   homePinState: "pinned" | "unpinned" | null;
   onToggleHomePin: () => void;
+  onOpenInCollection?: () => void;
   onInfo: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -84,10 +92,24 @@ export function ContextMenu({
           <Play size={17} />
           <span>播放</span>
         </button>
-        <button role="menuitem" onClick={() => run(onAddToQueue)} disabled={menu.payload.tracks.length === 0}>
+        <button role="menuitem" onClick={() => run(onPlayNext)} disabled={menu.payload.tracks.length === 0}>
           <ListPlus size={17} />
-          <span>添加到正在播放</span>
+          <span>下一首播放</span>
         </button>
+        <button role="menuitem" onClick={() => run(onAddToQueue)} disabled={menu.payload.tracks.length === 0}>
+          <ListMusic size={17} />
+          <span>添加到队列末尾</span>
+        </button>
+        <button role="menuitem" onClick={() => run(onStartSmartDj)} disabled={menu.payload.tracks.length === 0}>
+          <Radio size={17} />
+          <span>开始 SmartDJ</span>
+        </button>
+        {onDislikeSmartDj && (
+          <button role="menuitem" onClick={() => run(onDislikeSmartDj)}>
+            <Ban size={17} />
+            <span>SmartDJ 不喜欢这首</span>
+          </button>
+        )}
         {homePinState && (
           <button role="menuitem" onClick={() => run(onToggleHomePin)}>
             {homePinState === "pinned" ? <PinOff size={17} /> : <Pin size={17} />}
@@ -132,6 +154,12 @@ export function ContextMenu({
           <Info size={16} />
           <span>查看信息</span>
         </button>
+        {onOpenInCollection && menu.payload.kind !== "track" && (
+          <button role="menuitem" onClick={() => run(onOpenInCollection)}>
+            <FolderOpen size={16} />
+            <span>在收藏中打开</span>
+          </button>
+        )}
       </div>
     </div>
   );

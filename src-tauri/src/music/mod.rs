@@ -1,0 +1,15 @@
+//! Music library persistence against the unified zone.sqlite database.
+mod commands;
+mod features;
+mod pcm;
+mod radio;
+mod store;
+mod types;
+mod worker;
+
+pub(crate) use commands::*;
+pub(crate) use features::*;
+pub(crate) use radio::*;
+pub(crate) use store::*;
+pub(crate) use types::*;
+pub(crate) use worker::*;

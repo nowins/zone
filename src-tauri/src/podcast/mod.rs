@@ -106,7 +106,7 @@ impl PodcastState {
     fs::create_dir_all(app_data_dir).map_err(|error| format!("无法创建播客数据目录：{error}"))?;
     let downloads_dir = app_data_dir.join("podcast-downloads");
     fs::create_dir_all(&downloads_dir).map_err(|error| format!("无法创建播客下载目录：{error}"))?;
-    let db_path = app_data_dir.join("podcasts.sqlite");
+    let db_path = crate::db::initialize_zone_database(app_data_dir)?;
     let _ = open_database(&db_path)?;
     Ok(Self {
       db_path,
@@ -166,3 +166,4 @@ mod tests {
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }
 }
+

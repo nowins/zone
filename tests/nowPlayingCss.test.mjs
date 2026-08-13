@@ -288,7 +288,11 @@ test("responsive rules no longer reference removed visualizer structures", () =>
 });
 
 function cssRule(source, selector) {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Escape regex metacharacters, then turn real newlines in multi-line
+  // selectors into regex newlines so they still match the CSS source.
+  const escaped = selector
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\r?\n/g, "\\r?\\n");
   const match = source.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([\\s\\S]*?)\\}`));
   assert.ok(match, `missing CSS rule ${selector}`);
   return match[1];

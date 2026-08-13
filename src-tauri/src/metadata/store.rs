@@ -1,135 +1,13 @@
 use super::*;
-use rusqlite::{params, Connection, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) fn open_database(path: &Path) -> Result<Connection, String> {
-  let connection =
-    Connection::open(path).map_err(|error| format!("无法打开音乐信息数据库：{error}"))?;
-  connection
-    .busy_timeout(Duration::from_secs(5))
-    .map_err(|error| format!("无法配置音乐信息数据库：{error}"))?;
-  connection
-    .execute_batch(
-      "
-      PRAGMA foreign_keys = ON;
-      PRAGMA journal_mode = WAL;
-
-      CREATE TABLE IF NOT EXISTS metadata_entities (
-        id TEXT PRIMARY KEY,
-        kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist')),
-        display_name TEXT NOT NULL,
-        provider_id TEXT NOT NULL,
-        provider_name TEXT NOT NULL,
-        source_path TEXT NOT NULL,
-        confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
-        updated_at INTEGER NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS metadata_entity_links (
-        track_id TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist')),
-        entity_id TEXT NOT NULL REFERENCES metadata_entities(id) ON DELETE CASCADE,
-        linked_at INTEGER NOT NULL,
-        PRIMARY KEY(track_id, kind, entity_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS metadata_fields (
-        entity_id TEXT NOT NULL REFERENCES metadata_entities(id) ON DELETE CASCADE,
-        field_name TEXT NOT NULL,
-        value_json TEXT NOT NULL,
-        provider_id TEXT NOT NULL,
-        confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
-        fetched_at INTEGER NOT NULL,
-        expires_at INTEGER,
-        selected INTEGER NOT NULL DEFAULT 1,
-        PRIMARY KEY(entity_id, field_name, provider_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS metadata_provider_bindings (
-        entity_id TEXT NOT NULL REFERENCES metadata_entities(id) ON DELETE CASCADE,
-        provider_id TEXT NOT NULL,
-        external_id TEXT NOT NULL,
-        confidence INTEGER NOT NULL CHECK(confidence BETWEEN 0 AND 100),
-        matched_at INTEGER NOT NULL,
-        PRIMARY KEY(entity_id, provider_id)
-      );
-
-      CREATE TABLE IF NOT EXISTS metadata_artwork_cache (
-        cache_key TEXT PRIMARY KEY,
-        entity_id TEXT REFERENCES metadata_entities(id) ON DELETE CASCADE,
-        provider_id TEXT NOT NULL,
-        source_url TEXT NOT NULL,
-        local_path TEXT NOT NULL,
-        content_type TEXT,
-        byte_length INTEGER,
-        updated_at INTEGER NOT NULL
-      );
-
-      ",
-    )
-    .map_err(|error| format!("无法初始化音乐信息数据库：{error}"))?;
-  migrate_entity_links(&connection)?;
-  connection
-    .execute_batch(
-      "
-      CREATE INDEX IF NOT EXISTS metadata_entity_links_entity
-        ON metadata_entity_links(entity_id);
-      CREATE INDEX IF NOT EXISTS metadata_entity_links_track_kind
-        ON metadata_entity_links(track_id, kind);
-      CREATE INDEX IF NOT EXISTS metadata_fields_entity
-        ON metadata_fields(entity_id);
-      ",
-    )
-    .map_err(|error| format!("无法初始化音乐信息索引：{error}"))?;
-  Ok(connection)
-}
-
-fn migrate_entity_links(connection: &Connection) -> Result<(), String> {
-  let mut statement = connection
-    .prepare("PRAGMA table_info(metadata_entity_links)")
-    .map_err(|error| format!("无法检查音乐信息关联结构：{error}"))?;
-  let columns = statement
-    .query_map([], |row| {
-      Ok((row.get::<_, String>(1)?, row.get::<_, u32>(5)?))
-    })
-    .map_err(|error| format!("无法读取音乐信息关联结构：{error}"))?;
-  let mut primary_key = columns
-    .filter_map(Result::ok)
-    .filter(|(_, position)| *position > 0)
-    .collect::<Vec<_>>();
-  primary_key.sort_by_key(|(_, position)| *position);
-  let primary_key = primary_key
-    .into_iter()
-    .map(|(name, _)| name)
-    .collect::<Vec<_>>();
-  if primary_key != ["track_id", "kind"] {
-    return Ok(());
-  }
-  drop(statement);
-
-  connection
-    .execute_batch(
-      "
-      BEGIN IMMEDIATE;
-      CREATE TABLE metadata_entity_links_v2 (
-        track_id TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist')),
-        entity_id TEXT NOT NULL REFERENCES metadata_entities(id) ON DELETE CASCADE,
-        linked_at INTEGER NOT NULL,
-        PRIMARY KEY(track_id, kind, entity_id)
-      );
-      INSERT INTO metadata_entity_links_v2 (track_id, kind, entity_id, linked_at)
-        SELECT track_id, kind, entity_id, linked_at FROM metadata_entity_links;
-      DROP TABLE metadata_entity_links;
-      ALTER TABLE metadata_entity_links_v2 RENAME TO metadata_entity_links;
-      COMMIT;
-      ",
-    )
-    .map_err(|error| format!("无法升级音乐信息字段合并结构：{error}"))?;
-  Ok(())
+  // Metadata shares the unified zone.sqlite file.
+  crate::db::open_zone_database(path)
 }
 
 pub(crate) fn persist_metadata_candidate(
@@ -237,22 +115,10 @@ pub(crate) fn persist_metadata_candidate(
     transaction
       .execute(
         "
-        DELETE FROM metadata_entity_links
-        WHERE track_id = ?1
-          AND kind = ?2
-          AND entity_id IN (
-            SELECT id FROM metadata_entities WHERE provider_id = ?3
-          )
-        ",
-        params![track.id, candidate.kind.as_str(), candidate.provider_id],
-      )
-      .map_err(|error| format!("无法更新音乐信息来源关联：{error}"))?;
-    transaction
-      .execute(
-        "
         INSERT INTO metadata_entity_links (track_id, kind, entity_id, linked_at)
         VALUES (?1, ?2, ?3, ?4)
-        ON CONFLICT(track_id, kind, entity_id) DO UPDATE SET
+        ON CONFLICT(track_id, kind) DO UPDATE SET
+          entity_id = excluded.entity_id,
           linked_at = excluded.linked_at
         ",
         params![track.id, candidate.kind.as_str(), candidate.id, now],
@@ -292,15 +158,19 @@ pub(crate) fn read_track_overlays(
         entities.kind,
         fields.field_name,
         fields.value_json,
-        fields.provider_id,
+        entities.provider_id,
         entities.provider_name,
         entities.source_path,
-        fields.confidence,
-        fields.fetched_at
+        entities.confidence,
+        entities.updated_at
       FROM metadata_entity_links AS links
       INNER JOIN metadata_entities AS entities ON entities.id = links.entity_id
       INNER JOIN metadata_fields AS fields ON fields.entity_id = entities.id
       WHERE fields.selected = 1
+      ORDER BY
+        links.track_id,
+        CASE entities.kind WHEN 'artist' THEN 1 WHEN 'album' THEN 2 ELSE 3 END,
+        fields.field_name
       ",
     )
     .map_err(|error| format!("无法读取音乐信息：{error}"))?;
@@ -320,8 +190,7 @@ pub(crate) fn read_track_overlays(
     })
     .map_err(|error| format!("无法查询音乐信息：{error}"))?;
 
-  let mut selected_fields: HashMap<(String, String), RankedMetadataField> = HashMap::new();
-  let mut artist_images: HashMap<String, HashMap<String, RankedImageAsset>> = HashMap::new();
+  let mut overlays: HashMap<String, MetadataTrackOverlay> = HashMap::new();
   for row in rows {
     let (
       track_id,
@@ -343,179 +212,27 @@ pub(crate) fn read_track_overlays(
     let Some(effective_field) = effective_track_field(&kind, &field_name) else {
       continue;
     };
-    let source = MetadataFieldSource {
-      field: effective_field.to_string(),
-      provider_id,
-      provider_name,
-      source_path,
-      confidence,
-      updated_at,
-    };
-    let rank = metadata_field_rank(&kind, &source);
-    if effective_field == "artist_image_path" {
-      for path in metadata_image_paths(&value) {
-        let candidate = RankedImageAsset {
-          asset: MetadataImageAsset {
-            path: path.clone(),
-            provider_id: source.provider_id.clone(),
-            provider_name: source.provider_name.clone(),
-            source_path: source.source_path.clone(),
-            confidence: source.confidence,
-            updated_at: source.updated_at,
-          },
-          rank,
-        };
-        let images = artist_images.entry(track_id.clone()).or_default();
-        if images
-          .get(&path)
-          .map_or(true, |current| ranked_image_precedes(&candidate, current))
-        {
-          images.insert(path, candidate);
-        }
-      }
-      continue;
-    }
-    let key = (track_id, effective_field.to_string());
-    let candidate = RankedMetadataField { value, source, rank };
-    if selected_fields
-      .get(&key)
-      .map_or(true, |current| ranked_field_precedes(&candidate, current))
-    {
-      selected_fields.insert(key, candidate);
-    }
-  }
-
-  let mut overlays: HashMap<String, MetadataTrackOverlay> = HashMap::new();
-  for ((track_id, field), selected) in selected_fields {
     let overlay = overlays
       .entry(track_id.clone())
       .or_insert_with(|| MetadataTrackOverlay {
         track_id,
         ..MetadataTrackOverlay::default()
       });
-    if apply_overlay_value(overlay, &field, &selected.value) {
-      overlay.sources.push(selected.source);
-    }
-  }
-  for (track_id, images) in artist_images {
-    let overlay = overlays
-      .entry(track_id.clone())
-      .or_insert_with(|| MetadataTrackOverlay {
-        track_id,
-        ..MetadataTrackOverlay::default()
+    if apply_overlay_value(overlay, effective_field, &value) {
+      overlay.sources.push(MetadataFieldSource {
+        field: effective_field.to_string(),
+        provider_id,
+        provider_name,
+        source_path,
+        confidence,
+        updated_at,
       });
-    let mut images = images.into_values().collect::<Vec<_>>();
-    images.sort_by(|left, right| compare_image_rank(right, left));
-    overlay.artist_images = images
-      .into_iter()
-      .map(|image| image.asset)
-      .collect();
-    overlay.artist_image_path = overlay
-      .artist_images
-      .first()
-      .map(|image| image.path.clone());
-    overlay.sources.extend(overlay.artist_images.iter().map(|image| MetadataFieldSource {
-      field: "artist_image_path".to_string(),
-      provider_id: image.provider_id.clone(),
-      provider_name: image.provider_name.clone(),
-      source_path: image.source_path.clone(),
-      confidence: image.confidence,
-      updated_at: image.updated_at,
-    }));
-  }
-  for overlay in overlays.values_mut() {
-    overlay.sources.sort_by(|left, right| {
-      left
-        .field
-        .cmp(&right.field)
-        .then_with(|| metadata_provider_priority(&right.provider_id).cmp(&metadata_provider_priority(&left.provider_id)))
-        .then_with(|| right.confidence.cmp(&left.confidence))
-        .then_with(|| right.updated_at.cmp(&left.updated_at))
-    });
+    }
   }
 
   let mut overlays: Vec<_> = overlays.into_values().collect();
   overlays.sort_by(|left, right| left.track_id.cmp(&right.track_id));
   Ok(overlays)
-}
-
-type MetadataFieldRank = (u8, u8, u8, i64);
-
-#[derive(Clone)]
-struct RankedMetadataField {
-  value: Value,
-  source: MetadataFieldSource,
-  rank: MetadataFieldRank,
-}
-
-struct RankedImageAsset {
-  asset: MetadataImageAsset,
-  rank: MetadataFieldRank,
-}
-
-fn metadata_provider_priority(provider_id: &str) -> u8 {
-  match provider_id {
-    MANUAL_METADATA_PROVIDER_ID => 3,
-    LOCAL_SIDECAR_PROVIDER_ID => 2,
-    _ => 1,
-  }
-}
-
-fn metadata_kind_priority(kind: &str) -> u8 {
-  match kind {
-    "track" => 3,
-    "album" => 2,
-    "artist" => 1,
-    _ => 0,
-  }
-}
-
-fn metadata_field_rank(kind: &str, source: &MetadataFieldSource) -> MetadataFieldRank {
-  (
-    metadata_provider_priority(&source.provider_id),
-    metadata_kind_priority(kind),
-    source.confidence,
-    source.updated_at,
-  )
-}
-
-fn ranked_field_precedes(candidate: &RankedMetadataField, current: &RankedMetadataField) -> bool {
-  candidate.rank > current.rank
-    || (candidate.rank == current.rank
-      && candidate.source.provider_id < current.source.provider_id)
-}
-
-fn ranked_image_precedes(candidate: &RankedImageAsset, current: &RankedImageAsset) -> bool {
-  candidate.rank > current.rank
-    || (candidate.rank == current.rank
-      && candidate.asset.provider_id < current.asset.provider_id)
-}
-
-fn compare_image_rank(
-  left: &RankedImageAsset,
-  right: &RankedImageAsset,
-) -> std::cmp::Ordering {
-  left
-    .rank
-    .cmp(&right.rank)
-    .then_with(|| right.asset.provider_id.cmp(&left.asset.provider_id))
-    .then_with(|| right.asset.path.cmp(&left.asset.path))
-}
-
-fn metadata_image_paths(value: &Value) -> Vec<String> {
-  match value {
-    Value::String(path) if !path.trim().is_empty() => vec![path.trim().to_string()],
-    Value::String(_) => Vec::new(),
-    Value::Array(paths) => paths
-      .iter()
-      .filter_map(Value::as_str)
-      .map(str::trim)
-      .filter(|path| !path.is_empty())
-      .map(ToString::to_string)
-      .take(8)
-      .collect(),
-    _ => Vec::new(),
-  }
 }
 
 fn effective_track_field<'a>(kind: &str, field_name: &'a str) -> Option<&'a str> {
@@ -535,9 +252,7 @@ fn effective_track_field<'a>(kind: &str, field_name: &'a str) -> Option<&'a str>
     ("album", "genres") => Some("genres"),
     ("album", "album_cover_path") => Some("album_cover_path"),
     ("artist", "name") => Some("artist"),
-    ("artist", "artist_image_path") | ("artist", "artist_image_paths") => {
-      Some("artist_image_path")
-    }
+    ("artist", "artist_image_path") => Some("artist_image_path"),
     ("artist", "biography") => Some("artist_biography"),
     _ => None,
   }
@@ -616,141 +331,77 @@ pub(crate) fn read_context_metadata(
   }
   let requested: HashSet<&str> = track_ids.iter().map(String::as_str).collect();
   let connection = open_database(&state.db_path)?;
+  let mut link_statement = connection
+    .prepare("SELECT track_id, entity_id FROM metadata_entity_links WHERE kind = ?1")
+    .map_err(|error| format!("无法读取音乐信息关联：{error}"))?;
+  let links = link_statement
+    .query_map(params![kind.as_str()], |row| {
+      Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })
+    .map_err(|error| format!("无法查询音乐信息关联：{error}"))?;
+  let mut counts: HashMap<String, usize> = HashMap::new();
+  for link in links {
+    let (track_id, entity_id) =
+      link.map_err(|error| format!("无法解析音乐信息关联：{error}"))?;
+    if requested.contains(track_id.as_str()) {
+      *counts.entry(entity_id).or_default() += 1;
+    }
+  }
+  let Some((entity_id, _)) = counts.into_iter().max_by_key(|(_, count)| *count) else {
+    return Ok(None);
+  };
+  let entity = connection
+    .query_row(
+      "
+      SELECT provider_id, provider_name, source_path, confidence, updated_at
+      FROM metadata_entities
+      WHERE id = ?1 AND kind = ?2
+      ",
+      params![entity_id, kind.as_str()],
+      |row| {
+        Ok((
+          row.get::<_, String>(0)?,
+          row.get::<_, String>(1)?,
+          row.get::<_, String>(2)?,
+          row.get::<_, u8>(3)?,
+          row.get::<_, i64>(4)?,
+        ))
+      },
+    )
+    .optional()
+    .map_err(|error| format!("无法读取音乐信息实体：{error}"))?;
+  let Some((provider_id, provider_name, source_path, confidence, updated_at)) = entity else {
+    return Ok(None);
+  };
+
   let mut field_statement = connection
     .prepare(
       "
-      SELECT
-        links.track_id,
-        entities.id,
-        fields.field_name,
-        fields.value_json,
-        fields.provider_id,
-        entities.provider_name,
-        entities.source_path,
-        fields.confidence,
-        fields.fetched_at
-      FROM metadata_entity_links AS links
-      INNER JOIN metadata_entities AS entities ON entities.id = links.entity_id
-      INNER JOIN metadata_fields AS fields ON fields.entity_id = entities.id
-      WHERE links.kind = ?1 AND fields.selected = 1
+      SELECT field_name, value_json
+      FROM metadata_fields
+      WHERE entity_id = ?1 AND selected = 1
+      ORDER BY field_name
       ",
     )
     .map_err(|error| format!("无法读取音乐信息字段：{error}"))?;
   let rows = field_statement
-    .query_map(params![kind.as_str()], |row| {
-      Ok((
-        row.get::<_, String>(0)?,
-        row.get::<_, String>(1)?,
-        row.get::<_, String>(2)?,
-        row.get::<_, String>(3)?,
-        row.get::<_, String>(4)?,
-        row.get::<_, String>(5)?,
-        row.get::<_, String>(6)?,
-        row.get::<_, u8>(7)?,
-        row.get::<_, i64>(8)?,
-      ))
+    .query_map(params![entity_id], |row| {
+      Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })
     .map_err(|error| format!("无法查询音乐信息字段：{error}"))?;
-  let mut entity_ids = HashSet::new();
-  let mut selected_fields: HashMap<String, RankedMetadataField> = HashMap::new();
+  let mut fields = Vec::new();
   for row in rows {
-    let (
-      track_id,
-      entity_id,
-      field_name,
-      value_json,
-      provider_id,
-      provider_name,
-      source_path,
-      confidence,
-      updated_at,
-    ) =
+    let (key, value_json) =
       row.map_err(|error| format!("无法解析音乐信息字段：{error}"))?;
-    if !requested.contains(track_id.as_str()) {
-      continue;
-    }
     let Ok(value) = serde_json::from_str::<Value>(&value_json) else {
       continue;
     };
-    entity_ids.insert(entity_id);
-    let field = if field_name == "artist_image_paths" {
-      "artist_image_path".to_string()
-    } else {
-      field_name
-    };
-    let value = if field == "artist_image_path" {
-      metadata_image_paths(&value)
-        .into_iter()
-        .next()
-        .map(Value::String)
-        .unwrap_or(Value::Null)
-    } else {
-      value
-    };
-    if value.is_null() {
-      continue;
-    }
-    let source = MetadataFieldSource {
-      field: field.clone(),
-      provider_id,
-      provider_name,
-      source_path,
-      confidence,
-      updated_at,
-    };
-    let candidate = RankedMetadataField {
-      value,
-      rank: metadata_field_rank(kind.as_str(), &source),
-      source,
-    };
-    if selected_fields
-      .get(&field)
-      .map_or(true, |current| ranked_field_precedes(&candidate, current))
-    {
-      selected_fields.insert(field, candidate);
-    }
+    fields.push(MetadataCandidateField {
+      label: field_label(&key).to_string(),
+      value: display_value(&value),
+      key,
+    });
   }
-
-  if selected_fields.is_empty() {
-    return Ok(None);
-  }
-  let mut selected_fields = selected_fields.into_iter().collect::<Vec<_>>();
-  selected_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
-  let fields = selected_fields
-    .iter()
-    .map(|(key, selected)| MetadataCandidateField {
-      label: field_label(key).to_string(),
-      value: display_value(&selected.value),
-      key: key.clone(),
-    })
-    .collect::<Vec<_>>();
-  let sources = selected_fields
-    .into_iter()
-    .map(|(_, selected)| selected.source)
-    .collect::<Vec<_>>();
-  let provider_ids = sources
-    .iter()
-    .map(|source| source.provider_id.as_str())
-    .collect::<HashSet<_>>();
-  let single_source = (provider_ids.len() == 1).then(|| &sources[0]);
-  let provider_id = single_source
-    .map(|source| source.provider_id.clone())
-    .unwrap_or_else(|| "field-merge".to_string());
-  let provider_name = single_source
-    .map(|source| source.provider_name.clone())
-    .unwrap_or_else(|| "多个来源".to_string());
-  let source_path = single_source
-    .map(|source| source.source_path.clone())
-    .unwrap_or_else(|| "按字段合并".to_string());
-  let confidence = sources.iter().map(|source| source.confidence).max().unwrap_or(0);
-  let updated_at = sources.iter().map(|source| source.updated_at).max().unwrap_or(0);
-  let mut entity_ids = entity_ids.into_iter().collect::<Vec<_>>();
-  entity_ids.sort();
-  let entity_id = if entity_ids.len() == 1 {
-    entity_ids.remove(0)
-  } else {
-    format!("field-merge:{}", kind.as_str())
-  };
 
   Ok(Some(MetadataContextRecord {
     entity_id,
@@ -761,7 +412,6 @@ pub(crate) fn read_context_metadata(
     confidence,
     updated_at,
     fields,
-    sources,
   }))
 }
 

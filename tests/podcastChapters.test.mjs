@@ -29,6 +29,7 @@ const viewSource = [
   "src/views/podcast/components/EpisodeDetail.tsx",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
+const modelSource = readFileSync("src/views/podcast/usePodcastViewModel.ts", "utf8");
 const rustSource = [
   "src-tauri/src/podcast/mod.rs",
   "src-tauri/src/podcast/feed_parse.rs",
@@ -73,10 +74,14 @@ test("episode detail loads chapters only after the disclosure is opened", () => 
   assert.match(loadSource, /chapterRequestRef\.current !== requestId/);
   const detailLoadStart = viewSource.indexOf("const loadEpisodeDetail = useCallback");
   const detailLoadEnd = viewSource.indexOf("\n\n  const applyEpisodeUpdate", detailLoadStart);
-  assert.doesNotMatch(
-    viewSource.slice(detailLoadStart, detailLoadEnd),
-    /getEpisodeChapters|podcast_get_episode_chapters/,
+  // Scope the check to usePodcastViewModel: api.ts (also in viewSource) wraps
+  // getEpisodeChapters after loadEpisodeDetail, which would otherwise fall
+  // inside the naive slice boundary and trip a false positive.
+  const detailInModel = modelSource.slice(
+    modelSource.indexOf("const loadEpisodeDetail = useCallback"),
   );
+  const detailBody = detailInModel.slice(0, detailInModel.indexOf("\n  const "));
+  assert.doesNotMatch(detailBody, /getEpisodeChapters|podcast_get_episode_chapters/);
   assert.match(viewSource, /"podcast_get_episode_chapters"/);
   assert.match(
     viewSource,

@@ -6,19 +6,30 @@
   width: 100%;
   height: calc(100% - 78px);
   min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 36% 76% at 55% 60%, rgba(112, 14, 61, 0.3) 0%, rgba(74, 8, 43, 0.17) 47%, rgba(11, 7, 12, 0) 82%),
+    radial-gradient(ellipse 30% 60% at 78% 64%, rgba(92, 10, 52, 0.14) 0%, rgba(11, 7, 12, 0) 78%);
+  /* Opacity-only entrance: the page travel animation was carrying the large
+     ghost type from mid-screen into its corner on every cold start. */
+  animation: quickplay-fade-in var(--motion-page) var(--motion-ease-entrance) both;
+}
+
+.quickplay-viewport {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   scroll-snap-type: none;
   scroll-padding-inline: 16px;
-  background:
-    radial-gradient(ellipse 36% 76% at 55% 60%, rgba(112, 14, 61, 0.3) 0%, rgba(74, 8, 43, 0.17) 47%, rgba(11, 7, 12, 0) 82%),
-    radial-gradient(ellipse 30% 60% at 78% 64%, rgba(92, 10, 52, 0.14) 0%, rgba(11, 7, 12, 0) 78%);
-  animation: motion-page-enter var(--motion-page) var(--motion-ease-entrance) both;
 }
 
-.quickplay::-webkit-scrollbar {
+.quickplay-viewport::-webkit-scrollbar {
   display: none;
 }
 
@@ -26,14 +37,16 @@
   position: relative;
   width: max-content;
   min-width: 100%;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: clamp(52px, 5vw, 78px);
-  padding: clamp(54px, 7vh, 74px) max(14vw, 180px) 22px 16px;
+  padding: clamp(42px, 5.5vh, 64px) max(14vw, 180px) 18px 16px;
 }
 
 .quickplay-ghost {
+  /* This is a sibling of the scroll viewport, so scrollLeft can never move it. */
   position: absolute;
   z-index: 0;
   top: clamp(6px, 1vh, 14px);
@@ -45,13 +58,16 @@
   letter-spacing: -0.07em;
   white-space: nowrap;
   pointer-events: none;
-  will-change: transform;
 }
 
 .quick-group {
   position: relative;
   z-index: 1;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   flex: none;
   scroll-snap-align: start;
 }
@@ -80,9 +96,9 @@
 
 .quick-pins h2 {
   color: #fff;
-  font-size: clamp(60px, 6.3vw, 92px);
-  line-height: 0.72;
-  letter-spacing: -0.055em;
+  font-size: clamp(42px, 4vw, 58px);
+  line-height: 0.9;
+  letter-spacing: -0.04em;
 }
 
 .quick-pins-edit {
@@ -111,7 +127,9 @@
   min-width: 100%;
   display: inline-grid;
   grid-auto-flow: column dense;
-  grid-template-rows: repeat(3, var(--quick-pin-row));
+  /* Tile captions live inside the tile back face now, so rows are pure art
+     height (no extra caption band). */
+  grid-template-rows: repeat(3, var(--quick-pin-art));
   grid-auto-columns: var(--quick-pin-art);
   gap: 8px 10px;
   align-items: start;
@@ -172,28 +190,13 @@
   transition: filter var(--motion-micro) var(--motion-ease-standard);
 }
 
-.quick-pin-art > .cover,
-.quick-pin-collage > .cover {
+.quick-pin-art > .cover {
   width: 100%;
   height: 100%;
   aspect-ratio: auto;
   margin: 0;
   outline: 0;
   -webkit-user-drag: none;
-}
-
-.quick-pin-collage {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
-}
-
-.quick-pin-collage.count-2 {
-  grid-template-rows: 1fr;
-}
-
-.quick-pin-collage.count-3 > .cover:first-child {
-  grid-row: 1 / span 2;
 }
 
 .quick-pin-main:hover .quick-pin-art,
@@ -316,8 +319,10 @@
 
 .quick-continue,
 .quick-recent,
-.quick-history {
-  padding-top: 28px;
+.quick-history,
+.quick-most,
+.quick-forgotten {
+  padding-top: 18px;
 }
 
 .quick-continue {
@@ -336,6 +341,42 @@
 
 .quick-heading:hover h2 {
   color: #fff;
+}
+
+/* WP-style panorama sections: the page only pans horizontally; dense
+   auto-blocks keep their own vertical scrollports under the section title. */
+.quick-section-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.quick-section-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.quick-section-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.quick-section-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+
+.quick-section-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.quick-pins-grid,
+.quick-feature,
+.history-layout {
+  min-height: 0;
 }
 
 .quick-feature,
@@ -455,10 +496,39 @@
   width: clamp(360px, 31vw, 430px);
 }
 
+.quick-most,
+.quick-forgotten {
+  width: clamp(280px, 24vw, 340px);
+}
+
 .quick-mosaic {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px 8px;
+}
+
+.quick-most .quick-mosaic,
+.quick-forgotten .quick-mosaic {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 8px;
+}
+
+.quick-most .quick-album > button,
+.quick-forgotten .quick-album > button,
+.quick-recent .quick-album > button,
+.history-feature > button,
+.history-stack > button {
+  min-width: 0;
+}
+
+.quick-most .cover,
+.quick-forgotten .cover,
+.quick-recent .cover,
+.history-feature .cover,
+.history-stack .cover {
+  width: 100%;
+  aspect-ratio: 1;
+  height: auto;
 }
 
 .quick-album strong {
@@ -514,26 +584,31 @@
 }
 
 .quickplay-empty {
-  display: grid;
-  align-items: center;
-  justify-items: center;
   overflow: hidden;
+}
+
+.quickplay-empty-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
   text-align: center;
 }
 
-.quickplay-empty h1 {
-  margin-bottom: 32px;
-  color: rgba(247, 242, 246, 0.16);
-  font-size: clamp(90px, 16vw, 220px);
-}
-
-.quickplay-empty button {
+.quickplay-empty-content button {
   padding: 12px 0;
   color: var(--muted);
   font-size: 19px;
   border-bottom: 2px solid var(--accent);
 }
 
-.quickplay-empty button:hover {
+.quickplay-empty-content button:hover {
   color: #fff;
+}
+
+@keyframes quickplay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }

@@ -2,6 +2,10 @@ import { ChevronDown, ChevronUp, FileJson2, Folder, FolderPlus, Globe2, Music2, 
 import type { MetadataProviderDescriptor, MusicFolder } from "../types";
 import { useLyricsProviderSettings } from "../hooks/useLyricsProviderSettings";
 import { MetroLoader } from "../components/MetroLoader";
+import type { QueueInsertMode } from "../app/playbackSettings";
+import { musicAnalyzeFeatures, musicFeatureStatus, type FeatureJobStatus } from "../app/musicLibraryApi";
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 export function SettingsView({
   folders,
@@ -9,6 +13,12 @@ export function SettingsView({
   isScanning,
   metadataProviders,
   onToggleMetadataProvider,
+  queueInsertMode,
+  adaptivePrevious,
+  closeToTray,
+  onQueueInsertModeChange,
+  onAdaptivePreviousChange,
+  onCloseToTrayChange,
   onAddFolder,
   onRescan,
   onClear,
@@ -18,12 +28,40 @@ export function SettingsView({
   isScanning: boolean;
   metadataProviders: MetadataProviderDescriptor[];
   onToggleMetadataProvider: (providerId: string, enabled: boolean) => void;
+  queueInsertMode: QueueInsertMode;
+  adaptivePrevious: boolean;
+  closeToTray: boolean;
+  onQueueInsertModeChange: (mode: QueueInsertMode) => void;
+  onAdaptivePreviousChange: (enabled: boolean) => void;
+  onCloseToTrayChange: (enabled: boolean) => void;
   onAddFolder: () => void;
   onRescan: () => void;
   onClear: () => void;
 }) {
   const folderCount = folders.length;
   const { configs, providers, setEnabled, move } = useLyricsProviderSettings();
+  const [featureStatus, setFeatureStatus] = useState<FeatureJobStatus | null>(null);
+  const [featureBusy, setFeatureBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void musicFeatureStatus()
+      .then((status) => {
+        if (!cancelled) setFeatureStatus(status);
+      })
+      .catch(() => undefined);
+    let unlisten: (() => void) | undefined;
+    void listen<FeatureJobStatus>("feature-status-changed", ({ payload }) => {
+      if (!cancelled) setFeatureStatus(payload);
+    }).then((stop) => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
   const configById = new Map(configs.map((config) => [config.id, config]));
   const orderedProviders = [...providers].sort((left, right) => (
     (configById.get(left.id)?.priority ?? left.defaultPriority)
@@ -76,6 +114,116 @@ export function SettingsView({
                   </div>
                 ))
               )}
+            </div>
+          </section>
+
+
+          <section className="settings-playback" aria-labelledby="playback-behavior-heading">
+            <header className="settings-section-heading">
+              <div>
+                <span className="settings-kicker">播放</span>
+                <h2 id="playback-behavior-heading">播放行为</h2>
+                <p>调整加入队列的默认位置，以及“上一首”在进度靠后时是否重播当前曲目。</p>
+              </div>
+            </header>
+
+            <div className="settings-behavior-list">
+              <div className="settings-behavior-row">
+                <div>
+                  <strong>加入队列</strong>
+                  <span>默认把歌曲放到“下一首”或“队列末尾”。右键菜单仍可临时选择另一种方式。</span>
+                </div>
+                <div className="settings-segmented" role="group" aria-label="加入队列方式">
+                  <button
+                    type="button"
+                    className={queueInsertMode === "play_next" ? "is-active" : undefined}
+                    aria-pressed={queueInsertMode === "play_next"}
+                    onClick={() => onQueueInsertModeChange("play_next")}
+                  >
+                    下一首
+                  </button>
+                  <button
+                    type="button"
+                    className={queueInsertMode === "append_end" ? "is-active" : undefined}
+                    aria-pressed={queueInsertMode === "append_end"}
+                    onClick={() => onQueueInsertModeChange("append_end")}
+                  >
+                    队列末尾
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-behavior-row">
+                <div>
+                  <strong>智能上一首</strong>
+                  <span>播放超过约 3 秒后再按上一首，会回到当前歌曲开头。</span>
+                </div>
+                <button
+                  className="provider-toggle"
+                  type="button"
+                  role="switch"
+                  aria-checked={adaptivePrevious}
+                  onClick={() => onAdaptivePreviousChange(!adaptivePrevious)}
+                >
+                  <span aria-hidden="true" />
+                  {adaptivePrevious ? "已启用" : "已关闭"}
+                </button>
+              </div>
+
+              <div className="settings-behavior-row">
+                <div>
+                  <strong>关闭到托盘</strong>
+                  <span>点击窗口关闭时隐藏到托盘，而不是退出应用。</span>
+                </div>
+                <button
+                  className="provider-toggle"
+                  type="button"
+                  role="switch"
+                  aria-checked={closeToTray}
+                  onClick={() => onCloseToTrayChange(!closeToTray)}
+                >
+                  <span aria-hidden="true" />
+                  {closeToTray ? "已启用" : "已关闭"}
+                </button>
+              </div>
+            </div>
+          </section>
+
+
+          <section className="settings-smartdj" aria-labelledby="smartdj-features-heading">
+            <header className="settings-section-heading">
+              <div>
+                <span className="settings-kicker">SmartDJ</span>
+                <h2 id="smartdj-features-heading">听感分析</h2>
+                <p>后台会为曲库建立特征，用于更接近“听感相似”的电台推荐。</p>
+              </div>
+              <button
+                className="settings-add-folder"
+                type="button"
+                disabled={featureBusy}
+                onClick={() => {
+                  setFeatureBusy(true);
+                  void musicAnalyzeFeatures(120)
+                    .then((status) => setFeatureStatus(status))
+                    .finally(() => setFeatureBusy(false));
+                }}
+              >
+                <span>{featureBusy ? "已加入分析队列" : "立即分析"}</span>
+              </button>
+            </header>
+            <div className="settings-behavior-list">
+              <div className="settings-behavior-row">
+                <div>
+                  <strong>特征覆盖</strong>
+                  <span>
+                    {featureStatus
+                      ? featureStatus.pending + featureStatus.running > 0
+                        ? `分析中 ${featureStatus.done} / 共 ${featureStatus.totalTracks} 首`
+                        : `已完成 ${featureStatus.done} / 共 ${featureStatus.totalTracks} 首${featureStatus.failed > 0 ? `，失败 ${featureStatus.failed}` : ""}`
+                      : "正在读取分析状态…"}
+                  </span>
+                </div>
+              </div>
             </div>
           </section>
 

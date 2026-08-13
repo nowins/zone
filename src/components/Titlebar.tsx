@@ -4,9 +4,11 @@ import { Minus, Settings2, Square, X } from "lucide-react";
 export function Titlebar({
   isSettings,
   onOpenSettings,
+  closeToTray = true,
 }: {
   isSettings: boolean;
   onOpenSettings: () => void;
+  closeToTray?: boolean;
 }) {
   const appWindow = getCurrentWindow();
 
@@ -29,7 +31,38 @@ export function Titlebar({
         <button onClick={() => appWindow.toggleMaximize()} title="最大化">
           <Square size={12} />
         </button>
-        <button onClick={() => appWindow.close()} title="关闭">
+        <button
+          onClick={() => {
+            void (async () => {
+              try {
+                if (closeToTray) await appWindow.hide();
+                else {
+                  // Prefer destroy so a lingering closeRequested interceptor
+                  // cannot soft-swallow the exit when tray mode is off.
+                  try {
+                    await appWindow.destroy();
+                  } catch {
+                    await appWindow.close();
+                  }
+                }
+              } catch (error) {
+                // hide may be denied if the capability is missing; always keep
+                // a real exit path so the window control never becomes a no-op.
+                if (import.meta.env.DEV) console.warn("[titlebar] close failed", error);
+                try {
+                  await appWindow.destroy();
+                } catch {
+                  try {
+                    await appWindow.close();
+                  } catch {
+                    // ignore tertiary failure
+                  }
+                }
+              }
+            })();
+          }}
+          title={closeToTray ? "关闭到托盘" : "关闭"}
+        >
           <X size={15} />
         </button>
       </div>

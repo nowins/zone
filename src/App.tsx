@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Titlebar } from "./components/Titlebar";
 import { AppHeader } from "./components/AppHeader";
 import { CollectionSearchField } from "./components/CollectionSearchField";
@@ -19,10 +21,24 @@ import { PodcastNowPlayingView } from "./views/PodcastNowPlayingView";
 import { SettingsView } from "./views/SettingsView";
 import { PodcastView } from "./views/PodcastView";
 import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
+import {
+  musicClearLibrary,
+  musicGetLibrarySnapshot,
+  musicImportLegacyPlayerState,
+  musicSaveHomePins,
+  musicSavePlaybackState,
+  musicSavePlaylists,
+  musicSaveTrackActivity,
+  musicAnalyzeFeatures,
+  musicListTrackFeatures,
+  musicGetRadioSession,
+} from "./app/musicLibraryApi";
 import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
+import { seedFromTracks } from "./utils/smartDj";
 import { homePinStateForPayload, moveHomePin, normalizeHomePins, shiftHomePin } from "./utils/homePins";
 import { resolveSearchSurface } from "./utils/collectionSearch";
 import { useSystemMedia } from "./hooks/useSystemMedia";
+import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useNavigation, type NowPlayingTargets } from "./hooks/useNavigation";
 import { useMusicLibrary } from "./hooks/useMusicLibrary";
 import { useMetadataEnrichment } from "./hooks/useMetadataEnrichment";
@@ -63,6 +79,7 @@ export default function App() {
   const [playlistDialog, setPlaylistDialog] = useState<PlaylistDialogState | null>(null);
   const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [featureVectors, setFeatureVectors] = useState<Record<string, number[]>>({});
   const actionNoticeTimerRef = useRef<number | null>(null);
 
   function showActionNotice(message: string) {
@@ -201,6 +218,15 @@ export default function App() {
     playTrack,
     playTracks,
     appendToQueue,
+    playNext,
+    startSmartDj,
+    restoreSmartDjSession,
+    dislikeSmartDjTrack,
+    getIsSmartDjActive,
+    queueInsertMode,
+    adaptivePrevious,
+    closeToTray,
+    updatePlaybackBehavior,
     handleTimeUpdate,
     move,
     onEnded,
@@ -227,6 +253,12 @@ export default function App() {
     tracks,
     restored,
     setTrackActivity,
+    getSmartDjContext: () => ({
+      tracks,
+      activity: trackActivity,
+      favoriteTrackIds,
+      featureVectors,
+    }),
     activeTrackId,
     setActiveTrackId,
     queue,
@@ -267,7 +299,7 @@ export default function App() {
     toggleFavorite,
     toggleFavoriteTrack,
     toggleHomePin,
-    openHomePin,
+    openPayloadInCollection,
     openCreatePlaylistDialog,
     openCreateSmartPlaylist,
     openSmartPlaylistEditor,
@@ -281,7 +313,6 @@ export default function App() {
     showActionNotice,
     tracks,
     restored,
-    playTrack,
     navigateCollection,
     setSelectedAlbumKey,
     setSelectedArtistName,
@@ -314,61 +345,164 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) {
-      setRestored(true);
-      return;
+    let cancelled = false;
+
+    async function restoreLibrary() {
+      try {
+        let snapshot = await musicGetLibrarySnapshot();
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (!snapshot.hasLibrary && saved) {
+          try {
+            const legacy = JSON.parse(saved);
+            snapshot = await musicImportLegacyPlayerState(legacy);
+            localStorage.removeItem(STORAGE_KEY);
+          } catch (error) {
+            if (import.meta.env.DEV) console.warn("[library] legacy import failed", error);
+            localStorage.removeItem(STORAGE_KEY);
+          }
+        } else if (saved) {
+          // DB is source of truth once populated.
+          localStorage.removeItem(STORAGE_KEY);
+        }
+
+        if (cancelled) return;
+
+        setFolders(snapshot.folders ?? []);
+        setTracks(snapshot.tracks ?? []);
+        setActiveTrackId(snapshot.playback.activeTrackId ?? null);
+        setQueue(snapshot.playback.queue ?? []);
+        setPlayHistory(snapshot.playback.playHistory ?? []);
+        setTrackActivity(snapshot.trackActivity ?? {});
+        setVolume(snapshot.playback.volume ?? 0.8);
+        setShuffle(snapshot.playback.shuffle ?? false);
+        setRepeat(snapshot.playback.repeat ?? "off");
+        setPlaylists(normalizePlaylists(snapshot.playlists));
+        setSelectedPlaylistId(snapshot.playback.selectedPlaylistId ?? DEFAULT_PLAYLIST_ID);
+        setHomePins(normalizeHomePins(snapshot.homePins));
+        setNeedsMetadataRefresh(false);
+      } catch (error) {
+        if (import.meta.env.DEV) console.warn("[library] restore failed", error);
+        // Fallback to legacy localStorage if DB path is unavailable.
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          try {
+            const state = JSON.parse(saved);
+            setFolders(state.folders ?? []);
+            setTracks(state.tracks ?? []);
+            setActiveTrackId(state.activeTrackId ?? null);
+            setQueue(state.queue ?? []);
+            setPlayHistory(state.playHistory ?? []);
+            activityMigrationRef.current = !state.trackActivity || (
+              state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION
+              && Object.keys(state.trackActivity ?? {}).length === 0
+              && (state.tracks?.length ?? 0) > 0
+            );
+            setTrackActivity(state.trackActivity ?? {});
+            setVolume(state.volume ?? 0.8);
+            setShuffle(state.shuffle ?? false);
+            setRepeat(state.repeat ?? "off");
+            setPlaylists(normalizePlaylists(state.playlists));
+            setSelectedPlaylistId(state.selectedPlaylistId ?? DEFAULT_PLAYLIST_ID);
+            setHomePins(normalizeHomePins(state.homePins));
+            setNeedsMetadataRefresh(state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION);
+          } catch {
+            localStorage.removeItem(STORAGE_KEY);
+          }
+        }
+      } finally {
+        if (!cancelled) setRestored(true);
+      }
     }
 
-    try {
-      const state = JSON.parse(saved);
-      setFolders(state.folders ?? []);
-      setTracks(state.tracks ?? []);
-      setActiveTrackId(state.activeTrackId ?? null);
-      setQueue(state.queue ?? []);
-      setPlayHistory(state.playHistory ?? []);
-      activityMigrationRef.current = !state.trackActivity || (
-        state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION
-        && Object.keys(state.trackActivity ?? {}).length === 0
-        && (state.tracks?.length ?? 0) > 0
-      );
-      setTrackActivity(state.trackActivity ?? {});
-      setVolume(state.volume ?? 0.8);
-      setShuffle(state.shuffle ?? false);
-      setRepeat(state.repeat ?? "off");
-      setPlaylists(normalizePlaylists(state.playlists));
-      setSelectedPlaylistId(state.selectedPlaylistId ?? DEFAULT_PLAYLIST_ID);
-      setHomePins(normalizeHomePins(state.homePins));
-      setNeedsMetadataRefresh(state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION);
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      setRestored(true);
-    }
+    void restoreLibrary();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!restored) return;
-
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        librarySchemaVersion: needsMetadataRefresh ? LIBRARY_SCHEMA_VERSION - 1 : LIBRARY_SCHEMA_VERSION,
-        folders,
-        tracks,
+    const timer = window.setTimeout(() => {
+      void musicSavePlaybackState({
         activeTrackId,
         queue,
         playHistory,
-        trackActivity,
         volume,
         shuffle,
         repeat,
-        playlists,
         selectedPlaylistId,
-        homePins,
-      }),
-    );
-  }, [restored, needsMetadataRefresh, folders, tracks, activeTrackId, queue, playHistory, trackActivity, volume, shuffle, repeat, playlists, selectedPlaylistId, homePins]);
+      }).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[library] save playback state failed", error);
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [restored, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId]);
+
+  useEffect(() => {
+    if (!restored || tracks.length === 0) return;
+    let cancelled = false;
+    async function hydrateFeatures() {
+      try {
+        await musicAnalyzeFeatures(80);
+        const vectors = await musicListTrackFeatures();
+        if (!cancelled) setFeatureVectors(vectors ?? {});
+      } catch (error) {
+        if (import.meta.env.DEV) console.warn("[features] hydrate failed", error);
+      }
+    }
+    void hydrateFeatures();
+    return () => {
+      cancelled = true;
+    };
+  }, [restored, tracks.length]);
+
+  useEffect(() => {
+    if (!restored || tracks.length === 0) return;
+    let cancelled = false;
+    async function resumeSmartDjIfNeeded() {
+      try {
+        const record = await musicGetRadioSession();
+        if (cancelled || !record || record.status !== "playing") return;
+        restoreSmartDjSession(record);
+      } catch (error) {
+        if (import.meta.env.DEV) console.warn("[smartdj] resume failed", error);
+      }
+    }
+    void resumeSmartDjIfNeeded();
+    return () => {
+      cancelled = true;
+    };
+  }, [restored, tracks.length]);
+
+  useEffect(() => {
+    if (!restored) return;
+    const timer = window.setTimeout(() => {
+      void musicSaveTrackActivity(trackActivity).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[library] save track activity failed", error);
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [restored, trackActivity]);
+
+  useEffect(() => {
+    if (!restored) return;
+    const timer = window.setTimeout(() => {
+      void musicSavePlaylists(playlists).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[library] save playlists failed", error);
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [restored, playlists]);
+
+  useEffect(() => {
+    if (!restored) return;
+    const timer = window.setTimeout(() => {
+      void musicSaveHomePins(homePins).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[library] save home pins failed", error);
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [restored, homePins]);
 
   const systemMediaItem = useMemo(() => {
     if (!podcastSessionHydrated) return null;
@@ -408,9 +542,130 @@ export default function App() {
     playTracks(payload.tracks);
   }
 
+  function startSmartDjFromPayload(payload: ContextPayload) {
+    if (payload.tracks.length === 0) {
+      showActionNotice("没有可用于 SmartDJ 的歌曲");
+      return;
+    }
+    const seedTrack = payload.tracks[0];
+    const seedId = payload.kind === "track"
+      ? seedTrack.id
+      : payload.kind === "playlist"
+        ? (payload.playlistId ?? seedTrack.id)
+        : payload.title;
+    const seed = seedFromTracks(
+      payload.kind === "album" || payload.kind === "artist" || payload.kind === "playlist"
+        ? payload.kind
+        : "track",
+      seedId,
+      payload.title,
+      payload.tracks,
+    );
+    startSmartDj(seed);
+    // Acoustic features are produced by the background Rust worker for the
+    // whole library; SmartDJ picks them up via the hydrate effect below.
+  }
+
   function closeContextMenu() {
     setContextMenu(null);
   }
+
+
+  useEffect(() => {
+    let unlisteners: Array<() => void> = [];
+    let cancelled = false;
+    async function bindTrayEvents() {
+      try {
+        const pairs: Array<[string, () => void]> = [
+          ["zone://tray-toggle", () => togglePlay()],
+          ["zone://tray-previous", () => {
+            if (activePodcastEpisode) seek(Math.max(0, progress - 15));
+            else move(-1);
+          }],
+          ["zone://tray-next", () => {
+            if (activePodcastEpisode) playNextPodcastEpisode();
+            else move(1);
+          }],
+        ];
+        for (const [eventName, handler] of pairs) {
+          const unlisten = await listen(eventName, handler);
+          if (cancelled) {
+            unlisten();
+            return;
+          }
+          unlisteners.push(unlisten);
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) console.warn("[tray] listen failed", error);
+      }
+    }
+    void bindTrayEvents();
+    return () => {
+      cancelled = true;
+      for (const unlisten of unlisteners) unlisten();
+    };
+  }, [activePodcastEpisode, progress, togglePlay, move, seek, playNextPodcastEpisode]);
+
+
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    // Only intercept OS/titlebar close while "close to tray" is enabled.
+    // Leaving a no-op listener registered after the setting flips off can still
+    // race with window.close() and make the close button feel dead.
+    if (!closeToTray) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    void appWindow
+      .onCloseRequested(async (event) => {
+        // Must prevent immediately; async work happens after.
+        event.preventDefault();
+        try {
+          await appWindow.hide();
+        } catch (error) {
+          if (import.meta.env.DEV) console.warn("[window] hide on close failed", error);
+          try {
+            await appWindow.destroy();
+          } catch {
+            await appWindow.close();
+          }
+        }
+      })
+      .then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [closeToTray]);
+
+  useAppHotkeys({
+    onTogglePlay: togglePlay,
+    onPrevious: () => {
+      if (activePodcastEpisode) seek(Math.max(0, progress - 15));
+      else move(-1);
+    },
+    onNext: () => {
+      if (activePodcastEpisode) playNextPodcastEpisode();
+      else move(1);
+    },
+    onVolumeUp: () => setVolume((value) => Math.min(1, Number((value + 0.05).toFixed(2)))),
+    onVolumeDown: () => setVolume((value) => Math.max(0, Number((value - 0.05).toFixed(2)))),
+    onSeekLeft: () => seek(Math.max(0, progress - 5)),
+    onSeekRight: () => {
+      const total = duration > 0 ? duration : progress + 5;
+      seek(Math.min(total, progress + 5));
+    },
+    onDislikeSmartDj: () => {
+      if (!activePodcastEpisode) dislikeSmartDjTrack();
+    },
+  });
 
   useSystemMedia({
     media: systemMediaItem,
@@ -498,7 +753,10 @@ export default function App() {
       menu={contextMenu}
       onClose={closeContextMenu}
       onPlay={() => playContextPayload(contextMenu.payload)}
+      onPlayNext={() => playNext(contextMenu.payload.tracks)}
       onAddToQueue={() => appendToQueue(contextMenu.payload.tracks)}
+      onStartSmartDj={() => startSmartDjFromPayload(contextMenu.payload)}
+      onDislikeSmartDj={() => dislikeSmartDjTrack()}
       onAddToPlaylist={() => setAddToPlaylistTarget(contextMenu.payload)}
       onAddToFavorites={() => addToPlaylist(DEFAULT_PLAYLIST_ID, contextMenu.payload.tracks)}
       onRenamePlaylist={(playlistId) => openPlaylistDialog("rename", playlistId)}
@@ -506,6 +764,7 @@ export default function App() {
       onExcludeFromSmartPlaylist={(playlistId) => excludeFromSmartPlaylist(playlistId, contextMenu.payload.tracks)}
       homePinState={homePinStateForPayload(homePins, contextMenu.payload)}
       onToggleHomePin={() => toggleHomePin(contextMenu.payload)}
+      onOpenInCollection={() => openPayloadInCollection(contextMenu.payload)}
       onInfo={() => setInfoTarget(contextMenu.payload)}
     />
   ) : null;
@@ -597,6 +856,7 @@ export default function App() {
       <Titlebar
         isSettings={page === "settings"}
         onOpenSettings={() => navigatePage("settings")}
+        closeToTray={closeToTray}
       />
 
       <main className="workspace">
@@ -619,7 +879,9 @@ export default function App() {
             onPlayTracks={playTracks}
             onOpenNowPlaying={openNowPlaying}
             onOpenCollection={navigateCollection}
-            onOpenPin={openHomePin}
+            onResumePlayback={() => {
+              if (audioRef.current?.paused) togglePlay();
+            }}
             onMovePin={(sourceId, targetId) => setHomePins((current) => moveHomePin(current, sourceId, targetId))}
             onShiftPin={(pinId, direction) => setHomePins((current) => shiftHomePin(current, pinId, direction))}
             onTogglePin={toggleHomePin}
@@ -833,16 +1095,32 @@ export default function App() {
             isScanning={isScanning}
             metadataProviders={metadata.providers}
             onToggleMetadataProvider={metadata.setProviderEnabled}
+            queueInsertMode={queueInsertMode}
+            adaptivePrevious={adaptivePrevious}
+            onQueueInsertModeChange={(mode) => updatePlaybackBehavior({ queueInsertMode: mode })}
+            onAdaptivePreviousChange={(enabled) => updatePlaybackBehavior({ adaptivePrevious: enabled })}
+            closeToTray={closeToTray}
+            onCloseToTrayChange={(enabled) => updatePlaybackBehavior({ closeToTray: enabled })}
             onAddFolder={addFolder}
             onRescan={() => rescan()}
             onClear={() => {
-              setFolders([]);
-              setTracks([]);
-              setQueue([]);
-              setTrackActivity({});
-              setActiveTrackId(null);
-              setScanNote("");
-              localStorage.removeItem(STORAGE_KEY);
+              void musicClearLibrary()
+                .catch((error) => {
+                  if (import.meta.env.DEV) console.warn("[library] clear failed", error);
+                })
+                .finally(() => {
+                  setFolders([]);
+                  setTracks([]);
+                  setQueue([]);
+                  setPlayHistory([]);
+                  setTrackActivity({});
+                  setActiveTrackId(null);
+                  setHomePins([]);
+                  setPlaylists(normalizePlaylists(undefined));
+                  setSelectedPlaylistId(DEFAULT_PLAYLIST_ID);
+                  setScanNote("");
+                  localStorage.removeItem(STORAGE_KEY);
+                });
             }}
           />
         )}

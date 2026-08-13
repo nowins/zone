@@ -32,8 +32,12 @@ pub(super) fn initialize_system_media(
         let action = match args.ok()?.Button()? {
             SystemMediaTransportControlsButton::Play => Some("play"),
             SystemMediaTransportControlsButton::Pause => Some("pause"),
+            SystemMediaTransportControlsButton::Stop => Some("pause"),
             SystemMediaTransportControlsButton::Previous => Some("previous"),
             SystemMediaTransportControlsButton::Next => Some("next"),
+            // Some shells surface a combined button; treat as toggle.
+            SystemMediaTransportControlsButton::ChannelUp => Some("toggle"),
+            SystemMediaTransportControlsButton::ChannelDown => Some("toggle"),
             _ => None,
         };
         if let Some(action) = action {
@@ -79,6 +83,7 @@ pub(super) fn update_system_media_state(
     controls.SetIsEnabled(has_track)?;
     controls.SetIsPlayEnabled(has_track)?;
     controls.SetIsPauseEnabled(has_track)?;
+    controls.SetIsStopEnabled(has_track)?;
     controls.SetIsPreviousEnabled(has_track && state.can_previous)?;
     controls.SetIsNextEnabled(has_track && state.can_next)?;
     controls.SetPlaybackStatus(if !has_track {

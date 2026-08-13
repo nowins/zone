@@ -811,3 +811,65 @@ h2 {
   color: rgba(255, 255, 255, 0.52);
   font-size: 11px;
 }
+
+
+.settings-playback {
+  margin-top: 28px;
+}
+
+.settings-behavior-list {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-behavior-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.settings-behavior-row strong,
+.settings-behavior-row span {
+  display: block;
+}
+
+.settings-behavior-row strong {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.settings-behavior-row span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-segmented {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.settings-segmented > button {
+  min-width: 84px;
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-segmented > button.is-active,
+.settings-segmented > button[aria-pressed="true"] {
+  color: #fff;
+  background: rgba(255, 45, 146, 0.22);
+}
+
+.settings-segmented > button + button {
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}

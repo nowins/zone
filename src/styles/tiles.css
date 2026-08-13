@@ -1,0 +1,358 @@
+/* Reusable Metro tile system. Self-contained so tiles can be dropped into any
+   surface (quickplay, collection, podcasts) without inheriting page chrome. */
+.tile {
+  position: relative;
+  display: block;
+  padding: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.045);
+  outline: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: transform var(--motion-content) var(--motion-ease-emphasis),
+    filter var(--motion-micro) var(--motion-ease-standard);
+  -webkit-user-drag: none;
+}
+.tile:hover,
+.tile:focus-visible {
+  filter: brightness(1.08);
+}
+.tile[aria-disabled="true"] {
+  cursor: default;
+  filter: none;
+}
+.tile.tilt-pressed {
+  /* MangoTile metroTilt: 0.94 scale, tight perspective (cameraDistance ~16dp)
+     so the tip toward the finger reads clearly. */
+  transform: perspective(600px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.94);
+  transition: transform var(--motion-press) var(--motion-ease-standard);
+}
+
+/* Turnstile-style entrance: tiles pivot in from the bottom edge with a
+   staggered cadence, like the WP7 start screen. Each tile sets
+   --tile-stagger-delay; the host wraps a batch in .tiles-enter to trigger the
+   reveal once on mount. */
+@keyframes tile-rise {
+  from {
+    opacity: 0;
+    transform: perspective(900px) rotateX(-38deg) translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: perspective(900px) rotateX(0deg) translateY(0);
+  }
+}
+.tiles-enter .tile {
+  opacity: 0;
+  transform-origin: 50% 100%;
+  animation: tile-rise var(--motion-page) var(--motion-ease-entrance) both;
+  animation-delay: var(--tile-stagger-delay, 0ms);
+}
+
+/* Live tile: front/back faces share one clipped surface. The reveal style
+   depends on the variant — peek slides the back up, flip rotates the surface. */
+.tile-flip-surface {
+  position: absolute;
+  inset: 0;
+}
+.tile-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 10px 12px;
+}
+.tile-face-back {
+  background: linear-gradient(180deg, rgba(16, 16, 18, 0.97), rgba(12, 12, 14, 0.98));
+}
+
+/* Peek variant (wide tiles): the back layer's vertical offset is driven
+   per-frame from JS via --tile-peek (100% = parked below, 0% = covering). */
+.tile-flip-v-peek .tile-flip-surface {
+  /* Clip the parked back layer. This must stay off the base surface:
+     overflow here forces transform-style: flat, which kills the flip
+     variant's 3D context and renders the front face mirrored past 90°.
+     (The .tile host clips too, so flip needs nothing.) */
+  overflow: hidden;
+}
+.tile-flip-v-peek .tile-face-back {
+  transform: translateY(var(--tile-peek, 100%));
+  will-change: transform;
+}
+
+/* Flip variant (square tiles): the whole surface card-flips around its
+   horizontal axis, driven per-frame from JS via --tile-flip (0/180deg). */
+.tile-flip-v-flip {
+  perspective: 900px;
+}
+.tile-flip-v-flip .tile-flip-surface {
+  transform-style: preserve-3d;
+  transform: perspective(900px) rotateX(var(--tile-flip, 0deg));
+}
+.tile-flip-v-flip .tile-face {
+  backface-visibility: hidden;
+}
+.tile-flip-v-flip .tile-face-back {
+  transform: rotateX(180deg);
+}
+.tile-face strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 13px;
+  font-weight: 400;
+}
+.tile-face small {
+  display: block;
+  min-width: 0;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+.tile-face .tile-face-art {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+}
+.tile-face .tile-face-art > .cover,
+.tile-face .tile-face-art > .quick-pin-art {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  margin: 0;
+  outline: 0;
+}
+.tile-back-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+}
+
+/* Peek reveal: the back face reads as a small live card — a kicker eyebrow,
+   the title, and a stat row — echoing the Surface N notification peek. */
+.tile-back-kicker {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 9px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+/* The live line is the glanceable payload of the back face — the reason the
+   tile flipped at all. */
+.tile-back-live {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* WP8 cycle tile: stacked frames cross-fade as the active index advances.
+   Both frames travel upward like a conveyor — the incoming frame rises from
+   +drift while the outgoing frame keeps drifting to -drift as it fades. The
+   active frame always paints on top (z-index) so index wrap-around never
+   lets an outgoing frame cover the incoming one. No transition delays:
+   opacity and transform move together. */
+.tile-cycle-frames {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.tile-cycle-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  transform: translateY(var(--motion-drift-s));
+  transition:
+    opacity var(--motion-cycle) var(--motion-ease-standard),
+    transform var(--motion-cycle) var(--motion-ease-standard);
+}
+.tile-cycle-frame.is-active {
+  z-index: 1;
+  opacity: 1;
+  transform: none;
+}
+.tile-cycle-frame.is-leaving {
+  opacity: 0;
+  transform: translateY(calc(var(--motion-drift-s) * -1));
+}
+.tile-cycle-frame > * {
+  width: 100%;
+  height: 100%;
+}
+
+.tile-cycle-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.55));
+}
+
+/* WP7 People-hub mosaic: square cells — covers stay square, never cropped
+   into strips. Individual cells card-flip around the vertical axis, driven
+   per-frame from JS via --cell-flip. Layout capacity matches the pool so
+   the tile never shows empty transparent slots. */
+.tile-mosaic {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 2px;
+  background: rgba(12, 8, 14, 0.92);
+}
+/* Two covers: two full-height squares side by side. */
+.tile-mosaic.layout-pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+/* Three covers: one tall feature cell + two stacked squares. */
+.tile-mosaic.layout-trio {
+  grid-template-columns: 2fr 1fr;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.tile-mosaic.layout-trio .tile-mosaic-cell:first-child {
+  grid-row: 1 / span 2;
+}
+/* Four covers: clean 2x2. */
+.tile-mosaic.layout-quad {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+/* Five covers: Win8 feature layout — one big square left, 2x2 small right. */
+.tile-mosaic.layout-feature {
+  grid-template-columns: 2fr 1fr 1fr;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.tile-mosaic.layout-feature .tile-mosaic-cell:first-child {
+  grid-row: 1 / span 2;
+}
+/* Six or seven covers: 3x2 so every cell stays filled. */
+.tile-mosaic.layout-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+/* Eight or more covers: the full 4x2 People-hub grid. */
+.tile-mosaic.layout-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.tile-mosaic-cell {
+  position: relative;
+  overflow: hidden;
+  perspective: 700px;
+  /* Solid dark fill so a mid-flip edge never reads as a missing hole. */
+  background: rgba(18, 12, 20, 0.96);
+}
+.tile-mosaic-cell-inner {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(var(--cell-flip, 0deg));
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+.tile-mosaic-cell-inner .mini-cover {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  margin: 0;
+  outline: 0;
+}
+
+/* WP8 iconic tile: centered icon, corner count, bottom label. */
+.tile-iconic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tile-accent, rgba(128, 35, 76, 0.7));
+}
+.tile-iconic-icon {
+  color: rgba(255, 255, 255, 0.94);
+  display: flex;
+}
+.tile-iconic-count {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  color: rgba(20, 20, 22, 0.95);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tile-iconic-label {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 7px 10px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* quickplay host: tiles keep the existing pin grid rhythm. */
+.quick-pin-tile {
+  width: 100%;
+  height: var(--quick-pin-art);
+}
+.quick-pin.wide .quick-pin-tile {
+  grid-column: span 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile,
+  .tile.tilt-pressed {
+    transform: none;
+    transition: opacity var(--motion-instant) linear;
+  }
+  .tiles-enter .tile {
+    animation: none;
+    opacity: 1;
+  }
+  /* Reduced motion: the back face never slides; faces cross-fade in place. */
+  .tile-face-back {
+    transform: none;
+  }
+  .tile-flip-v-flip .tile-flip-surface {
+    transform: none !important;
+  }
+  .tile-flip-v-flip .tile-face {
+    backface-visibility: visible;
+  }
+  .tile-face {
+    transition: opacity var(--motion-micro) linear;
+  }
+  .tile-flip.is-front .tile-face-back,
+  .tile-flip.is-back .tile-face-front {
+    visibility: visible;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .tile-cycle-frame,
+  .tile-cycle-frame.is-leaving {
+    transition: none;
+    transform: none;
+  }
+  .tile-mosaic-cell-inner {
+    transform: none;
+  }
+}

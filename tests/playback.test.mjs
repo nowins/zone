@@ -3,10 +3,12 @@ import test from "node:test";
 import {
   createShuffleOrder,
   haveSameQueueItems,
+  insertTracksIntoQueue,
   playbackSourceKey,
   queueAfterCurrent,
   reconcileActiveTrack,
   reconcileQueueWithLibrary,
+  resolvePreviousAction,
   resolveQueueMove,
 } from "../.tmp/visualizer-tests/utils/playback.js";
 
@@ -71,4 +73,26 @@ test("library refresh preserves valid queue entries and falls back when all are 
 test("library refresh replaces a stale active track from the preserved queue", () => {
   assert.equal(reconcileActiveTrack("missing", ["b", "a"], ["a", "b", "c"]), "b");
   assert.equal(reconcileActiveTrack("missing", [], []), null);
+});
+
+
+test("queue insert mode can place tracks next or at end", () => {
+  assert.deepEqual(
+    insertTracksIntoQueue(["a", "b", "c"], "b", ["x", "y"], "play_next"),
+    ["a", "b", "x", "y", "c"],
+  );
+  assert.deepEqual(
+    insertTracksIntoQueue(["a", "b", "c"], "b", ["x"], "append_end"),
+    ["a", "b", "c", "x"],
+  );
+  assert.deepEqual(
+    insertTracksIntoQueue(["a", "x", "b"], "a", ["x", "y"], "play_next"),
+    ["a", "x", "y", "b"],
+  );
+});
+
+test("adaptive previous restarts after the threshold and otherwise goes back", () => {
+  assert.equal(resolvePreviousAction(0.5, true), "previous");
+  assert.equal(resolvePreviousAction(3.1, true), "restart");
+  assert.equal(resolvePreviousAction(30, false), "previous");
 });

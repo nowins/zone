@@ -3,7 +3,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { AlbumGroup, Track } from "../types";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { buildNowPlayingWall } from "../utils/nowPlayingWall";
-import { getVisualizerFrame } from "../utils/visualizerBus";
+import { getVisualizerFrame, isDocumentVisible } from "../utils/visualizerBus";
 import {
   buildCanvasMosaicTiles,
   createMosaicColorPalette,
@@ -21,6 +21,7 @@ import {
 } from "../utils/nowPlayingCanvas";
 
 const imageCache = new Map<string, HTMLImageElement>();
+const MAX_IMAGE_CACHE = 96;
 const FALLBACK_TINT: RgbColor = { r: 62, g: 50, b: 44 };
 const FALLBACK_PALETTE = createMosaicColorPalette(FALLBACK_TINT);
 const WALL_PRELOAD_TIMEOUT_MS = 1_600;
@@ -176,11 +177,25 @@ export function NowPlayingMosaicCanvas({
         motionEnabled,
         colorFieldRendererRef,
       );
-      frameRef.current = window.requestAnimationFrame(draw);
+      if (isDocumentVisible()) {
+        frameRef.current = window.requestAnimationFrame(draw);
+      } else {
+        frameRef.current = null;
+      }
     };
 
-    frameRef.current = window.requestAnimationFrame(draw);
+    const sync = () => {
+      if (!isDocumentVisible()) {
+        if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+        return;
+      }
+      if (!frameRef.current) frameRef.current = window.requestAnimationFrame(draw);
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
     return () => {
+      document.removeEventListener("visibilitychange", sync);
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
       lastTimeRef.current = null;
     };
@@ -481,6 +496,11 @@ function getCachedImage(path: string) {
   image.crossOrigin = "anonymous";
   image.decoding = "async";
   image.src = url;
+  // Bound cache growth for long listening sessions with large libraries.
+  if (imageCache.size >= MAX_IMAGE_CACHE) {
+    const oldest = imageCache.keys().next().value;
+    if (oldest) imageCache.delete(oldest);
+  }
   imageCache.set(url, image);
   return image;
 }

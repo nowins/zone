@@ -5,12 +5,20 @@ import { createIdleBeatFrame } from "../utils/beatAnalysis";
 import {
   createShuffleOrder,
   haveSameQueueItems,
+  insertTracksIntoQueue,
   playbackSourceKey,
   reconcileActiveTrack,
   reconcileQueueWithLibrary,
+  resolvePreviousAction,
   resolveQueueMove,
+  type QueueInsertMode,
   type QueueMoveResult,
 } from "../utils/playback";
+import {
+  patchPlaybackBehaviorSettings,
+  readPlaybackBehaviorSettings,
+  type PlaybackBehaviorSettings,
+} from "../app/playbackSettings";
 import {
   isCurrentPlayAttempt,
   podcastStatusForCanPlay,
@@ -20,6 +28,24 @@ import {
   resolvePodcastStartPosition,
 } from "../utils/playbackTransport";
 import { createTrackActivity } from "../utils/smartPlaylist";
+import {
+  createSmartDjSession,
+  materializeSmartDjQueue,
+  noteSmartDjSkip,
+  syncSmartDjSessionWithQueue,
+  toRadioSessionUpsert,
+  type PersistedSmartDjSession,
+  fromPersistedSmartDjSession,
+  type SmartDjContext,
+  type SmartDjSeed,
+  type SmartDjSession,
+} from "../utils/smartDj";
+import {
+  musicSessionEnd,
+  musicSessionStart,
+  musicStopRadioSession,
+  musicUpsertRadioSession,
+} from "../app/musicLibraryApi";
 import type { AudioEngineHandle } from "./useAudioEngine";
 import type {
   PodcastPendingResume,
@@ -33,10 +59,18 @@ import type {
 } from "../types";
 
 export type PlaybackSession = {
+  sessionId: string;
   trackId: string;
+  startedAt: number;
+  startPosition: number;
   maxProgress: number;
+  listenedMs: number;
+  lastTickAt: number | null;
+  source: string;
+  durationHint: number | null;
   countedPlay: boolean;
   countedComplete: boolean;
+  finalized: boolean;
 };
 
 /** Late-bound surface for podcast domain → transport (seek / arm / intent). */
@@ -72,6 +106,7 @@ type UsePlaybackControlsParams = {
   tracks: Track[];
   restored: boolean;
   setTrackActivity: React.Dispatch<React.SetStateAction<TrackActivityMap>>;
+  getSmartDjContext?: () => SmartDjContext;
   activeTrackId: string | null;
   setActiveTrackId: React.Dispatch<React.SetStateAction<string | null>>;
   queue: string[];
@@ -89,6 +124,7 @@ export function usePlaybackControls({
   tracks,
   restored,
   setTrackActivity,
+  getSmartDjContext,
   activeTrackId,
   setActiveTrackId,
   queue,
@@ -134,6 +170,17 @@ export function usePlaybackControls({
   const [shuffle, setShuffle] = useState(false);
   const [shuffleOrder, setShuffleOrder] = useState<string[]>([]);
   const [repeat, setRepeat] = useState<RepeatMode>("off");
+  const [queueInsertMode, setQueueInsertMode] = useState<QueueInsertMode>(
+    () => readPlaybackBehaviorSettings().queueInsertMode,
+  );
+  const [adaptivePrevious, setAdaptivePrevious] = useState(
+    () => readPlaybackBehaviorSettings().adaptivePrevious,
+  );
+  const [closeToTray, setCloseToTray] = useState(
+    () => readPlaybackBehaviorSettings().closeToTray,
+  );
+  const smartDjSessionRef = useRef<SmartDjSession | null>(null);
+  const trackActivityRef = useRef<TrackActivityMap>({});
 
   useEffect(() => {
     if (!activeTrackId) return;
@@ -141,9 +188,39 @@ export function usePlaybackControls({
   }, [activeTrackId]);
 
   useEffect(() => {
-    playbackSessionRef.current = !activePodcastEpisode && activeTrackId
-      ? { trackId: activeTrackId, maxProgress: 0, countedPlay: false, countedComplete: false }
-      : null;
+    const previous = playbackSessionRef.current;
+    if (previous && !previous.finalized) {
+      finalizeSession(previous, "replaced");
+    }
+
+    if (!activePodcastEpisode && activeTrackId) {
+      const sessionId = `music-${activeTrackId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const startedAt = Date.now();
+      playbackSessionRef.current = {
+        sessionId,
+        trackId: activeTrackId,
+        startedAt,
+        startPosition: 0,
+        maxProgress: 0,
+        listenedMs: 0,
+        lastTickAt: null,
+        source: "queue",
+        durationHint: null,
+        countedPlay: false,
+        countedComplete: false,
+        finalized: false,
+      };
+      void musicSessionStart({
+        sessionId,
+        trackId: activeTrackId,
+        startPositionMs: 0,
+        source: "queue",
+      }).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[stats] session start failed", error);
+      });
+    } else {
+      playbackSessionRef.current = null;
+    }
   }, [activePodcastEpisode?.episodeId, activeTrackId]);
 
   const activeTrack = useMemo(
@@ -432,8 +509,148 @@ export function usePlaybackControls({
     }
   }
 
-  function playTracks(targetTracks: Track[]) {
+
+  function smartDjContext(): SmartDjContext {
+    if (getSmartDjContext) return getSmartDjContext();
+    return {
+      tracks,
+      activity: trackActivityRef.current,
+      favoriteTrackIds: new Set<string>(),
+    };
+  }
+
+  function applySmartDjSession(session: SmartDjSession, options?: { restart?: boolean; notice?: string }) {
+    const materialized = materializeSmartDjQueue(session, smartDjContext());
+    smartDjSessionRef.current = materialized.session;
+    if (materialized.tracks.length === 0) {
+      smartDjSessionRef.current = {
+        ...materialized.session,
+        status: "exhausted",
+      };
+      persistSmartDjSession(smartDjSessionRef.current);
+      showActionNotice("SmartDJ 已播完当前可推荐歌曲");
+      return;
+    }
+    if (options?.restart !== false) {
+      playTracks(materialized.tracks, { preserveSmartDj: true });
+    } else {
+      setQueue(materialized.tracks.map((track) => track.id));
+      if (shuffle) {
+        setShuffleOrder(materialized.tracks.map((track) => track.id));
+      }
+    }
+    persistSmartDjSession(materialized.session);
+    if (options?.notice) showActionNotice(options.notice);
+  }
+
+  function startSmartDj(seed: SmartDjSeed) {
+    if (seed.tracks.length === 0) {
+      showActionNotice("没有可用于 SmartDJ 的歌曲");
+      return;
+    }
+    cancelPodcastSessionRestore();
+    if (activePodcastEpisode) stopPodcastForMusic();
+    // Disable shuffle/repeat semantics that fight radio continuation.
+    if (shuffle) setShuffle(false);
+    if (repeat !== "off") setRepeat("off");
+    const session = createSmartDjSession(seed);
+    applySmartDjSession(session, {
+      restart: true,
+      notice: `已开始 SmartDJ：${seed.label}`,
+    });
+  }
+
+  function dislikeSmartDjTrack() {
+    const session = smartDjSessionRef.current;
+    if (!session || !activeTrackId) {
+      showActionNotice("当前不在 SmartDJ");
+      return;
+    }
+    // Soft-ban current and jump next.
+    const nextSession = noteSmartDjSkip(session, activeTrackId, smartDjContext(), { ban: true });
+    smartDjSessionRef.current = nextSession;
+    persistSmartDjSession(nextSession);
+    showActionNotice("已从 SmartDJ 减少类似歌曲");
+    move(1, "user");
+  }
+
+  function clearSmartDjSession(options?: { persistStop?: boolean }) {
+    const current = smartDjSessionRef.current;
+    smartDjSessionRef.current = null;
+    if (options?.persistStop !== false) {
+      void musicStopRadioSession(current?.id ?? null).catch((error) => {
+        if (import.meta.env.DEV) console.warn("[smartdj] stop session failed", error);
+      });
+    }
+  }
+
+  function persistSmartDjSession(session: SmartDjSession | null) {
+    if (!session) return;
+    void musicUpsertRadioSession(toRadioSessionUpsert(session)).catch((error) => {
+      if (import.meta.env.DEV) console.warn("[smartdj] persist session failed", error);
+    });
+  }
+
+  function restoreSmartDjSession(record: PersistedSmartDjSession) {
+    const restoredSession = fromPersistedSmartDjSession(record, tracks);
+    if (!restoredSession) {
+      showActionNotice("无法恢复 SmartDJ 会话");
+      return false;
+    }
+    if (shuffle) setShuffle(false);
+    if (repeat !== "off") setRepeat("off");
+    const materialized = materializeSmartDjQueue(restoredSession, smartDjContext());
+    smartDjSessionRef.current = materialized.session;
+    if (materialized.tracks.length === 0) {
+      showActionNotice("SmartDJ 会话没有可继续的歌曲");
+      return false;
+    }
+    // Resume without forcing autoplay intent beyond normal playTracks path.
+    playTracks(materialized.tracks, { preserveSmartDj: true });
+    persistSmartDjSession(materialized.session);
+    showActionNotice(`已恢复 SmartDJ：${materialized.session.seed.label}`);
+    return true;
+  }
+
+  function maintainSmartDjAfterMove(reason: "user" | "ended", skippedTrackId: string | null) {
+    const session = smartDjSessionRef.current;
+    if (!session || session.status === "stopped") return;
+    const context = smartDjContext();
+    let nextSession = session;
+    if (reason === "user" && skippedTrackId) {
+      nextSession = noteSmartDjSkip(session, skippedTrackId, context, { ban: true });
+    } else if (skippedTrackId) {
+      nextSession = noteSmartDjSkip(session, skippedTrackId, context, { ban: false });
+    }
+    nextSession = syncSmartDjSessionWithQueue(
+      nextSession,
+      queue.length > 0 ? queue : playbackQueueIds,
+      activeTrackId,
+      context,
+    );
+    // Append only newly suggested upcoming tracks, keep current queue head stable.
+    const trackMap = new Map(context.tracks.map((track) => [track.id, track]));
+    const upcoming = nextSession.queuedIds.filter((id) => id !== activeTrackId);
+    setQueue((current) => {
+      const base = current.length > 0 ? current : playbackQueueIds;
+      const activeIndex = activeTrackId ? base.indexOf(activeTrackId) : -1;
+      const head = activeIndex >= 0 ? base.slice(0, activeIndex + 1) : base;
+      const merged = [...head];
+      for (const id of upcoming) {
+        if (!merged.includes(id) && trackMap.has(id)) merged.push(id);
+      }
+      return merged;
+    });
+    smartDjSessionRef.current = nextSession;
+    persistSmartDjSession(nextSession);
+    if (nextSession.status === "exhausted") {
+      showActionNotice("SmartDJ 可推荐歌曲已接近播完");
+    }
+  }
+
+  function playTracks(targetTracks: Track[], options?: { preserveSmartDj?: boolean }) {
     if (targetTracks.length === 0) return;
+    if (!options?.preserveSmartDj) clearSmartDjSession();
     cancelPodcastSessionRestore();
     setQueue(targetTracks.map((track) => track.id));
     if (activePodcastEpisode) {
@@ -452,53 +669,123 @@ export function usePlaybackControls({
     }
   }
 
-  function appendToQueue(targetTracks: Track[]) {
+  function appendToQueue(targetTracks: Track[], mode: QueueInsertMode = queueInsertMode) {
     if (targetTracks.length === 0) return;
-    setQueue((current) => uniqueIds([...current, ...targetTracks.map((track) => track.id)]));
-    showActionNotice(`已添加 ${targetTracks.length} 首歌曲到正在播放`);
+    const trackIds = targetTracks.map((track) => track.id);
+    setQueue((current) => insertTracksIntoQueue(current, activeTrackId, trackIds, mode));
+    // Keep shuffle order coherent when inserting relative to current track.
+    if (shuffle) {
+      setShuffleOrder((current) => {
+        const base = current.length > 0 ? current : playbackQueueIds;
+        return insertTracksIntoQueue(base, activeTrackId, trackIds, mode);
+      });
+    }
+    showActionNotice(
+      mode === "play_next"
+        ? `已将 ${targetTracks.length} 首歌曲设为下一首播放`
+        : `已添加 ${targetTracks.length} 首歌曲到正在播放`,
+    );
+  }
+
+  function playNext(targetTracks: Track[]) {
+    appendToQueue(targetTracks, "play_next");
+  }
+
+  function updatePlaybackBehavior(patch: Partial<PlaybackBehaviorSettings>) {
+    const next = patchPlaybackBehaviorSettings(patch);
+    setQueueInsertMode(next.queueInsertMode);
+    setAdaptivePrevious(next.adaptivePrevious);
+    setCloseToTray(next.closeToTray);
+  }
+
+  function applyActivityFromServer(trackId: string, activity: ReturnType<typeof createTrackActivity>) {
+    setTrackActivity((current) => {
+      const next = {
+        ...current,
+        [trackId]: createTrackActivity(activity),
+      };
+      trackActivityRef.current = next;
+      return next;
+    });
+  }
+
+  function finalizeSession(
+    session: PlaybackSession,
+    outcome: "completed" | "skipped" | "replaced" | "stopped" | "error",
+  ) {
+    if (session.finalized) return;
+    session.finalized = true;
+    if (session.lastTickAt != null && isPlaying) {
+      session.listenedMs += Math.max(0, Date.now() - session.lastTickAt);
+      session.lastTickAt = null;
+    }
+    const durationMs = Math.round((session.durationHint ?? duration ?? 0) * 1000);
+    void musicSessionEnd({
+      sessionId: session.sessionId,
+      trackId: session.trackId,
+      startPositionMs: Math.round(session.startPosition * 1000),
+      endPositionMs: Math.round(session.maxProgress * 1000),
+      durationMs: durationMs > 0 ? durationMs : undefined,
+      listenedMs: Math.round(session.listenedMs),
+      outcome,
+      source: session.source,
+      maxProgressMs: Math.round(session.maxProgress * 1000),
+    }).then((result) => {
+      applyActivityFromServer(result.trackId, {
+        addedAt: result.activity.addedAt,
+        playCount: result.activity.playCount,
+        completedCount: result.activity.completedCount,
+        skipCount: result.activity.skipCount,
+        lastPlayedAt: result.activity.lastPlayedAt,
+        lastSkippedAt: result.activity.lastSkippedAt,
+      });
+      if (playbackSessionRef.current?.sessionId === session.sessionId) {
+        playbackSessionRef.current.countedPlay = result.countedPlay;
+        playbackSessionRef.current.countedComplete = result.countedComplete;
+      }
+    }).catch((error) => {
+      if (import.meta.env.DEV) console.warn("[stats] session end failed", error);
+    });
   }
 
   function updateTrackActivity(trackId: string, update: (current: ReturnType<typeof createTrackActivity>) => ReturnType<typeof createTrackActivity>) {
-    setTrackActivity((current) => ({
-      ...current,
-      [trackId]: update(createTrackActivity(current[trackId])),
-    }));
+    setTrackActivity((current) => {
+      const next = {
+        ...current,
+        [trackId]: update(createTrackActivity(current[trackId])),
+      };
+      trackActivityRef.current = next;
+      return next;
+    });
   }
 
   function markEffectivePlay() {
+    // Play counting is finalized by Rust play_sessions aggregation.
     const session = playbackSessionRef.current;
     if (!session || session.countedPlay) return;
+    // Optimistic local marker only; authoritative counters come from session end.
     session.countedPlay = true;
-    updateTrackActivity(session.trackId, (current) => ({
-      ...current,
-      playCount: current.playCount + 1,
-      lastPlayedAt: Date.now(),
-    }));
   }
 
   function markCompletedPlayback() {
     const session = playbackSessionRef.current;
-    if (!session || session.countedComplete) return;
-    if (!session.countedPlay) markEffectivePlay();
-    session.countedComplete = true;
-    updateTrackActivity(session.trackId, (current) => ({
-      ...current,
-      completedCount: current.completedCount + 1,
-      lastPlayedAt: Date.now(),
-    }));
+    if (!session || session.finalized) return;
+    finalizeSession(session, "completed");
   }
 
   function recordSkipIfEligible() {
     const session = playbackSessionRef.current;
-    if (!session || session.countedPlay || session.maxProgress < 3) return;
+    if (!session || session.finalized) return;
+    if (session.maxProgress < 3) {
+      finalizeSession(session, "replaced");
+      return;
+    }
     const trackDuration = audioRef.current?.duration || duration;
-    if (trackDuration > 0 && session.maxProgress / trackDuration >= 0.5) return;
-    session.countedPlay = true;
-    updateTrackActivity(session.trackId, (current) => ({
-      ...current,
-      skipCount: current.skipCount + 1,
-      lastSkippedAt: Date.now(),
-    }));
+    if (trackDuration > 0 && session.maxProgress / trackDuration >= 0.5) {
+      finalizeSession(session, "replaced");
+      return;
+    }
+    finalizeSession(session, "skipped");
   }
 
   function handleTimeUpdate(currentTime: number, trackDuration: number) {
@@ -515,8 +802,16 @@ export function usePlaybackControls({
     }
     setProgress(currentTime);
     const session = playbackSessionRef.current;
-    if (!session || session.trackId !== activeTrackId) return;
+    if (!session || session.trackId !== activeTrackId || session.finalized) return;
     session.maxProgress = Math.max(session.maxProgress, currentTime);
+    session.durationHint = trackDuration > 0 ? trackDuration : session.durationHint;
+    if (isPlaying) {
+      const now = Date.now();
+      if (session.lastTickAt != null) {
+        session.listenedMs += Math.max(0, now - session.lastTickAt);
+      }
+      session.lastTickAt = now;
+    }
     const threshold = trackDuration > 0
       ? Math.min(240, Math.max(30, trackDuration * 0.5))
       : 30;
@@ -528,6 +823,13 @@ export function usePlaybackControls({
     if (activePodcastEpisode) return { kind: "boundary" };
     if (baseQueueIds.length === 0) return { kind: "empty" };
     if (delta === 1 && reason === "user") recordSkipIfEligible();
+    if (delta === -1 && reason === "user") {
+      const currentTime = audioRef.current?.currentTime ?? progress;
+      if (resolvePreviousAction(currentTime, adaptivePrevious) === "restart" && activeTrackId) {
+        restartCurrentPlayback();
+        return { kind: "restart", trackId: activeTrackId };
+      }
+    }
 
     let playbackOrder = playbackQueueIds;
     if (shuffle && !haveSameQueueItems(shuffleOrder, baseQueueIds)) {
@@ -540,9 +842,19 @@ export function usePlaybackControls({
       setShuffleOrder(playbackOrder);
     }
 
+    const skippedTrackId = delta === 1 ? activeTrackId : null;
     const result = resolveQueueMove(playbackOrder, activeTrackId, delta, repeat);
     if (result.kind === "restart") restartCurrentPlayback();
-    if (result.kind === "move") setActiveTrackId(result.trackId);
+    if (result.kind === "move") {
+      setActiveTrackId(result.trackId);
+      if (smartDjSessionRef.current) {
+        // Defer maintenance until state settles.
+        window.setTimeout(() => maintainSmartDjAfterMove(reason, reason === "user" ? skippedTrackId : skippedTrackId), 0);
+      }
+    }
+    if ((result.kind === "boundary" || result.kind === "empty") && smartDjSessionRef.current) {
+      window.setTimeout(() => maintainSmartDjAfterMove(reason, skippedTrackId), 0);
+    }
     return result;
   }
 
@@ -637,6 +949,10 @@ export function usePlaybackControls({
       if (activePodcastEpisodeRef.current) {
         resumePodcastProgressWrites(activePodcastEpisodeRef.current.episodeId);
       }
+      const musicSession = playbackSessionRef.current;
+      if (musicSession && !musicSession.finalized) {
+        musicSession.lastTickAt = Date.now();
+      }
       const sourceKey = activeAudioSourceKeyRef.current;
       const playAttempt = audioPlayAttemptRef.current + 1;
       audioPlayAttemptRef.current = playAttempt;
@@ -646,6 +962,11 @@ export function usePlaybackControls({
     } else {
       flushPodcastProgress();
       if (activePodcastEpisodeRef.current) podcastPlaybackIntentRef.current = false;
+      const musicSession = playbackSessionRef.current;
+      if (musicSession && !musicSession.finalized && musicSession.lastTickAt != null) {
+        musicSession.listenedMs += Math.max(0, Date.now() - musicSession.lastTickAt);
+        musicSession.lastTickAt = null;
+      }
       beginPlayAttempt();
       audio.pause();
       setIsPlaying(false);
@@ -684,12 +1005,32 @@ export function usePlaybackControls({
     if (!audio || activePodcastEpisode || !activeTrack) return;
     audio.currentTime = 0;
     setProgress(0);
+    const previous = playbackSessionRef.current;
+    if (previous && !previous.finalized) finalizeSession(previous, "replaced");
+    const sessionId = `music-${activeTrack.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     playbackSessionRef.current = {
+      sessionId,
       trackId: activeTrack.id,
+      startedAt: Date.now(),
+      startPosition: 0,
       maxProgress: 0,
+      listenedMs: 0,
+      lastTickAt: null,
+      source: "restart",
+      durationHint: duration || null,
       countedPlay: false,
       countedComplete: false,
+      finalized: false,
     };
+    void musicSessionStart({
+      sessionId,
+      trackId: activeTrack.id,
+      startPositionMs: 0,
+      durationMs: duration > 0 ? Math.round(duration * 1000) : undefined,
+      source: "restart",
+    }).catch((error) => {
+      if (import.meta.env.DEV) console.warn("[stats] session start failed", error);
+    });
     const sourceKey = activeAudioSourceKeyRef.current;
     const playAttempt = audioPlayAttemptRef.current + 1;
     audioPlayAttemptRef.current = playAttempt;
@@ -722,6 +1063,16 @@ export function usePlaybackControls({
     playTrack,
     playTracks,
     appendToQueue,
+    playNext,
+    startSmartDj,
+    clearSmartDjSession,
+    restoreSmartDjSession,
+    dislikeSmartDjTrack,
+    getIsSmartDjActive: () => Boolean(smartDjSessionRef.current && smartDjSessionRef.current.status === "playing"),
+    queueInsertMode,
+    adaptivePrevious,
+    closeToTray,
+    updatePlaybackBehavior,
     handleTimeUpdate,
     move,
     onEnded,

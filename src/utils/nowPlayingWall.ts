@@ -62,10 +62,12 @@ export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
     ? albums.filter((album) => album.artist.trim().toLocaleLowerCase() !== activeArtist)
     : albums;
 
+  // Prefer active artist covers, then fill with other albums that actually have art.
+  const coveredOthers = otherAlbums.filter((album) => Boolean(album.coverPath));
   const weightedAlbums = [
     ...artistAlbums,
     ...artistAlbums,
-    ...otherAlbums,
+    ...coveredOthers,
   ];
 
   if (active) {
@@ -86,4 +88,21 @@ export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
     { length: NOW_PLAYING_WALL_TILE_COUNT },
     (_, index) => source[(index * 7 + Math.floor(index / 5)) % source.length],
   );
+}
+
+
+export function pickCoverCandidates(tracks: Track[], limit: number, preferredArtist?: string | null) {
+  const preferred = (preferredArtist ?? "").trim().toLocaleLowerCase();
+  const seen = new Set<string>();
+  const preferredPaths: string[] = [];
+  const otherPaths: string[] = [];
+  for (const track of tracks) {
+    if (!track.cover_path || seen.has(track.cover_path)) continue;
+    seen.add(track.cover_path);
+    const artist = (track.album_artist ?? track.artist).trim().toLocaleLowerCase();
+    if (preferred && artist === preferred) preferredPaths.push(track.cover_path);
+    else otherPaths.push(track.cover_path);
+    if (preferredPaths.length + otherPaths.length >= limit * 2) break;
+  }
+  return [...preferredPaths, ...otherPaths].slice(0, limit);
 }
