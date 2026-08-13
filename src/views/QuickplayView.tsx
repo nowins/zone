@@ -346,7 +346,7 @@ export function QuickplayView({
     }
   }
 
-  function handlePinKey(event: KeyboardEvent<HTMLButtonElement>, pinId: string) {
+  function handlePinKey(event: KeyboardEvent<HTMLElement>, pinId: string) {
     if (!editingPins || !event.altKey) return;
     if (event.key === "ArrowLeft") {
       onShiftPin(pinId, -1);
@@ -432,63 +432,80 @@ export function QuickplayView({
             </button>
           ) : (
             <div className={`quick-pins-grid ${editingPins ? "editing" : ""}`}>
-              {resolvedPins.map((item, index) => (
-                <article
-                  className={`quick-pin ${item.isWide ? "wide" : "square"} ${draggedPinId === item.pin.id ? "dragging" : ""}`}
-                  key={item.pin.id}
-                  draggable={editingPins}
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/plain", item.pin.id);
-                    setDraggedPinId(item.pin.id);
-                  }}
-                  onDragEnd={() => setDraggedPinId(null)}
-                  onDragOver={(event) => {
-                    if (editingPins) event.preventDefault();
-                  }}
-                  onDrop={(event) => handleDrop(event, item.pin.id)}
-                  onContextMenu={(event) => onContextMenu(event, item.payload)}
-                >
-                  <button
-                    className="quick-pin-main"
-                    onClick={() => {
-                      if (!editingPins) onOpenPin(item.pin);
+              {resolvedPins.map((item, index) => {
+                const pinArtwork = <PinArtwork item={item} index={index} />;
+                const pinCaption = (
+                  <span className="quick-pin-caption">
+                    <strong>{item.title}</strong>
+                    <small>{item.subtitle}</small>
+                  </span>
+                );
+
+                return (
+                  <article
+                    className={`quick-pin ${item.isWide ? "wide" : "square"} ${draggedPinId === item.pin.id ? "dragging" : ""}`}
+                    key={item.pin.id}
+                    draggable={editingPins}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", item.pin.id);
+                      setDraggedPinId(item.pin.id);
                     }}
-                    onKeyDown={(event) => handlePinKey(event, item.pin.id)}
-                    onPointerDown={handlePinTiltDown}
-                    onPointerUp={clearPinTilt}
-                    onPointerLeave={clearPinTilt}
-                    onPointerCancel={clearPinTilt}
-                    title={`打开 ${item.title}`}
+                    onDragEnd={() => setDraggedPinId(null)}
+                    onDragOver={(event) => {
+                      if (editingPins) event.preventDefault();
+                    }}
+                    onDrop={(event) => handleDrop(event, item.pin.id)}
+                    onContextMenu={(event) => onContextMenu(event, item.payload)}
                   >
-                    <PinArtwork item={item} index={index} />
-                    <span className="quick-pin-caption">
-                      <strong>{item.title}</strong>
-                      <small>{item.subtitle}</small>
-                    </span>
-                  </button>
-                  {item.tracks.length > 0 && !editingPins && (
-                    <button
-                      className="quick-pin-play"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onPlayTracks(item.tracks);
-                      }}
-                      title={`播放 ${item.title}`}
-                    >
-                      <Play size={18} fill="currentColor" />
-                    </button>
-                  )}
-                  {editingPins && (
-                    <div className="quick-pin-edit-tools">
-                      <GripVertical size={17} aria-hidden="true" />
-                      <button onClick={() => onTogglePin(item.payload)} title={`取消固定 ${item.title}`}>
-                        <PinOff size={17} />
+                    {editingPins ? (
+                      <div
+                        className="quick-pin-main"
+                        tabIndex={0}
+                        onKeyDown={(event) => handlePinKey(event, item.pin.id)}
+                        title={`移动 ${item.title}`}
+                      >
+                        {pinArtwork}
+                        {pinCaption}
+                      </div>
+                    ) : (
+                      <button
+                        className="quick-pin-main"
+                        onClick={() => onOpenPin(item.pin)}
+                        onKeyDown={(event) => handlePinKey(event, item.pin.id)}
+                        onPointerDown={handlePinTiltDown}
+                        onPointerUp={clearPinTilt}
+                        onPointerLeave={clearPinTilt}
+                        onPointerCancel={clearPinTilt}
+                        title={`打开 ${item.title}`}
+                      >
+                        {pinArtwork}
+                        {pinCaption}
                       </button>
-                    </div>
-                  )}
-                </article>
-              ))}
+                    )}
+                    {item.tracks.length > 0 && !editingPins && (
+                      <button
+                        className="quick-pin-play"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onPlayTracks(item.tracks);
+                        }}
+                        title={`播放 ${item.title}`}
+                      >
+                        <Play size={18} fill="currentColor" />
+                      </button>
+                    )}
+                    {editingPins && (
+                      <div className="quick-pin-edit-tools">
+                        <GripVertical size={17} aria-hidden="true" />
+                        <button onClick={() => onTogglePin(item.payload)} title={`取消固定 ${item.title}`}>
+                          <PinOff size={17} />
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
             </div>
           )}
         </article>

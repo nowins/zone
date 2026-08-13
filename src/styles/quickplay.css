@@ -127,9 +127,14 @@
   grid-column: span 2;
 }
 
+.quick-pins-grid.editing .quick-pin {
+  cursor: grab;
+}
+
 .quick-pin.dragging {
   opacity: 0.38;
   transform: scale(0.98);
+  cursor: grabbing;
 }
 
 .quick-pin.tilt-pressed {

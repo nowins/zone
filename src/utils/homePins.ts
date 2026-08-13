@@ -90,7 +90,10 @@ export function shiftHomePin(pins: HomePin[], pinId: string, direction: -1 | 1) 
 function targetIdForPayload(payload: ContextPayload) {
   if (payload.kind === "track") return payload.tracks[0]?.id ?? null;
   if (payload.kind === "album") return albumKey(payload.title, payload.subtitle);
-  if (payload.kind === "artist") return payload.title.trim() || null;
+  // Artist identity is the raw `track.artist` string used for grouping,
+  // reconcileHomePins and ArtistBrowser selection. Trimming here would produce
+  // a pin id that no longer matches the library and silently drops on restore.
+  if (payload.kind === "artist") return payload.title || null;
   if (!payload.playlistId || payload.playlistId === "now") return null;
   return payload.playlistId;
 }

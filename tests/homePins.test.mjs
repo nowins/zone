@@ -43,6 +43,21 @@ test("context payloads become stable home pins while the live queue stays epheme
   assert.equal(queue, null);
 });
 
+test("artist pins keep the raw library artist name so whitespace tags round-trip", () => {
+  const artistTrack = track({ artist: " Artist ", album_artist: " Artist " });
+  const pin = homePinForPayload({
+    kind: "artist",
+    title: " Artist ",
+    subtitle: "1 首歌曲",
+    tracks: [artistTrack],
+  }, 123);
+
+  assert.equal(pin?.targetId, " Artist ");
+  const reconciled = reconcileHomePins([pin], [artistTrack], []);
+  assert.equal(reconciled.length, 1);
+  assert.equal(reconciled[0].targetId, " Artist ");
+});
+
 test("restored home pins are validated, deduplicated and capped", () => {
   const input = Array.from({ length: 15 }, (_, index) => ({
     id: "legacy-id",

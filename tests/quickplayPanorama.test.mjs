@@ -52,6 +52,16 @@ test("home pins persist and support all durable collection entity types", () => 
   assert.ok(menuSource.includes("从 quickplay 取消固定"));
 });
 
+test("edit mode keeps the whole tile draggable instead of a nested button", () => {
+  // In edit mode the artwork/caption surface must not be a nested <button>,
+  // which would swallow the drag start and break tile reordering.
+  assert.ok(quickplaySource.includes("draggable={editingPins}"));
+  assert.ok(quickplaySource.includes("tabIndex={0}"), "edit-mode surface keeps keyboard Alt+arrow reorder");
+  const editingTileRule = cssRule(quickplayCss, ".quick-pins-grid.editing .quick-pin");
+  assert.ok(editingTileRule.includes("cursor: grab"));
+  assert.ok(cssRule(quickplayCss, ".quick-pin.dragging").includes("cursor: grabbing"));
+});
+
 test("recent albums use persisted addition timestamps instead of alphabetical array position", () => {
   assert.ok(quickplaySource.includes("albumAddedAt(b, activity) - albumAddedAt(a, activity)"));
   assert.ok(!quickplaySource.includes("albums.slice(-6).reverse()"));
