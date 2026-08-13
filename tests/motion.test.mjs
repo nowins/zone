@@ -65,17 +65,18 @@ test("math: clamp/lerp/smoothstep/easeOutCubic boundaries", () => {
   assert.equal(easeOutCubic(0.5), 0.875);
 });
 
-test("tokens: six duration tiers in ascending order", () => {
+test("tokens: duration tiers in ascending order", () => {
   assert.deepEqual(
     Object.keys(MOTION_DURATIONS).sort(),
-    ["chrome", "content", "instant", "loader", "micro", "page", "press"].sort(),
+    ["chrome", "content", "cycle", "instant", "loader", "micro", "page", "press"].sort(),
   );
   assert.ok(MOTION_DURATIONS.instant < MOTION_DURATIONS.press);
   assert.ok(MOTION_DURATIONS.press < MOTION_DURATIONS.micro);
   assert.ok(MOTION_DURATIONS.micro < MOTION_DURATIONS.content);
   assert.ok(MOTION_DURATIONS.content < MOTION_DURATIONS.page);
   assert.ok(MOTION_DURATIONS.page < MOTION_DURATIONS.chrome);
-  assert.ok(MOTION_DURATIONS.chrome < MOTION_DURATIONS.loader);
+  assert.ok(MOTION_DURATIONS.chrome < MOTION_DURATIONS.cycle);
+  assert.ok(MOTION_DURATIONS.cycle < MOTION_DURATIONS.loader);
 
   assert.deepEqual([...MOTION_EASINGS.standard], [0.23, 1, 0.32, 1]);
   assert.ok(MOTION_DRIFT.s < MOTION_DRIFT.m && MOTION_DRIFT.m < MOTION_DRIFT.l);

@@ -24,3 +24,9 @@ export function easeOutCubic(t: number): number {
   const remaining = 1 - clamp(t, 0, 1);
   return 1 - remaining * remaining * remaining;
 }
+
+/** Cubic ease-in: slow start, accelerating. `t` is clamped to [0, 1]. */
+export function easeInCubic(t: number): number {
+  const clamped = clamp(t, 0, 1);
+  return clamped * clamped * clamped;
+}

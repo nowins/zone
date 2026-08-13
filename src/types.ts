@@ -229,6 +229,9 @@ export type ContextPayload = {
   subtitle: string;
   tracks: Track[];
   playbackTracks?: Track[];
+  /** Stable entity id (e.g. the album group key); set at payload creation so
+      pins never have to reverse-engineer identity from display strings. */
+  targetId?: string;
   playlistId?: string;
   playlistKind?: "manual" | "smart";
 };

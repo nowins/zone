@@ -1,10 +1,116 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildContinueBlock,
   buildForgottenFavoritesBlock,
+  buildHistoryBlock,
   buildMostPlayedBlock,
   buildQuickplayBlocks,
 } from "../.tmp/visualizer-tests/utils/quickplayBlocks.js";
+
+function albumGroup(key, album, artist, tracks) {
+  return { key, album, artist, tracks, coverPath: null };
+}
+
+test("continue without an active track falls back to the most recently played album", () => {
+  const alphaTracks = [track("alpha-1", { album: "Aardvark", artist: "Alpha" })];
+  const zetaTracks = [track("zeta-1", { album: "Zebra", artist: "Zeta" })];
+  const albums = [
+    albumGroup("aardvark\0alpha", "Aardvark", "Alpha", alphaTracks),
+    albumGroup("zebra\0zeta", "Zebra", "Zeta", zetaTracks),
+  ];
+  const activity = {
+    "alpha-1": { addedAt: 1, playCount: 1, completedCount: 0, skipCount: 0, lastPlayedAt: 100 },
+    "zeta-1": { addedAt: 1, playCount: 1, completedCount: 0, skipCount: 0, lastPlayedAt: 200 },
+  };
+  const block = buildContinueBlock({
+    tracks: [...alphaTracks, ...zetaTracks],
+    albums,
+    playlists: [],
+    activity,
+    favoriteTrackIds: new Set(),
+    historyIds: [],
+    activeTrack: null,
+  });
+  // Not the alphabetically first album: the one actually listened to last.
+  assert.equal(block?.items[0]?.id, "zebra\0zeta");
+});
+
+test("continue with no play history falls back to the most recently added album", () => {
+  const oldTracks = [track("old-1", { album: "Aardvark", artist: "Alpha", added_at: 10 })];
+  const newTracks = [track("new-1", { album: "Zebra", artist: "Zeta", added_at: 20 })];
+  const block = buildContinueBlock({
+    tracks: [...oldTracks, ...newTracks],
+    albums: [
+      albumGroup("aardvark\0alpha", "Aardvark", "Alpha", oldTracks),
+      albumGroup("zebra\0zeta", "Zebra", "Zeta", newTracks),
+    ],
+    playlists: [],
+    activity: {},
+    favoriteTrackIds: new Set(),
+    historyIds: [],
+    activeTrack: null,
+  });
+  assert.equal(block?.items[0]?.id, "zebra\0zeta");
+});
+
+test("history dedups by album identity, not by album name", () => {
+  const tracks = [
+    track("one", { album: "Greatest Hits", artist: "Alpha" }),
+    track("two", { album: "Greatest Hits", artist: "Beta" }),
+  ];
+  const block = buildHistoryBlock({
+    tracks,
+    albums: [],
+    playlists: [],
+    activity: {},
+    favoriteTrackIds: new Set(),
+    historyIds: ["one", "two"],
+    activeTrack: null,
+  });
+  // Real history ids only — both recent plays appear even if albums share a name.
+  assert.deepEqual(block.items.map((item) => item.id), ["one", "two"]);
+});
+
+test("history never pads with library order and keeps one track per item", () => {
+  const tracks = [
+    track("one", { album: "A", artist: "Alpha" }),
+    track("two", { album: "B", artist: "Beta" }),
+    track("three", { album: "C", artist: "Gamma" }),
+  ];
+  const block = buildHistoryBlock({
+    tracks,
+    albums: [],
+    playlists: [],
+    activity: {},
+    favoriteTrackIds: new Set(),
+    historyIds: ["two"],
+    activeTrack: null,
+  });
+  assert.deepEqual(block.items.map((item) => item.id), ["two"]);
+  assert.deepEqual(block.items[0]?.tracks.map((item) => item.id), ["two"]);
+});
+
+test("most played items expose the ranked track itself, not the library head", () => {
+  const tracks = [
+    track("a", { title: "A" }),
+    track("b", { title: "B" }),
+  ];
+  const block = buildMostPlayedBlock({
+    tracks,
+    albums: [],
+    playlists: [],
+    activity: {
+      a: { addedAt: 1, playCount: 1, completedCount: 0, skipCount: 0, lastPlayedAt: 10 },
+      b: { addedAt: 1, playCount: 9, completedCount: 4, skipCount: 0, lastPlayedAt: 20 },
+    },
+    favoriteTrackIds: new Set(),
+    historyIds: [],
+    activeTrack: null,
+  });
+  assert.equal(block.items[0]?.id, "b");
+  assert.deepEqual(block.items[0]?.tracks.map((item) => item.id), ["b"]);
+});
 
 function track(id, overrides = {}) {
   return {

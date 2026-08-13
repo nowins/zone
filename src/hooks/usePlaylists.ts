@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_PLAYLIST_ID, MAX_HOME_PINS } from "../constants";
-import { defaultPlaylists, normalizePlaylists, uniqueIds } from "../utils/music";
+import { albumKey, defaultPlaylists, normalizePlaylists, uniqueIds } from "../utils/music";
 import { homePinForPayload, reconcileHomePins } from "../utils/homePins";
 import { isSmartPlaylist } from "../utils/smartPlaylist";
 import type { PlaylistDialogState } from "../components/PlaylistDialog";
@@ -19,7 +19,6 @@ type UsePlaylistsParams = {
   showActionNotice: (message: string) => void;
   tracks: Track[];
   restored: boolean;
-  playTrack: (track: Track, sourceTracks?: Track[]) => void;
   navigateCollection: (nextView: ViewMode) => void;
   setSelectedAlbumKey: React.Dispatch<React.SetStateAction<string | null>>;
   setSelectedArtistName: React.Dispatch<React.SetStateAction<string | null>>;
@@ -38,7 +37,6 @@ export function usePlaylists({
   showActionNotice,
   tracks,
   restored,
-  playTrack,
   navigateCollection,
   setSelectedAlbumKey,
   setSelectedArtistName,
@@ -132,24 +130,23 @@ export function usePlaylists({
     showActionNotice(isPinned ? `已从 quickplay 取消固定“${payload.title}”` : `已固定“${payload.title}”到 quickplay`);
   }
 
-  function openHomePin(pin: HomePin) {
-    if (pin.kind === "track") {
-      const track = tracks.find((item) => item.id === pin.targetId);
-      if (track) playTrack(track, tracks);
-      return;
-    }
-    if (pin.kind === "album") {
-      setSelectedAlbumKey(pin.targetId);
+  // 磁贴/右键菜单的次级动作"在收藏中打开"：按 payload 身份定位到收藏视图。
+  // 专辑优先用创建时写入的稳定 targetId，避免从展示文案反推分组键。
+  function openPayloadInCollection(payload: ContextPayload) {
+    if (payload.kind === "album") {
+      setSelectedAlbumKey(payload.targetId ?? albumKey(payload.title, payload.subtitle));
       navigateCollection("albums");
       return;
     }
-    if (pin.kind === "artist") {
-      setSelectedArtistName(pin.targetId);
+    if (payload.kind === "artist") {
+      setSelectedArtistName(payload.title);
       navigateCollection("artists");
       return;
     }
-    setSelectedPlaylistId(pin.targetId);
-    navigateCollection("playlists");
+    if (payload.kind === "playlist") {
+      if (payload.playlistId) setSelectedPlaylistId(payload.playlistId);
+      navigateCollection("playlists");
+    }
   }
 
   function createPlaylist(name: string) {
@@ -314,7 +311,7 @@ export function usePlaylists({
     toggleFavorite,
     toggleFavoriteTrack,
     toggleHomePin,
-    openHomePin,
+    openPayloadInCollection,
     openCreatePlaylistDialog,
     openCreateSmartPlaylist,
     openSmartPlaylistEditor,

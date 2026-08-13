@@ -43,6 +43,27 @@ test("context payloads become stable home pins while the live queue stays epheme
   assert.equal(queue, null);
 });
 
+test("album pins keep the stable group key from the payload instead of display strings", () => {
+  // Grouping collapses an empty album_artist to the bare album name, while the
+  // display subtitle still shows a derived artist. The pin must follow the
+  // explicit targetId, not the reverse-engineered title/subtitle key.
+  const pinned = homePinForPayload({
+    kind: "album",
+    title: "Greatest Hits",
+    subtitle: "Various Artists",
+    tracks: [track({ album: "Greatest Hits", album_artist: "" })],
+    targetId: "greatest hits",
+  }, 456);
+
+  assert.equal(pinned?.targetId, "greatest hits");
+  assert.equal(pinned?.id, homePinId("album", "greatest hits"));
+
+  const reconciled = reconcileHomePins([pinned], [
+    track({ id: "t1", album: "Greatest Hits", album_artist: "" }),
+  ], []);
+  assert.equal(reconciled.length, 1);
+});
+
 test("restored home pins are validated, deduplicated and capped", () => {
   const input = Array.from({ length: 15 }, (_, index) => ({
     id: "legacy-id",

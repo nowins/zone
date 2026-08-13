@@ -33,8 +33,33 @@ export function Titlebar({
         </button>
         <button
           onClick={() => {
-            if (closeToTray) void appWindow.hide();
-            else void appWindow.close();
+            void (async () => {
+              try {
+                if (closeToTray) await appWindow.hide();
+                else {
+                  // Prefer destroy so a lingering closeRequested interceptor
+                  // cannot soft-swallow the exit when tray mode is off.
+                  try {
+                    await appWindow.destroy();
+                  } catch {
+                    await appWindow.close();
+                  }
+                }
+              } catch (error) {
+                // hide may be denied if the capability is missing; always keep
+                // a real exit path so the window control never becomes a no-op.
+                if (import.meta.env.DEV) console.warn("[titlebar] close failed", error);
+                try {
+                  await appWindow.destroy();
+                } catch {
+                  try {
+                    await appWindow.close();
+                  } catch {
+                    // ignore tertiary failure
+                  }
+                }
+              }
+            })();
           }}
           title={closeToTray ? "关闭到托盘" : "关闭"}
         >

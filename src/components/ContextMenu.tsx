@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { Ban, Heart, Info, ListMusic, ListPlus, Pencil, Pin, PinOff, Play, Radio, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Ban, FolderOpen, Heart, Info, ListMusic, ListPlus, Pencil, Pin, PinOff, Play, Radio, SlidersHorizontal, Trash2 } from "lucide-react";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import type { ContextMenuState } from "../types";
 
@@ -18,6 +18,7 @@ export function ContextMenu({
   onExcludeFromSmartPlaylist,
   homePinState,
   onToggleHomePin,
+  onOpenInCollection,
   onInfo,
 }: {
   menu: ContextMenuState;
@@ -34,6 +35,7 @@ export function ContextMenu({
   onExcludeFromSmartPlaylist: (playlistId: string) => void;
   homePinState: "pinned" | "unpinned" | null;
   onToggleHomePin: () => void;
+  onOpenInCollection?: () => void;
   onInfo: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -152,6 +154,12 @@ export function ContextMenu({
           <Info size={16} />
           <span>查看信息</span>
         </button>
+        {onOpenInCollection && menu.payload.kind !== "track" && (
+          <button role="menuitem" onClick={() => run(onOpenInCollection)}>
+            <FolderOpen size={16} />
+            <span>在收藏中打开</span>
+          </button>
+        )}
       </div>
     </div>
   );

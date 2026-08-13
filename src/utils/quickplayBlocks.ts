@@ -51,11 +51,6 @@ export type QuickplayBlocksInput = {
 
 const DAY_MS = 86_400_000;
 
-function albumForTrack(albums: AlbumGroup[], track: Track | null) {
-  if (!track) return albums[0] ?? null;
-  return albums.find((album) => album.tracks.some((item) => item.id === track.id)) ?? albums[0] ?? null;
-}
-
 function albumAddedAt(album: AlbumGroup, activity: TrackActivityMap) {
   return album.tracks.reduce(
     (latest, track) => Math.max(latest, activity[track.id]?.addedAt ?? track.added_at ?? 0),
@@ -63,13 +58,53 @@ function albumAddedAt(album: AlbumGroup, activity: TrackActivityMap) {
   );
 }
 
-function trackItem(track: Track, playbackTracks?: Track[]): QuickplayBlockItem {
+function albumLastPlayedAt(album: AlbumGroup, activity: TrackActivityMap) {
+  return album.tracks.reduce(
+    (latest, track) => Math.max(latest, activity[track.id]?.lastPlayedAt ?? 0),
+    0,
+  );
+}
+
+// Without an active track, "continue" should mean the album you actually
+// listened to most recently — then the newest addition — not the first album
+// in alphabetical order.
+function fallbackAlbum(albums: AlbumGroup[], activity: TrackActivityMap) {
+  let best: AlbumGroup | null = null;
+  let bestAt = 0;
+  for (const album of albums) {
+    const at = albumLastPlayedAt(album, activity);
+    if (at > bestAt) {
+      best = album;
+      bestAt = at;
+    }
+  }
+  if (best) return best;
+  for (const album of albums) {
+    const at = albumAddedAt(album, activity);
+    if (at > bestAt) {
+      best = album;
+      bestAt = at;
+    }
+  }
+  return best;
+}
+
+function albumForTrack(albums: AlbumGroup[], track: Track | null, activity: TrackActivityMap) {
+  if (!track) return fallbackAlbum(albums, activity);
+  return albums.find((album) => album.tracks.some((item) => item.id === track.id)) ?? fallbackAlbum(albums, activity);
+}
+
+// Display identity is always the single featured track. Call sites that need
+// a full playback queue pass the library (or another source) at click time —
+// stuffing the whole library into `tracks` made every block resolve to the
+// same tracks[0] and look completely inert.
+function trackItem(track: Track): QuickplayBlockItem {
   return {
     kind: "track",
     id: track.id,
     title: track.title,
     subtitle: track.artist,
-    tracks: playbackTracks && playbackTracks.length > 0 ? playbackTracks : [track],
+    tracks: [track],
     artPath: track.cover_path,
   };
 }
@@ -86,13 +121,13 @@ function albumItem(album: AlbumGroup): QuickplayBlockItem {
 }
 
 export function buildContinueBlock(input: QuickplayBlocksInput): QuickplayBlock | null {
-  const continueAlbum = albumForTrack(input.albums, input.activeTrack);
+  const continueAlbum = albumForTrack(input.albums, input.activeTrack, input.activity);
   if (!continueAlbum && !input.activeTrack) return null;
   if (input.activeTrack) {
     return {
       id: "continue",
       title: "继续播放",
-      items: [trackItem(input.activeTrack, continueAlbum?.tracks ?? [input.activeTrack])],
+      items: [trackItem(input.activeTrack)],
     };
   }
   return {
@@ -116,22 +151,24 @@ export function buildRecentAddedBlock(input: QuickplayBlocksInput, limit = 6): Q
 
 export function buildHistoryBlock(input: QuickplayBlocksInput, limit = 4): QuickplayBlock {
   const trackMap = new Map(input.tracks.map((track) => [track.id, track]));
-  const candidates = [
-    ...input.historyIds.map((id) => trackMap.get(id)).filter((track): track is Track => Boolean(track)),
-    ...input.tracks,
-  ];
-  const seenAlbums = new Set<string>();
+  // Only real play-history ids. Never pad with library order — that made the
+  // section look full of random album art and feel completely inert.
+  const candidates = input.historyIds
+    .map((id) => trackMap.get(id))
+    .filter((track): track is Track => Boolean(track));
+  const seenTracks = new Set<string>();
   const result: Track[] = [];
+  const activeId = input.activeTrack?.id ?? null;
   for (const track of candidates) {
-    if (track.album === input.activeTrack?.album || seenAlbums.has(track.album)) continue;
-    seenAlbums.add(track.album);
+    if (track.id === activeId || seenTracks.has(track.id)) continue;
+    seenTracks.add(track.id);
     result.push(track);
     if (result.length === limit) break;
   }
   return {
     id: "history",
     title: "播放历史",
-    items: result.map((track) => trackItem(track, input.tracks)),
+    items: result.map((track) => trackItem(track)),
   };
 }
 
@@ -145,7 +182,7 @@ export function buildMostPlayedBlock(input: QuickplayBlocksInput, limit = 6): Qu
     .filter((item) => item.playCount > 0)
     .sort((a, b) => b.playCount - a.playCount || b.lastPlayedAt - a.lastPlayedAt || a.track.title.localeCompare(b.track.title))
     .slice(0, limit)
-    .map((item) => trackItem(item.track, input.tracks));
+    .map((item) => trackItem(item.track));
 
   return {
     id: "mostPlayed",
@@ -181,7 +218,7 @@ export function buildForgottenFavoritesBlock(
     .filter((item) => item.lastPlayedAt === 0 || item.lastPlayedAt <= threshold)
     .sort((a, b) => a.lastPlayedAt - b.lastPlayedAt || b.playCount - a.playCount || a.track.title.localeCompare(b.track.title))
     .slice(0, limit)
-    .map((item) => trackItem(item.track, input.tracks));
+    .map((item) => trackItem(item.track));
 
   return {
     id: "forgottenFavorites",

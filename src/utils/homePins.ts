@@ -89,7 +89,11 @@ export function shiftHomePin(pins: HomePin[], pinId: string, direction: -1 | 1) 
 
 function targetIdForPayload(payload: ContextPayload) {
   if (payload.kind === "track") return payload.tracks[0]?.id ?? null;
-  if (payload.kind === "album") return albumKey(payload.title, payload.subtitle);
+  // Album identity comes from the group key captured at payload creation;
+  // reverse-engineering it from title/subtitle breaks whenever the display
+  // artist (bestAlbumArtist) differs from the grouping key (album_artist ??
+  // artist, where an empty album_artist collapses the key to the album name).
+  if (payload.kind === "album") return payload.targetId ?? albumKey(payload.title, payload.subtitle);
   if (payload.kind === "artist") return payload.title.trim() || null;
   if (!payload.playlistId || payload.playlistId === "now") return null;
   return payload.playlistId;

@@ -1,8 +1,10 @@
 import type { PointerEvent } from "react";
 import { clamp } from "../motion/math.js";
 
-// Metro-style tile tilt: press tilts the tile around the pressed point.
-const TILT_DEGREES = 3.5;
+// Metro-style tile tilt: press tips the tile in 3D toward the pressed point.
+// 10 degrees matches the Lumia calibration in MangoTile (maxTiltDegrees) — the
+// signature Metro touch response; anything subtler reads as no feedback.
+const TILT_DEGREES = 10;
 
 function tiltTarget(event: PointerEvent<HTMLElement>, selector?: string): HTMLElement | null {
   const element = selector ? event.currentTarget.closest(selector) : event.currentTarget;

@@ -59,10 +59,16 @@ test("close-to-tray setting and titlebar hide path exist", () => {
   const settings = readFileSync("src/views/SettingsView.tsx", "utf8");
   const titlebar = readFileSync("src/components/Titlebar.tsx", "utf8");
   const playbackSettings = readFileSync("src/app/playbackSettings.ts", "utf8");
+  const appSource = readFileSync("src/App.tsx", "utf8");
+  const capabilities = readFileSync("src-tauri/capabilities/default.json", "utf8");
   assert.ok(playbackSettings.includes("closeToTray"));
   assert.ok(settings.includes("关闭到托盘"));
   assert.ok(titlebar.includes("closeToTray"));
   assert.ok(titlebar.includes("appWindow.hide()"));
+  assert.ok(titlebar.includes("appWindow.destroy()"), "real exit must not soft-fail when tray mode is off");
+  assert.ok(appSource.includes("if (!closeToTray)"), "close interceptor must not stay armed after tray mode is disabled");
+  assert.ok(capabilities.includes("core:window:allow-destroy"));
+  assert.ok(capabilities.includes("core:window:allow-hide"));
 });
 
 test("system media keys map play/pause/previous/next and debounce repeats", () => {

@@ -160,6 +160,7 @@ export function SearchResultsView({
                       title: album.album,
                       subtitle: album.artist,
                       tracks: album.tracks,
+                      targetId: album.key,
                     })}
                   >
                     <Cover

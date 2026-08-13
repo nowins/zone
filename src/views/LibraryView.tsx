@@ -81,6 +81,7 @@ export function LibraryView({
                   title: album.album,
                   subtitle: album.artist,
                   tracks: album.tracks,
+                  targetId: album.key,
                 })
               }
             >

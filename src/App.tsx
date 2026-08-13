@@ -299,7 +299,7 @@ export default function App() {
     toggleFavorite,
     toggleFavoriteTrack,
     toggleHomePin,
-    openHomePin,
+    openPayloadInCollection,
     openCreatePlaylistDialog,
     openCreateSmartPlaylist,
     openSmartPlaylistEditor,
@@ -313,7 +313,6 @@ export default function App() {
     showActionNotice,
     tracks,
     restored,
-    playTrack,
     navigateCollection,
     setSelectedAlbumKey,
     setSelectedArtistName,
@@ -612,14 +611,34 @@ export default function App() {
     const appWindow = getCurrentWindow();
     let unlisten: (() => void) | undefined;
     let cancelled = false;
-    void appWindow.onCloseRequested(async (event) => {
-      if (!closeToTray) return;
-      event.preventDefault();
-      await appWindow.hide();
-    }).then((stop) => {
-      if (cancelled) stop();
-      else unlisten = stop;
-    }).catch(() => undefined);
+    // Only intercept OS/titlebar close while "close to tray" is enabled.
+    // Leaving a no-op listener registered after the setting flips off can still
+    // race with window.close() and make the close button feel dead.
+    if (!closeToTray) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    void appWindow
+      .onCloseRequested(async (event) => {
+        // Must prevent immediately; async work happens after.
+        event.preventDefault();
+        try {
+          await appWindow.hide();
+        } catch (error) {
+          if (import.meta.env.DEV) console.warn("[window] hide on close failed", error);
+          try {
+            await appWindow.destroy();
+          } catch {
+            await appWindow.close();
+          }
+        }
+      })
+      .then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
       unlisten?.();
@@ -745,6 +764,7 @@ export default function App() {
       onExcludeFromSmartPlaylist={(playlistId) => excludeFromSmartPlaylist(playlistId, contextMenu.payload.tracks)}
       homePinState={homePinStateForPayload(homePins, contextMenu.payload)}
       onToggleHomePin={() => toggleHomePin(contextMenu.payload)}
+      onOpenInCollection={() => openPayloadInCollection(contextMenu.payload)}
       onInfo={() => setInfoTarget(contextMenu.payload)}
     />
   ) : null;
@@ -859,7 +879,9 @@ export default function App() {
             onPlayTracks={playTracks}
             onOpenNowPlaying={openNowPlaying}
             onOpenCollection={navigateCollection}
-            onOpenPin={openHomePin}
+            onResumePlayback={() => {
+              if (audioRef.current?.paused) togglePlay();
+            }}
             onMovePin={(sourceId, targetId) => setHomePins((current) => moveHomePin(current, sourceId, targetId))}
             onShiftPin={(pinId, direction) => setHomePins((current) => shiftHomePin(current, pinId, direction))}
             onTogglePin={toggleHomePin}
