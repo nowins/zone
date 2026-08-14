@@ -10,10 +10,7 @@ import { SPRING_PRESETS } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
 import {
-  buildForgottenFavoritesBlock,
-  buildHistoryBlock,
-  buildMostPlayedBlock,
-  buildRecentAddedBlock,
+  buildQuickplayBlocks,
 } from "../utils/quickplayBlocks";
 import { pickCoverCandidates } from "../utils/nowPlayingWall";
 import { FlipTile, MosaicFrames } from "../components/tiles";
@@ -43,28 +40,6 @@ type ResolvedPin = {
 };
 
 let quickplayScrollPosition = 0;
-
-// Without an active track, "continue" falls back to the most recently played
-// album, never the alphabetically first one.
-function albumForTrack(albums: AlbumGroup[], track: Track | null, activity: TrackActivityMap) {
-  if (track) {
-    const match = albums.find((album) => album.tracks.some((item) => item.id === track.id));
-    if (match) return match;
-  }
-  let best: AlbumGroup | null = null;
-  let bestAt = 0;
-  for (const album of albums) {
-    const at = album.tracks.reduce(
-      (latest, item) => Math.max(latest, activity[item.id]?.lastPlayedAt ?? 0),
-      0,
-    );
-    if (at > bestAt) {
-      best = album;
-      bestAt = at;
-    }
-  }
-  return best ?? albums[0] ?? null;
-}
 
 function coverPathsForTracks(tracks: Track[], limit: number, preferredArtist?: string | null) {
   const preferred = pickCoverCandidates(tracks, limit, preferredArtist);
@@ -99,6 +74,7 @@ export function QuickplayView({
   onShiftPin,
   onTogglePin,
   onContextMenu,
+  podcastActive = false,
 }: {
   tracks: Track[];
   albums: AlbumGroup[];
@@ -118,6 +94,7 @@ export function QuickplayView({
   onShiftPin: (pinId: string, direction: -1 | 1) => void;
   onTogglePin: (payload: ContextPayload) => void;
   onContextMenu: (event: MouseEvent, payload: ContextPayload) => void;
+  podcastActive?: boolean;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const scrollAnimRef = useRef<{ target: number | null; handle: AnimationHandle | null }>({
@@ -128,7 +105,9 @@ export function QuickplayView({
   const [draggedPinId, setDraggedPinId] = useState<string | null>(null);
   const pinsGridRef = useRef<HTMLDivElement | null>(null);
   const reducedMotion = useReducedMotion();
-  const continueAlbum = albumForTrack(albums, activeTrack, activity);
+  // A podcast owns the shared audio element. Continue must not treat the
+  // leftover music track as a live session, or resume would restart the show.
+  const musicActiveTrack = podcastActive ? null : activeTrack;
   const blockInput = useMemo(() => ({
     tracks,
     albums,
@@ -136,25 +115,35 @@ export function QuickplayView({
     activity,
     favoriteTrackIds,
     historyIds,
-    activeTrack,
-  }), [activeTrack, activity, albums, favoriteTrackIds, historyIds, playlists, tracks]);
+    activeTrack: musicActiveTrack,
+  }), [activity, albums, favoriteTrackIds, historyIds, musicActiveTrack, playlists, tracks]);
+  const autoBlocks = useMemo(() => buildQuickplayBlocks(blockInput), [blockInput]);
+  const continueBlock = autoBlocks.find((block) => block.id === "continue") ?? null;
+  const continueItem = continueBlock?.items[0] ?? null;
+  const continueTrack = continueItem?.kind === "track" ? musicActiveTrack : null;
+  const continueArtPath = continueTrack?.cover_path ?? continueItem?.artPath ?? null;
+  const continueTitle = continueTrack?.title ?? continueItem?.title ?? "";
+  const continueSubtitle = continueTrack?.artist ?? continueItem?.subtitle ?? "";
   const recentAlbums = useMemo(() => {
-    const items = buildRecentAddedBlock(blockInput).items;
+    const items = autoBlocks.find((block) => block.id === "recentAdded")?.items ?? [];
     return items.flatMap((item) => {
       if (item.kind !== "album") return [];
       const album = albums.find((entry) => entry.key === item.id);
       return album ? [album] : [];
     });
-  }, [albums, blockInput]);
+  }, [albums, autoBlocks]);
   const historyTracks = useMemo(() => {
-    return buildHistoryBlock(blockInput).items.flatMap((item) => item.tracks[0] ? [item.tracks[0]] : []);
-  }, [blockInput]);
+    const items = autoBlocks.find((block) => block.id === "history")?.items ?? [];
+    return items.flatMap((item) => item.tracks[0] ? [item.tracks[0]] : []);
+  }, [autoBlocks]);
   const mostPlayedTracks = useMemo(() => {
-    return buildMostPlayedBlock(blockInput).items.flatMap((item) => item.tracks[0] ? [item.tracks[0]] : []);
-  }, [blockInput]);
+    const items = autoBlocks.find((block) => block.id === "mostPlayed")?.items ?? [];
+    return items.flatMap((item) => item.tracks[0] ? [item.tracks[0]] : []);
+  }, [autoBlocks]);
   const forgottenFavoriteTracks = useMemo(() => {
-    return buildForgottenFavoritesBlock(blockInput).items.flatMap((item) => item.tracks[0] ? [item.tracks[0]] : []);
-  }, [blockInput]);
+    const items = autoBlocks.find((block) => block.id === "forgottenFavorites")?.items ?? [];
+    return items.flatMap((item) => item.tracks[0] ? [item.tracks[0]] : []);
+  }, [autoBlocks]);
   const resolvedPins = useMemo(() => {
     const trackMap = new Map(tracks.map((track) => [track.id, track]));
     const albumMap = new Map(albums.map((album) => [album.key, album]));
@@ -443,19 +432,42 @@ export function QuickplayView({
     setDraggedPinId(null);
   }
 
-  // 主点击语义统一为"播放"：有当前曲时封面恢复播放并飞入正在播放，
-  // 无当前曲时播放兜底专辑。封面同时作为共享元素飞行的来源。
-  function handleFeatureCoverClick(event: MouseEvent<HTMLButtonElement>) {
-    if (!activeTrack) {
-      if (continueAlbum) onPlayTracks(continueAlbum.tracks);
+  function continueContextPayload(): ContextPayload | null {
+    if (!continueItem) return null;
+    if (continueItem.kind === "track" && continueTrack) {
+      return {
+        kind: "track",
+        title: continueTrack.title,
+        subtitle: `${continueTrack.artist} / ${continueTrack.album}`,
+        tracks: [continueTrack],
+        playbackTracks: tracks,
+      };
+    }
+    if (continueItem.kind !== "album") return null;
+    return {
+      kind: "album",
+      title: continueItem.title,
+      subtitle: continueItem.subtitle,
+      tracks: continueItem.tracks,
+      targetId: continueItem.id,
+    };
+  }
+
+  // Cover and caption share one action: resume the live music session, or
+  // start the fallback album. Never restart an album just because the
+  // current track happens to be its first song.
+  function handleContinueActivate(event?: MouseEvent<HTMLButtonElement>) {
+    if (!continueItem) return;
+    if (continueTrack) {
+      onResumePlayback();
+      if (!reducedMotion && continueTrack.cover_path && event) {
+        const cover = event.currentTarget.querySelector<HTMLElement>(".cover");
+        if (cover) registerFlipElement(`cover:${continueTrack.id}`, cover);
+      }
+      onOpenNowPlaying();
       return;
     }
-    onResumePlayback();
-    if (!reducedMotion && activeTrack.cover_path) {
-      const cover = event.currentTarget.querySelector<HTMLElement>(".cover");
-      if (cover) registerFlipElement(`cover:${activeTrack.id}`, cover);
-    }
-    onOpenNowPlaying();
+    if (continueItem.tracks.length > 0) onPlayTracks(continueItem.tracks);
   }
 
   return (
@@ -513,6 +525,11 @@ export function QuickplayView({
                   }}
                   onDrop={(event) => handleDrop(event, item.pin.id)}
                   onContextMenu={(event) => onContextMenu(event, item.payload)}
+                  // In edit mode the tile renders as a div (no nested button
+                  // swallowing HTML5 drag), so the article owns focus and the
+                  // Alt+arrow keyboard reorder.
+                  tabIndex={editingPins ? 0 : undefined}
+                  onKeyDown={(event) => handlePinKey(event, item.pin.id)}
                 >
                   <FlipTile
                     size={item.isWide ? "wide" : "medium"}
@@ -521,6 +538,7 @@ export function QuickplayView({
                     title={`播放 ${item.title}`}
                     paused={editingPins}
                     disabled={editingPins}
+                    asButton={!editingPins}
                     onPress={() => {
                       if (editingPins) return;
                       if (item.pin.kind === "track") {
@@ -530,13 +548,16 @@ export function QuickplayView({
                         onPlayTracks(item.tracks);
                       }
                     }}
-                    onKeyDown={(event) => handlePinKey(event, item.pin.id)}
                     onContextMenu={(event) => onContextMenu(event, item.payload)}
                       front={
                         <>
                           <span className="tile-face-art">
                             <PinArtwork item={item} index={index} />
                           </span>
+                          {/* Front identity: names must be glanceable without
+                              waiting 45-110s for the back, and edit mode
+                              pauses the flip entirely. */}
+                          <strong className="quick-pin-front-title">{item.title}</strong>
                         </>
                       }
                       back={
@@ -564,42 +585,37 @@ export function QuickplayView({
           )}
         </article>
 
+        {continueItem ? (
         <article className="quick-group quick-continue">
           <h2>继续播放</h2>
-          {continueAlbum ? (
             <div className="quick-section-scroll">
               <div
                 className="quick-feature"
-                onContextMenu={(event) =>
-                  onContextMenu(event, {
-                    kind: "album",
-                    title: continueAlbum.album,
-                    subtitle: continueAlbum.artist,
-                    tracks: continueAlbum.tracks,
-                    targetId: continueAlbum.key,
-                  })
-                }
+                onContextMenu={(event) => {
+                  const payload = continueContextPayload();
+                  if (payload) onContextMenu(event, payload);
+                }}
               >
               <button
                 className="quick-cover-button"
-                onClick={handleFeatureCoverClick}
-                title={activeTrack ? `继续播放 ${activeTrack.title}` : `播放 ${continueAlbum.album}`}
+                onClick={handleContinueActivate}
+                title={continueTrack ? `继续播放 ${continueTrack.title}` : `播放 ${continueTitle}`}
               >
                 <Cover
-                  artPath={activeTrack?.cover_path ?? continueAlbum.coverPath}
-                  label={activeTrack?.album ?? continueAlbum.album}
+                  artPath={continueArtPath}
+                  label={continueTitle}
                   size="large"
                 />
                 <span className="quick-play-cue"><Play size={25} fill="currentColor" /></span>
               </button>
-              <button className="quick-caption" onClick={() => onPlayTracks(continueAlbum.tracks)}>
-                <strong>{activeTrack?.title ?? continueAlbum.album}</strong>
-                <span>{activeTrack?.artist ?? continueAlbum.artist}</span>
+              <button className="quick-caption" onClick={() => handleContinueActivate()}>
+                <strong>{continueTitle}</strong>
+                <span>{continueSubtitle}</span>
               </button>
               </div>
             </div>
-          ) : null}
         </article>
+        ) : null}
 
         {mostPlayedTracks.length > 0 && (
           <article className="quick-group quick-most">

@@ -52,8 +52,10 @@ test("now playing registers the card cover on the way back", () => {
   assert.ok(nowPlayingSource.includes("trackCardRef"));
 });
 
-test("quickplay feature cover registers as a flip source only for the active track with real art", () => {
-  assert.ok(quickplaySource.includes("handleFeatureCoverClick"));
-  assert.ok(quickplaySource.includes("activeTrack.cover_path"));
-  assert.ok(quickplaySource.includes("registerFlipElement(`cover:${activeTrack.id}`, cover)"));
+test("quickplay feature cover registers as a flip source only for the live music track with real art", () => {
+  // Cover and caption share one continue action; only a live music session
+  // (never a podcast) flies the cover into now playing.
+  assert.ok(quickplaySource.includes("handleContinueActivate"));
+  assert.ok(quickplaySource.includes("continueTrack.cover_path"));
+  assert.ok(quickplaySource.includes("registerFlipElement(`cover:${continueTrack.id}`, cover)"));
 });

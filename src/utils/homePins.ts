@@ -87,6 +87,24 @@ export function shiftHomePin(pins: HomePin[], pinId: string, direction: -1 | 1) 
   return next;
 }
 
+export type HomePinToggleAction = "pinned" | "unpinned" | "capped" | "ignored";
+
+// Decide pin/unpin from the latest array. Callers must run this inside
+// setHomePins so two rapid clicks cannot both append.
+export function applyHomePinToggle(
+  pins: HomePin[],
+  payload: ContextPayload,
+  now = Date.now(),
+): { pins: HomePin[]; action: HomePinToggleAction } {
+  const pin = homePinForPayload(payload, now);
+  if (!pin) return { pins, action: "ignored" };
+  if (pins.some((item) => item.id === pin.id)) {
+    return { pins: pins.filter((item) => item.id !== pin.id), action: "unpinned" };
+  }
+  if (pins.length >= MAX_HOME_PINS) return { pins, action: "capped" };
+  return { pins: [...pins, pin], action: "pinned" };
+}
+
 function targetIdForPayload(payload: ContextPayload) {
   if (payload.kind === "track") return payload.tracks[0]?.id ?? null;
   // Album identity comes from the group key captured at payload creation;

@@ -886,6 +886,7 @@ export default function App() {
             onShiftPin={(pinId, direction) => setHomePins((current) => shiftHomePin(current, pinId, direction))}
             onTogglePin={toggleHomePin}
             onContextMenu={showContextMenu}
+            podcastActive={Boolean(activePodcastEpisode)}
           />
         ) : null}
 

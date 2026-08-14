@@ -60,7 +60,7 @@
 ### 3.3 按压反馈
 
 - 普通按钮：`:active` 时 `scale(0.97)`，press 档 110ms。
-- 磁贴（quickplay pins、专辑磁贴、历史封面）：3D 倾斜按压，`src/utils/tiltPress.ts` 的 `tiltPressDown` / `tiltPressClear`。参数固定：±3.5°、`scale(0.97)`、`perspective(900px)`、松手 ease-emphasis 回弹。新磁贴面直接挂这两个处理器，不要另写参数。
+- 磁贴（quickplay pins、专辑磁贴、历史封面）：3D 倾斜按压，`src/utils/tiltPress.ts` 的 `tiltPressDown` / `tiltPressClear`。参数固定：±10°、`scale(0.94)`、`perspective(600px)`（Lumia 校准，见 `tests/tiles.test.mjs`）、松手 ease-emphasis 回弹。新磁贴面直接挂这两个处理器，不要另写参数。
 
 ### 3.4 浮层与退出
 

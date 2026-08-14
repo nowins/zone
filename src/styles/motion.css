@@ -422,8 +422,13 @@
   .metro-loader > span,
   .podcast-now-playing-stage,
   .motion-page-enter,
-  .motion-page-exit {
+  .motion-page-exit,
+  .tiles-enter .tile {
     animation: none;
+  }
+
+  .tiles-enter .tile {
+    opacity: 1;
   }
 
   .shell[data-nav-state="exiting"] .quickplay,
@@ -463,7 +468,6 @@
   .smart-playlist-dialog,
   .quick-pin,
   .quick-pin-art,
-  .quick-pin-play,
   .quick-feature .cover,
   .quick-album .cover,
   .history-feature .cover,
@@ -531,6 +535,35 @@
   .lyrics-settings-actions > button:active,
   .lyrics-word.has-long-note {
     transform: none !important;
+  }
+
+  /* Tile system: tilt, reveals, cycle conveyor and mosaic flips all collapse.
+     The back face never slides or rotates; faces cross-fade in place. */
+  .tile,
+  .tile.tilt-pressed {
+    transform: none;
+    transition: opacity var(--motion-instant) linear;
+  }
+  .tile-face {
+    transition: opacity var(--motion-micro) linear;
+  }
+  .tile-face-back,
+  .tile-mosaic-cell-inner,
+  .tile-cycle-frame,
+  .tile-cycle-frame.is-leaving {
+    transform: none;
+  }
+  .tile-flip-v-flip .tile-flip-surface {
+    transform: none !important;
+  }
+  .tile-flip-v-flip .tile-face {
+    backface-visibility: visible;
+  }
+  .tile-flip.is-front .tile-face-back,
+  .tile-flip.is-back .tile-face-front {
+    visibility: visible;
+    opacity: 0;
+    pointer-events: none;
   }
 
   .podcast-artwork {

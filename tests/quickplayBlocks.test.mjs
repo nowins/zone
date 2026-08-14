@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   buildContinueBlock,
@@ -7,6 +8,8 @@ import {
   buildMostPlayedBlock,
   buildQuickplayBlocks,
 } from "../.tmp/visualizer-tests/utils/quickplayBlocks.js";
+
+const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
 
 function albumGroup(key, album, artist, tracks) {
   return { key, album, artist, tracks, coverPath: null };
@@ -213,4 +216,15 @@ test("quickplay blocks omit empty auto sections", () => {
   assert.ok(!ids.includes("history"));
   assert.ok(!ids.includes("mostPlayed"));
   assert.ok(!ids.includes("forgottenFavorites"));
+});
+
+test("the view consumes buildQuickplayBlocks and never re-implements the continue fallback", () => {
+  // The production regression: QuickplayView had its own albumForTrack whose
+  // no-history fallback returned the alphabetically first album. The view
+  // must consume the tested builder instead.
+  assert.ok(quickplaySource.includes("buildQuickplayBlocks(blockInput)"));
+  assert.ok(!quickplaySource.includes("albums[0]"), "view must not fall back to the alphabetically first album");
+  assert.ok(!quickplaySource.includes("function albumForTrack"), "view must not shadow the tested continue logic");
+  // A podcast owns the shared audio element; continue must not resume it.
+  assert.ok(quickplaySource.includes("podcastActive"));
 });

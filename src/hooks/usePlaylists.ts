@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_PLAYLIST_ID, MAX_HOME_PINS } from "../constants";
 import { albumKey, defaultPlaylists, normalizePlaylists, uniqueIds } from "../utils/music";
-import { homePinForPayload, reconcileHomePins } from "../utils/homePins";
+import { applyHomePinToggle, reconcileHomePins } from "../utils/homePins";
 import { isSmartPlaylist } from "../utils/smartPlaylist";
 import type { PlaylistDialogState } from "../components/PlaylistDialog";
 import type { SmartPlaylistDraft } from "../components/SmartPlaylistDialog";
@@ -116,18 +116,24 @@ export function usePlaylists({
   }
 
   function toggleHomePin(payload: ContextPayload) {
-    const pin = homePinForPayload(payload);
-    if (!pin) return;
-    const isPinned = homePins.some((item) => item.id === pin.id);
-    if (!isPinned && homePins.length >= MAX_HOME_PINS) {
+    // Compute from the latest committed snapshot and SET the resulting array
+    // (not append inside an updater): two rapid clicks before a re-render
+    // produce the same next array, so a stale double-toggle can never insert
+    // the same pin twice. State updaters also run later, not synchronously,
+    // so the notice cannot be decided inside the updater.
+    const next = applyHomePinToggle(homePins, payload);
+    if (next.action === "pinned" || next.action === "unpinned") {
+      setHomePins(next.pins);
+    }
+    if (next.action === "capped") {
       showActionNotice(`quickplay 最多固定 ${MAX_HOME_PINS} 项内容`);
       return;
     }
-
-    setHomePins((current) => isPinned
-      ? current.filter((item) => item.id !== pin.id)
-      : [...current, pin]);
-    showActionNotice(isPinned ? `已从 quickplay 取消固定“${payload.title}”` : `已固定“${payload.title}”到 quickplay`);
+    if (next.action === "pinned") {
+      showActionNotice(`已固定“${payload.title}”到 quickplay`);
+    } else if (next.action === "unpinned") {
+      showActionNotice(`已从 quickplay 取消固定“${payload.title}”`);
+    }
   }
 
   // 磁贴/右键菜单的次级动作"在收藏中打开"：按 payload 身份定位到收藏视图。

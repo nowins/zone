@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  applyHomePinToggle,
   homePinForPayload,
   homePinId,
   moveHomePin,
@@ -121,4 +122,52 @@ test("pins can be reordered by drag target or keyboard shift", () => {
   const moved = moveHomePin(pins, "track:three", "track:one");
   assert.deepEqual(moved.map((pin) => pin.targetId), ["three", "one", "two"]);
   assert.deepEqual(shiftHomePin(moved, "track:three", 1).map((pin) => pin.targetId), ["one", "three", "two"]);
+});
+
+test("toggle pins/unpins against the latest array so rapid clicks never duplicate", () => {
+  const payload = {
+    kind: "track",
+    title: "Track",
+    subtitle: "Artist / Album",
+    tracks: [track({ id: "one" })],
+  };
+
+  const first = applyHomePinToggle([], payload, 100);
+  assert.equal(first.action, "pinned");
+  assert.equal(first.pins.length, 1);
+
+  // A second rapid toggle must see the pin the first click appended — pin
+  // then unpin, never a duplicate second entry.
+  const second = applyHomePinToggle(first.pins, payload, 101);
+  assert.equal(second.action, "unpinned");
+  assert.equal(second.pins.length, 0);
+
+  const again = applyHomePinToggle(second.pins, payload, 102);
+  assert.equal(again.action, "pinned");
+  assert.equal(again.pins.length, 1);
+  assert.equal(new Set(again.pins.map((pin) => pin.id)).size, again.pins.length);
+});
+
+test("toggle respects the pin cap and ignores unpinnable payloads", () => {
+  const full = normalizeHomePins(
+    Array.from({ length: 12 }, (_, index) => ({ kind: "track", targetId: `full-${index}` })),
+  );
+  const capped = applyHomePinToggle(full, {
+    kind: "track",
+    title: "Track",
+    subtitle: "Artist / Album",
+    tracks: [track({ id: "overflow" })],
+  });
+  assert.equal(capped.action, "capped");
+  assert.equal(capped.pins.length, 12);
+
+  const ignored = applyHomePinToggle([], {
+    kind: "playlist",
+    title: "正在播放",
+    subtitle: "当前队列",
+    tracks: [track()],
+    playlistId: "now",
+  });
+  assert.equal(ignored.action, "ignored");
+  assert.equal(ignored.pins.length, 0);
 });

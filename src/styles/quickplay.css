@@ -1,6 +1,5 @@
 .quickplay {
   --quick-pin-art: clamp(108px, 15vh, 138px);
-  --quick-pin-row: calc(var(--quick-pin-art) + 42px);
   --quick-feature-size: clamp(278px, 29vw, 410px);
   position: relative;
   width: 100%;
@@ -156,7 +155,7 @@
 }
 
 .quick-pin.tilt-pressed {
-  transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
+  transform: perspective(600px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.94);
   transition: opacity var(--motion-micro) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard);
 }
 
@@ -167,16 +166,8 @@
 
 .quick-album > button.tilt-pressed,
 .history-stack > button.tilt-pressed {
-  transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
+  transform: perspective(600px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.94);
   transition: transform var(--motion-press) var(--motion-ease-standard);
-}
-
-.quick-pin-main {
-  width: 100%;
-  min-width: 0;
-  display: block;
-  padding: 0;
-  text-align: left;
 }
 
 .quick-pin-art {
@@ -199,73 +190,6 @@
   -webkit-user-drag: none;
 }
 
-.quick-pin-main:hover .quick-pin-art,
-.quick-pin-main:focus-visible .quick-pin-art {
-  filter: brightness(1.08);
-}
-
-.quick-pin-caption {
-  min-width: 0;
-  display: block;
-  padding-top: 6px;
-}
-
-.quick-pin-caption strong,
-.quick-pin-caption small {
-  min-width: 0;
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quick-pin-caption strong {
-  color: rgba(255, 255, 255, 0.94);
-  font-size: 13px;
-  font-weight: 400;
-}
-
-.quick-pin-caption small {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.quick-pin-play {
-  position: absolute;
-  right: 10px;
-  top: calc(var(--quick-pin-art) - 46px);
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: var(--accent);
-  border: 1px solid rgba(255, 255, 255, 0.76);
-  border-radius: 50%;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity var(--motion-micro) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-entrance), background var(--motion-micro) var(--motion-ease-standard);
-}
-
-.quick-pin:hover .quick-pin-play,
-.quick-pin:focus-within .quick-pin-play {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.quick-pin-play svg {
-  margin-left: 1px;
-}
-
-.quick-pin-play:hover {
-  background: #ff2d92;
-}
-
-.quick-pin-play:active {
-  transform: scale(0.96);
-}
-
 .quick-pin-smart {
   position: absolute;
   right: 8px;
@@ -273,6 +197,24 @@
   padding: 3px;
   color: #fff;
   background: rgba(8, 5, 9, 0.72);
+}
+
+/* Front identity strip: the back face only shows after a 45-110s dwell and
+   edit mode pauses flipping, so the pin name must live on the front. */
+.quick-pin-front-title {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
+  min-width: 0;
+  padding: 18px 10px 7px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 12px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(180deg, transparent, rgba(8, 5, 9, 0.78));
+  pointer-events: none;
 }
 
 .quick-pin-edit-tools {

@@ -56,6 +56,7 @@ export function FlipTile({
   paused = false,
   disabled = false,
   live = true,
+  asButton = true,
 }: {
   size?: TileSize;
   className?: string;
@@ -71,6 +72,8 @@ export function FlipTile({
   disabled?: boolean;
   /** When false the tile never flips on its own (nothing live to reveal). */
   live?: boolean;
+  /** Edit-mode pins render as a div so the article can own HTML5 drag. */
+  asButton?: boolean;
 }) {
   const [showBack, setShowBack] = useState(false);
   const reducedMotion = useReducedMotion();
@@ -210,6 +213,7 @@ export function FlipTile({
       onKeyDown={onKeyDown}
       title={title}
       disabled={disabled}
+      asButton={asButton}
     >
       <div ref={surfaceRef} className="tile-flip-surface">
         <div className="tile-face tile-face-front" aria-hidden={showBack}>

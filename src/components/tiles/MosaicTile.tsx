@@ -150,6 +150,9 @@ export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
       if (timer !== undefined) window.clearTimeout(timer);
       for (const handle of flipsRef.current) handle?.cancel();
       flipsRef.current = [];
+      for (const inner of innerRefs.current) {
+        inner?.style.setProperty("--cell-flip", "0deg");
+      }
     };
   }, [images.length, cellCount, reducedMotion]);
 

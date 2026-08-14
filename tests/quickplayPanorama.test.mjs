@@ -41,13 +41,21 @@ test("quickplay is a keyboard and mouse-wheel accessible horizontal panorama", (
   assert.ok(!quickplaySource.includes("ghost.style.transform"), "ghost must not parallax with scrollLeft restore");
 });
 
-test("quickplay pin play affordances are circular and the panorama keeps its pink wash", () => {
-  const pinPlayRule = cssRule(quickplayCss, ".quick-pin-play");
+test("pin fronts carry a persistent title and the panorama keeps its pink wash", () => {
+  // Pin names must be glanceable on the front — the back face only appears
+  // after a 45-110s dwell and edit mode pauses flipping entirely.
+  const frontTitleRule = cssRule(quickplayCss, ".quick-pin-front-title");
+  assert.ok(frontTitleRule.includes("position: absolute"));
+  assert.ok(frontTitleRule.includes("pointer-events: none"));
+  assert.ok(quickplaySource.includes("quick-pin-front-title"));
   const quickplayRule = cssRule(quickplayCss, ".quickplay");
-  assert.ok(pinPlayRule.includes("border-radius: 50%"));
-  assert.ok(pinPlayRule.includes("border: 1px solid"));
   assert.ok(quickplayRule.includes("radial-gradient"));
   assert.ok(quickplayCss.includes("rgba(128, 35, 76, 0.36)"));
+  // The old hover play badge and caption band are gone from the DOM and CSS.
+  assert.ok(!quickplaySource.includes("quick-pin-play"));
+  assert.ok(!quickplayCss.includes(".quick-pin-play"));
+  assert.ok(!quickplayCss.includes(".quick-pin-main"));
+  assert.ok(!quickplayCss.includes(".quick-pin-caption"));
 });
 
 test("quickplay ghost stays stable through cold-start hydration and scroll restoration", () => {

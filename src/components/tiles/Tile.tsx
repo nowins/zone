@@ -37,6 +37,7 @@ export function Tile({
   const classes = `tile tile-${size} ${className}`.trim();
 
   function handlePointerDown(event: PointerEvent<HTMLElement>) {
+    if (disabled) return;
     tiltPressDown(event, tiltSelector);
   }
   function handlePointerClear(event: PointerEvent<HTMLElement>) {

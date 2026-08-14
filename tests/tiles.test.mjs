@@ -9,6 +9,7 @@ const iconicSource = readFileSync("src/components/tiles/IconicTile.tsx", "utf8")
 const mosaicSource = readFileSync("src/components/tiles/MosaicTile.tsx", "utf8");
 const indexSource = readFileSync("src/components/tiles/index.ts", "utf8");
 const tilesCss = readFileSync("src/styles/tiles.css", "utf8");
+const motionCss = readFileSync("src/styles/motion.css", "utf8");
 const quickplayCss = readFileSync("src/styles/quickplay.css", "utf8");
 const stylesEntry = readFileSync("src/styles.css", "utf8");
 const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
@@ -39,8 +40,10 @@ test("two reveal variants: peek slides, flip card-flips, both scoped", () => {
   // the peek variant is scoped to it alone.
   assert.ok(!/^\.tile-flip-surface\s*\{[^}]*overflow/sm.test(tilesCss), "base surface must not clip (breaks preserve-3d)");
   assert.ok(/\.tile-flip-v-peek \.tile-flip-surface\s*\{[^}]*overflow:\s*hidden/s.test(tilesCss));
-  // Reduced motion swaps both reveals for an in-place cross-fade.
-  const reducedBlock = tilesCss.slice(tilesCss.indexOf("prefers-reduced-motion"));
+  // Reduced motion swaps both reveals for an in-place cross-fade. The single
+  // reduced-motion block lives in motion.css per the motion-system contract.
+  assert.ok(!tilesCss.includes("prefers-reduced-motion"), "tiles.css must not own a second reduced-motion block");
+  const reducedBlock = motionCss.slice(motionCss.indexOf("prefers-reduced-motion"));
   assert.ok(reducedBlock.includes("transform: none"), "reduced motion must not slide or rotate");
   assert.ok(reducedBlock.includes("backface-visibility: visible"), "reduced motion must not cull faces");
 });
@@ -93,6 +96,10 @@ test("keyboard reorder stays reachable in edit mode", () => {
   assert.ok(tileSource.includes('aria-disabled={disabled || undefined}'));
   assert.ok(!/disabled=\{disabled\}/.test(tileSource), "button must not use the disabled attribute");
   assert.ok(quickplaySource.includes("onKeyDown={(event) => handlePinKey(event, item.pin.id)}"));
+  // In edit mode the pin renders as a div so the draggable article owns the
+  // HTML5 drag - a nested <button> would swallow the drag start.
+  assert.ok(quickplaySource.includes("asButton={!editingPins}"));
+  assert.ok(flipSource.includes("asButton?: boolean"));
 });
 
 test("entrance is a turnstile pivot from the bottom edge, staggered, flash-free", () => {
@@ -168,6 +175,10 @@ test("wide multi-cover pins use the People-hub mosaic, never cropped strips", ()
   // Card-swap rotates edge-on, swaps, then returns from the opposite edge.
   assert.ok(mosaicSource.includes("to: -90"));
   assert.ok(mosaicSource.includes("from: 90"));
+  // Cleanup must reset the driven angle, not just cancel the animation —
+  // a rescan or reduced-motion toggle mid-flip would otherwise park a cell
+  // edge-on at +/-90 degrees.
+  assert.ok(mosaicSource.includes('"--cell-flip", "0deg"'), "cleanup must reset --cell-flip to 0deg");
 });
 
 test("mosaic layout tiers by pool size and never duplicates a cover", () => {
