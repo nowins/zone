@@ -1169,12 +1169,12 @@
   border-color: rgba(255, 255, 255, 0.46);
 }
 
-.smart-editor-footer button.primary {
+.smart-editor-footer .button-primary {
   min-width: 134px;
   border-color: var(--accent);
 }
 
-.smart-editor-footer button.primary:hover:not(:disabled) {
+.smart-editor-footer .button-primary:hover:not(:disabled) {
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -1184,44 +1184,6 @@
   justify-content: flex-end;
   gap: 10px;
   margin-top: 30px;
-}
-
-.playlist-dialog-actions button {
-  min-width: 92px;
-  height: 36px;
-  padding: 0 16px;
-  color: rgba(255, 255, 255, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard);
-}
-
-.playlist-dialog-actions button:hover:not(:disabled),
-.playlist-dialog-actions button:focus-visible {
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.48);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.playlist-dialog-actions .primary {
-  border-color: var(--accent);
-}
-
-.playlist-dialog-actions .primary:hover:not(:disabled),
-.playlist-dialog-actions .primary:focus-visible {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.playlist-dialog-actions .danger {
-  border-color: rgba(225, 90, 103, 0.7);
-  color: #f29aa2;
-}
-
-.playlist-dialog-actions .danger:hover,
-.playlist-dialog-actions .danger:focus-visible {
-  color: #fff;
-  background: #a8313f;
-  border-color: #a8313f;
 }
 
 .action-toast {

@@ -154,20 +154,9 @@
   cursor: grabbing;
 }
 
-.quick-pin.tilt-pressed {
-  transform: perspective(600px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.94);
-  transition: opacity var(--motion-micro) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard);
-}
-
 .quick-album > button,
 .history-stack > button {
   transition: transform var(--motion-content) var(--motion-ease-emphasis);
-}
-
-.quick-album > button.tilt-pressed,
-.history-stack > button.tilt-pressed {
-  transform: perspective(600px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.94);
-  transition: transform var(--motion-press) var(--motion-ease-standard);
 }
 
 .quick-pin-art {

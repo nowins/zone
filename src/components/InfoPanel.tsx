@@ -7,6 +7,7 @@ import { MOTION_DURATIONS } from "../motion/tokens";
 import type { ContextPayload, MetadataCandidateField, MetadataContextRecord } from "../types";
 import { MetadataEditDialog } from "./MetadataEditDialog";
 import { MetadataSearchDialog } from "./MetadataSearchDialog";
+import { Button } from "./Button";
 
 function artworkPath(fields: MetadataCandidateField[]) {
   return fields.find((field) => (
@@ -135,14 +136,15 @@ export function InfoPanel({
                   <strong>{context ? `来自 ${context.providerName}` : "使用独立覆盖层，不修改音乐文件"}</strong>
                 </div>
                 {context && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={clearMetadata}
                     disabled={status !== "idle"}
+                    icon={<RotateCcw size={14} aria-hidden="true" />}
                   >
-                    <RotateCcw size={14} aria-hidden="true" />
                     恢复本地信息
-                  </button>
+                  </Button>
                 )}
               </header>
 
@@ -166,24 +168,24 @@ export function InfoPanel({
               )}
 
               <div className="info-metadata-actions">
-                <button
-                  className="info-metadata-search"
-                  type="button"
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => setActiveDialog("search")}
                   disabled={status !== "idle"}
+                  icon={<Search size={16} aria-hidden="true" />}
                 >
-                  <Search size={16} aria-hidden="true" />
                   查找补充信息
-                </button>
-                <button
-                  className="info-metadata-search"
-                  type="button"
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => setActiveDialog("edit")}
                   disabled={status !== "idle"}
+                  icon={<Pencil size={15} aria-hidden="true" />}
                 >
-                  <Pencil size={15} aria-hidden="true" />
                   编辑信息
-                </button>
+                </Button>
               </div>
 
               {notice && <p className="info-metadata-notice" role="status">{notice}</p>}

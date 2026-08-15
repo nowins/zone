@@ -34,12 +34,6 @@
   width: 310px;
   height: 150px;
 }
-.tile.tilt-pressed {
-  /* MangoTile metroTilt: 0.94 scale, tight perspective (cameraDistance ~16dp)
-     so the tip toward the finger reads clearly. */
-  transform: perspective(600px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.94);
-  transition: transform var(--motion-press) var(--motion-ease-standard);
-}
 
 /* Turnstile-style entrance: tiles pivot in from the bottom edge with a
    staggered cadence, like the WP7 start screen. Each tile sets

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Search } from "lucide-react";
 import type { MetadataEnrichmentApi } from "../hooks/useMetadataEnrichment";
@@ -8,8 +8,9 @@ import type {
   MetadataCandidateField,
   MetadataContextRecord,
 } from "../types";
+import { Button } from "./Button";
 import { Cover } from "./Cover";
-import { MetroLoader } from "./MetroLoader";
+import { Dialog } from "./Dialog";
 
 function artworkPath(fields: MetadataCandidateField[]) {
   return fields.find((field) => (
@@ -46,14 +47,6 @@ export function MetadataSearchDialog({
   const first = payload.tracks[0];
   const label = typeLabel(payload);
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCancel();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
-
   async function runSearch(event?: React.FormEvent) {
     event?.preventDefault();
     if (!query.trim() || status !== "idle") return;
@@ -87,27 +80,16 @@ export function MetadataSearchDialog({
   }
 
   return (
-    <div
-      className="playlist-dialog-overlay metadata-dialog-overlay"
-      role="presentation"
-      onMouseDown={(event) => {
-        event.stopPropagation();
-        if (event.target === event.currentTarget) onCancel();
-      }}
-      onClick={(event) => event.stopPropagation()}
+    <Dialog
+      titleId="metadata-search-title"
+      kicker="音乐信息"
+      title={"查找" + label + "信息"}
+      className="metadata-dialog metadata-search-dialog"
+      overlayClassName="metadata-dialog-overlay"
+      onCancel={onCancel}
+      onSubmit={runSearch}
     >
-      <form
-        className="playlist-dialog metadata-dialog metadata-search-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="metadata-search-title"
-        onSubmit={runSearch}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <span className="playlist-dialog-kicker">音乐信息</span>
-        <h2 id="metadata-search-title">查找{label}信息</h2>
-
-        <div className="metadata-search-summary">
+      <div className="metadata-search-summary">
           <div className="metadata-dialog-identity">
             <Cover artPath={first?.cover_path} label={payload.title} size="large" />
             <div>
@@ -129,7 +111,7 @@ export function MetadataSearchDialog({
               <Search size={17} aria-hidden="true" />
             </div>
           </label>
-        </div>
+      </div>
 
         {candidates.length > 0 && (
           <div className="metadata-search-results" role="listbox" aria-label="查找结果">
@@ -162,26 +144,33 @@ export function MetadataSearchDialog({
           </div>
         )}
 
-        {notice && <p className="metadata-dialog-notice" role="status">{notice}</p>}
+      {notice && <p className="metadata-dialog-notice" role="status">{notice}</p>}
 
-        <div className="metadata-dialog-footer">
-          <button type="button" onClick={onEdit}>编辑信息</button>
-          <div className="playlist-dialog-actions">
-            {selected ? (
-              <button type="button" className="primary" onClick={() => void applyCandidate(selected)} disabled={status !== "idle"}>
-                {status === "applying" ? <MetroLoader size={14} /> : null}
-                采用
-              </button>
-            ) : (
-              <button type="submit" className="primary" disabled={!query.trim() || status !== "idle"}>
-                {status === "searching" ? <MetroLoader size={14} /> : null}
-                搜索
-              </button>
-            )}
-            <button type="button" onClick={onCancel}>取消</button>
-          </div>
+      <div className="metadata-dialog-footer">
+        <Button onClick={onEdit}>编辑信息</Button>
+        <div className="playlist-dialog-actions">
+          {selected ? (
+            <Button
+              variant="primary"
+              busy={status === "applying"}
+              onClick={() => void applyCandidate(selected)}
+              disabled={status !== "idle"}
+            >
+              采用
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              variant="primary"
+              busy={status === "searching"}
+              disabled={!query.trim() || status !== "idle"}
+            >
+              搜索
+            </Button>
+          )}
+          <Button onClick={onCancel}>取消</Button>
         </div>
-      </form>
-    </div>
+      </div>
+    </Dialog>
   );
 }

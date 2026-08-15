@@ -7,6 +7,7 @@ import {
   smartPlaylistPresets,
   smartRule,
 } from "../utils/smartPlaylist";
+import { Button } from "./Button";
 import type {
   SmartPlaylist,
   SmartPlaylistConfig,
@@ -275,8 +276,8 @@ export function SmartPlaylistDialog({
         <footer className="smart-editor-footer">
           <span>列表会随音乐库和收听习惯自动更新；开始播放后，当前队列保持不变。</span>
           <div>
-            <button type="button" onClick={onCancel}>取消</button>
-            <button type="submit" className="primary" disabled={!name.trim()}>保存智能列表</button>
+            <Button onClick={onCancel}>取消</Button>
+            <Button type="submit" variant="primary" disabled={!name.trim()}>保存智能列表</Button>
           </div>
         </footer>
       </form>

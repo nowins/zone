@@ -1,0 +1,128 @@
+/* Button primitive (src/components/Button.tsx): the single action-button
+   language. Sizes carry geometry, variants carry the visual role; page CSS
+   may still adjust layout (margins, flex) from the container side. Variant
+   rules come after sizes so ghost can neutralize box geometry. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 400;
+  transition:
+    color var(--motion-micro) var(--motion-ease-standard),
+    background var(--motion-micro) var(--motion-ease-standard),
+    border-color var(--motion-micro) var(--motion-ease-standard),
+    transform var(--motion-press) var(--motion-ease-standard);
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.button-sm {
+  min-height: 34px;
+  padding: 0 11px;
+  gap: 7px;
+  font-size: 11px;
+}
+
+.button-md {
+  min-width: 92px;
+  height: 36px;
+  padding: 0 16px;
+}
+
+.button-lg {
+  min-height: 40px;
+  padding: 0 15px;
+}
+
+.button-xl {
+  min-height: 48px;
+  padding: 0 18px;
+  gap: 10px;
+  font-size: 20px;
+}
+
+/* Bordered default (dialog actions, secondary confirmations). */
+.button-outline {
+  color: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.button-outline:hover:not(:disabled),
+.button-outline:focus-visible {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.48);
+}
+
+/* Accent commitment. */
+.button-primary {
+  color: rgba(255, 255, 255, 0.76);
+  border: 1px solid var(--accent);
+}
+
+.button-primary:hover:not(:disabled),
+.button-primary:focus-visible {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Destructive. */
+.button-danger {
+  color: #f29aa2;
+  border: 1px solid rgba(225, 90, 103, 0.7);
+}
+
+.button-danger:hover:not(:disabled),
+.button-danger:focus-visible {
+  color: #fff;
+  background: #a8313f;
+  border-color: #a8313f;
+}
+
+/* Borderless filled call-to-action (empty-state hero). */
+.button-solid {
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.button-solid:hover:not(:disabled),
+.button-solid:focus-visible {
+  color: #fff;
+  background: var(--accent);
+}
+
+/* Page-level primary action with the accent bar (settings headings). */
+.button-page {
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-left: 3px solid var(--accent);
+}
+
+.button-page:hover:not(:disabled),
+.button-page:focus-visible {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Text-only inline action; neutralizes box geometry from the size tiers. */
+.button-ghost {
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  justify-content: flex-start;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.button-ghost:hover:not(:disabled),
+.button-ghost:focus-visible {
+  color: var(--accent);
+  background: none;
+}

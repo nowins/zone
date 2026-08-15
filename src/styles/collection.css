@@ -40,12 +40,6 @@
   font-weight: 200;
 }
 
-.primary-action {
-  height: 48px;
-  padding: 0 18px;
-  font-size: 20px;
-}
-
 .album-browser {
   min-height: 0;
   display: grid;
@@ -117,12 +111,6 @@
   text-align: left;
   cursor: default;
   transition: transform var(--motion-content) var(--motion-ease-emphasis);
-}
-
-.album-tile.tilt-pressed {
-  transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
-  transition-duration: var(--motion-press);
-  transition-timing-function: var(--motion-ease-standard);
 }
 
 .album-tile.selected .cover {
@@ -490,12 +478,6 @@
   min-width: 0;
   cursor: default;
   transition: transform var(--motion-content) var(--motion-ease-emphasis);
-}
-
-.artist-album-tile.tilt-pressed {
-  transform: perspective(900px) rotateX(var(--tilt-rx, 0deg)) rotateY(var(--tilt-ry, 0deg)) scale(0.97);
-  transition-duration: var(--motion-press);
-  transition-timing-function: var(--motion-ease-standard);
 }
 
 .artist-album-tile .cover {

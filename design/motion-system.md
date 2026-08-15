@@ -39,6 +39,8 @@ src/motion/*.ts               内核：弹簧/补间/动画器/FLIP/Presence/页
 | `--motion-content` | 220ms | 内容出现、feather 入场 |
 | `--motion-page` | 260ms | 页面入场、舞台溶解 |
 | `--motion-chrome` | 700ms | 正在播放页 chrome 隐没（刻意慢） |
+| `--motion-cycle` | 800ms | 慢速环境循环（cycle 磁贴交叉淡化） |
+| `--motion-loader` | 4500ms | 长循环加载器（Metro 轨道），不是过渡时长 |
 | `--motion-ease-standard` | (0.23,1,0.32,1) | 强 ease-out，默认交互曲线 |
 | `--motion-ease-entrance` | (0.18,0.88,0.24,1) | 入场专用 |
 | `--motion-ease-exit` | (0.55,0.06,0.68,0.19) | 加速离场，**退场专用** |
@@ -48,11 +50,11 @@ src/motion/*.ts               内核：弹簧/补间/动画器/FLIP/Presence/页
 
 TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`MOTION_STAGGER`、`SPRING_PRESETS`（`snappy` 近临界阻尼 / `gentle` 页面级 / `bouncy` 约 20% 过冲）。其中 `snappy` 是现役生产预设（FLIP、quickplay 滚轮）；`gentle` / `bouncy` 与 `MOTION_TWEENS` 是**备料预设**，新场景接入时直接使用，没有消费方之前不要当成「已在用」。
 
-弹簧预设之外的例外（保留原值、有意为之）：正在播放入场编排的 `240ms 55ms` / `320ms 850ms`、`.album-play` 900ms 悬停延迟、歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`。
+弹簧预设之外的例外（保留原值、有意为之）：正在播放入场编排的 `240ms 55ms` / `320ms 850ms`、`.album-play` 900ms 悬停延迟、歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、磁贴系统的 Lumia/Metro 校准组（`FlipTile` peek 600ms 与其 MetroSlideIn 曲线 `(0.22,0,0.05,1)`、flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。
 
 ## 内核 API（`src/motion/`）
 
-- `math.ts` — `clamp` / `clampInt` / `lerp` / `smoothstep` / `easeOutCubic`。所有 util 的统一来源，不要再本地重复实现（`visualizer` / `beatAnalysis` / `audioGlow` / `tiltPress` / `nowPlayingCanvas` / `lyricsMotion` 均已收编）。
+- `math.ts` — `clamp` / `clampInt` / `lerp` / `smoothstep` / `easeOutCubic` / `easeInCubic`。所有 util 的统一来源，不要再本地重复实现（`visualizer` / `beatAnalysis` / `audioGlow` / `tiltPress` / `nowPlayingCanvas` / `lyricsMotion` 均已收编）。
 - `spring.ts` — 半隐式欧拉弹簧：`createSpring(from)`、`advanceSpring(state, preset, target, dtMs)`、`springSettled(state, target)`。retarget 时把上次返回的 state（含 velocity）继续传入即得惯性接力。
 - `tween.ts` — `cubicBezier(x1,y1,x2,y2)` 求值器；`MOTION_TWEENS` 是与四条 easing token 同源的预建函数。
 - `animate.ts` — `animateValue({ from, to, spring? | tween?, onUpdate, onComplete })` → `{ cancel, retarget }`。全应用共享一个 rAF 循环，空闲自动停转；测试可注入假时钟（`_setAnimationClockForTesting`）。
@@ -106,6 +108,11 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 3. **按钮/图标 hover**：只变色/变背景，`var(--motion-micro) var(--motion-ease-standard)`。
 
 transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯一例外：`lyrics-source-search` 这类 `ease-in-out` 无限循环指示器）。
+
+### 按压反馈
+
+- 普通按钮的 `:active` `scale(0.97)` 由 `Button` 原语（`controls.css`）自带；播放控制、标题栏等 chrome 按钮沿用 `motion.css` 按压组。
+- 磁贴面的 3D 倾斜按压全应用只有一条规则：`motion.css` 的 `.tilt-pressed`（±10°、`scale(0.94)`、`perspective(600px)`，Lumia 校准）。角度由 `tiltPress.ts` 按按压点写入 `--tilt-rx` / `--tilt-ry`；reduced-motion 在统一关停块里清零。新增倾斜面挂 `tiltPressDown` / `tiltPressClear` 即可，不得在页面 CSS 里另写几何。
 
 ## 守则（Do / Don't）
 

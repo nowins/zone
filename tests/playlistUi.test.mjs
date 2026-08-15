@@ -16,6 +16,7 @@ const menuSource = readFileSync("src/components/ContextMenu.tsx", "utf8");
 const pickerSource = readFileSync("src/components/AddToPlaylistDialog.tsx", "utf8");
 const browserSource = readFileSync("src/views/PlaylistBrowser.tsx", "utf8");
 const dialogSource = readFileSync("src/components/PlaylistDialog.tsx", "utf8");
+const dialogShellSource = readFileSync("src/components/Dialog.tsx", "utf8");
 const collectionCss = readFileSync("src/styles/collection.css", "utf8");
 const playlistCss = readFileSync("src/styles/playlists.css", "utf8");
 
@@ -56,7 +57,8 @@ test("context menu clamps to the viewport and scrolls when necessary", () => {
 
 test("playlist creation and edits use a modal workflow with feedback", () => {
   assert.ok(dialogSource.includes('mode: "create" | "rename" | "delete"'));
-  assert.ok(dialogSource.includes("aria-modal=\"true\""));
+  assert.ok(dialogShellSource.includes("aria-modal=\"true\""));
+  assert.ok(dialogShellSource.includes("playlist-dialog-overlay"));
   assert.ok(dialogSource.includes("不会从音乐库中删除"));
   assert.ok(appSource.includes("showActionNotice"));
   assert.ok(appSource.includes("openPlaylistDialog"));

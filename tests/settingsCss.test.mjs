@@ -16,11 +16,13 @@ const appSource = [
   "src/App.tsx",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 const baseCss = readFileSync("src/styles/base.css", "utf8");
+const controlsCss = readFileSync("src/styles/controls.css", "utf8");
 const settingsCss = readFileSync("src/styles/overlays-settings.css", "utf8");
 const responsiveCss = readFileSync("src/styles/animations-responsive.css", "utf8");
 
 test("music folder management has one persistent entry point", () => {
-  assert.ok(settingsView.includes('className="settings-add-folder"'));
+  assert.ok(settingsView.includes('className="settings-heading-action"'));
+  assert.ok(settingsView.includes('variant="page"'));
   assert.ok(!appHeader.includes("FolderPlus"));
   assert.ok(!appHeader.includes("onAddFolder"));
   assert.ok(!settingsView.includes("settings-actions"));
@@ -41,13 +43,13 @@ test("settings use a spacious Zune-like library hierarchy", () => {
 });
 
 test("settings separate primary, secondary, and destructive actions", () => {
-  const addRule = cssRule(settingsCss, ".settings-add-folder");
-  const secondaryRule = cssRule(settingsCss, ".settings-secondary-action");
-  const dangerRule = cssRuleLast(settingsCss, ".settings-danger-action");
+  const pageRule = cssRule(controlsCss, ".button-page");
+  const ghostRule = cssRule(controlsCss, ".button-ghost");
+  const dangerRule = cssRule(controlsCss, ".button-danger");
 
-  assert.ok(addRule.includes("border-left: 3px solid var(--accent)"));
-  assert.ok(secondaryRule.includes("justify-content: flex-start"));
-  assert.ok(dangerRule.includes("border: 1px solid rgba(255, 132, 132, 0.28)"));
+  assert.ok(pageRule.includes("border-left: 3px solid var(--accent)"));
+  assert.ok(ghostRule.includes("justify-content: flex-start"));
+  assert.ok(dangerRule.includes("border: 1px solid rgba(225, 90, 103, 0.7)"));
   assert.ok(settingsView.includes("不会删除电脑中的音乐文件"));
   assert.ok(settingsView.includes("重新扫描资料库"));
 });

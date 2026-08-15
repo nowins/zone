@@ -44,7 +44,7 @@ test("podcast playlist supports bounded batch editing with explicit confirmation
   assert.match(viewSource, /下载文件与收听进度都会保留/);
   assert.match(
     viewSource,
-    /<button type="button" onClick=\{onCancel\} disabled=\{busy\} autoFocus>/,
+    /<Button onClick=\{onCancel\} disabled=\{busy\} autoFocus>/,
   );
 });
 

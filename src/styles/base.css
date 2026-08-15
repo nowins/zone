@@ -280,21 +280,6 @@ input:focus-visible {
   animation: motion-page-enter var(--motion-page) var(--motion-ease-entrance) both;
 }
 
-.primary-action {
-  min-height: 42px;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 14px;
-  color: rgba(255, 255, 255, 0.86);
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.primary-action:hover {
-  color: #fff;
-  background: var(--accent);
-}
-
 h1,
 h2,
 p {

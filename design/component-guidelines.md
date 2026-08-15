@@ -35,13 +35,13 @@
 
 | 类别 | 令牌 | 值 |
 | --- | --- | --- |
-| 时长 | `--motion-instant` / `press` / `micro` / `content` / `page` / `chrome` / `loader` | 80 / 110 / 160 / 220 / 260 / 700 / 4500 ms |
+| 时长 | `--motion-instant` / `press` / `micro` / `content` / `page` / `chrome` / `cycle` / `loader` | 80 / 110 / 160 / 220 / 260 / 700 / 800 / 4500 ms |
 | 缓动 | `--motion-ease-standard` / `entrance` / `exit` / `emphasis` | 强 ease-out / 入场 / 加速离场 / 轻微过冲 |
 | 位移 | `--motion-drift-s` / `m` / `l` | 8 / 22 / 48 px |
 | 错峰 | `--motion-stagger-step` / `max` | 24 / 144 ms |
 | 弹簧 | `SPRING_PRESETS.snappy` / `gentle` / `bouncy` | 按压回弹 / 页面级 / 确认反馈 |
 
-规则：**新动效一律消费令牌，禁止就地硬编码时长和曲线**。`loader` 只用于循环加载器，不得作为过渡时长。
+规则：**新动效一律消费令牌，禁止就地硬编码时长和曲线**。`cycle` 用于慢速环境循环（磁贴轮换交叉淡化），`loader` 只用于循环加载器，两者都不得作为过渡时长。
 
 ## 3. 动效语言
 
@@ -59,8 +59,8 @@
 
 ### 3.3 按压反馈
 
-- 普通按钮：`:active` 时 `scale(0.97)`，press 档 110ms。
-- 磁贴（quickplay pins、专辑磁贴、历史封面）：3D 倾斜按压，`src/utils/tiltPress.ts` 的 `tiltPressDown` / `tiltPressClear`。参数固定：±10°、`scale(0.94)`、`perspective(600px)`（Lumia 校准，见 `tests/tiles.test.mjs`）、松手 ease-emphasis 回弹。新磁贴面直接挂这两个处理器，不要另写参数。
+- 普通按钮：`:active` 时 `scale(0.97)`，press 档 110ms；`Button` 原语自带，其余 chrome 按钮沿用 `motion.css` 按压组。
+- 磁贴（Metro tiles、quickplay 专辑/历史封面、专辑网格）：3D 倾斜按压只有一条规则——`motion.css` 的 `.tilt-pressed`。`src/utils/tiltPress.ts` 的 `tiltPressDown` / `tiltPressClear` 按按压点写入 `--tilt-rx` / `--tilt-ry`，几何固定为 Lumia 校准的 ±10°、`scale(0.94)`、`perspective(600px)`（见 `tests/tiles.test.mjs`）；松手由各面基类的 content 档 ease-emphasis 回弹。新磁贴面直接用 `Tile` 或挂这两个处理器，不要在页面 CSS 里覆写倾斜参数。
 
 ### 3.4 浮层与退出
 
@@ -94,12 +94,15 @@
 
 | 组件 | 职责与规则 |
 | --- | --- |
-| `Cover` | 唯一封面渲染入口；统一占位、尺寸档、`index` 错峰 |
+| `Button` | 唯一动作按钮原语（样式在 `controls.css`）：variant 定角色（`outline` 描边默认 / `primary` 强调 / `danger` 危险 / `solid` 填充 CTA / `page` 左侧强调条页面动作 / `ghost` 纯文本），size 定几何（`sm`/`md`/`lg`/`xl`）；`busy` 自动禁用并前置 `MetroLoader`，图标走 `icon` prop |
+| `Dialog` | 深色确认/表单对话框壳：遮罩 + kicker/标题 + 可选右侧动作行，Escape/点遮罩取消、`busy` 时锁定；保留 `playlist-dialog` 基类让 swivel 入场与 Presence 退场继续生效。例外：`SmartPlaylistDialog` 是编辑器表面（不走壳，底部动作用 `Button`）；正在播放的保存列表对话框是刻意的浅色主题，保持独立 |
+| `tiles/`（`Tile` / `FlipTile` / `CycleTile` / `IconicTile` / `MosaicFrames`） | Metro 磁贴系统（`tiles.css`）：`Tile` 提供统一倾斜按压与裁切表面；`FlipTile` 有 peek/flip 两种背面揭示；`MosaicFrames` 是 People-hub 封面墙；`CycleTile` / `IconicTile` 是备料模板——暂无消费方，接入前不算「已在用」。quickplay 固定项用 `FlipTile variant="flip"` + `MosaicFrames` |
+| `Cover` | 唯一封面渲染入口：`artPath`（本地文件）与 `src`（已解析 URL）二选一；默认音乐封面类（accent-index 渐变占位 + 首字母），`className`/`fallback` 供上下文适配——播客经 `PodcastArtwork` 适配器（`podcast-artwork` 类 + 字符/Podcast 图标占位） |
 | `MetroLoader` | 唯一加载指示（见 §3.5） |
-| `EmptyState` | 空态/扫描态；一行说明 + 一个动作，不写解释段落 |
+| `EmptyState` | 页面级空态（空曲库：字标 + `Button` solid xl 动作）；区块级空态/加载用播客 `primitives.tsx` 的 `PodcastEmpty` / `PodcastLoading`（`MetroLoader` + 延迟淡入）。不写解释段落 |
 | `ContextMenu` / `PodcastEpisodeContextMenu` | 右键菜单；swivel 入场；系统右键全局抑制 |
 | `InfoPanel` | 元数据查看；右缘 swivel 入场 |
-| `PlaylistDialog` / `SmartPlaylistDialog` / `AddToPlaylistDialog` / `MetadataEditDialog` / `MetadataSearchDialog` | 对话框统一：遮罩淡入 + 盒体 rotateX 下沉入场；异步动作按钮内嵌 `MetroLoader` |
+| `PlaylistDialog` / `AddToPlaylistDialog` / `MetadataEditDialog` / `MetadataSearchDialog` / 播客确认框 | 全部建在 `Dialog` 壳上，动作行用 `Button`；遮罩淡入 + 盒体 rotateX 下沉入场由壳的基类继承 |
 | `Titlebar` / `AppHeader` | 无边框窗口 chrome 与 pivot 导航；选中态只变色 + 下划线，**不做位移** |
 
 ### 4.2 播放 chrome
@@ -110,7 +113,7 @@
 ### 4.3 页面级
 
 - 页面根动画统一 `motion-page-enter`；不再新增页面级入场关键帧。
-- quickplay：磁贴墙 + 分组级联；磁贴可拖拽排序（编辑态下禁用倾斜按压）。
+- quickplay：固定项是 `tiles/` 磁贴墙（`FlipTile` 翻面揭示动态 + `MosaicFrames` 封面墙）+ 分组级联；可拖拽排序（编辑态下禁用倾斜按压与翻面）。
 - now playing：拼贴背景 + 光焰 + 歌词模式同空间切换；chrome 无操作约 5s 进入沉浸态。
 - 播客：`src/views/podcast/` 按 screens/components 分层，加载态全部走 `PodcastLoading`（内含 `MetroLoader`）。
 
@@ -124,6 +127,7 @@
 ## 6. 新增组件/动效检查清单
 
 1. 动效参数全部来自 `src/motion/tokens.ts` 令牌；加载态用 `MetroLoader`。
+   按钮统一 `Button`，确认/表单对话框统一 `Dialog`，磁贴面统一 `tiles/`。
 2. 只动 transform/opacity；UI 过渡 ≤300ms。
 3. 加入 reduced-motion 关停规则；JS 等待用 `resolveExitDurationMs()`。
 4. 新功能性文案为中文；跑 `npm test` 确认源码/CSS 守卫同步更新。

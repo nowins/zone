@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Podcast } from "lucide-react";
+import { Cover } from "../../../components/Cover";
 import { MetroLoader } from "../../../components/MetroLoader";
 import { podcastArtworkSrc } from "../../../utils/podcastArtwork";
 
@@ -39,15 +40,13 @@ function PodcastArtwork({
   title: string;
   large?: boolean;
 }) {
-  const artworkSrc = podcastArtworkSrc(url);
   return (
-    <div className={`podcast-artwork${large ? " large" : ""}`}>
-      {artworkSrc ? (
-        <img src={artworkSrc} alt="" draggable={false} />
-      ) : (
-        <span>{title.trim().slice(0, 1) || <Podcast size={22} />}</span>
-      )}
-    </div>
+    <Cover
+      src={podcastArtworkSrc(url)}
+      label={title}
+      className={"podcast-artwork" + (large ? " large" : "")}
+      fallback={<span>{title.trim().slice(0, 1) || <Podcast size={22} />}</span>}
+    />
   );
 }
 

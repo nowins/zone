@@ -11,6 +11,7 @@ const indexSource = readFileSync("src/components/tiles/index.ts", "utf8");
 const tilesCss = readFileSync("src/styles/tiles.css", "utf8");
 const motionCss = readFileSync("src/styles/motion.css", "utf8");
 const quickplayCss = readFileSync("src/styles/quickplay.css", "utf8");
+const collectionCss = readFileSync("src/styles/collection.css", "utf8");
 const stylesEntry = readFileSync("src/styles.css", "utf8");
 const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
 const tiltPressSource = readFileSync("src/utils/tiltPress.ts", "utf8");
@@ -246,8 +247,17 @@ test("mosaic layout tiers by pool size and never duplicates a cover", () => {
 
 test("tilt press matches the Lumia-calibrated Metro touch response", () => {
   // MangoTile metroTilt: 10 degrees toward the finger, 0.94 scale, tight
-  // perspective. Subtler values read as no feedback at all.
+  // perspective. Subtler values read as no feedback at all. One shared rule
+  // in motion.css covers every tilt surface (tiles, pins, album/history covers).
   assert.ok(tiltPressSource.includes("TILT_DEGREES = 10"));
-  assert.ok(tilesCss.includes("scale(0.94)"));
-  assert.ok(tilesCss.includes("perspective(600px)"));
+  assert.ok(motionCss.includes("scale(0.94)"));
+  assert.ok(motionCss.includes("perspective(600px)"));
+  assert.ok(
+    /.tilt-pressed[^{]*\{[^}]*--tilt-rx/s.test(motionCss),
+    "the shared tilt rule must consume the JS-driven tilt variables",
+  );
+  // The pre-unification geometry (900px / 0.97) must not drift back.
+  const surfaces = tilesCss + quickplayCss + collectionCss;
+  assert.ok(!/tilt-pressed[^{]*\{[^}]*perspective\(900px\)/s.test(surfaces));
+  assert.ok(!/tilt-pressed[^{]*\{[^}]*scale\(0\.97\)/s.test(surfaces));
 });

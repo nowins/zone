@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp, FileJson2, Folder, FolderPlus, Globe2, Music2, RefreshCw, Trash2 } from "lucide-react";
 import type { MetadataProviderDescriptor, MusicFolder } from "../types";
 import { useLyricsProviderSettings } from "../hooks/useLyricsProviderSettings";
-import { MetroLoader } from "../components/MetroLoader";
+import { Button } from "../components/Button";
 import type { QueueInsertMode } from "../app/playbackSettings";
 import { musicAnalyzeFeatures, musicFeatureStatus, type FeatureJobStatus } from "../app/musicLibraryApi";
 import { useEffect, useState } from "react";
@@ -87,10 +87,9 @@ export function SettingsView({
                 <h2 id="music-folders-heading">音乐文件夹</h2>
                 <p>Zone 会读取这些位置中的音乐，并在重新扫描后更新收藏。</p>
               </div>
-              <button className="settings-add-folder" onClick={onAddFolder} disabled={isScanning}>
-                <FolderPlus size={18} aria-hidden="true" />
+              <Button variant="page" size="lg" className="settings-heading-action" onClick={onAddFolder} disabled={isScanning} icon={<FolderPlus size={18} aria-hidden="true" />}>
                 <span>添加文件夹</span>
-              </button>
+              </Button>
             </header>
 
             <div className="folder-list" aria-live="polite">
@@ -197,10 +196,11 @@ export function SettingsView({
                 <h2 id="smartdj-features-heading">听感分析</h2>
                 <p>后台会为曲库建立特征，用于更接近“听感相似”的电台推荐。</p>
               </div>
-              <button
-                className="settings-add-folder"
-                type="button"
-                disabled={featureBusy}
+              <Button
+                variant="page"
+                size="lg"
+                className="settings-heading-action"
+                busy={featureBusy}
                 onClick={() => {
                   setFeatureBusy(true);
                   void musicAnalyzeFeatures(120)
@@ -209,7 +209,7 @@ export function SettingsView({
                 }}
               >
                 <span>{featureBusy ? "已加入分析队列" : "立即分析"}</span>
-              </button>
+              </Button>
             </header>
             <div className="settings-behavior-list">
               <div className="settings-behavior-row">
@@ -340,25 +340,25 @@ export function SettingsView({
             <p className={isScanning ? "scan-state scanning" : "scan-state"}>
               {isScanning ? "正在读取音乐和封面…" : folderCount > 0 ? "资料库已准备就绪" : "等待添加音乐来源"}
             </p>
-            <button
+            <Button
+              variant="ghost"
               className="settings-secondary-action"
               onClick={onRescan}
+              busy={isScanning}
               disabled={folderCount === 0 || isScanning}
+              icon={<RefreshCw size={16} aria-hidden="true" />}
             >
-              <RefreshCw size={16} aria-hidden="true" />
-              {isScanning ? <MetroLoader size={14} /> : null}
               <span>{isScanning ? "正在扫描" : "重新扫描资料库"}</span>
-            </button>
+            </Button>
           </section>
 
           <section className="settings-danger-zone">
             <span className="settings-kicker">维护</span>
             <h2>清理资料库</h2>
             <p>移除 Zone 保存的索引、队列和播放状态，不会删除电脑中的音乐文件。</p>
-            <button className="settings-danger-action" onClick={onClear} disabled={folderCount === 0 && trackCount === 0}>
-              <Trash2 size={16} aria-hidden="true" />
+            <Button variant="danger" className="settings-danger-action" onClick={onClear} disabled={folderCount === 0 && trackCount === 0} icon={<Trash2 size={16} aria-hidden="true" />}>
               <span>清空资料库</span>
-            </button>
+            </Button>
           </section>
         </aside>
       </div>

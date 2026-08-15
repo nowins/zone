@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { MetadataEnrichmentApi } from "../hooks/useMetadataEnrichment";
 import type {
   ContextPayload,
   MetadataContextRecord,
   MetadataManualField,
 } from "../types";
+import { Button } from "./Button";
 import { Cover } from "./Cover";
-import { MetroLoader } from "./MetroLoader";
+import { Dialog } from "./Dialog";
 
 type Draft = Record<string, string>;
 
@@ -138,14 +139,6 @@ export function MetadataEditDialog({
   const first = payload.tracks[0];
   const label = payload.kind === "track" ? "歌曲" : payload.kind === "album" ? "专辑" : "艺术家";
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCancel();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
-
   function updateField(field: string, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
   }
@@ -165,27 +158,16 @@ export function MetadataEditDialog({
   }
 
   return (
-    <div
-      className="playlist-dialog-overlay metadata-dialog-overlay"
-      role="presentation"
-      onMouseDown={(event) => {
-        event.stopPropagation();
-        if (event.target === event.currentTarget) onCancel();
-      }}
-      onClick={(event) => event.stopPropagation()}
+    <Dialog
+      titleId="metadata-edit-title"
+      kicker="音乐信息"
+      title={"编辑" + label + "信息"}
+      className="metadata-dialog metadata-edit-dialog"
+      overlayClassName="metadata-dialog-overlay"
+      onCancel={onCancel}
+      onSubmit={save}
     >
-      <form
-        className="playlist-dialog metadata-dialog metadata-edit-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="metadata-edit-title"
-        onSubmit={save}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <span className="playlist-dialog-kicker">音乐信息</span>
-        <h2 id="metadata-edit-title">编辑{label}信息</h2>
-
-        <div className="metadata-edit-body">
+      <div className="metadata-edit-body">
           <div className="metadata-edit-art">
             <Cover artPath={first?.cover_path} label={payload.title} size="large" />
             <small>信息保存在 Zone，不会写入音乐文件</small>
@@ -222,21 +204,24 @@ export function MetadataEditDialog({
               </>
             )}
           </div>
-        </div>
+      </div>
 
-        {notice && <p className="metadata-dialog-notice" role="status">{notice}</p>}
+      {notice && <p className="metadata-dialog-notice" role="status">{notice}</p>}
 
-        <div className="metadata-dialog-footer">
-          <button type="button" onClick={onSearch}>查找信息</button>
-          <div className="playlist-dialog-actions">
-            <button type="submit" className="primary" disabled={fields.length === 0 || status !== "idle"}>
-              {status === "saving" ? <MetroLoader size={14} /> : null}
-              确定
-            </button>
-            <button type="button" onClick={onCancel}>取消</button>
-          </div>
+      <div className="metadata-dialog-footer">
+        <Button onClick={onSearch}>查找信息</Button>
+        <div className="playlist-dialog-actions">
+          <Button
+            type="submit"
+            variant="primary"
+            busy={status === "saving"}
+            disabled={fields.length === 0 || status !== "idle"}
+          >
+            确定
+          </Button>
+          <Button onClick={onCancel}>取消</Button>
         </div>
-      </form>
-    </div>
+      </div>
+    </Dialog>
   );
 }
