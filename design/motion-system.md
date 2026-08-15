@@ -99,19 +99,22 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 不要直接 `setPage`——走 `requestNavigation`（`src/App.tsx`），它负责退场窗口、方向（`--motion-dir`）与可打断逻辑。
 
-### Hover 反馈三级
+### Hover 反馈分级
 
-全应用只有三种 hover 反馈模式，新组件按内容类型对号入座，不要自创新数值：
+全应用的 hover 反馈按内容类型对号入座，不要自创新数值：
 
 1. **行 hover**（列表行、设置行）：`background: rgba(255,255,255,0.06)` + 主文案提亮，过渡 `var(--motion-micro) var(--motion-ease-standard)`，**无位移**——hover 缩进（padding-left 动画）动的是布局属性，禁止。
 2. **封面 hover**：`transform: scale(1.02)` + `filter: brightness(1.08)`；transform 走 `var(--motion-content) var(--motion-ease-standard)`，filter 走 `var(--motion-micro) var(--motion-ease-standard)`。刻意例外：`.album-cover-wrap` 悬停压暗到 `brightness(0.72)`，是为配合播放按钮浮现的设计，保留。
 3. **按钮/图标 hover**：只变色/变背景，`var(--motion-micro) var(--motion-ease-standard)`。
+4. **播客封面卡 hover**（已登记）：作用于 `.podcast-artwork` 本身，卡整体不动——发现页节目卡封面 `opacity: 0.8` + `translateY(-2px)`，资料库节目列表只降 `opacity: 0.78`；过渡在封面元素上（opacity/transform 各走 micro 档 standard）。不使用音乐封面的 scale+brightness：播客卡是「节目」，封面压暗轻抬即可，不要放大。
+
+播客列表行（单集、继续收听、搜索历史）**刻意不做行级背景 hover**：密集文字列表以主文案即时提亮（→ `#fff`，无过渡）为全部反馈。新增播客列表行沿用这条；需要更强 affordance 时在行内放按钮，不要给整行加背景或过渡。
 
 transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯一例外：`lyrics-source-search` 这类 `ease-in-out` 无限循环指示器）。
 
 ### 按压反馈
 
-- 普通按钮的 `:active` `scale(0.97)` 由 `Button` 原语（`controls.css`）自带；播放控制、标题栏等 chrome 按钮沿用 `motion.css` 按压组。
+- 普通按钮的 `:active` `scale(0.97)` 由 `Button` 原语（`controls.css`）自带；播放控制、标题栏与播客正在播放 chrome（返回/走带/倍速/睡眠触发、`.podcast-play-action`）沿用 `motion.css` 按压组。
 - 磁贴面的 3D 倾斜按压全应用只有一条规则：`motion.css` 的 `.tilt-pressed`（±10°、`scale(0.94)`、`perspective(600px)`，Lumia 校准）。角度由 `tiltPress.ts` 按按压点写入 `--tilt-rx` / `--tilt-ry`；reduced-motion 在统一关停块里清零。新增倾斜面挂 `tiltPressDown` / `tiltPressClear` 即可，不得在页面 CSS 里另写几何。
 
 ## 守则（Do / Don't）
