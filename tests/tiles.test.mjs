@@ -46,6 +46,18 @@ test("two reveal variants: peek slides, flip card-flips, both scoped", () => {
   const reducedBlock = motionCss.slice(motionCss.indexOf("prefers-reduced-motion"));
   assert.ok(reducedBlock.includes("transform: none"), "reduced motion must not slide or rotate");
   assert.ok(reducedBlock.includes("backface-visibility: visible"), "reduced motion must not cull faces");
+  // The variant face rules above are two-class selectors; the reduced-motion
+  // neutralizer must be scoped per variant or the peek face stays parked
+  // below the tile and the flip face stays rotated 180deg — a mirrored live
+  // card for the whole dwell.
+  assert.ok(
+    /\.tile-flip-v-peek \.tile-face-back,\s*\.tile-flip-v-flip \.tile-face-back\s*\{[^}]*transform:\s*none/s.test(reducedBlock),
+    "reduced motion must unpark/derotate the back face per variant",
+  );
+  // Single perspective: the property lives on the variant host; the surface
+  // transform must not repeat it (double projection exaggerates mid-flip).
+  assert.ok(/\.tile-flip-v-flip\s*\{[^}]*perspective:\s*900px/s.test(tilesCss));
+  assert.ok(!/\.tile-flip-v-flip \.tile-flip-surface\s*\{[^}]*perspective\(/s.test(tilesCss));
 });
 
 test("quickplay pins reveal with the flip variant, overridable per pin later", () => {
@@ -100,6 +112,21 @@ test("keyboard reorder stays reachable in edit mode", () => {
   // HTML5 drag - a nested <button> would swallow the drag start.
   assert.ok(quickplaySource.includes("asButton={!editingPins}"));
   assert.ok(flipSource.includes("asButton?: boolean"));
+});
+
+test("disabled tiles never activate", () => {
+  // aria-disabled keeps focus for keyboard reorder; the click handler must
+  // swallow activation so a disabled tile can never fire onPress.
+  assert.ok(/function handleClick\(\) \{[^}]*if \(disabled\) return;\s*onPress\?\.\(\);/s.test(tileSource));
+  assert.ok(tileSource.includes("onClick={handleClick}"));
+});
+
+test("tile sizes ship intrinsic Win8 defaults that yield to host sizing", () => {
+  // Zero-specificity :where() defaults (medium 150px, wide 2x150 + one 10px
+  // gutter) so any host class — quickplay's grid-driven pins — wins
+  // regardless of stylesheet order.
+  assert.ok(/:where\(\.tile-medium\)\s*\{[^}]*width:\s*150px[^}]*height:\s*150px/s.test(tilesCss));
+  assert.ok(/:where\(\.tile-wide\)\s*\{[^}]*width:\s*310px[^}]*height:\s*150px/s.test(tilesCss));
 });
 
 test("entrance is a turnstile pivot from the bottom edge, staggered, flash-free", () => {
@@ -160,6 +187,11 @@ test("cycle layering: active frame on top, conveyor drift, no stuck delays", () 
   // No hardcoded holdover delay may split opacity from transform again.
   assert.ok(!tilesCss.includes("1600ms"), "hardcoded 1600ms delay must be gone");
   assert.ok(!/\.tile-cycle-frame[^{]*\{[^}]*transition-delay/s.test(tilesCss), "cycle frames must not use transition-delay");
+  // Reduced motion collapses the conveyor to a quick in-place fade owned by
+  // the motion.css media query — no dead JS data-attribute mechanism.
+  const reducedBlock = motionCss.slice(motionCss.indexOf("prefers-reduced-motion"));
+  assert.ok(/\.tile-cycle-frame[^{]*\{[^}]*transition:\s*opacity var\(--motion-micro\)/s.test(reducedBlock));
+  assert.ok(!cycleSource.includes("data-reduced"), "data-reduced attribute must be gone");
 });
 
 test("wide multi-cover pins use the People-hub mosaic, never cropped strips", () => {
@@ -206,6 +238,10 @@ test("mosaic layout tiers by pool size and never duplicates a cover", () => {
   assert.ok(mosaicSource.includes("8_000") || mosaicSource.includes("8000"), "min flip interval should be multi-second");
   // Empty cells / initials placeholders stay gone — capacity matches pool.
   assert.ok(!mosaicSource.includes("placeholder"), "initials placeholders must be gone");
+  // will-change is JS-managed for the flip's duration, not a permanent layer
+  // tax on every cell.
+  assert.ok(!/\.tile-mosaic-cell-inner\s*\{[^}]*will-change\s*:/s.test(tilesCss));
+  assert.ok(mosaicSource.includes('willChange = "transform"'));
 });
 
 test("tilt press matches the Lumia-calibrated Metro touch response", () => {

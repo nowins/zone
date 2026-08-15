@@ -92,7 +92,11 @@ export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
         applyTarget(cellIndex, poolIndex);
         return;
       }
-      if (!innerRefs.current[cellIndex] || flipsRef.current[cellIndex]) return;
+      const inner = innerRefs.current[cellIndex];
+      if (!inner || flipsRef.current[cellIndex]) return;
+      // Promote the cell only for the flip's duration — a permanent
+      // will-change on every cell keeps dozens of idle layers alive.
+      inner.style.willChange = "transform";
 
       const firstHalf = animateValue({
         from: 0,
@@ -110,6 +114,7 @@ export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
             onUpdate: (value) => setAngle(cellIndex, value),
             onComplete: () => {
               flipsRef.current[cellIndex] = null;
+              inner.style.willChange = "";
             },
           });
           flipsRef.current[cellIndex] = secondHalf;
@@ -151,7 +156,9 @@ export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
       for (const handle of flipsRef.current) handle?.cancel();
       flipsRef.current = [];
       for (const inner of innerRefs.current) {
-        inner?.style.setProperty("--cell-flip", "0deg");
+        if (!inner) continue;
+        inner.style.setProperty("--cell-flip", "0deg");
+        inner.style.willChange = "";
       }
     };
   }, [images.length, cellCount, reducedMotion]);

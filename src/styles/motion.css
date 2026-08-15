@@ -553,6 +553,20 @@
   .tile-cycle-frame.is-leaving {
     transform: none;
   }
+  /* The variant face rules in tiles.css are two-class selectors, so the bare
+     rule above can never unpark them: the neutralizer must be scoped per
+     variant, or the peek face stays parked below the tile and the flip face
+     stays rotated 180deg — a mirrored live card for the whole dwell. */
+  .tile-flip-v-peek .tile-face-back,
+  .tile-flip-v-flip .tile-face-back {
+    transform: none;
+    will-change: auto;
+  }
+  /* Cycle tiles degrade to a quick in-place fade — no conveyor drift. */
+  .tile-cycle-frame,
+  .tile-cycle-frame.is-leaving {
+    transition: opacity var(--motion-micro) linear;
+  }
   .tile-flip-v-flip .tile-flip-surface {
     transform: none !important;
   }

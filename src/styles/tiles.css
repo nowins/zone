@@ -22,6 +22,18 @@
   cursor: default;
   filter: none;
 }
+
+/* Intrinsic Win8 tile sizes (medium 150px, wide 2x150 + one 10px gutter).
+   Zero-specificity :where() defaults, so any host sizing — e.g. quickplay's
+   grid-driven pins — wins regardless of stylesheet order. */
+:where(.tile-medium) {
+  width: 150px;
+  height: 150px;
+}
+:where(.tile-wide) {
+  width: 310px;
+  height: 150px;
+}
 .tile.tilt-pressed {
   /* MangoTile metroTilt: 0.94 scale, tight perspective (cameraDistance ~16dp)
      so the tip toward the finger reads clearly. */
@@ -89,7 +101,9 @@
 }
 .tile-flip-v-flip .tile-flip-surface {
   transform-style: preserve-3d;
-  transform: perspective(900px) rotateX(var(--tile-flip, 0deg));
+  /* Perspective lives once on the host (.tile-flip-v-flip); repeating the
+     function here would double-project the swing. */
+  transform: rotateX(var(--tile-flip, 0deg));
 }
 .tile-flip-v-flip .tile-face {
   backface-visibility: hidden;
@@ -262,7 +276,7 @@
   transform: rotateY(var(--cell-flip, 0deg));
   transform-style: preserve-3d;
   backface-visibility: hidden;
-  will-change: transform;
+  /* will-change is applied from JS only for the duration of a cell flip. */
 }
 .tile-mosaic-cell-inner .mini-cover {
   width: 100%;

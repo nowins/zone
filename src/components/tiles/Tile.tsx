@@ -43,6 +43,12 @@ export function Tile({
   function handlePointerClear(event: PointerEvent<HTMLElement>) {
     tiltPressClear(event, tiltSelector);
   }
+  function handleClick() {
+    // aria-disabled keeps the tile focusable (edit-mode keyboard reorder), so
+    // the primitive itself must swallow activation while disabled.
+    if (disabled) return;
+    onPress?.();
+  }
 
   if (!asButton) {
     return (
@@ -58,7 +64,7 @@ export function Tile({
       style={style}
       title={title}
       aria-disabled={disabled || undefined}
-      onClick={onPress}
+      onClick={handleClick}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
       onPointerDown={handlePointerDown}

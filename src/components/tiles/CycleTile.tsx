@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
-import { useReducedMotion } from "../../motion/useReducedMotion";
 import { Tile } from "./Tile";
 import type { TileSize } from "./Tile";
 
@@ -13,8 +12,10 @@ const LEAVING_CLEAR_MS = 900;
 /**
  * WP8 cycle tile: rotates slowly through up to nine images with a gentle
  * cross-fade, staying restrained and content-driven. Under reduced motion the
- * current image simply swaps without a fade. Cadence is jittered per instance
- * so a wall of cycle tiles does not switch in lockstep.
+ * conveyor drift collapses to a quick in-place fade — owned by the shared
+ * reduced-motion block in motion.css, with no JS-side switch. Each instance
+ * starts at a random phase offset so a wall of cycle tiles never switches in
+ * lockstep.
  */
 export function CycleTile({
   size = "medium",
@@ -62,7 +63,6 @@ export function CycleFrames({ images }: { images: ReactNode[] }) {
   const frames = images.slice(0, MAX_CYCLE_IMAGES);
   const [index, setIndex] = useState(0);
   const [leaving, setLeaving] = useState<number | null>(null);
-  const reducedMotion = useReducedMotion();
   const timerRef = useRef<number | undefined>(undefined);
   const leavingTimerRef = useRef<number | undefined>(undefined);
   // Mirror the index so the timer tick always reads the current frame, not a
@@ -96,7 +96,7 @@ export function CycleFrames({ images }: { images: ReactNode[] }) {
   }, [frames.length]);
 
   return (
-    <div className="tile-cycle-frames" data-reduced={reducedMotion || undefined}>
+    <div className="tile-cycle-frames">
       {frames.map((frame, frameIndex) => (
         <div
           key={frameIndex}
