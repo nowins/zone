@@ -104,10 +104,13 @@ impl PodcastState {
 
   pub(crate) fn initialize_at(app_data_dir: &Path) -> Result<Self, String> {
     fs::create_dir_all(app_data_dir).map_err(|error| format!("无法创建播客数据目录：{error}"))?;
-    let downloads_dir = app_data_dir.join("podcast-downloads");
-    fs::create_dir_all(&downloads_dir).map_err(|error| format!("无法创建播客下载目录：{error}"))?;
     let db_path = crate::db::initialize_zone_database(app_data_dir)?;
+    let downloads_dir = podcast_downloads_dir_for_db(&db_path);
+    fs::create_dir_all(&downloads_dir).map_err(|error| format!("无法创建播客下载目录：{error}"))?;
     let _ = open_database(&db_path)?;
+    if let Err(error) = sweep_orphan_download_files(&db_path, &downloads_dir) {
+      eprintln!("[podcast] 无法清理播客遗留下载文件：{error}");
+    }
     Ok(Self {
       db_path,
       downloads_dir,

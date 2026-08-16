@@ -16,7 +16,10 @@ pub(crate) fn store_preview(db_path: &Path, parsed: ParsedPodcast) -> Result<Pod
   store_feed(db_path, &podcast_downloads_dir_for_db(db_path), parsed, false)
 }
 
-fn podcast_downloads_dir_for_db(db_path: &Path) -> PathBuf {
+// Single source of truth for the managed downloads directory. PodcastState is
+// built from the same derivation, so state.downloads_dir and the store-side
+// file guards cannot drift apart.
+pub(crate) fn podcast_downloads_dir_for_db(db_path: &Path) -> PathBuf {
   db_path
     .parent()
     .map(|parent| parent.join("podcast-downloads"))
@@ -29,6 +32,11 @@ fn store_feed(
   parsed: ParsedPodcast,
   requested_subscribed: bool,
 ) -> Result<PodcastSubscribeResult, String> {
+  // File deletions are collected while the transaction is open and executed
+  // only after a successful commit: a rolled-back refresh must not strand
+  // downloads whose rows survive, and file I/O must not stretch the write lock.
+  // Leftovers from a crash in between are swept at startup.
+  let mut pending_file_deletes: Vec<PathBuf> = Vec::new();
   let mut connection = open_database(db_path)?;
   let transaction = connection
     .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -203,6 +211,7 @@ fn store_feed(
           &downloads_dir,
           &episode.id,
           &episode.enclosure_url,
+          &mut pending_file_deletes,
         )?;
         updated_count += update
           .execute(params![
@@ -226,7 +235,7 @@ fn store_feed(
       reconcile_episode_resources(&transaction, episode)?;
     }
   }
-  prune_missing_feed_episodes(&transaction, &downloads_dir, &feed.id, &episodes)?;
+  prune_missing_feed_episodes(&transaction, &downloads_dir, &feed.id, &episodes, &mut pending_file_deletes)?;
   let (latest_episode_at, unplayed_count) = transaction
     .query_row(
       "
@@ -258,6 +267,14 @@ fn store_feed(
   transaction
     .commit()
     .map_err(|error| format!("无法提交播客订阅：{error}"))?;
+  for path in &pending_file_deletes {
+    if let Err(error) = remove_file_if_present(path, "播客下载文件") {
+      eprintln!(
+        "[podcast] 订阅源已更新，但下载文件清理失败（{}）：{error}",
+        path.display(),
+      );
+    }
+  }
 
   Ok(PodcastSubscribeResult {
     feed,
@@ -272,6 +289,7 @@ fn prune_missing_feed_episodes(
   downloads_dir: &Path,
   feed_id: &str,
   current_episodes: &[ParsedPodcastEpisode],
+  pending_file_deletes: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
   let current_ids = current_episodes
     .iter()
@@ -344,13 +362,10 @@ fn prune_missing_feed_episodes(
     if let Some(local_path) = local_path {
       let path = PathBuf::from(local_path);
       if is_managed_download_path(downloads_dir, &episode_id, &path) {
-        remove_file_if_present(&path, "播客下载")?;
+        pending_file_deletes.push(path);
       }
     }
-    remove_file_if_present(
-      &downloads_dir.join(format!("{episode_id}.part")),
-      "播客下载临时文件",
-    )?;
+    pending_file_deletes.push(downloads_dir.join(format!("{episode_id}.part")));
     transaction
       .execute(
         "DELETE FROM podcast_episodes WHERE id = ?1 AND feed_id = ?2",
@@ -366,6 +381,7 @@ fn invalidate_download_if_enclosure_changed(
   downloads_dir: &Path,
   episode_id: &str,
   next_enclosure_url: &str,
+  pending_file_deletes: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
   let previous_enclosure_url = transaction
     .query_row(
@@ -394,13 +410,10 @@ fn invalidate_download_if_enclosure_changed(
   if let Some(local_path) = local_path {
     let path = PathBuf::from(local_path);
     if is_managed_download_path(downloads_dir, episode_id, &path) {
-      remove_file_if_present(&path, "播客下载")?;
+      pending_file_deletes.push(path);
     }
   }
-  remove_file_if_present(
-    &downloads_dir.join(format!("{episode_id}.part")),
-    "播客下载临时文件",
-  )?;
+  pending_file_deletes.push(downloads_dir.join(format!("{episode_id}.part")));
   transaction
     .execute(
       "DELETE FROM podcast_downloads WHERE episode_id = ?1",

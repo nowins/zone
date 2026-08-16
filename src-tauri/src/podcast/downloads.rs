@@ -137,6 +137,92 @@ pub(crate) fn remove_file_if_present(path: &Path, label: &str) -> Result<(), Str
   }
 }
 
+// Startup cleanup for files no database row can account for: episodes pruned
+// in the narrow window before a download registers, commits finished between
+// file staging and deletion, or crash residue from .zone-delete staging dirs.
+// Runs at PodcastState construction, when no download can be in flight, and
+// never touches files whose episode still exists (a .part file is resume
+// state for a failed download).
+pub(crate) fn sweep_orphan_download_files(db_path: &Path, downloads_dir: &Path) -> Result<(), String> {
+  let read_dir = match fs::read_dir(downloads_dir) {
+    Ok(read_dir) => read_dir,
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+    Err(error) => return Err(format!("无法检查播客下载目录：{error}")),
+  };
+  let mut candidates: Vec<(String, PathBuf)> = Vec::new();
+  let mut stale_staging_dirs: Vec<PathBuf> = Vec::new();
+  for entry in read_dir {
+    let entry = entry.map_err(|error| format!("无法检查播客下载目录：{error}"))?;
+    let file_type = entry
+      .file_type()
+      .map_err(|error| format!("无法检查播客下载文件：{error}"))?;
+    let path = entry.path();
+    if file_type.is_dir() {
+      if entry.file_name().to_string_lossy().starts_with(".zone-delete-") {
+        stale_staging_dirs.push(path);
+      }
+      continue;
+    }
+    if !file_type.is_file() {
+      continue;
+    }
+    let extension = path
+      .extension()
+      .and_then(|value| value.to_str())
+      .map(|value| value.to_ascii_lowercase())
+      .unwrap_or_default();
+    if extension != "part" && !matches!(
+      extension.as_str(),
+      "mp3" | "flac" | "m4a" | "aac" | "wav" | "ogg"
+    ) {
+      continue;
+    }
+    let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
+      continue;
+    };
+    if validate_identifier(stem).is_err() {
+      continue;
+    }
+    candidates.push((stem.to_string(), path));
+  }
+  for staging_dir in stale_staging_dirs {
+    fs::remove_dir_all(&staging_dir)
+      .map_err(|error| format!("无法清理播客下载暂存目录：{error}"))?;
+  }
+  if candidates.is_empty() {
+    return Ok(());
+  }
+
+  let connection = open_database(db_path)?;
+  let mut surviving_ids: HashSet<String> = HashSet::new();
+  let candidate_ids: Vec<&str> = candidates
+    .iter()
+    .map(|(episode_id, _)| episode_id.as_str())
+    .collect();
+  for chunk in candidate_ids.chunks(500) {
+    let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!("SELECT id FROM podcast_episodes WHERE id IN ({placeholders})");
+    let mut statement = connection
+      .prepare(&sql)
+      .map_err(|error| format!("无法核对播客下载文件：{error}"))?;
+    let rows = statement
+      .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+        row.get::<_, String>(0)
+      })
+      .map_err(|error| format!("无法核对播客下载文件：{error}"))?;
+    for row in rows {
+      surviving_ids.insert(row.map_err(|error| format!("无法核对播客下载文件：{error}"))?);
+    }
+  }
+  for (episode_id, path) in candidates {
+    if surviving_ids.contains(&episode_id) {
+      continue;
+    }
+    remove_file_if_present(&path, "播客遗留下载文件")?;
+  }
+  Ok(())
+}
+
 pub(crate) fn delete_episode_download(
   db_path: &Path,
   downloads_dir: &Path,
@@ -1014,6 +1100,51 @@ mod tests {
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }
+
+  #[test]
+  fn startup_sweep_removes_orphans_but_keeps_managed_downloads() {
+    let directory = test_directory("sweep-orphans");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let episode_id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    let final_path = state.downloads_dir.join(format!("{episode_id}.mp3"));
+    fs::write(&final_path, b"ID3-managed").expect("write managed download");
+    mark_download_complete(
+      &state.db_path,
+      &episode_id,
+      &final_path.to_string_lossy(),
+      11,
+      Some(11),
+    )
+    .expect("mark managed download");
+    let resume_part = state.downloads_dir.join(format!("{episode_id}.part"));
+    fs::write(&resume_part, b"ID3-resume").expect("write resumable part");
+
+    let orphan_id = "b".repeat(64);
+    let orphan_audio = state.downloads_dir.join(format!("{orphan_id}.mp3"));
+    let orphan_part = state.downloads_dir.join(format!("{orphan_id}.part"));
+    fs::write(&orphan_audio, b"ID3-orphan").expect("write orphan audio");
+    fs::write(&orphan_part, b"ID3-orphan-part").expect("write orphan part");
+    let staging_dir = state.downloads_dir.join(".zone-delete-test");
+    fs::create_dir(&staging_dir).expect("create stale staging dir");
+    fs::write(staging_dir.join("staged.mp3"), b"ID3-staged").expect("write staged file");
+    let unrelated = state.downloads_dir.join("notes.txt");
+    fs::write(&unrelated, b"not a managed download").expect("write unrelated file");
+
+    sweep_orphan_download_files(&state.db_path, &state.downloads_dir).expect("sweep orphans");
+
+    assert!(final_path.exists());
+    assert!(resume_part.exists());
+    assert!(!orphan_audio.exists());
+    assert!(!orphan_part.exists());
+    assert!(!staging_dir.exists());
+    assert!(unrelated.exists());
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
   #[test]
   fn deleting_download_removes_only_managed_files_and_cleans_database_state() {
     let directory = test_directory("delete-download");
