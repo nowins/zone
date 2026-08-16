@@ -1,6 +1,8 @@
 use rusqlite::Connection;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 mod schema;
@@ -37,8 +39,31 @@ pub(crate) fn open_zone_database(path: &Path) -> Result<Connection, String> {
   let connection =
     Connection::open(path).map_err(|error| format!("无法打开 Zone 数据库：{error}"))?;
   configure_connection(&connection)?;
-  ensure_schema(&connection)?;
+  ensure_schema_once_per_path(&connection, path)?;
   Ok(connection)
+}
+
+// ensure_schema runs dozens of CREATE/PRAGMA statements plus the podcast compat
+// backfills; it is idempotent, so once per process and path is enough. Command
+// handlers open a fresh connection per call (progress saves, stream chunks),
+// which must not pay the full schema cost every time.
+static ENSURED_SCHEMA_PATHS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+
+fn ensure_schema_once_per_path(connection: &Connection, path: &Path) -> Result<(), String> {
+  let ensured_paths = ENSURED_SCHEMA_PATHS.get_or_init(|| Mutex::new(HashSet::new()));
+  if ensured_paths
+    .lock()
+    .map_err(|_| "无法读取数据库结构状态".to_string())?
+    .contains(path)
+  {
+    return Ok(());
+  }
+  ensure_schema(connection)?;
+  ensured_paths
+    .lock()
+    .map_err(|_| "无法保存数据库结构状态".to_string())?
+    .insert(path.to_path_buf());
+  Ok(())
 }
 
 pub(crate) fn initialize_zone_database(app_data_dir: &Path) -> Result<PathBuf, String> {
@@ -360,6 +385,31 @@ mod tests {
         .expect("query table");
       assert_eq!(exists, 1, "{table} should exist");
     }
+  }
+
+  #[test]
+  fn schema_ensure_is_remembered_per_path_within_the_process() {
+    let root = test_root("schema-once");
+    let db_path = root.join(ZONE_DB_FILE_NAME);
+    drop(open_zone_database(&db_path).expect("first open ensures schema"));
+    assert!(
+      ENSURED_SCHEMA_PATHS
+        .get()
+        .expect("schema cache initialized")
+        .lock()
+        .expect("lock schema cache")
+        .contains(&db_path),
+      "first open must record the ensured path",
+    );
+    let connection = open_zone_database(&db_path).expect("second open reuses ensured schema");
+    let table_exists: i64 = connection
+      .query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'podcast_feeds'",
+        [],
+        |row| row.get(0),
+      )
+      .expect("query table");
+    assert_eq!(table_exists, 1);
   }
 
   #[test]
