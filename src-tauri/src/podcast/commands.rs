@@ -90,65 +90,18 @@ pub async fn podcast_refresh_feeds(
 
   let mut report = PodcastRefreshReport::default();
   for chunk in targets.chunks(PODCAST_REFRESH_CONCURRENCY) {
-    let outcomes = match chunk {
-      [first] => vec![
-          refresh_feed_target(
-            state.db_path.clone(),
-            state.active_refreshes.clone(),
-            state.refresh_semaphore.clone(),
-            first.clone(),
-            false,
-          )
-        .await,
-      ],
-      [first, second] => {
-        let (first, second) = tokio::join!(
-          refresh_feed_target(
-            state.db_path.clone(),
-            state.active_refreshes.clone(),
-            state.refresh_semaphore.clone(),
-            first.clone(),
-            false,
-          ),
-          refresh_feed_target(
-            state.db_path.clone(),
-            state.active_refreshes.clone(),
-            state.refresh_semaphore.clone(),
-            second.clone(),
-            false,
-          ),
-        );
-        vec![first, second]
-      }
-      [first, second, third] => {
-        let (first, second, third) = tokio::join!(
-          refresh_feed_target(
-            state.db_path.clone(),
-            state.active_refreshes.clone(),
-            state.refresh_semaphore.clone(),
-            first.clone(),
-            false,
-          ),
-          refresh_feed_target(
-            state.db_path.clone(),
-            state.active_refreshes.clone(),
-            state.refresh_semaphore.clone(),
-            second.clone(),
-            false,
-          ),
-          refresh_feed_target(
-            state.db_path.clone(),
-            state.active_refreshes.clone(),
-            state.refresh_semaphore.clone(),
-            third.clone(),
-            false,
-          ),
-        );
-        vec![first, second, third]
-      }
-      _ => unreachable!("refresh chunks are limited to three feeds"),
-    };
-    for outcome in outcomes {
+    let mut refresh_tasks = tokio::task::JoinSet::new();
+    for target in chunk {
+      refresh_tasks.spawn(refresh_feed_target(
+        state.db_path.clone(),
+        state.active_refreshes.clone(),
+        state.refresh_semaphore.clone(),
+        target.clone(),
+        false,
+      ));
+    }
+    while let Some(outcome) = refresh_tasks.join_next().await {
+      let outcome = outcome.map_err(|error| format!("播客刷新任务异常结束：{error}"))?;
       match outcome {
         PodcastRefreshOutcome::Skipped => continue,
         PodcastRefreshOutcome::NotModified => report.not_modified += 1,
