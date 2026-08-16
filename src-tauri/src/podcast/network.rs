@@ -1,7 +1,9 @@
 use reqwest::header::{self, HeaderMap};
 use reqwest::{StatusCode, Url};
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use super::*;
@@ -10,6 +12,64 @@ pub(crate) struct PublicResponse {
   pub(crate) final_url: Url,
   pub(crate) response: reqwest::Response,
 }
+
+// reqwest pools keep-alive connections per client. Streaming fetches a 1 MiB
+// chunk per request, so a fresh client per call would pay DNS + TCP + TLS on
+// every chunk and every seek. Clients are cached per validated address set:
+// the DNS-pinning security model is unchanged because a client is only reused
+// for the exact validated addresses it was built with.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct PodcastClientKey {
+  host: String,
+  addresses: Vec<SocketAddr>,
+  allow_private_network: bool,
+}
+
+const PODCAST_CLIENT_CACHE_LIMIT: usize = 16;
+
+static PODCAST_CLIENT_CACHE: OnceLock<Mutex<HashMap<PodcastClientKey, reqwest::Client>>> =
+  OnceLock::new();
+
+fn shared_public_client(
+  host: &str,
+  addresses: &[SocketAddr],
+  allow_private_network: bool,
+) -> Result<reqwest::Client, String> {
+  let key = PodcastClientKey {
+    host: host.to_string(),
+    addresses: addresses.to_vec(),
+    allow_private_network,
+  };
+  let cache = PODCAST_CLIENT_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+  {
+    let clients = cache
+      .lock()
+      .map_err(|_| "播客网络客户端缓存不可用".to_string())?;
+    if let Some(client) = clients.get(&key) {
+      return Ok(client.clone());
+    }
+  }
+  // The overall timeout is applied per request, not on the shared client.
+  let mut client_builder = reqwest::Client::builder()
+    .user_agent(USER_AGENT)
+    .connect_timeout(Duration::from_secs(10))
+    .redirect(reqwest::redirect::Policy::none())
+    .no_proxy();
+  if host.parse::<IpAddr>().is_err() {
+    client_builder = client_builder.resolve_to_addrs(host, addresses);
+  }
+  let client = client_builder
+    .build()
+    .map_err(|error| format!("无法初始化播客网络请求：{error}"))?;
+  let mut clients = cache
+    .lock()
+    .map_err(|_| "播客网络客户端缓存不可用".to_string())?;
+  if clients.len() >= PODCAST_CLIENT_CACHE_LIMIT {
+    clients.clear();
+  }
+  Ok(clients.entry(key).or_insert(client).clone())
+}
+
 pub(crate) async fn send_public_get(url: Url, timeout: Duration, range: Option<&str>) -> Result<PublicResponse, String> {
   send_public_get_with_policy(url, timeout, range, false).await
 }
@@ -44,19 +104,11 @@ pub(crate) async fn send_public_get_with_headers(
     let addresses = resolve_public_addresses(&url, allow_private_network).await?;
     let raw_host = url.host_str().ok_or_else(|| "播客请求地址缺少主机名".to_string())?;
     let host = host_without_ipv6_brackets(raw_host);
-    let mut client_builder = reqwest::Client::builder()
-      .user_agent(USER_AGENT)
-      .connect_timeout(Duration::from_secs(10))
-      .timeout(timeout)
-      .redirect(reqwest::redirect::Policy::none())
-      .no_proxy();
-    if host.parse::<IpAddr>().is_err() {
-      client_builder = client_builder.resolve_to_addrs(host, &addresses);
-    }
-    let client = client_builder
-      .build()
-      .map_err(|error| format!("无法初始化播客网络请求：{error}"))?;
-    let mut request = client.get(url.clone()).header(header::ACCEPT, "*/*");
+    let client = shared_public_client(host, &addresses, allow_private_network)?;
+    let mut request = client
+      .get(url.clone())
+      .header(header::ACCEPT, "*/*")
+      .timeout(timeout);
     if url_origin(&url) == header_origin {
       request = request.headers(request_headers.clone());
     }
