@@ -1,8 +1,98 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use reqwest::header::{self, HeaderMap};
 use reqwest::{StatusCode, Url};
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Mutex, OnceLock};
 use tauri::http::{Method, Request, Response};
 use super::*;
+
+// Custom protocol responses bypass the WebView HTTP cache, so the response
+// Cache-Control header alone does not prevent repeat upstream fetches when
+// lists remount. This small in-process LRU absorbs exactly that repeat traffic.
+pub(crate) const PODCAST_ARTWORK_CACHE_MAX_ENTRIES: usize = 128;
+pub(crate) const PODCAST_ARTWORK_CACHE_MAX_BYTES: usize = 48 * 1024 * 1024;
+pub(crate) const PODCAST_ARTWORK_CACHE_ENTRY_LIMIT: usize = 2 * 1024 * 1024;
+
+struct PodcastArtworkCacheEntry {
+  content_type: String,
+  bytes: Vec<u8>,
+}
+
+struct PodcastArtworkCache {
+  entries: HashMap<String, PodcastArtworkCacheEntry>,
+  order: VecDeque<String>,
+  total_bytes: usize,
+  max_entries: usize,
+  max_bytes: usize,
+}
+
+impl Default for PodcastArtworkCache {
+  fn default() -> Self {
+    Self {
+      entries: HashMap::new(),
+      order: VecDeque::new(),
+      total_bytes: 0,
+      max_entries: PODCAST_ARTWORK_CACHE_MAX_ENTRIES,
+      max_bytes: PODCAST_ARTWORK_CACHE_MAX_BYTES,
+    }
+  }
+}
+
+impl PodcastArtworkCache {
+  fn get(&mut self, key: &str) -> Option<(String, Vec<u8>)> {
+    let entry = self.entries.get(key)?;
+    let value = (entry.content_type.clone(), entry.bytes.clone());
+    if let Some(position) = self.order.iter().position(|candidate| candidate == key) {
+      let touched = self.order.remove(position);
+      self.order.extend(touched);
+    }
+    Some(value)
+  }
+
+  fn insert(&mut self, key: String, content_type: String, bytes: Vec<u8>) {
+    if bytes.len() > PODCAST_ARTWORK_CACHE_ENTRY_LIMIT {
+      return;
+    }
+    if let Some(previous) = self.entries.remove(&key) {
+      self.total_bytes = self.total_bytes.saturating_sub(previous.bytes.len());
+      if let Some(position) = self.order.iter().position(|candidate| candidate == &key) {
+        self.order.remove(position);
+      }
+    }
+    self.total_bytes += bytes.len();
+    self.order.push_back(key.clone());
+    self.entries.insert(
+      key,
+      PodcastArtworkCacheEntry { content_type, bytes },
+    );
+    while self.order.len() > self.max_entries
+      || self.total_bytes > self.max_bytes
+    {
+      let Some(oldest) = self.order.pop_front() else {
+        break;
+      };
+      if let Some(removed) = self.entries.remove(&oldest) {
+        self.total_bytes = self.total_bytes.saturating_sub(removed.bytes.len());
+      }
+    }
+  }
+}
+
+static PODCAST_ARTWORK_CACHE: OnceLock<Mutex<PodcastArtworkCache>> = OnceLock::new();
+
+fn podcast_artwork_cache() -> &'static Mutex<PodcastArtworkCache> {
+  PODCAST_ARTWORK_CACHE.get_or_init(|| Mutex::new(PodcastArtworkCache::default()))
+}
+
+fn cached_podcast_artwork(key: &str) -> Option<(String, Vec<u8>)> {
+  podcast_artwork_cache().lock().ok()?.get(key)
+}
+
+fn remember_podcast_artwork(key: String, content_type: &str, bytes: &[u8]) {
+  if let Ok(mut cache) = podcast_artwork_cache().lock() {
+    cache.insert(key, content_type.to_string(), bytes.to_vec());
+  }
+}
 
 pub async fn serve_podcast_artwork_protocol(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
   serve_podcast_artwork_protocol_with_network_policy(request, false).await
@@ -25,6 +115,18 @@ async fn serve_podcast_artwork_protocol_with_network_policy(
     Ok(url) => url,
     Err(error) => return podcast_artwork_text_response(StatusCode::BAD_REQUEST, &error),
   };
+  let cache_key = format!("{}|{url}", u8::from(allow_private_network));
+  if let Some((content_type, bytes)) = cached_podcast_artwork(&cache_key) {
+    let content_length = bytes.len() as u64;
+    let body = if request.method() == Method::HEAD {
+      Vec::new()
+    } else {
+      bytes
+    };
+    return podcast_artwork_response_builder(StatusCode::OK, &content_type, content_length)
+      .body(body)
+      .unwrap();
+  }
   let public_response = match send_public_get_with_policy(
     url,
     PODCAST_ARTWORK_TIMEOUT,
@@ -54,6 +156,7 @@ async fn serve_podcast_artwork_protocol_with_network_policy(
     return podcast_artwork_text_response(StatusCode::BAD_GATEWAY, "播客封面内容格式无效");
   }
 
+  remember_podcast_artwork(cache_key, &content_type, &bytes);
   let content_length = bytes.len() as u64;
   let body = if request.method() == Method::HEAD {
     Vec::new()
@@ -179,6 +282,100 @@ mod tests {
     headers.insert(header::CONTENT_TYPE, "image/svg+xml".parse().expect("svg content type"));
     assert!(podcast_artwork_content_type(&headers).is_err());
   }
+
+  #[test]
+  fn podcast_artwork_cache_evicts_by_lru_order_and_size_limits() {
+    let mut cache = PodcastArtworkCache {
+      max_entries: 4,
+      ..PodcastArtworkCache::default()
+    };
+    assert!(cache.get("missing").is_none());
+
+    cache.insert("a".to_string(), "image/png".to_string(), vec![1u8; 16]);
+    cache.insert("b".to_string(), "image/jpeg".to_string(), vec![2u8; 16]);
+    let hit = cache.get("a").expect("cached entry");
+    assert_eq!(hit.0, "image/png");
+    assert_eq!(hit.1, vec![1u8; 16]);
+
+    // "a" was just touched, so "b" is the oldest and must be evicted first.
+    for index in 0..3 {
+      cache.insert(format!("fill-{index}"), "image/png".to_string(), vec![3u8; 8]);
+    }
+    assert!(cache.entries.len() <= 4);
+    assert!(cache.get("b").is_none());
+    assert!(cache.get("a").is_some());
+
+    let chunk = 32usize;
+    let mut byte_cache = PodcastArtworkCache {
+      max_bytes: chunk * 2,
+      ..PodcastArtworkCache::default()
+    };
+    byte_cache.insert("x".to_string(), "image/png".to_string(), vec![1u8; chunk]);
+    byte_cache.insert("y".to_string(), "image/png".to_string(), vec![2u8; chunk]);
+    byte_cache.insert("z".to_string(), "image/png".to_string(), vec![3u8; chunk]);
+    assert!(byte_cache.total_bytes <= chunk * 2);
+    assert_eq!(byte_cache.total_bytes, chunk * 2);
+    assert!(byte_cache.get("x").is_none());
+
+    let oversized = vec![0u8; PODCAST_ARTWORK_CACHE_ENTRY_LIMIT + 1];
+    byte_cache.insert("huge".to_string(), "image/png".to_string(), oversized);
+    assert!(byte_cache.get("huge").is_none());
+  }
+
+  #[tokio::test]
+  async fn podcast_artwork_protocol_serves_repeats_from_cache() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind artwork server");
+    let address = listener.local_addr().expect("artwork server address");
+    let image = b"\x89PNG\r\n\x1a\nzone-artwork-cache".to_vec();
+    let server_image = image.clone();
+    let server = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.expect("accept single request");
+      let mut request = vec![0u8; 8_192];
+      let _ = stream.read(&mut request).await.expect("read request");
+      let headers = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        server_image.len(),
+      );
+      stream.write_all(headers.as_bytes()).await.expect("write headers");
+      stream.write_all(&server_image).await.expect("write body");
+      stream.shutdown().await.expect("shutdown response");
+      // Listener drops here: any second upstream fetch would fail to connect.
+    });
+    let url = format!("http://{address}/cached-cover.png");
+
+    let first = serve_podcast_artwork_protocol_with_network_policy(
+      artwork_request(Method::GET, &url),
+      true,
+    )
+    .await;
+    server.await.expect("server task");
+    assert_eq!(first.status(), StatusCode::OK);
+    assert_eq!(first.body(), &image);
+
+    let second = serve_podcast_artwork_protocol_with_network_policy(
+      artwork_request(Method::GET, &url),
+      true,
+    )
+    .await;
+    assert_eq!(second.status(), StatusCode::OK);
+    assert_eq!(second.body(), &image);
+
+    let head = serve_podcast_artwork_protocol_with_network_policy(
+      artwork_request(Method::HEAD, &url),
+      true,
+    )
+    .await;
+    assert_eq!(head.status(), StatusCode::OK);
+    assert_eq!(
+      head
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok()),
+      Some(image.len().to_string().as_str()),
+    );
+    assert!(head.body().is_empty());
+  }
+
   #[tokio::test]
   async fn podcast_artwork_protocol_proxies_valid_images_with_cors() {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind artwork server");
