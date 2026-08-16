@@ -29,6 +29,7 @@ import { VolumeControl } from "../components/TransportControls";
 import { MetroLoader } from "../components/MetroLoader";
 import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
+import { PODCAST_PLAYBACK_RATES } from "../app/podcastPlaybackSettings";
 import type {
   PodcastPlayback,
   PodcastPlaybackStatus,
@@ -38,7 +39,6 @@ import type {
 import { formatTime } from "../utils/music";
 import { podcastArtworkSrc } from "../utils/podcastArtwork";
 
-const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
 const SLEEP_MINUTES = [15, 30, 45, 60] as const;
 
 type PodcastNowMenu = "rate" | "sleep" | null;
@@ -335,7 +335,7 @@ export function PodcastNowPlayingView({
     >
       <strong>播放速度</strong>
       <div className="podcast-rate-options">
-        {PLAYBACK_RATES.map((rate) => (
+        {PODCAST_PLAYBACK_RATES.map((rate) => (
           <button
             key={rate}
             type="button"
