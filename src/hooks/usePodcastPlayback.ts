@@ -44,6 +44,13 @@ export function usePodcastPlayback({
   const podcastQueueRevisionRef = useRef(0);
   const podcastQueueMutationRef = useRef<Promise<void>>(Promise.resolve());
   const pendingPodcastQueueConsumeRef = useRef<string | null>(null);
+  // A failed consume is remembered for the current queue revision. The failure
+  // path reloads the queue, which arrives as a fresh array and would otherwise
+  // re-arm the consume immediately, looping on a persistently failing IPC.
+  const podcastQueueConsumeFailureRef = useRef<{
+    episodeId: string;
+    revision: number;
+  } | null>(null);
   const podcastProgressSaveRef = useRef<{
     episodeId: string;
     savedAt: number;
@@ -159,6 +166,7 @@ export function usePodcastPlayback({
       episodeId
       && podcastQueue.some((item) => item.episode.id === episodeId)
       && pendingPodcastQueueConsumeRef.current === null
+      && !hasPodcastQueueConsumeFailure(episodeId)
     ) {
       pendingPodcastQueueConsumeRef.current = episodeId;
       if (playbackControlsRef.current?.hasEpisodeStartedOnDevice(episodeId)) {
@@ -325,6 +333,14 @@ export function usePodcastPlayback({
     pendingPodcastQueueConsumeRef.current = null;
   }
 
+  function hasPodcastQueueConsumeFailure(episodeId: string) {
+    const failure = podcastQueueConsumeFailureRef.current;
+    return (
+      failure?.episodeId === episodeId
+      && failure.revision === podcastQueueRevisionRef.current
+    );
+  }
+
   function consumePendingPodcastQueueEpisode(episodeId: string, audioEpisodeId: string | null) {
     if (
       !shouldConsumePendingQueueEpisode(
@@ -344,8 +360,10 @@ export function usePodcastPlayback({
     void serializePodcastQueueMutation(async () => {
       try {
         const items = await invoke<PodcastQueueItem[]>("podcast_queue_remove", { episodeId });
+        podcastQueueConsumeFailureRef.current = null;
         applyPodcastQueueResult(items, revision);
       } catch (reason) {
+        podcastQueueConsumeFailureRef.current = { episodeId, revision };
         await reloadPodcastQueue(revision);
         showActionNotice("无法同步待播队列");
         if (import.meta.env.DEV) console.warn("[podcast] queue consume failed", reason);

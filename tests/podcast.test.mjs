@@ -422,7 +422,7 @@ test("episode detail exposes saved, played, queue, and offline lifecycle actions
   );
   includes(
     podcastRustSource,
-    /prune_missing_feed_episodes\(&transaction,\s*&downloads_dir,\s*&feed\.id,\s*&episodes\)/,
+    /prune_missing_feed_episodes\(&transaction,\s*&downloads_dir,\s*&feed\.id,\s*&episodes[^)]*\)/,
     "store_feed must run episode pruning after upserting the current feed items",
   );
   includes(
@@ -555,6 +555,26 @@ test("podcast queue is independent, durable, reorderable, and advances after an 
     appSource,
     /podcastPlaybackStartedEpisodeRef\.current\s*=\s*podcastEpisodeId;[\s\S]{0,140}consumePendingPodcastQueueEpisode\(podcastEpisodeId, podcastAudioEpisodeRef\.current\)/,
     "successful playback must be remembered independently from the queue restore timing",
+  );
+  includes(
+    consumeSource,
+    /podcastQueueConsumeFailureRef\.current\s*=\s*\{\s*episodeId, revision\s*\}/,
+    "a failed queue consume must be recorded so the restored queue snapshot cannot retrigger it in a loop",
+  );
+  includes(
+    consumeSource,
+    /podcastQueueConsumeFailureRef\.current\s*=\s*null;[\s\S]{0,120}applyPodcastQueueResult\(items, revision\)/,
+    "a successful queue consume must clear the recorded failure",
+  );
+  includes(
+    appSource,
+    /!hasPodcastQueueConsumeFailure\(episodeId\)[\s\S]{0,120}pendingPodcastQueueConsumeRef\.current\s*=\s*episodeId/,
+    "a failed queue consume must stay paused until the queue revision changes",
+  );
+  includes(
+    declaredFunctionSource(appSource, "hasPodcastQueueConsumeFailure"),
+    /failure\?\.episodeId === episodeId[\s\S]{0,80}failure\.revision === podcastQueueRevisionRef\.current/,
+    "the consume failure marker must be scoped to the episode and the queue revision",
   );
 
   const endedSource = declaredFunctionSource(appSource, "handleEpisodeEnded");
