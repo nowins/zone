@@ -1891,15 +1891,21 @@ export function usePodcastViewModel({
     await loadEpisodes(selectedEpisodeDetail.feed);
   }
 
+  // Progress ticks arrive at ~4Hz while the overlays only display
+  // second-granularity values; flooring keeps the dependent memo chains from
+  // recomputing on every tick.
+  const activeProgressSeconds = Number.isFinite(activeProgress)
+    ? Math.max(0, Math.floor(activeProgress))
+    : 0;
   const liveEpisode = useCallback(
     (episode: PodcastEpisode) =>
       mergePodcastEpisodePlayback(
         episode,
         activeEpisode,
-        activeProgress,
+        activeProgressSeconds,
         activeDuration,
       ),
-    [activeDuration, activeEpisode, activeProgress],
+    [activeDuration, activeEpisode, activeProgressSeconds],
   );
   const liveActiveEpisode = useMemo(
     () => activeEpisode ? liveEpisode(activeEpisode) : null,
@@ -2281,4 +2287,3 @@ export function usePodcastViewModel({
     queue,
   };
 }
-
