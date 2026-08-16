@@ -1,6 +1,6 @@
 export function createPodcastProgressWriteGate() {
   const epochs = new Map<string, number>();
-  let suppressedEpisodeId: string | null = null;
+  const suppressedEpisodeIds = new Set<string>();
 
   function advance(episodeId: string) {
     const nextEpoch = (epochs.get(episodeId) ?? 0) + 1;
@@ -14,19 +14,18 @@ export function createPodcastProgressWriteGate() {
     },
     suppress(episodeId: string) {
       advance(episodeId);
-      suppressedEpisodeId = episodeId;
+      suppressedEpisodeIds.add(episodeId);
     },
     resume(episodeId: string) {
-      if (suppressedEpisodeId !== episodeId) return false;
-      suppressedEpisodeId = null;
+      if (!suppressedEpisodeIds.delete(episodeId)) return false;
       advance(episodeId);
       return true;
     },
     isSuppressed(episodeId: string) {
-      return suppressedEpisodeId === episodeId;
+      return suppressedEpisodeIds.has(episodeId);
     },
     allows(episodeId: string, epoch: number) {
-      return suppressedEpisodeId !== episodeId
+      return !suppressedEpisodeIds.has(episodeId)
         && (epochs.get(episodeId) ?? 0) === epoch;
     },
   };

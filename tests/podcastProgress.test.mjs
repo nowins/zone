@@ -28,3 +28,17 @@ test("a later explicit resume creates a fresh progress-writing session", () => {
   assert.equal(gate.isSuppressed("episode-a"), false);
   assert.equal(gate.allows("episode-a", resumedEpoch), true);
 });
+
+test("suppressing one episode never lifts the suppression of another", () => {
+  const gate = createPodcastProgressWriteGate();
+  gate.suppress("episode-a");
+  gate.suppress("episode-b");
+
+  assert.equal(gate.isSuppressed("episode-a"), true);
+  assert.equal(gate.isSuppressed("episode-b"), true);
+  assert.equal(gate.allows("episode-a", gate.capture("episode-a")), false);
+
+  assert.equal(gate.resume("episode-b"), true);
+  assert.equal(gate.isSuppressed("episode-a"), true);
+  assert.equal(gate.allows("episode-a", gate.capture("episode-a")), false);
+});
