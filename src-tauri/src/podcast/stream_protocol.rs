@@ -181,9 +181,13 @@ async fn proxy_podcast_stream_response(
     return podcast_stream_text_response(StatusCode::BAD_GATEWAY, "播客音频超过大小限制");
   }
   if is_head {
-    return podcast_stream_response_builder(StatusCode::OK, &content_type, total)
+    let mut response = podcast_stream_response_builder(StatusCode::OK, &content_type, total)
       .body(Vec::new())
       .unwrap();
+    // The upstream ignored the Range probe, so range playback is unavailable
+    // for this episode; do not advertise it.
+    response.headers_mut().remove(header::ACCEPT_RANGES);
+    return response;
   }
   if !matches!(requested_range, PodcastStreamRange::Bounded { start: 0, .. })
     || total > PODCAST_STREAM_CHUNK_SIZE
@@ -200,9 +204,11 @@ async fn proxy_podcast_stream_response(
   if let Err(error) = ensure_stream_body_looks_like_audio(&content_type, &body) {
     return podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error);
   }
-  podcast_stream_response_builder(StatusCode::OK, &content_type, total)
+  let mut response = podcast_stream_response_builder(StatusCode::OK, &content_type, total)
     .body(body)
-    .unwrap()
+    .unwrap();
+  response.headers_mut().remove(header::ACCEPT_RANGES);
+  response
 }
 
 impl PodcastStreamRange {
@@ -620,6 +626,56 @@ mod tests {
       serve_podcast_stream_protocol_with_network_policy(state, request, true).await;
     server.await.expect("server task");
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[tokio::test]
+  async fn podcast_stream_head_omits_accept_ranges_when_upstream_ignores_range() {
+    let directory = test_directory("stream-head-no-range");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let episode_id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed).expect("store subscription");
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind server");
+    let address = listener.local_addr().expect("server address");
+    let server = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.expect("accept request");
+      let mut request = vec![0u8; 8_192];
+      let read = stream.read(&mut request).await.expect("read request");
+      let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+      assert!(request.contains("range: bytes=0-0"), "{request}");
+      let headers = "HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nContent-Length: 42\r\nConnection: close\r\n\r\n";
+      stream.write_all(headers.as_bytes()).await.expect("write headers");
+      stream.shutdown().await.expect("shutdown response");
+    });
+    let enclosure_url = format!("http://{address}/episode.mp3");
+    open_database(&state.db_path)
+      .expect("open database")
+      .execute(
+        "UPDATE podcast_episodes SET enclosure_url = ?1 WHERE id = ?2",
+        params![enclosure_url, episode_id],
+      )
+      .expect("point episode at test server");
+
+    let head_request = Request::builder()
+      .method(Method::HEAD)
+      .uri(format!("zone-podcast://localhost/{episode_id}"))
+      .body(Vec::new())
+      .expect("build stream HEAD request");
+    let response =
+      serve_podcast_stream_protocol_with_network_policy(state, head_request, true).await;
+    server.await.expect("server task");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+      response
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok()),
+      Some("42"),
+    );
+    assert!(response.headers().get(header::ACCEPT_RANGES).is_none());
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }
