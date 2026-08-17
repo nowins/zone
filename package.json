@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:build:store": "tauri build --config src-tauri/tauri.microsoftstore.conf.json --bundles nsis",
+    "package:msix": "powershell -ExecutionPolicy Bypass -File packaging/build-msix.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.0",

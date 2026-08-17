@@ -49,6 +49,12 @@ Cargo.lock
 src-tauri/.tauri/
 src-tauri/*.log
 
+# MSIX 打包产物与开发证书
+packaging/.staging/
+packaging/dist/
+packaging/devcert.pfx
+packaging/devcert.cer
+
 # ---------------
 # 系统 / 其他缓存
 # ---------------
