@@ -84,11 +84,21 @@ test("playlist queue exposes drag ordering and useful episode metadata", () => {
 test("podcast playlist keeps its controls and queue on one responsive content track", () => {
   assert.match(
     viewSource,
-    /className="podcast-playlist-content"[\s\S]*?className="podcast-auto-queue"[\s\S]*?<PodcastSection title="正在播放">[\s\S]*?title="待播队列"/,
+    /className="podcast-playlist-content"[\s\S]*?<PodcastSection title="正在播放" className="podcast-playlist-current">[\s\S]*?className="podcast-auto-queue"[\s\S]*?title="待播队列"[\s\S]*?className="podcast-playlist-queue"/,
   );
   assert.match(
     cssSource,
     /\.podcast-playlist-content\s*\{[\s\S]*?width:\s*min\(1240px,\s*100%\);[\s\S]*?\}/,
+  );
+  assert.match(
+    cssSource,
+    /@media \(min-width: 1400px\)[\s\S]*?\.podcast-playlist-content \{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) minmax\(300px, 380px\)/,
+    "wide windows must lay the playlist out as queue main track plus sidebar",
+  );
+  assert.match(
+    cssSource,
+    /\.podcast-playlist-queue\s*\{[\s\S]*?grid-column:\s*1;[\s\S]*?grid-row:\s*1 \/ span 2;/,
+    "the queue must own the main column across both sidebar rows",
   );
   assert.match(
     cssSource,

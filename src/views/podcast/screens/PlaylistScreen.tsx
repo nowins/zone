@@ -150,6 +150,25 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
   return (
     <main className="podcast-screen podcast-playlist-screen">
       <div className="podcast-playlist-content">
+              <PodcastSection title="正在播放" className="podcast-playlist-current">
+                {knownActiveEpisode ? (
+                  <CurrentEpisodeRow
+                    episode={knownActiveEpisode}
+                    isPlaying={isPlaying}
+                    onOpen={() => openEpisodeDetail(knownActiveEpisode, "playlist")}
+                    onPlay={() => playEpisode(knownActiveEpisode)}
+                    onContextMenu={(event) =>
+                      showEpisodeMenu(event, knownActiveEpisode)}
+                  />
+                ) : currentEpisodeId ? (
+                  <div className="podcast-inline-state">
+                    <span>当前单集正在播放</span>
+                  </div>
+                ) : (
+                  <PodcastEmpty label="还没有正在播放的单集" />
+                )}
+              </PodcastSection>
+
               <div className="podcast-auto-queue">
                 <span id="podcast-auto-queue-label">播完后</span>
                 <div
@@ -173,27 +192,9 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
                 ) : null}
               </div>
 
-              <PodcastSection title="正在播放">
-                {knownActiveEpisode ? (
-                  <CurrentEpisodeRow
-                    episode={knownActiveEpisode}
-                    isPlaying={isPlaying}
-                    onOpen={() => openEpisodeDetail(knownActiveEpisode, "playlist")}
-                    onPlay={() => playEpisode(knownActiveEpisode)}
-                    onContextMenu={(event) =>
-                      showEpisodeMenu(event, knownActiveEpisode)}
-                  />
-                ) : currentEpisodeId ? (
-                  <div className="podcast-inline-state">
-                    <span>当前单集正在播放</span>
-                  </div>
-                ) : (
-                  <PodcastEmpty label="还没有正在播放的单集" />
-                )}
-              </PodcastSection>
-
               <PodcastSection
                 title="待播队列"
+                className="podcast-playlist-queue"
                 count={upNextQueue.length}
                 actionLabel={upNextQueue.length > 0
                   ? queueSelectionMode ? "退出选择" : "选择"

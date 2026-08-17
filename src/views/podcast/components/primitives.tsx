@@ -9,16 +9,18 @@ function PodcastSection({
   count,
   actionLabel,
   onAction,
+  className,
   children,
 }: {
   title: string;
   count?: number;
   actionLabel?: string;
   onAction?: () => void;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="podcast-content-section">
+    <section className={className ? `podcast-content-section ${className}` : "podcast-content-section"}>
       <div className="podcast-section-title">
         <h2>{title}</h2>
         {typeof count === "number" && count > 0 ? <span>{count}</span> : null}
