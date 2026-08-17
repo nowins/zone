@@ -25,6 +25,13 @@ export type EpisodeRequest = {
   nonce: number;
   returnToNowPlaying?: boolean;
 };
+// quickplay 固定磁贴的深链入口：feed 是磁贴按下时已知的节目快照，避免
+// 未关注节目在资料库列表之外时无法定位。
+export type PodcastFeedRequest = {
+  feedId: string;
+  feed?: PodcastFeed;
+  nonce: number;
+};
 export type ShowCandidate = Pick<
   PodcastSearchResult,
   "id" | "title" | "author" | "feedUrl" | "artworkUrl"
@@ -63,6 +70,10 @@ export type PodcastViewProps = {
   libraryRevision: number;
   episodeRequest: EpisodeRequest | null;
   onEpisodeRequestHandled: (nonce: number) => void;
+  feedRequest: PodcastFeedRequest | null;
+  onFeedRequestHandled: (nonce: number) => void;
+  pinnedPodcastFeedIds: ReadonlySet<string>;
+  onTogglePodcastPin: (feed: PodcastFeed) => void;
   onReturnToNowPlaying: () => void;
   isPlaying: boolean;
   onPlayEpisode: (episode: PodcastPlayback) => void;

@@ -236,7 +236,7 @@ fn store_feed(
     }
   }
   prune_missing_feed_episodes(&transaction, &downloads_dir, &feed.id, &episodes, &mut pending_file_deletes)?;
-  let (latest_episode_at, unplayed_count) = transaction
+  let (latest_episode_at, unplayed_count, latest_episode_title) = transaction
     .query_row(
       "
       SELECT
@@ -248,6 +248,13 @@ fn store_feed(
             THEN 1
             ELSE 0
           END
+        ),
+        (
+          SELECT latest.title
+          FROM podcast_episodes latest
+          WHERE latest.feed_id = ?1
+          ORDER BY COALESCE(latest.published_at, latest.first_seen_at) DESC, latest.id
+          LIMIT 1
         )
       FROM podcast_episodes e
       LEFT JOIN podcast_progress p ON p.episode_id = e.id
@@ -258,12 +265,14 @@ fn store_feed(
         Ok((
           row.get::<_, Option<i64>>(0)?,
           row.get::<_, Option<i64>>(1)?.unwrap_or(0),
+          row.get::<_, Option<String>>(2)?,
         ))
       },
     )
     .map_err(|error| format!("无法读取播客节目统计：{error}"))?;
   feed.latest_episode_at = latest_episode_at;
   feed.unplayed_count = unplayed_count.max(0) as u64;
+  feed.latest_episode_title = latest_episode_title;
   transaction
     .commit()
     .map_err(|error| format!("无法提交播客订阅：{error}"))?;

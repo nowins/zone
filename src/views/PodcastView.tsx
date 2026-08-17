@@ -1,6 +1,8 @@
 import {
   ArrowLeft,
   Check,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { PodcastEpisodeContextMenu } from "../components/PodcastEpisodeContextMenu";
 import { MetroLoader } from "../components/MetroLoader";
@@ -35,6 +37,8 @@ export function PodcastView(props: PodcastViewProps) {
     toggleFollowing,
     following,
     selectedFeed,
+    pinnedPodcastFeedIds,
+    onTogglePodcastPin,
     episodeReturnToNowPlaying,
     episodeOriginScreen,
     selectedEpisodeDetail,
@@ -80,6 +84,23 @@ export function PodcastView(props: PodcastViewProps) {
             <button type="button" onClick={closeShow}>
               <ArrowLeft size={16} />
               返回{rootScreenLabel(returnScreen)}
+            </button>
+            <button
+              type="button"
+              className={selectedFeed && pinnedPodcastFeedIds.has(selectedFeed.id) ? "active" : ""}
+              aria-pressed={selectedFeed ? pinnedPodcastFeedIds.has(selectedFeed.id) : false}
+              onClick={() => selectedFeed && onTogglePodcastPin(selectedFeed)}
+              disabled={!selectedFeed}
+              title={
+                selectedFeed && pinnedPodcastFeedIds.has(selectedFeed.id)
+                  ? "从 quickplay 取消固定"
+                  : "固定到 quickplay"
+              }
+            >
+              {selectedFeed && pinnedPodcastFeedIds.has(selectedFeed.id)
+                ? <PinOff size={15} />
+                : <Pin size={15} />}
+              {selectedFeed && pinnedPodcastFeedIds.has(selectedFeed.id) ? "已固定" : "固定"}
             </button>
             <button
               type="button"

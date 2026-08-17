@@ -1063,6 +1063,7 @@ fn normalize_feed(
     last_refresh_error: None,
     latest_episode_at: None,
     unplayed_count: 0,
+    latest_episode_title: None,
   };
 
   let mut episodes = Vec::new();

@@ -2,7 +2,13 @@ import { MAX_HOME_PINS } from "../constants.js";
 import type { ContextPayload, HomePin, HomePinKind, Playlist, Track } from "../types";
 import { albumKey } from "./music.js";
 
-const HOME_PIN_KINDS = new Set<HomePinKind>(["track", "album", "artist", "playlist"]);
+const HOME_PIN_KINDS = new Set<HomePinKind>([
+  "track",
+  "album",
+  "artist",
+  "playlist",
+  "podcastFeed",
+]);
 
 export function homePinId(kind: HomePinKind, targetId: string) {
   return `${kind}:${targetId}`;
@@ -62,6 +68,9 @@ export function reconcileHomePins(pins: HomePin[], tracks: Track[], playlists: P
     if (pin.kind === "track") return trackIds.has(pin.targetId);
     if (pin.kind === "album") return albumIds.has(pin.targetId);
     if (pin.kind === "artist") return artists.has(pin.targetId);
+    // Podcast feeds live in SQLite, not in the music library snapshot; their
+    // existence is reconciled by the podcast-aware loader in App.
+    if (pin.kind === "podcastFeed") return true;
     return playlistIds.has(pin.targetId);
   });
 }
@@ -98,6 +107,15 @@ export function applyHomePinToggle(
 ): { pins: HomePin[]; action: HomePinToggleAction } {
   const pin = homePinForPayload(payload, now);
   if (!pin) return { pins, action: "ignored" };
+  return applyHomePinToggleForPin(pins, pin);
+}
+
+// Podcast feeds are pinned from the podcast show screen, where no music
+// ContextPayload exists; the toggle works on the pin identity directly.
+export function applyHomePinToggleForPin(
+  pins: HomePin[],
+  pin: HomePin,
+): { pins: HomePin[]; action: HomePinToggleAction } {
   if (pins.some((item) => item.id === pin.id)) {
     return { pins: pins.filter((item) => item.id !== pin.id), action: "unpinned" };
   }

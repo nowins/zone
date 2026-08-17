@@ -13,6 +13,7 @@ import {
   buildQuickplayBlocks,
 } from "../utils/quickplayBlocks";
 import { pickCoverCandidates } from "../utils/nowPlayingWall";
+import { podcastArtworkSrc } from "../utils/podcastArtwork";
 import { FlipTile, MosaicFrames } from "../components/tiles";
 import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type {
@@ -21,6 +22,7 @@ import type {
   ContextPayload,
   HomePin,
   Playlist,
+  PodcastFeed,
   Track,
   TrackActivityMap,
   ViewMode,
@@ -32,11 +34,17 @@ type ResolvedPin = {
   subtitle: string;
   tracks: Track[];
   artPaths: string[];
-  payload: ContextPayload;
+  payload: ContextPayload | null;
   isWide: boolean;
   isSmart: boolean;
   /** Glanceable live line for the tile back (e.g. "12 首 · 3 天前听过"). */
   liveLine: string;
+  /** Pinned show: artwork goes through the podcast artwork proxy, and presses
+      deep-link into the podcast page instead of the music transport. */
+  podcastFeed?: PodcastFeed;
+  podcastArtwork?: string | null;
+  /** "今天更新" style recency line for the podcast peek back face. */
+  podcastRecency?: string;
 };
 
 let quickplayScrollPosition = 0;
@@ -75,6 +83,9 @@ export function QuickplayView({
   onTogglePin,
   onContextMenu,
   podcastActive = false,
+  podcastFeeds = [],
+  onOpenPodcastFeed,
+  onTogglePodcastPin,
 }: {
   tracks: Track[];
   albums: AlbumGroup[];
@@ -95,6 +106,9 @@ export function QuickplayView({
   onTogglePin: (payload: ContextPayload) => void;
   onContextMenu: (event: MouseEvent, payload: ContextPayload) => void;
   podcastActive?: boolean;
+  podcastFeeds?: PodcastFeed[];
+  onOpenPodcastFeed?: (feedId: string) => void;
+  onTogglePodcastPin?: (feedId: string) => void;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const scrollAnimRef = useRef<{ target: number | null; handle: AnimationHandle | null }>({
@@ -149,6 +163,7 @@ export function QuickplayView({
     const albumMap = new Map(albums.map((album) => [album.key, album]));
     const artistMap = new Map(artists.map((artist) => [artist.artist, artist]));
     const playlistMap = new Map(playlists.map((playlist) => [playlist.id, playlist]));
+    const podcastFeedMap = new Map(podcastFeeds.map((feed) => [feed.id, feed]));
 
     const latestActivityAt = (items: Track[]): number | null => {
       let latest: number | null = null;
@@ -237,6 +252,39 @@ export function QuickplayView({
         }];
       }
 
+      if (pin.kind === "podcastFeed") {
+        const feed = podcastFeedMap.get(pin.targetId);
+        if (!feed) return [];
+        const updatedDays = feed.latestEpisodeAt
+          ? Math.floor((Date.now() - feed.latestEpisodeAt) / 86_400_000)
+          : null;
+        const podcastRecency = updatedDays === null
+          ? ""
+          : updatedDays <= 0
+            ? "今天更新"
+            : updatedDays === 1
+              ? "昨天更新"
+              : updatedDays < 30
+                ? `${updatedDays} 天前更新`
+                : "很久以前更新";
+        return [{
+          pin,
+          title: feed.title,
+          subtitle: feed.author ?? "播客节目",
+          tracks: [],
+          artPaths: [],
+          payload: null,
+          isWide: false,
+          isSmart: false,
+          liveLine: feed.unplayedCount > 0
+            ? `${feed.unplayedCount} 集未听`
+            : "全部已听完",
+          podcastFeed: feed,
+          podcastArtwork: podcastArtworkSrc(feed.artworkUrl),
+          podcastRecency,
+        }];
+      }
+
       const playlist = playlistMap.get(pin.targetId);
       if (!playlist) return [];
       const result = resolvePlaylistTracks(playlist, tracks, { favoriteTrackIds, activity });
@@ -265,7 +313,7 @@ export function QuickplayView({
         liveLine: liveLineFor(result.tracks, result.tracks.length, "歌单"),
       }];
     });
-  }, [activity, albums, artists, favoriteTrackIds, homePins, playlists, tracks]);
+  }, [activity, albums, artists, favoriteTrackIds, homePins, playlists, podcastFeeds, tracks]);
   // Never invent history from the library order — empty history stays empty.
   const featuredHistory = historyTracks[0] ?? null;
   const compactHistory = historyTracks.slice(1, 4);
@@ -524,7 +572,9 @@ export function QuickplayView({
                     if (editingPins) event.preventDefault();
                   }}
                   onDrop={(event) => handleDrop(event, item.pin.id)}
-                  onContextMenu={(event) => onContextMenu(event, item.payload)}
+                  onContextMenu={(event) => {
+                    if (item.payload) onContextMenu(event, item.payload);
+                  }}
                   // In edit mode the tile renders as a div (no nested button
                   // swallowing HTML5 drag), so the article owns focus and the
                   // Alt+arrow keyboard reorder.
@@ -533,22 +583,28 @@ export function QuickplayView({
                 >
                   <FlipTile
                     size={item.isWide ? "wide" : "medium"}
-                    variant="flip"
+                    variant={item.podcastFeed ? "peek" : "flip"}
                     className="quick-pin-tile"
-                    title={`播放 ${item.title}`}
+                    title={item.podcastFeed ? `打开节目 ${item.title}` : `播放 ${item.title}`}
                     paused={editingPins}
                     disabled={editingPins}
                     asButton={!editingPins}
                     onPress={() => {
                       if (editingPins) return;
+                      if (item.podcastFeed) {
+                        onOpenPodcastFeed?.(item.pin.targetId);
+                        return;
+                      }
                       if (item.pin.kind === "track") {
                         const track = item.tracks[0];
-                        if (track) onPlay(track, item.payload.playbackTracks ?? item.tracks);
+                        if (track) onPlay(track, item.payload?.playbackTracks ?? item.tracks);
                       } else {
                         onPlayTracks(item.tracks);
                       }
                     }}
-                    onContextMenu={(event) => onContextMenu(event, item.payload)}
+                    onContextMenu={(event) => {
+                      if (item.payload) onContextMenu(event, item.payload);
+                    }}
                       front={
                         <>
                           <span className="tile-face-art">
@@ -557,22 +613,58 @@ export function QuickplayView({
                           {/* Front identity: names must be glanceable without
                               waiting 45-110s for the back, and edit mode
                               pauses the flip entirely. */}
-                          <strong className="quick-pin-front-title">{item.title}</strong>
+                          {item.podcastFeed ? (
+                            <span className="quick-pin-front-band">
+                              <strong>{item.title}</strong>
+                              <small>
+                                {item.podcastFeed.unplayedCount > 0
+                                  ? item.liveLine
+                                  : item.subtitle}
+                              </small>
+                            </span>
+                          ) : (
+                            <strong className="quick-pin-front-title">{item.title}</strong>
+                          )}
                         </>
                       }
                       back={
-                        <>
-                          <span className="tile-back-kicker">{item.isSmart ? "智能歌单" : "我的音乐"}</span>
-                          <strong>{item.title}</strong>
-                          <span className="tile-back-live">{item.liveLine}</span>
-                          {!item.isWide && <small>{item.subtitle}</small>}
-                        </>
+                        item.podcastFeed ? (
+                          <>
+                            <span className="tile-back-kicker">播客节目</span>
+                            <strong className="quick-pin-back-headline">
+                              {item.podcastFeed.latestEpisodeTitle ?? item.title}
+                            </strong>
+                            <span className="tile-back-live">
+                              {[item.podcastRecency, item.liveLine]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="tile-back-kicker">
+                              {item.isSmart ? "智能歌单" : "我的音乐"}
+                            </span>
+                            <strong>{item.title}</strong>
+                            <span className="tile-back-live">{item.liveLine}</span>
+                            {!item.isWide && <small>{item.subtitle}</small>}
+                          </>
+                        )
                       }
                     />
                   {editingPins && (
                     <div className="quick-pin-edit-tools">
                       <GripVertical size={17} aria-hidden="true" />
-                      <button onClick={() => onTogglePin(item.payload)} title={`取消固定 ${item.title}`}>
+                      <button
+                        onClick={() => {
+                          if (item.podcastFeed) {
+                            onTogglePodcastPin?.(item.pin.targetId);
+                          } else if (item.payload) {
+                            onTogglePin(item.payload);
+                          }
+                        }}
+                        title={`取消固定 ${item.title}`}
+                      >
                         <PinOff size={17} />
                       </button>
                     </div>
@@ -796,6 +888,14 @@ export function QuickplayView({
 }
 
 function PinArtwork({ item, index }: { item: ResolvedPin; index: number }) {
+  if (item.podcastFeed) {
+    return (
+      <div className="quick-pin-art">
+        <Cover src={item.podcastArtwork} label={item.title} size="large" index={index} />
+      </div>
+    );
+  }
+
   if (item.artPaths.length <= 1) {
     return (
       <div className="quick-pin-art">

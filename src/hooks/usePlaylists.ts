@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_PLAYLIST_ID, MAX_HOME_PINS } from "../constants";
 import { albumKey, defaultPlaylists, normalizePlaylists, uniqueIds } from "../utils/music";
-import { applyHomePinToggle, reconcileHomePins } from "../utils/homePins";
+import { applyHomePinToggle, applyHomePinToggleForPin, homePinId, reconcileHomePins } from "../utils/homePins";
 import { isSmartPlaylist } from "../utils/smartPlaylist";
 import type { PlaylistDialogState } from "../components/PlaylistDialog";
 import type { SmartPlaylistDraft } from "../components/SmartPlaylistDialog";
@@ -9,6 +9,7 @@ import type {
   ContextPayload,
   HomePin,
   Playlist,
+  PodcastFeed,
   PodcastPlayback,
   SmartPlaylist,
   Track,
@@ -133,6 +134,29 @@ export function usePlaylists({
       showActionNotice(`已固定“${payload.title}”到 quickplay`);
     } else if (next.action === "unpinned") {
       showActionNotice(`已从 quickplay 取消固定“${payload.title}”`);
+    }
+  }
+
+  // 播客节目从节目页固定：与音乐固定项共用同一个数组和上限，只是身份
+  // 直接来自 feed id，不经过音乐 ContextPayload。
+  function togglePodcastPin(feed: Pick<PodcastFeed, "id" | "title">) {
+    const next = applyHomePinToggleForPin(homePins, {
+      id: homePinId("podcastFeed", feed.id),
+      kind: "podcastFeed",
+      targetId: feed.id,
+      createdAt: Date.now(),
+    });
+    if (next.action === "pinned" || next.action === "unpinned") {
+      setHomePins(next.pins);
+    }
+    if (next.action === "capped") {
+      showActionNotice(`quickplay 最多固定 ${MAX_HOME_PINS} 项内容`);
+      return;
+    }
+    if (next.action === "pinned") {
+      showActionNotice(`已固定“${feed.title}”到 quickplay`);
+    } else if (next.action === "unpinned") {
+      showActionNotice(`已从 quickplay 取消固定“${feed.title}”`);
     }
   }
 
@@ -317,6 +341,7 @@ export function usePlaylists({
     toggleFavorite,
     toggleFavoriteTrack,
     toggleHomePin,
+    togglePodcastPin,
     openPayloadInCollection,
     openCreatePlaylistDialog,
     openCreateSmartPlaylist,

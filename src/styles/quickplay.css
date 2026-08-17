@@ -206,6 +206,30 @@
   pointer-events: none;
 }
 
+/* Podcast pin front band: a Win8-style info strip — cover carries the
+   glanceable facts (show title plus unplayed count or author) even before
+   the peek reveal arrives. Typography reuses the shared tile-face rules. */
+.quick-pin-front-band {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 10px 7px;
+  background: linear-gradient(180deg, rgba(8, 5, 9, 0), rgba(8, 5, 9, 0.86) 40%);
+  pointer-events: none;
+}
+
+/* Peek back headline: the latest episode title may wrap to two lines. */
+.tile-face strong.quick-pin-back-headline {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .quick-pin-edit-tools {
   position: absolute;
   inset: 0 0 auto;

@@ -35,6 +35,13 @@ pub(crate) fn get_recent_preview(
           SELECT COUNT(*)
           FROM podcast_episodes e
           WHERE e.feed_id = f.id
+        ),
+        (
+          SELECT latest.title
+          FROM podcast_episodes latest
+          WHERE latest.feed_id = f.id
+          ORDER BY COALESCE(latest.published_at, latest.first_seen_at) DESC, latest.id
+          LIMIT 1
         )
       FROM podcast_feeds f
       WHERE f.feed_url = ?1 AND f.last_fetched_at >= ?2
@@ -56,9 +63,10 @@ pub(crate) fn get_recent_preview(
             subscribed_at: row.get(8)?,
             last_checked_at: row.get(9)?,
             last_refresh_error: row.get(10)?,
-            latest_episode_at: row.get(11)?,
-            unplayed_count: row.get::<_, i64>(12)?.max(0) as u64,
-          },
+          latest_episode_at: row.get(11)?,
+          unplayed_count: row.get::<_, i64>(12)?.max(0) as u64,
+          latest_episode_title: row.get(14)?,
+        },
           episode_count: usize::try_from(episode_count).unwrap_or(usize::MAX),
           inserted_count: 0,
           updated_count: 0,
@@ -70,9 +78,16 @@ pub(crate) fn get_recent_preview(
 }
 
 pub(crate) fn list_feeds(db_path: &Path) -> Result<Vec<PodcastFeed>, String> {
+  list_feeds_with_policy(db_path, false)
+}
+
+pub(crate) fn list_feeds_with_policy(
+  db_path: &Path,
+  include_unsubscribed: bool,
+) -> Result<Vec<PodcastFeed>, String> {
   let connection = open_database(db_path)?;
   let mut statement = connection
-    .prepare(
+    .prepare(&format!(
       "
       SELECT
         f.id, f.feed_url, f.title, f.author, f.description, f.artwork_url,
@@ -90,12 +105,24 @@ pub(crate) fn list_feeds(db_path: &Path) -> Result<Vec<PodcastFeed>, String> {
           WHERE e.feed_id = f.id
             AND COALESCE(p.completed, 0) = 0
             AND COALESCE(p.position_seconds, 0) <= 0
+        ),
+        (
+          SELECT latest.title
+          FROM podcast_episodes latest
+          WHERE latest.feed_id = f.id
+          ORDER BY COALESCE(latest.published_at, latest.first_seen_at) DESC, latest.id
+          LIMIT 1
         )
       FROM podcast_feeds f
-      WHERE f.subscribed = 1
+      WHERE {subscription_filter}
       ORDER BY f.title COLLATE NOCASE, f.id
       ",
-    )
+      subscription_filter = if include_unsubscribed {
+        "1 = 1"
+      } else {
+        "f.subscribed = 1"
+      },
+    ))
     .map_err(|error| format!("无法读取播客订阅：{error}"))?;
   let rows = statement
     .query_map([], |row| {
@@ -110,10 +137,11 @@ pub(crate) fn list_feeds(db_path: &Path) -> Result<Vec<PodcastFeed>, String> {
         subscribed: row.get::<_, i64>(7)? != 0,
         subscribed_at: row.get(8)?,
         last_checked_at: row.get(9)?,
-        last_refresh_error: row.get(10)?,
-        latest_episode_at: row.get(11)?,
-        unplayed_count: row.get::<_, i64>(12)?.max(0) as u64,
-      })
+          last_refresh_error: row.get(10)?,
+          latest_episode_at: row.get(11)?,
+          unplayed_count: row.get::<_, i64>(12)?.max(0) as u64,
+          latest_episode_title: row.get(13)?,
+        })
     })
     .map_err(|error| format!("无法读取播客订阅：{error}"))?;
   rows
@@ -681,6 +709,13 @@ pub(crate) const PODCAST_EPISODE_DETAIL_SELECT: &str = "
       FROM podcast_episode_resources resource
       WHERE resource.episode_id = e.id
         AND resource.kind = 'transcript'
+    ),
+    (
+      SELECT latest.title
+      FROM podcast_episodes latest
+      WHERE latest.feed_id = f.id
+      ORDER BY COALESCE(latest.published_at, latest.first_seen_at) DESC, latest.id
+      LIMIT 1
     )
   FROM podcast_episodes e
   JOIN podcast_feeds f ON f.id = e.feed_id
@@ -718,6 +753,7 @@ pub(crate) fn podcast_episode_detail_from_row(
       last_refresh_error: row.get(31)?,
       latest_episode_at: row.get(32)?,
       unplayed_count: row.get::<_, i64>(33)?.max(0) as u64,
+      latest_episode_title: row.get(36)?,
     },
     expected_bytes,
     download_error: row.get(21)?,
@@ -1009,6 +1045,31 @@ mod tests {
       unfollowed_home.downloaded_episodes[0].local_path.as_deref(),
       Some(local_path.to_string_lossy().as_ref())
     );
+
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+  #[test]
+  fn list_feeds_with_policy_includes_unsubscribed_previews_for_home_pins() {
+    let directory = test_directory("list-feeds-policy");
+    let state = PodcastState::initialize_at(&directory).expect("initialize podcast state");
+    let preview = parsed_fixture_at(
+      "https://media.example.test/preview-episode.mp3",
+      "https://feeds.example.test/preview-only.xml",
+    );
+    store_preview(&state.db_path, preview).expect("store preview");
+    store_subscription(
+      &state.db_path,
+      parsed_fixture("https://media.example.test/episode-1.mp3"),
+    )
+    .expect("store subscription");
+
+    assert_eq!(list_feeds(&state.db_path).expect("followed only").len(), 1);
+    let all = list_feeds_with_policy(&state.db_path, true).expect("all feeds");
+    assert_eq!(all.len(), 2);
+    assert!(all.iter().any(|feed| !feed.subscribed));
+    assert!(all.iter().all(|feed| !feed.title.is_empty()));
+    let followed = all.iter().find(|feed| feed.subscribed).expect("followed feed");
+    assert_eq!(followed.latest_episode_title.as_deref(), Some("第一集"));
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }

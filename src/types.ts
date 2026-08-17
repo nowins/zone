@@ -226,7 +226,7 @@ export type TrackActivity = {
 
 export type TrackActivityMap = Record<string, TrackActivity>;
 
-export type HomePinKind = "track" | "album" | "artist" | "playlist";
+export type HomePinKind = "track" | "album" | "artist" | "playlist" | "podcastFeed";
 
 export type HomePin = {
   id: string;
@@ -299,6 +299,7 @@ export type PodcastFeed = {
   lastRefreshError?: string | null;
   latestEpisodeAt?: number | null;
   unplayedCount: number;
+  latestEpisodeTitle?: string | null;
 };
 
 export type PodcastDownloadState = "none" | "downloading" | "downloaded" | "failed";

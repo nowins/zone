@@ -118,12 +118,22 @@ pub async fn podcast_refresh_feeds(
 }
 
 #[tauri::command]
-pub async fn podcast_list_feeds(state: State<'_, PodcastState>) -> Result<Vec<PodcastFeed>, String> {
+pub async fn podcast_list_feeds(
+  state: State<'_, PodcastState>,
+  include_unsubscribed: Option<bool>,
+) -> Result<Vec<PodcastFeed>, String> {
   state.ensure_ready()?;
   let db_path = state.db_path.clone();
-  tauri::async_runtime::spawn_blocking(move || list_feeds(&db_path))
-    .await
-    .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+  let include_unsubscribed = include_unsubscribed.unwrap_or(false);
+  tauri::async_runtime::spawn_blocking(move || {
+    if include_unsubscribed {
+      list_feeds_with_policy(&db_path, true)
+    } else {
+      list_feeds(&db_path)
+    }
+  })
+  .await
+  .map_err(|error| format!("播客数据任务异常结束：{error}"))?
 }
 
 #[tauri::command]

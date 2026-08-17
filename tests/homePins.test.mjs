@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyHomePinToggle,
+  applyHomePinToggleForPin,
   homePinForPayload,
   homePinId,
   moveHomePin,
@@ -170,4 +171,53 @@ test("toggle respects the pin cap and ignores unpinnable payloads", () => {
   });
   assert.equal(ignored.action, "ignored");
   assert.equal(ignored.pins.length, 0);
+});
+
+test("podcast feed pins normalize, toggle by identity and survive library reconcile", () => {
+  const pins = normalizeHomePins([
+    { kind: "podcastFeed", targetId: "feed-1", createdAt: 7 },
+    { kind: "podcastFeed", targetId: "feed-1", createdAt: 8 },
+  ]);
+  assert.equal(pins.length, 1);
+  assert.equal(pins[0].id, homePinId("podcastFeed", "feed-1"));
+  assert.equal(pins[0].createdAt, 7);
+
+  const pinned = applyHomePinToggleForPin(pins, {
+    id: homePinId("podcastFeed", "feed-2"),
+    kind: "podcastFeed",
+    targetId: "feed-2",
+    createdAt: 9,
+  });
+  assert.equal(pinned.action, "pinned");
+  assert.equal(pinned.pins.length, 2);
+
+  const unpinned = applyHomePinToggleForPin(pinned.pins, {
+    id: homePinId("podcastFeed", "feed-2"),
+    kind: "podcastFeed",
+    targetId: "feed-2",
+    createdAt: 10,
+  });
+  assert.equal(unpinned.action, "unpinned");
+  assert.equal(unpinned.pins.length, 1);
+
+  // Music-side reconcile knows nothing about SQLite feeds; podcast pins must
+  // pass through untouched instead of being dropped as unresolvable.
+  const reconciled = reconcileHomePins(unpinned.pins, [], []);
+  assert.deepEqual(reconciled.map((pin) => pin.id), [homePinId("podcastFeed", "feed-1")]);
+
+  const full = normalizeHomePins([
+    ...Array.from({ length: 11 }, (_, index) => ({
+      kind: "track",
+      targetId: "full-" + index,
+    })),
+    { kind: "podcastFeed", targetId: "feed-full" },
+  ]);
+  const capped = applyHomePinToggleForPin(full, {
+    id: homePinId("podcastFeed", "feed-overflow"),
+    kind: "podcastFeed",
+    targetId: "feed-overflow",
+    createdAt: 11,
+  });
+  assert.equal(capped.action, "capped");
+  assert.equal(capped.pins.length, 12);
 });

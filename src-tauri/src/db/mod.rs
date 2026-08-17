@@ -413,6 +413,51 @@ mod tests {
   }
 
   #[test]
+  fn music_home_pins_table_is_rebuilt_to_accept_podcast_feed_pins() {
+    let root = test_root("home-pins-kind-migration");
+    let db_path = root.join(ZONE_DB_FILE_NAME);
+    {
+      let connection = Connection::open(&db_path).expect("create legacy db");
+      connection
+        .execute_batch(
+          "
+          CREATE TABLE music_home_pins (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist', 'playlist')),
+            target_id TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE(kind, target_id)
+          );
+          INSERT INTO music_home_pins (id, kind, target_id, position, created_at)
+            VALUES ('track:t1', 'track', 't1', 0, 1);
+          ",
+        )
+        .expect("seed legacy home pins table");
+    }
+
+    let connection = open_zone_database(&db_path).expect("migrate home pins table");
+    let surviving: String = connection
+      .query_row(
+        "SELECT target_id FROM music_home_pins WHERE id = 'track:t1'",
+        [],
+        |row| row.get(0),
+      )
+      .expect("legacy pin survives migration");
+    assert_eq!(surviving, "t1");
+    connection
+      .execute(
+        "INSERT INTO music_home_pins (id, kind, target_id, position, created_at)
+         VALUES ('podcastFeed:feed-1', 'podcastFeed', 'feed-1', 1, 2)",
+        [],
+      )
+      .expect("podcastFeed pin accepted after migration");
+
+    drop(connection);
+    fs::remove_dir_all(root).expect("cleanup test root");
+  }
+
+  #[test]
   fn imports_legacy_podcast_and_metadata_sqlite_once() {
     let root = test_root("legacy-import");
     let legacy_podcast = root.join(LEGACY_PODCAST_DB_FILE_NAME);

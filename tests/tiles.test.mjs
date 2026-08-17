@@ -61,10 +61,11 @@ test("two reveal variants: peek slides, flip card-flips, both scoped", () => {
   assert.ok(!/\.tile-flip-v-flip \.tile-flip-surface\s*\{[^}]*perspective\(/s.test(tilesCss));
 });
 
-test("quickplay pins reveal with the flip variant, overridable per pin later", () => {
-  // All pins whole-tile flip to their info back; the variant is an explicit
-  // prop so a future per-pin setting can override it.
-  assert.ok(quickplaySource.includes('variant="flip"'));
+test("quickplay pins pick the reveal variant per pin kind", () => {
+  // Music pins whole-tile flip to their info back (WP7 squares); podcast pins
+  // use the WP8 peek slide so show info scrolls up over the cover. The variant
+  // stays an explicit prop choice at the call site.
+  assert.ok(quickplaySource.includes('variant={item.podcastFeed ? "peek" : "flip"}'));
   assert.ok(flipSource.includes('variant = "peek"'));
   assert.ok(indexSource.includes("TileRevealVariant"));
 });

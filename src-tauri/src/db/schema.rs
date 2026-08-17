@@ -116,7 +116,7 @@ pub(crate) fn ensure_music_schema(connection: &Connection) -> Result<(), String>
 
       CREATE TABLE IF NOT EXISTS music_home_pins (
         id TEXT PRIMARY KEY,
-        kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist', 'playlist')),
+        kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist', 'playlist', 'podcastFeed')),
         target_id TEXT NOT NULL,
         position INTEGER NOT NULL,
         created_at INTEGER NOT NULL,
@@ -207,6 +207,46 @@ pub(crate) fn ensure_music_schema(connection: &Connection) -> Result<(), String>
       ",
     )
     .map_err(|error| format!("无法初始化音乐表：{error}"))?;
+  ensure_music_home_pins_kind_migration(connection)?;
+  Ok(())
+}
+
+// SQLite cannot ALTER a CHECK constraint: rebuild music_home_pins when an
+// existing database predates the podcastFeed kind.
+fn ensure_music_home_pins_kind_migration(connection: &Connection) -> Result<(), String> {
+  let existing_sql = connection
+    .query_row(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'music_home_pins'",
+      [],
+      |row| row.get::<_, Option<String>>(0),
+    )
+    .map_err(|error| format!("无法检查 quickplay 固定项表结构：{error}"))?;
+  let Some(table_sql) = existing_sql else {
+    return Ok(());
+  };
+  if table_sql.contains("podcastFeed") {
+    return Ok(());
+  }
+  connection
+    .execute_batch(
+      "
+      CREATE TABLE music_home_pins_migration (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist', 'playlist', 'podcastFeed')),
+        target_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE(kind, target_id)
+      );
+      INSERT INTO music_home_pins_migration (id, kind, target_id, position, created_at)
+        SELECT id, kind, target_id, position, created_at FROM music_home_pins;
+      DROP TABLE music_home_pins;
+      ALTER TABLE music_home_pins_migration RENAME TO music_home_pins;
+      CREATE INDEX IF NOT EXISTS music_home_pins_position
+        ON music_home_pins(position, created_at);
+      ",
+    )
+    .map_err(|error| format!("无法迁移 quickplay 固定项表结构：{error}"))?;
   Ok(())
 }
 

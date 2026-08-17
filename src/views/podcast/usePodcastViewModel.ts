@@ -125,6 +125,10 @@ export function usePodcastViewModel({
   libraryRevision,
   episodeRequest,
   onEpisodeRequestHandled,
+  feedRequest,
+  onFeedRequestHandled,
+  pinnedPodcastFeedIds,
+  onTogglePodcastPin,
   onReturnToNowPlaying,
   isPlaying,
   onPlayEpisode,
@@ -282,6 +286,7 @@ export function usePodcastViewModel({
   const [error, setError] = useState<string | null>(null);
   const initialized = useRef(false);
   const handledEpisodeRequestNonce = useRef<number | null>(null);
+  const handledFeedRequestNonce = useRef<number | null>(null);
   const handledLibraryRevision = useRef(libraryRevision);
   const episodeListRequestRef = useRef(0);
   const episodeDetailRequestRef = useRef(0);
@@ -839,6 +844,29 @@ export function usePodcastViewModel({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [screen, selectedEpisodeId, selectedFeed?.id]);
+
+  // quickplay 固定磁贴的深链：优先用已加载/随请求带来的节目快照，最后回退
+  // 到资料库重新读取，保证未关注节目也能落到节目页。
+  useEffect(() => {
+    if (!feedRequest || handledFeedRequestNonce.current === feedRequest.nonce) {
+      return;
+    }
+    handledFeedRequestNonce.current = feedRequest.nonce;
+    void (async () => {
+      const known = feeds.find((feed) => feed.id === feedRequest.feedId)
+        ?? feedRequest.feed
+        ?? (await loadFeeds()).find((feed) => feed.id === feedRequest.feedId);
+      if (known) {
+        await openStoredFeed(
+          known,
+          screen === "show" || screen === "episode" ? returnScreen : screen,
+        );
+      } else {
+        setError("找不到固定的播客节目");
+      }
+      onFeedRequestHandled(feedRequest.nonce);
+    })();
+  }, [feedRequest, feeds, loadFeeds, onFeedRequestHandled, returnScreen, screen]);
 
   useEffect(() => {
     if (screen !== "show" && screen !== "episode") return;
@@ -2136,6 +2164,8 @@ export function usePodcastViewModel({
     toggleFollowing,
     following,
     selectedFeed,
+    pinnedPodcastFeedIds,
+    onTogglePodcastPin,
     episodeReturnToNowPlaying,
     episodeOriginScreen,
     selectedEpisodeDetail,

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Titlebar } from "./components/Titlebar";
@@ -55,10 +56,12 @@ import { MOTION_DURATIONS } from "./motion/tokens";
 import type {
   ContextMenuState,
   ContextPayload,
+  PodcastFeed,
   SmartPlaylist,
   Track,
   ViewMode,
 } from "./types";
+import type { PodcastFeedRequest } from "./views/podcast/types";
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -296,10 +299,11 @@ export default function App() {
     favoriteTrackIds,
     addToPlaylist,
     createPlaylistWithTracks,
-    toggleFavorite,
-    toggleFavoriteTrack,
-    toggleHomePin,
-    openPayloadInCollection,
+  toggleFavorite,
+  toggleFavoriteTrack,
+  toggleHomePin,
+  togglePodcastPin,
+  openPayloadInCollection,
     openCreatePlaylistDialog,
     openCreateSmartPlaylist,
     openSmartPlaylistEditor,
@@ -326,6 +330,52 @@ export default function App() {
     smartPlaylistDialog,
     setSmartPlaylistDialog,
   });
+
+  // quickplay 的播客节目固定项：feed 列表包含未关注的预览节目，固定项在
+  // 取消关注后依然可解析；播客库修订（播放/标记/下载）会刷新未读数。
+  const [podcastPinFeeds, setPodcastPinFeeds] = useState<PodcastFeed[]>([]);
+  const podcastPinFeedsLoadedRef = useRef(false);
+  const [podcastFeedRequest, setPodcastFeedRequest] = useState<PodcastFeedRequest | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    invoke<PodcastFeed[]>("podcast_list_feeds", { includeUnsubscribed: true })
+      .then((feeds) => {
+        if (disposed) return;
+        podcastPinFeedsLoadedRef.current = true;
+        setPodcastPinFeeds(feeds);
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, [podcastLibraryRevision]);
+
+  // 固定项对账只发生在列表成功加载之后：加载失败时不动用户的固定。
+  useEffect(() => {
+    if (!podcastPinFeedsLoadedRef.current) return;
+    const feedIds = new Set(podcastPinFeeds.map((feed) => feed.id));
+    setHomePins((current) => {
+      const next = current.filter(
+        (pin) => pin.kind !== "podcastFeed" || feedIds.has(pin.targetId),
+      );
+      return next.length === current.length ? current : next;
+    });
+  }, [podcastPinFeeds, setHomePins]);
+
+  const pinnedPodcastFeedIds = useMemo(
+    () => new Set(
+      homePins
+        .filter((pin) => pin.kind === "podcastFeed")
+        .map((pin) => pin.targetId),
+    ),
+    [homePins],
+  );
+
+  function openPodcastFeedFromPin(feedId: string) {
+    const feed = podcastPinFeeds.find((candidate) => candidate.id === feedId);
+    setPodcastFeedRequest({ feedId, feed, nonce: Date.now() });
+    requestNavigation("podcasts");
+  }
 
   useEffect(() => () => {
     if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
@@ -887,6 +937,12 @@ export default function App() {
             onTogglePin={toggleHomePin}
             onContextMenu={showContextMenu}
             podcastActive={Boolean(activePodcastEpisode)}
+            podcastFeeds={podcastPinFeeds}
+            onOpenPodcastFeed={openPodcastFeedFromPin}
+            onTogglePodcastPin={(feedId) => {
+              const feed = podcastPinFeeds.find((candidate) => candidate.id === feedId);
+              if (feed) togglePodcastPin(feed);
+            }}
           />
         ) : null}
 
@@ -1012,6 +1068,14 @@ export default function App() {
             onEpisodeRequestHandled={(nonce) => {
               resolvePodcastEpisodeRequest(nonce);
             }}
+            feedRequest={podcastFeedRequest}
+            onFeedRequestHandled={(nonce) => {
+              setPodcastFeedRequest((current) =>
+                current?.nonce === nonce ? null : current
+              );
+            }}
+            pinnedPodcastFeedIds={pinnedPodcastFeedIds}
+            onTogglePodcastPin={togglePodcastPin}
             onPlayEpisode={playPodcastEpisode}
             onPlayEpisodeAt={(episode, positionSeconds) =>
               playPodcastEpisode(episode, positionSeconds)}
