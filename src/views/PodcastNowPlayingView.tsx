@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { PlaybackProgress } from "../components/PlaybackProgress";
+import { PodcastNowBackdrop } from "../components/PodcastNowBackdrop";
 import { VolumeControl } from "../components/TransportControls";
 import { MetroLoader } from "../components/MetroLoader";
 import { Presence, useLastNonNull } from "../motion/presence";
@@ -584,9 +585,7 @@ export function PodcastNowPlayingView({
         if (!target.closest(".podcast-now-menu-anchor")) setActiveMenu(null);
       }}
     >
-      <div className="podcast-now-backdrop" aria-hidden="true">
-        {artworkSrc ? <img src={artworkSrc} alt="" draggable={false} /> : null}
-      </div>
+      <PodcastNowBackdrop artworkSrc={artworkSrc} />
       <div className="podcast-now-grade" aria-hidden="true" />
       <p className="podcast-now-ghost" aria-hidden="true">podcast</p>
 
