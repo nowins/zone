@@ -159,6 +159,7 @@ pub fn run() {
       });
     })
     .setup(|app| {
+      library::init_cover_cache_dir(app.handle());
       let podcast_state = match podcast::PodcastState::initialize(app.handle()) {
         Ok(state) => state,
         Err(error) => {

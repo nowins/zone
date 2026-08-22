@@ -7,9 +7,9 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 use walkdir::WalkDir;
 
 #[derive(Default)]
@@ -357,10 +357,22 @@ fn image_extension(data: &[u8]) -> Option<&'static str> {
   None
 }
 
+static COVER_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// 启动时注入 Tauri 约定的缓存目录；否则封面会落进 NSIS 当前用户安装目录
+///（%LOCALAPPDATA%\Zone），随卸载被一起删掉。
+pub(crate) fn init_cover_cache_dir(app: &tauri::AppHandle) {
+  if let Ok(dir) = app.path().app_cache_dir() {
+    let _ = COVER_CACHE_DIR.set(dir.join("covers"));
+  }
+}
+
 fn cover_cache_dir() -> Option<PathBuf> {
-  std::env::var_os("LOCALAPPDATA")
-    .map(PathBuf::from)
-    .map(|path| path.join("Zone").join("covers"))
+  COVER_CACHE_DIR.get().cloned().or_else(|| {
+    std::env::var_os("LOCALAPPDATA")
+      .map(PathBuf::from)
+      .map(|path| path.join("Zone").join("covers"))
+  })
 }
 
 fn split_artist_title(file_stem: &str) -> (String, String) {
