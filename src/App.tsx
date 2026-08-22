@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -57,11 +57,20 @@ import type {
   ContextMenuState,
   ContextPayload,
   PodcastFeed,
+  PodcastRefreshReport,
   SmartPlaylist,
   Track,
   ViewMode,
 } from "./types";
 import type { PodcastFeedRequest } from "./views/podcast/types";
+
+// Pinned podcast tiles must stay live without opening the podcast page:
+// entering quickplay reloads the local snapshot, and a conditional RSS
+// refresh (cheap 304s) pulls new episodes — throttled on re-entry, plus a
+// slow poll while the home page stays open.
+const PODCAST_TILE_REFRESH_MIN_GAP_MS = 2 * 60_000;
+const PODCAST_TILE_REFRESH_INTERVAL_MS = 10 * 60_000;
+let lastPodcastTileRefreshAt = 0;
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -335,20 +344,25 @@ export default function App() {
   // 取消关注后依然可解析；播客库修订（播放/标记/下载）会刷新未读数。
   const [podcastPinFeeds, setPodcastPinFeeds] = useState<PodcastFeed[]>([]);
   const podcastPinFeedsLoadedRef = useRef(false);
+  const podcastPinFeedsMountedRef = useRef(true);
   const [podcastFeedRequest, setPodcastFeedRequest] = useState<PodcastFeedRequest | null>(null);
-  useEffect(() => {
-    let disposed = false;
+  const loadPodcastPinFeeds = useCallback(() => {
     invoke<PodcastFeed[]>("podcast_list_feeds", { includeUnsubscribed: true })
       .then((feeds) => {
-        if (disposed) return;
+        if (!podcastPinFeedsMountedRef.current) return;
         podcastPinFeedsLoadedRef.current = true;
         setPodcastPinFeeds(feeds);
       })
       .catch(() => undefined);
+  }, []);
+  useEffect(() => {
     return () => {
-      disposed = true;
+      podcastPinFeedsMountedRef.current = false;
     };
-  }, [podcastLibraryRevision]);
+  }, []);
+  useEffect(() => {
+    loadPodcastPinFeeds();
+  }, [podcastLibraryRevision, loadPodcastPinFeeds]);
 
   // 固定项对账只发生在列表成功加载之后：加载失败时不动用户的固定。
   useEffect(() => {
@@ -370,6 +384,35 @@ export default function App() {
     ),
     [homePins],
   );
+
+  // Pinned podcast tiles stay live while quickplay is visible: entering the
+  // page reloads the local snapshot (picks up podcast-page changes), then a
+  // throttled conditional RSS refresh pulls new episodes; a slow poll keeps
+  // tiles fresh during long sessions on the home page.
+  useEffect(() => {
+    if (page !== "quickplay" || pinnedPodcastFeedIds.size === 0) return undefined;
+    let disposed = false;
+    // Always reload locally — cheap, and catches feed refreshes that happened
+    // in the podcast view even when the network refresh below is throttled.
+    loadPodcastPinFeeds();
+    const refreshFeeds = () => {
+      const now = Date.now();
+      if (now - lastPodcastTileRefreshAt < PODCAST_TILE_REFRESH_MIN_GAP_MS) return;
+      lastPodcastTileRefreshAt = now;
+      invoke<PodcastRefreshReport>("podcast_refresh_feeds", { force: false })
+        .then((report) => {
+          if (disposed) return;
+          if (report.inserted + report.updated > 0) loadPodcastPinFeeds();
+        })
+        .catch(() => undefined);
+    };
+    refreshFeeds();
+    const timer = window.setInterval(refreshFeeds, PODCAST_TILE_REFRESH_INTERVAL_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [page, pinnedPodcastFeedIds, loadPodcastPinFeeds]);
 
   function openPodcastFeedFromPin(feedId: string) {
     const feed = podcastPinFeeds.find((candidate) => candidate.id === feedId);

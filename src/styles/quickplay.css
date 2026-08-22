@@ -229,6 +229,13 @@
   pointer-events: none;
 }
 
+/* ...but under the peek variant that z-index would float the band above the
+   rising back panel. z-index auto lets the back face win by DOM order, so
+   the panel wipes over the whole front like a real WP8 peek. */
+.tile-flip-v-peek .quick-pin-front-band {
+  z-index: auto;
+}
+
 /* Peek back headline: the latest episode title may wrap to two lines. */
 .tile-face strong.quick-pin-back-headline {
   display: -webkit-box;

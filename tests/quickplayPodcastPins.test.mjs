@@ -5,6 +5,7 @@ import test from "node:test";
 const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
 const playlistsHookSource = readFileSync("src/hooks/usePlaylists.ts", "utf8");
 const appSource = readFileSync("src/App.tsx", "utf8");
+const quickplayCss = readFileSync("src/styles/quickplay.css", "utf8");
 const podcastViewSource = readFileSync("src/views/PodcastView.tsx", "utf8");
 const viewModelSource = readFileSync("src/views/podcast/usePodcastViewModel.ts", "utf8");
 const homePinsSource = readFileSync("src/utils/homePins.ts", "utf8");
@@ -108,5 +109,38 @@ test("the show screen owns pinning and the feed request deep-links back to it", 
     viewModelSource,
     /feedRequest\.feed[\s\S]{0,300}openStoredFeed\(/,
     "the feed request must open the resolved show, falling back to the request snapshot",
+  );
+});
+
+test("pinned tiles stay live: quickplay refreshes feeds and the peek wipes the front band", () => {
+  includes(
+    appSource,
+    /podcast_refresh_feeds/,
+    "quickplay must run a conditional feed refresh itself — tiles cannot wait for the podcast page",
+  );
+  includes(
+    appSource,
+    /page !== "quickplay" \|\| pinnedPodcastFeedIds\.size === 0[\s\S]{0,400}loadPodcastPinFeeds\(\)/,
+    "entering quickplay with pinned shows must reload the local feed snapshot",
+  );
+  includes(
+    appSource,
+    /PODCAST_TILE_REFRESH_MIN_GAP_MS = 2 \* 60_000/,
+    "re-entering quickplay must not refresh more often than the min gap",
+  );
+  includes(
+    appSource,
+    /PODCAST_TILE_REFRESH_INTERVAL_MS = 10 \* 60_000/,
+    "a slow poll must keep tiles fresh while the home page stays open",
+  );
+  includes(
+    appSource,
+    /report\.inserted \+ report\.updated > 0/,
+    "only a refresh that actually changed feeds should reload the tiles",
+  );
+  includes(
+    quickplayCss,
+    /\.tile-flip-v-peek \.quick-pin-front-band\s*\{[^}]*z-index:\s*auto/s,
+    "the peek panel must wipe over the front band (its z-index 2 would float above otherwise)",
   );
 });
