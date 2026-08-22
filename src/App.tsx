@@ -36,7 +36,7 @@ import {
 } from "./app/musicLibraryApi";
 import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
 import { seedFromTracks } from "./utils/smartDj";
-import { homePinStateForPayload, moveHomePin, normalizeHomePins, shiftHomePin } from "./utils/homePins";
+import { homePinStateForPayload, moveHomePin, normalizeHomePins, setHomePinSize, shiftHomePin } from "./utils/homePins";
 import { resolveSearchSurface } from "./utils/collectionSearch";
 import { useSystemMedia } from "./hooks/useSystemMedia";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
@@ -932,8 +932,9 @@ export default function App() {
             onResumePlayback={() => {
               if (audioRef.current?.paused) togglePlay();
             }}
-            onMovePin={(sourceId, targetId) => setHomePins((current) => moveHomePin(current, sourceId, targetId))}
+            onMovePin={(sourceId, targetId, placeAfter) => setHomePins((current) => moveHomePin(current, sourceId, targetId, placeAfter))}
             onShiftPin={(pinId, direction) => setHomePins((current) => shiftHomePin(current, pinId, direction))}
+            onResizePin={(pinId, size) => setHomePins((current) => setHomePinSize(current, pinId, size))}
             onTogglePin={toggleHomePin}
             onContextMenu={showContextMenu}
             podcastActive={Boolean(activePodcastEpisode)}

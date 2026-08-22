@@ -23,9 +23,9 @@
   filter: none;
 }
 
-/* Intrinsic Win8 tile sizes (medium 150px, wide 2x150 + one 10px gutter).
-   Zero-specificity :where() defaults, so any host sizing — e.g. quickplay's
-   grid-driven pins — wins regardless of stylesheet order. */
+/* Intrinsic Win8 tile sizes (medium 150px, wide/large 2x150 + one 10px
+   gutter). Zero-specificity :where() defaults, so any host sizing — e.g.
+   quickplay's grid-driven pins — wins regardless of stylesheet order. */
 :where(.tile-medium) {
   width: 150px;
   height: 150px;
@@ -33,6 +33,10 @@
 :where(.tile-wide) {
   width: 310px;
   height: 150px;
+}
+:where(.tile-large) {
+  width: 310px;
+  height: 310px;
 }
 
 /* Turnstile-style entrance: tiles pivot in from the bottom edge with a
@@ -320,7 +324,7 @@
 /* quickplay host: tiles keep the existing pin grid rhythm. */
 .quick-pin-tile {
   width: 100%;
-  height: var(--quick-pin-art);
+  height: 100%;
 }
 .quick-pin.wide .quick-pin-tile {
   grid-column: span 2;

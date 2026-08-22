@@ -228,11 +228,16 @@ export type TrackActivityMap = Record<string, TrackActivity>;
 
 export type HomePinKind = "track" | "album" | "artist" | "playlist" | "podcastFeed";
 
+/** Win8.1-style tile sizes: 1x1 square, 2x1 wide, 2x2 large. */
+export type HomePinSize = "medium" | "wide" | "large";
+
 export type HomePin = {
   id: string;
   kind: HomePinKind;
   targetId: string;
   createdAt: number;
+  /** Explicit tile size picked in quickplay edit mode; absent = kind default. */
+  size?: HomePinSize;
 };
 
 export type ContextPayload = {

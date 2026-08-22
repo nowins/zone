@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { tiltPressClear, tiltPressDown } from "../../utils/tiltPress";
 import type { KeyboardEvent, PointerEvent } from "react";
 
-export type TileSize = "medium" | "wide";
+export type TileSize = "medium" | "wide" | "large";
 
 /**
  * Base Metro tile: a fixed-size, hard-clipped surface that carries the shared

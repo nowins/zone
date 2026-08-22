@@ -3,12 +3,17 @@ import test from "node:test";
 import {
   applyHomePinToggle,
   applyHomePinToggleForPin,
+  defaultHomePinSize,
   homePinForPayload,
   homePinId,
+  homePinSize,
   moveHomePin,
+  nextHomePinSize,
   normalizeHomePins,
   reconcileHomePins,
+  setHomePinSize,
   shiftHomePin,
+  stepHomePinSize,
 } from "../.tmp/visualizer-tests/utils/homePins.js";
 
 function track(overrides = {}) {
@@ -123,6 +128,73 @@ test("pins can be reordered by drag target or keyboard shift", () => {
   const moved = moveHomePin(pins, "track:three", "track:one");
   assert.deepEqual(moved.map((pin) => pin.targetId), ["three", "one", "two"]);
   assert.deepEqual(shiftHomePin(moved, "track:three", 1).map((pin) => pin.targetId), ["one", "three", "two"]);
+});
+
+test("drag drops insert before or after the target by drop half", () => {
+  const pins = normalizeHomePins([
+    { kind: "track", targetId: "one" },
+    { kind: "track", targetId: "two" },
+    { kind: "track", targetId: "three" },
+    { kind: "track", targetId: "four" },
+  ]);
+
+  // Forward move, both insertion sides.
+  assert.deepEqual(
+    moveHomePin(pins, "track:one", "track:three", false).map((pin) => pin.targetId),
+    ["two", "one", "three", "four"],
+  );
+  assert.deepEqual(
+    moveHomePin(pins, "track:one", "track:three", true).map((pin) => pin.targetId),
+    ["two", "three", "one", "four"],
+  );
+  // Backward move landing after the target.
+  assert.deepEqual(
+    moveHomePin(pins, "track:four", "track:one", true).map((pin) => pin.targetId),
+    ["one", "four", "two", "three"],
+  );
+  // Default stays "before", preserving the pre-customization drop behavior.
+  assert.deepEqual(
+    moveHomePin(pins, "track:three", "track:one").map((pin) => pin.targetId),
+    ["three", "one", "two", "four"],
+  );
+});
+
+test("pin sizes default by kind, validate on normalize and persist explicitly", () => {
+  // Defaults keep existing walls unchanged: artist/playlist wide, rest medium.
+  assert.equal(defaultHomePinSize("artist"), "wide");
+  assert.equal(defaultHomePinSize("playlist"), "wide");
+  assert.equal(defaultHomePinSize("track"), "medium");
+  assert.equal(defaultHomePinSize("album"), "medium");
+  assert.equal(defaultHomePinSize("podcastFeed"), "medium");
+
+  const pins = normalizeHomePins([
+    { kind: "track", targetId: "a", size: "large" },
+    { kind: "artist", targetId: "b", size: "huge" },
+    { kind: "playlist", targetId: "c" },
+  ]);
+  assert.equal(pins[0].size, "large");
+  assert.equal(homePinSize(pins[0]), "large");
+  // Sizes off the ladder are dropped, not persisted.
+  assert.equal(pins[1].size, undefined);
+  assert.equal(homePinSize(pins[1]), "wide");
+  assert.equal(homePinSize(pins[2]), "wide");
+
+  const resized = setHomePinSize(pins, homePinId("playlist", "c"), "medium");
+  assert.equal(resized[2].size, "medium");
+  assert.equal(resized.length, pins.length);
+  // Unknown ids and invalid sizes leave the array untouched.
+  assert.equal(setHomePinSize(pins, "track:missing", "large"), pins);
+  assert.equal(setHomePinSize(pins, "track:a", "huge"), pins);
+});
+
+test("resize cycles wrap for the edit button and clamp for keyboard steps", () => {
+  assert.equal(nextHomePinSize("medium"), "wide");
+  assert.equal(nextHomePinSize("wide"), "large");
+  assert.equal(nextHomePinSize("large"), "medium");
+  assert.equal(stepHomePinSize("medium", 1), "wide");
+  assert.equal(stepHomePinSize("medium", -1), "medium");
+  assert.equal(stepHomePinSize("large", 1), "large");
+  assert.equal(stepHomePinSize("large", -1), "wide");
 });
 
 test("toggle pins/unpins against the latest array so rapid clicks never duplicate", () => {

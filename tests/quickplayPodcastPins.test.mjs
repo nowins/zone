@@ -17,7 +17,7 @@ function includes(source, pattern, message) {
 test("quickplay resolves pinned podcast feeds into proxied-artwork tiles", () => {
   includes(
     quickplaySource,
-    /pin\.kind === "podcastFeed"[\s\S]{0,900}podcastArtworkSrc\(feed\.artworkUrl\)/,
+    /pin\.kind === "podcastFeed"[\s\S]{0,1100}podcastArtworkSrc\(feed\.artworkUrl\)/,
     "podcast feed pins must resolve their feed and route artwork through the proxy",
   );
   includes(

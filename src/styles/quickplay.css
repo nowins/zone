@@ -137,11 +137,20 @@
 .quick-pin {
   position: relative;
   min-width: 0;
+  /* One grid row tall by default (medium/wide); large spans two rows. */
+  height: var(--quick-pin-art);
   transition: opacity var(--motion-micro) var(--motion-ease-standard), transform var(--motion-content) var(--motion-ease-emphasis);
 }
 
 .quick-pin.wide {
   grid-column: span 2;
+}
+
+.quick-pin.large {
+  grid-column: span 2;
+  grid-row: span 2;
+  /* Two rows plus the row gap the span skips over. */
+  height: calc(var(--quick-pin-art) * 2 + 8px);
 }
 
 .quick-pins-grid.editing .quick-pin {
@@ -162,7 +171,7 @@
 .quick-pin-art {
   position: relative;
   width: 100%;
-  height: var(--quick-pin-art);
+  height: 100%;
   display: block;
   overflow: hidden;
   outline: 1px solid rgba(255, 255, 255, 0.05);
@@ -248,6 +257,10 @@
   height: 31px;
   display: grid;
   place-items: center;
+}
+
+.quick-pin-edit-actions {
+  display: flex;
 }
 
 .quick-pin-edit-tools button:hover {

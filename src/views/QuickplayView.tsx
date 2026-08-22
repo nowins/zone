@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react";
-import { GripVertical, Pin, PinOff, Play, Sparkles } from "lucide-react";
+import { GripVertical, Pin, PinOff, Play, RectangleHorizontal, Sparkles, Square, SquareSquare } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Cover } from "../components/Cover";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import { animateValue } from "../motion/animate";
@@ -8,6 +9,7 @@ import type { AnimationHandle } from "../motion/animate";
 import { registerFlipElement } from "../motion/flip";
 import { SPRING_PRESETS } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
+import { homePinSize, nextHomePinSize, stepHomePinSize } from "../utils/homePins";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
 import {
   buildQuickplayBlocks,
@@ -21,6 +23,7 @@ import type {
   ArtistGroup,
   ContextPayload,
   HomePin,
+  HomePinSize,
   Playlist,
   PodcastFeed,
   Track,
@@ -35,7 +38,8 @@ type ResolvedPin = {
   tracks: Track[];
   artPaths: string[];
   payload: ContextPayload | null;
-  isWide: boolean;
+  /** Resolved tile size: the pin's explicit choice, else the kind default. */
+  size: HomePinSize;
   isSmart: boolean;
   /** Glanceable live line for the tile back (e.g. "12 首 · 3 天前听过"). */
   liveLine: string;
@@ -45,6 +49,18 @@ type ResolvedPin = {
   podcastArtwork?: string | null;
   /** "今天更新" style recency line for the podcast peek back face. */
   podcastRecency?: string;
+};
+
+const HOME_PIN_SIZE_LABELS: Record<HomePinSize, string> = {
+  medium: "标准",
+  wide: "宽版",
+  large: "大版",
+};
+
+const HOME_PIN_SIZE_ICONS: Record<HomePinSize, LucideIcon> = {
+  medium: Square,
+  wide: RectangleHorizontal,
+  large: SquareSquare,
 };
 
 let quickplayScrollPosition = 0;
@@ -80,6 +96,7 @@ export function QuickplayView({
   onOpenCollection,
   onMovePin,
   onShiftPin,
+  onResizePin,
   onTogglePin,
   onContextMenu,
   podcastActive = false,
@@ -101,8 +118,9 @@ export function QuickplayView({
   onResumePlayback: () => void;
   onOpenNowPlaying: () => void;
   onOpenCollection: (view: ViewMode) => void;
-  onMovePin: (sourceId: string, targetId: string) => void;
+  onMovePin: (sourceId: string, targetId: string, placeAfter?: boolean) => void;
   onShiftPin: (pinId: string, direction: -1 | 1) => void;
+  onResizePin: (pinId: string, size: HomePinSize) => void;
   onTogglePin: (payload: ContextPayload) => void;
   onContextMenu: (event: MouseEvent, payload: ContextPayload) => void;
   podcastActive?: boolean;
@@ -201,7 +219,7 @@ export function QuickplayView({
           tracks: [track],
           artPaths: coverPathsForTracks([track], 1),
           payload,
-          isWide: false,
+          size: homePinSize(pin),
           isSmart: false,
           liveLine: liveLineFor([track], 0, track.album),
         }];
@@ -224,7 +242,7 @@ export function QuickplayView({
           tracks: album.tracks,
           artPaths: album.coverPath ? [album.coverPath] : coverPathsForTracks(album.tracks, 1),
           payload,
-          isWide: false,
+          size: homePinSize(pin),
           isSmart: false,
           liveLine: liveLineFor(album.tracks, album.tracks.length, "专辑"),
         }];
@@ -246,7 +264,7 @@ export function QuickplayView({
           tracks: artist.tracks,
           artPaths: coverPathsForTracks(artist.tracks, 9, artist.artist),
           payload,
-          isWide: true,
+          size: homePinSize(pin),
           isSmart: false,
           liveLine: liveLineFor(artist.tracks, artist.tracks.length, "艺术家"),
         }];
@@ -274,7 +292,7 @@ export function QuickplayView({
           tracks: [],
           artPaths: [],
           payload: null,
-          isWide: false,
+          size: homePinSize(pin),
           isSmart: false,
           liveLine: feed.unplayedCount > 0
             ? `${feed.unplayedCount} 集未听`
@@ -308,7 +326,7 @@ export function QuickplayView({
         tracks: result.tracks,
         artPaths: coverPathsForTracks(result.tracks, 9),
         payload,
-        isWide: true,
+        size: homePinSize(pin),
         isSmart: smart,
         liveLine: liveLineFor(result.tracks, result.tracks.length, "歌单"),
       }];
@@ -469,6 +487,13 @@ export function QuickplayView({
     } else if (event.key === "ArrowRight") {
       onShiftPin(pinId, 1);
       event.preventDefault();
+    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      // Alt+Up/Down steps the tile through the size ladder, clamped at the
+      // ends — keyboard parity with the edit-mode resize button.
+      const item = resolvedPins.find((candidate) => candidate.pin.id === pinId);
+      if (!item) return;
+      onResizePin(pinId, stepHomePinSize(item.size, event.key === "ArrowUp" ? 1 : -1));
+      event.preventDefault();
     }
   }
 
@@ -476,7 +501,27 @@ export function QuickplayView({
     if (!editingPins) return;
     event.preventDefault();
     const sourceId = event.dataTransfer.getData("text/plain") || draggedPinId;
-    if (sourceId) onMovePin(sourceId, targetId);
+    if (!sourceId) {
+      setDraggedPinId(null);
+      return;
+    }
+    // The drop half picks the insertion side: left half = before the target,
+    // right half = after it — WP/Win8-style placement, not a plain swap.
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const placeAfter = event.clientX > bounds.left + bounds.width / 2;
+    onMovePin(sourceId, targetId, placeAfter);
+    setDraggedPinId(null);
+  }
+
+  // Dropping on empty grid space moves the tile to the end of the wall.
+  function handleGridDrop(event: DragEvent<HTMLElement>) {
+    if (!editingPins || event.target !== event.currentTarget) return;
+    event.preventDefault();
+    const sourceId = event.dataTransfer.getData("text/plain") || draggedPinId;
+    const last = resolvedPins[resolvedPins.length - 1];
+    if (sourceId && last && sourceId !== last.pin.id) {
+      onMovePin(sourceId, last.pin.id, true);
+    }
     setDraggedPinId(null);
   }
 
@@ -555,10 +600,20 @@ export function QuickplayView({
             </button>
           ) : (
             <div className="quick-section-scroll">
-              <div ref={pinsGridRef} className={`quick-pins-grid ${editingPins ? "editing" : ""}`}>
-              {resolvedPins.map((item, index) => (
+              <div
+                ref={pinsGridRef}
+                className={`quick-pins-grid ${editingPins ? "editing" : ""}`}
+                onDragOver={(event) => {
+                  if (editingPins) event.preventDefault();
+                }}
+                onDrop={handleGridDrop}
+              >
+              {resolvedPins.map((item, index) => {
+                const nextPinSize = nextHomePinSize(item.size);
+                const NextSizeIcon = HOME_PIN_SIZE_ICONS[nextPinSize];
+                return (
                 <article
-                  className={`quick-pin ${item.isWide ? "wide" : "square"} ${draggedPinId === item.pin.id ? "dragging" : ""}`}
+                  className={`quick-pin ${item.size} ${draggedPinId === item.pin.id ? "dragging" : ""}`}
                   key={item.pin.id}
                   style={{ "--tile-stagger-delay": `${Math.min(index * 46, 460)}ms` } as CSSProperties}
                   draggable={editingPins}
@@ -582,7 +637,7 @@ export function QuickplayView({
                   onKeyDown={(event) => handlePinKey(event, item.pin.id)}
                 >
                   <FlipTile
-                    size={item.isWide ? "wide" : "medium"}
+                    size={item.size}
                     variant={item.podcastFeed ? "peek" : "flip"}
                     className="quick-pin-tile"
                     title={item.podcastFeed ? `打开节目 ${item.title}` : `播放 ${item.title}`}
@@ -647,7 +702,12 @@ export function QuickplayView({
                             </span>
                             <strong>{item.title}</strong>
                             <span className="tile-back-live">{item.liveLine}</span>
-                            {!item.isWide && <small>{item.subtitle}</small>}
+                            {/* Artist/playlist subtitles duplicate the live
+                                line's count, so only track/album backs carry
+                                one — at any tile size. */}
+                            {(item.pin.kind === "track" || item.pin.kind === "album") && (
+                              <small>{item.subtitle}</small>
+                            )}
                           </>
                         )
                       }
@@ -655,22 +715,30 @@ export function QuickplayView({
                   {editingPins && (
                     <div className="quick-pin-edit-tools">
                       <GripVertical size={17} aria-hidden="true" />
-                      <button
-                        onClick={() => {
-                          if (item.podcastFeed) {
-                            onTogglePodcastPin?.(item.pin.targetId);
-                          } else if (item.payload) {
-                            onTogglePin(item.payload);
-                          }
-                        }}
-                        title={`取消固定 ${item.title}`}
-                      >
-                        <PinOff size={17} />
-                      </button>
+                      <div className="quick-pin-edit-actions">
+                        <button
+                          onClick={() => onResizePin(item.pin.id, nextPinSize)}
+                          title={`调整为${HOME_PIN_SIZE_LABELS[nextPinSize]}`}
+                        >
+                          <NextSizeIcon size={15} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (item.podcastFeed) {
+                              onTogglePodcastPin?.(item.pin.targetId);
+                            } else if (item.payload) {
+                              onTogglePin(item.payload);
+                            }
+                          }}
+                          title={`取消固定 ${item.title}`}
+                        >
+                          <PinOff size={17} />
+                        </button>
+                      </div>
                     </div>
                   )}
                 </article>
-              ))}
+              );})}
               </div>
 
             </div>

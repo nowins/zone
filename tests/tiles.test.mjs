@@ -129,6 +129,27 @@ test("tile sizes ship intrinsic Win8 defaults that yield to host sizing", () => 
   // regardless of stylesheet order.
   assert.ok(/:where\(\.tile-medium\)\s*\{[^}]*width:\s*150px[^}]*height:\s*150px/s.test(tilesCss));
   assert.ok(/:where\(\.tile-wide\)\s*\{[^}]*width:\s*310px[^}]*height:\s*150px/s.test(tilesCss));
+  assert.ok(/:where\(\.tile-large\)\s*\{[^}]*width:\s*310px[^}]*height:\s*310px/s.test(tilesCss));
+});
+
+test("quickplay pins are user-resizable and freely placeable in edit mode", () => {
+  // Size resolves from the pin (explicit choice, kind default) — not the kind.
+  assert.ok(quickplaySource.includes("homePinSize(pin)"), "size must resolve via homePinSize");
+  assert.ok(quickplaySource.includes("size={item.size}"), "the tile must consume the resolved size");
+  assert.ok(/quick-pin \$\{item\.size\}/.test(quickplaySource), "the grid item class must be the size");
+  assert.ok(/\.quick-pin\.large\s*\{[^}]*grid-row:\s*span 2/s.test(quickplayCss), "large pins must span two grid rows");
+  // The tile and inner art fill whatever height the grid item claims.
+  assert.ok(/\.quick-pin-tile\s*\{[^}]*height:\s*100%/s.test(tilesCss));
+  assert.ok(/\.quick-pin-art\s*\{[^}]*height:\s*100%/s.test(quickplayCss));
+  // Edit tools carry a resize affordance cycling the ladder, next to unpin.
+  assert.ok(quickplaySource.includes("nextHomePinSize(item.size)"));
+  assert.ok(quickplaySource.includes("onResizePin(item.pin.id, nextPinSize)"));
+  assert.ok(/调整为/.test(quickplaySource), "resize tooltip must be localized");
+  // Keyboard parity: Alt+Up/Down steps sizes (Alt+Left/Right moves).
+  assert.ok(quickplaySource.includes("stepHomePinSize"));
+  // Drop position picks the insertion side; the grid background appends.
+  assert.ok(quickplaySource.includes("placeAfter"));
+  assert.ok(quickplaySource.includes("handleGridDrop"));
 });
 
 test("entrance is a turnstile pivot from the bottom edge, staggered, flash-free", () => {

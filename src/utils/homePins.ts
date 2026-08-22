@@ -1,5 +1,5 @@
 import { MAX_HOME_PINS } from "../constants.js";
-import type { ContextPayload, HomePin, HomePinKind, Playlist, Track } from "../types";
+import type { ContextPayload, HomePin, HomePinKind, HomePinSize, Playlist, Track } from "../types";
 import { albumKey } from "./music.js";
 
 const HOME_PIN_KINDS = new Set<HomePinKind>([
@@ -12,6 +12,38 @@ const HOME_PIN_KINDS = new Set<HomePinKind>([
 
 export function homePinId(kind: HomePinKind, targetId: string) {
   return `${kind}:${targetId}`;
+}
+
+/** Size ladder for quickplay tiles, smallest to largest. */
+export const HOME_PIN_SIZES = ["medium", "wide", "large"] as const satisfies readonly HomePinSize[];
+
+// Artists and playlists have always been wide; keep that as their default so
+// existing walls look unchanged until the user resizes a pin explicitly.
+export function defaultHomePinSize(kind: HomePinKind): HomePinSize {
+  return kind === "artist" || kind === "playlist" ? "wide" : "medium";
+}
+
+export function homePinSize(pin: HomePin): HomePinSize {
+  return pin.size ?? defaultHomePinSize(pin.kind);
+}
+
+/** Wrap-around cycle for the edit-mode resize button. */
+export function nextHomePinSize(size: HomePinSize): HomePinSize {
+  const index = HOME_PIN_SIZES.indexOf(size);
+  return HOME_PIN_SIZES[(index + 1) % HOME_PIN_SIZES.length];
+}
+
+/** Clamped step for keyboard resizing (Alt+Up/Down never wraps). */
+export function stepHomePinSize(size: HomePinSize, direction: -1 | 1): HomePinSize {
+  const index = HOME_PIN_SIZES.indexOf(size);
+  const next = Math.max(0, Math.min(HOME_PIN_SIZES.length - 1, index + direction));
+  return HOME_PIN_SIZES[next];
+}
+
+export function setHomePinSize(pins: HomePin[], pinId: string, size: HomePinSize): HomePin[] {
+  if (!HOME_PIN_SIZES.includes(size)) return pins;
+  if (!pins.some((pin) => pin.id === pinId)) return pins;
+  return pins.map((pin) => (pin.id === pinId ? { ...pin, size } : pin));
 }
 
 export function homePinForPayload(payload: ContextPayload, now = Date.now()): HomePin | null {
@@ -46,11 +78,17 @@ export function normalizeHomePins(value: unknown): HomePin[] {
     const id = homePinId(kind, targetId);
     if (seen.has(id)) continue;
     seen.add(id);
+    // Sizes written by older/newer builds that no longer match the ladder are
+    // dropped back to the kind default instead of breaking the grid.
+    const size = (HOME_PIN_SIZES as readonly string[]).includes(candidate.size as string)
+      ? (candidate.size as HomePinSize)
+      : undefined;
     result.push({
       id,
       kind,
       targetId,
       createdAt: Number.isFinite(candidate.createdAt) ? Number(candidate.createdAt) : 0,
+      ...(size !== undefined ? { size } : {}),
     });
     if (result.length === MAX_HOME_PINS) break;
   }
@@ -75,13 +113,16 @@ export function reconcileHomePins(pins: HomePin[], tracks: Track[], playlists: P
   });
 }
 
-export function moveHomePin(pins: HomePin[], sourceId: string, targetId: string) {
+export function moveHomePin(pins: HomePin[], sourceId: string, targetId: string, placeAfter = false) {
   const sourceIndex = pins.findIndex((pin) => pin.id === sourceId);
   const targetIndex = pins.findIndex((pin) => pin.id === targetId);
   if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return pins;
   const next = [...pins];
   const [source] = next.splice(sourceIndex, 1);
-  next.splice(targetIndex, 0, source);
+  // The target index shifts once the source is out, so recompute it in the
+  // shortened array; dropping on the right half of a tile places after it.
+  const insertAt = next.findIndex((pin) => pin.id === targetId) + (placeAfter ? 1 : 0);
+  next.splice(insertAt, 0, source);
   return next;
 }
 
