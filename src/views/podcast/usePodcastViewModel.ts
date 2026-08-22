@@ -5,7 +5,8 @@ import {
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
-  type FormEvent,
+  type FormEvent as ReactFormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import * as podcastApi from "./api";
@@ -26,6 +27,9 @@ import {
 } from "../../utils/podcastLibrary";
 import {
   addPodcastSearchHistory,
+  isRememberedPodcastSearchTerm,
+  PODCAST_SEARCH_COMPOSITION_GRACE_MS,
+  shouldBlockPodcastSearchCommit,
   sortPodcastSearchResults,
   type PodcastDiscoverySort,
 } from "../../utils/podcastDiscovery";
@@ -297,6 +301,9 @@ export function usePodcastViewModel({
   const downloadProgressPollRef = useRef<number | null>(null);
   const downloadProgressEpisodeRef = useRef<string | null>(null);
   const appleSearchRequestRef = useRef(0);
+  const podcastSearchComposingRef = useRef(false);
+  const ignorePodcastSearchSubmitRef = useRef(false);
+  const ignorePodcastSearchSubmitTimerRef = useRef<number | null>(null);
   const discoveryRequestActive = useRef(false);
   const feedRefreshActive = useRef(false);
   const selectedFeedRef = useRef(selectedFeed);
@@ -729,6 +736,14 @@ export function usePodcastViewModel({
   useEffect(() => {
     writePodcastSearchHistory(searchHistory);
   }, [searchHistory]);
+
+  useEffect(() => {
+    return () => {
+      if (ignorePodcastSearchSubmitTimerRef.current !== null) {
+        window.clearTimeout(ignorePodcastSearchSubmitTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setPodcastSessionSnapshot({
@@ -1288,7 +1303,7 @@ export function usePodcastViewModel({
     setSearchHighlightQuery(remember ? cleanQuery : "");
     setError(null);
     setNotice(null);
-    if (remember) {
+    if (remember && isRememberedPodcastSearchTerm(cleanQuery)) {
       setSearchHistory((current) =>
         addPodcastSearchHistory(current, cleanQuery)
       );
@@ -1328,9 +1343,51 @@ export function usePodcastViewModel({
     }
   }
 
-  function searchApple(event: FormEvent) {
+  function searchApple(event: ReactFormEvent) {
     event.preventDefault();
+    const nativeEvent = event.nativeEvent as {
+      isComposing?: boolean;
+      keyCode?: number;
+    };
+    if (
+      shouldBlockPodcastSearchCommit({
+        composing: podcastSearchComposingRef.current,
+        ignoreSubmit: ignorePodcastSearchSubmitRef.current,
+        isComposing: nativeEvent.isComposing,
+        keyCode: nativeEvent.keyCode,
+      })
+    ) {
+      return;
+    }
     void runAppleSearch(query, { remember: true });
+  }
+
+  function handlePodcastSearchCompositionStart() {
+    podcastSearchComposingRef.current = true;
+  }
+
+  function handlePodcastSearchCompositionEnd() {
+    podcastSearchComposingRef.current = false;
+    ignorePodcastSearchSubmitRef.current = true;
+    if (ignorePodcastSearchSubmitTimerRef.current !== null) {
+      window.clearTimeout(ignorePodcastSearchSubmitTimerRef.current);
+    }
+    ignorePodcastSearchSubmitTimerRef.current = window.setTimeout(() => {
+      ignorePodcastSearchSubmitRef.current = false;
+      ignorePodcastSearchSubmitTimerRef.current = null;
+    }, PODCAST_SEARCH_COMPOSITION_GRACE_MS);
+  }
+
+  function handlePodcastSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    if (shouldBlockPodcastSearchCommit({
+      composing: podcastSearchComposingRef.current,
+      ignoreSubmit: ignorePodcastSearchSubmitRef.current,
+      isComposing: event.nativeEvent.isComposing,
+      keyCode: event.nativeEvent.keyCode,
+    })) {
+      event.preventDefault();
+    }
   }
 
   function showPopularDiscovery() {
@@ -1433,7 +1490,7 @@ export function usePodcastViewModel({
     }
   }
 
-  async function subscribeRss(event: FormEvent) {
+  async function subscribeRss(event: ReactFormEvent) {
     event.preventDefault();
     const cleanUrl = rssUrl.trim();
     if (!cleanUrl || openingId) return;
@@ -2184,6 +2241,9 @@ export function usePodcastViewModel({
     query,
     setQuery,
     searchApple,
+    handlePodcastSearchCompositionStart,
+    handlePodcastSearchCompositionEnd,
+    handlePodcastSearchKeyDown,
     searchState,
     discoveryTopic,
     rssExpanded,

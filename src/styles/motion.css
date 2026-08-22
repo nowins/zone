@@ -171,7 +171,8 @@
    returning the way it came at roughly half the travel. The `.motion-exit`
    class sits on a display:contents wrapper, so these target descendants.
    Everything is non-interactive while exiting. */
-.motion-exit .context-menu {
+.motion-exit .context-menu,
+.motion-exit .podcast-search-history {
   animation: motion-exit-menu var(--motion-micro) var(--motion-ease-exit) both;
   pointer-events: none;
 }
@@ -224,7 +225,8 @@
 }
 
 /* Transient surfaces: Swivel from the trigger or owning edge. */
-.context-menu {
+.context-menu,
+.podcast-search-history {
   opacity: 1;
   transform: perspective(900px) rotateY(0deg) translate3d(0, 0, 0);
   transform-origin: 12px 12px;
@@ -505,6 +507,7 @@ button.tilt-pressed {
   .shell[data-nav-state="exiting"] .now-playing-stage,
   .motion-exit,
   .motion-exit .context-menu,
+  .motion-exit .podcast-search-history,
   .motion-exit .info-panel,
   .motion-exit .info-panel section,
   .motion-exit .save-playlist-overlay,
@@ -527,6 +530,7 @@ button.tilt-pressed {
   }
 
   .context-menu,
+  .podcast-search-history,
   .info-panel,
   .info-panel section,
   .save-playlist-overlay,
@@ -587,6 +591,7 @@ button.tilt-pressed {
   }
 
   .context-menu,
+  .podcast-search-history,
   .info-panel section,
   .save-playlist-dialog,
   .playlist-dialog,

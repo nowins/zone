@@ -20,7 +20,7 @@ const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
 const typesSource = readFileSync("src/types.ts", "utf8");
 const rustSource = readFileSync("src-tauri/src/podcast/apple.rs", "utf8");
 
-test("podcast discovery offers low-friction topics and durable recent searches", () => {
+test("podcast discovery offers low-friction topics and focus-scoped recent searches", () => {
   assert.match(viewSource, /PODCAST_DISCOVERY_STORAGE_KEY = "zone-podcast-discovery-v1"/);
   assert.match(viewSource, /label: "热门"/);
   assert.match(viewSource, /label: "商业", query: "商业"/);
@@ -81,11 +81,11 @@ test("RSS subscription is prominent, accessible, and keeps the native command bo
   );
   assert.match(
     stylesSource,
-    /\.podcast-discovery-topics button,[\s\S]*?min-height:\s*40px/,
+    /\.podcast-discovery-topics button\s*\{[\s\S]*?min-height:\s*40px/,
   );
   assert.match(
     stylesSource,
-    /\.podcast-search-history > div > button\s*\{[\s\S]*?min-height:\s*40px/,
+    /\.podcast-search-history-clear\s*\{[\s\S]*?min-height:\s*40px/,
   );
   assert.match(viewSource, /actionLabel="返回热门"/);
 });
@@ -137,5 +137,40 @@ test("manual search highlighting stays text-only and themes do not expose hidden
   assert.match(
     stylesSource,
     /\.podcast-show-card-genres em:only-child\s*\{[\s\S]*?max-width:\s*100%/,
+  );
+});
+ 
+test("discover search ignores IME composition commits and keeps RSS/history chrome honest", () => {
+  assert.match(viewSource, /onCompositionStart=\{handlePodcastSearchCompositionStart\}/);
+  assert.match(viewSource, /onCompositionEnd=\{handlePodcastSearchCompositionEnd\}/);
+  assert.match(viewSource, /onKeyDown=\{handleSearchKeyDown\}/);
+  assert.match(
+    viewSource,
+    /function searchApple\([\s\S]*?shouldBlockPodcastSearchCommit\([\s\S]*?void runAppleSearch\(query, \{ remember: true \}\)/,
+  );
+  assert.match(
+    viewSource,
+    /if \(remember && isRememberedPodcastSearchTerm\(cleanQuery\)\)/,
+  );
+  assert.match(viewSource, /className="podcast-search-history-clear"/);
+  assert.doesNotMatch(viewSource, /<span>最近搜索<\/span>/);
+  assert.match(viewSource, /className="podcast-discovery-search"/);
+  assert.match(viewSource, /filterPodcastSearchHistory\(searchHistory, query\)/);
+  assert.match(viewSource, /const showSearchHistory = searchFocused && !historyDismissed && suggestedHistory\.length > 0/);
+  assert.match(viewSource, /<Presence show=\{showSearchHistory\} exitDurationMs=\{MOTION_DURATIONS\.micro\}>/);
+  assert.match(viewSource, /onFocus=\{\(\) => setSearchFocused\(true\)\}/);
+  assert.match(viewSource, /event\.key === "Escape"/);
+  assert.match(
+    stylesSource,
+    /\.podcast-search-history \{[\s\S]*?position:\s*absolute[\s\S]*?border-top:\s*2px solid var\(--accent\)/,
+  );
+  assert.match(
+    stylesSource,
+    /\.podcast-page \.podcast-search-form input:focus-visible,[\s\S]*?outline:\s*0/,
+  );
+  assert.doesNotMatch(stylesSource, /\.podcast-rss-toggle::after/);
+  assert.match(
+    stylesSource,
+    /\.podcast-rss-toggle\[aria-expanded="true"\]::after\s*\{[\s\S]*?content:\s*""/,
   );
 });

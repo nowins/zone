@@ -3,7 +3,10 @@ import test from "node:test";
 
 import {
   addPodcastSearchHistory,
+  filterPodcastSearchHistory,
+  isRememberedPodcastSearchTerm,
   normalizePodcastSearchHistory,
+  shouldBlockPodcastSearchCommit,
   sortPodcastSearchResults,
   splitPodcastSearchMatch,
 } from "../.tmp/visualizer-tests/utils/podcastDiscovery.js";
@@ -39,12 +42,60 @@ test("podcast search history rejects invalid containers and supports a bounded c
   assert.deepEqual(normalizePodcastSearchHistory(null), []);
   assert.deepEqual(normalizePodcastSearchHistory("科技"), []);
   assert.deepEqual(normalizePodcastSearchHistory({ 0: "科技" }), []);
-  assert.deepEqual(normalizePodcastSearchHistory(["甲", "乙", "丙"], 2), [
-    "甲",
-    "乙",
+  assert.deepEqual(normalizePodcastSearchHistory(["商业", "科技", "人文"], 2), [
+    "商业",
+    "科技",
   ]);
-  assert.deepEqual(normalizePodcastSearchHistory(["甲"], 0), []);
-  assert.deepEqual(normalizePodcastSearchHistory(["甲"], -1), []);
+  assert.deepEqual(normalizePodcastSearchHistory(["商业"], 0), []);
+  assert.deepEqual(normalizePodcastSearchHistory(["商业"], -1), []);
+});
+
+test("podcast search history ignores IME fragments and other one-character terms", () => {
+  assert.equal(isRememberedPodcastSearchTerm("张"), false);
+  assert.equal(isRememberedPodcastSearchTerm(" 天 "), false);
+  assert.equal(isRememberedPodcastSearchTerm("张天"), true);
+  assert.deepEqual(
+    normalizePodcastSearchHistory(["张", " 天 ", "张天", "a", "tech"]),
+    ["张天", "tech"],
+  );
+  assert.deepEqual(addPodcastSearchHistory(["科技"], "张"), ["科技"]);
+});
+
+test("podcast search commit is blocked during IME composition and the confirm grace window", () => {
+  assert.equal(shouldBlockPodcastSearchCommit({
+    composing: true,
+    ignoreSubmit: false,
+  }), true);
+  assert.equal(shouldBlockPodcastSearchCommit({
+    composing: false,
+    ignoreSubmit: true,
+  }), true);
+  assert.equal(shouldBlockPodcastSearchCommit({
+    composing: false,
+    ignoreSubmit: false,
+    isComposing: true,
+  }), true);
+  assert.equal(shouldBlockPodcastSearchCommit({
+    composing: false,
+    ignoreSubmit: false,
+    keyCode: 229,
+  }), true);
+  assert.equal(shouldBlockPodcastSearchCommit({
+    composing: false,
+    ignoreSubmit: false,
+    isComposing: false,
+    keyCode: 13,
+  }), false);
+});
+
+test("podcast search history suggestions stay hidden until a query can still match another term", () => {
+  const history = ["声动早咖啡", "科技", "Business"];
+  assert.deepEqual(filterPodcastSearchHistory(history, ""), history);
+  assert.deepEqual(filterPodcastSearchHistory(history, "  "), history);
+  assert.deepEqual(filterPodcastSearchHistory(history, "声动"), ["声动早咖啡"]);
+  assert.deepEqual(filterPodcastSearchHistory(history, "声动早咖啡"), []);
+  assert.deepEqual(filterPodcastSearchHistory(history, "BUSI"), ["Business"]);
+  assert.deepEqual(filterPodcastSearchHistory(null, "科技"), []);
 });
 
 test("adding podcast search history moves a term to the front without case variants", () => {

@@ -1,4 +1,6 @@
 const DEFAULT_PODCAST_SEARCH_HISTORY_LIMIT = 6;
+export const PODCAST_SEARCH_HISTORY_MIN_CHARS = 2;
+export const PODCAST_SEARCH_COMPOSITION_GRACE_MS = 80;
 
 export type PodcastDiscoverySort = "relevance" | "recent" | "episodes";
 
@@ -16,6 +18,26 @@ function searchHistoryKey(term: string): string {
   return term.toLocaleLowerCase();
 }
 
+export function podcastSearchTermCharCount(term: string): number {
+  return Array.from(term).length;
+}
+
+export function isRememberedPodcastSearchTerm(term: string): boolean {
+  return podcastSearchTermCharCount(term.trim()) >= PODCAST_SEARCH_HISTORY_MIN_CHARS;
+}
+
+export function shouldBlockPodcastSearchCommit(input: {
+  composing: boolean;
+  ignoreSubmit: boolean;
+  isComposing?: boolean;
+  keyCode?: number;
+}): boolean {
+  return input.composing
+    || input.ignoreSubmit
+    || Boolean(input.isComposing)
+    || input.keyCode === 229;
+}
+
 export function normalizePodcastSearchHistory(
   input: unknown,
   limit = DEFAULT_PODCAST_SEARCH_HISTORY_LIMIT,
@@ -31,6 +53,7 @@ export function normalizePodcastSearchHistory(
     if (typeof value !== "string") continue;
     const term = value.trim();
     if (!term) continue;
+    if (!isRememberedPodcastSearchTerm(term)) continue;
 
     const key = searchHistoryKey(term);
     if (seen.has(key)) continue;
@@ -48,6 +71,19 @@ export function addPodcastSearchHistory(
 ): string[] {
   const values = Array.isArray(history) ? history : [];
   return normalizePodcastSearchHistory([term, ...values], limit);
+}
+
+export function filterPodcastSearchHistory(
+  history: unknown,
+  query: unknown,
+): string[] {
+  const terms = normalizePodcastSearchHistory(history);
+  const needle = typeof query === "string" ? query.trim().toLocaleLowerCase() : "";
+  if (!needle) return terms;
+  return terms.filter((term) => {
+    const haystack = term.toLocaleLowerCase();
+    return haystack.includes(needle) && haystack !== needle;
+  });
 }
 
 function validSortNumber(value: unknown): number | null {
