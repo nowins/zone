@@ -46,6 +46,14 @@ fn legacy_entity_links_are_migrated_for_field_merging() {
         linked_at INTEGER NOT NULL,
         PRIMARY KEY(track_id, kind)
       );
+      INSERT INTO metadata_entities (
+        id, kind, display_name, provider_id, provider_name, source_path, confidence, updated_at
+      ) VALUES (
+        'legacy-artist', 'artist', '旧艺术家', 'local-sidecar', '本地补充文件',
+        'artist.zone.json', 100, 1
+      );
+      INSERT INTO metadata_entity_links (track_id, kind, entity_id, linked_at)
+        VALUES ('track-1', 'artist', 'legacy-artist', 1);
       ",
     )
     .unwrap();
@@ -70,6 +78,38 @@ fn legacy_entity_links_are_migrated_for_field_merging() {
   );
 
   drop(statement);
+  let surviving_links: i64 = connection
+    .query_row(
+      "SELECT COUNT(*) FROM metadata_entity_links WHERE entity_id = 'legacy-artist'",
+      [],
+      |row| row.get(0),
+    )
+    .unwrap();
+  assert_eq!(surviving_links, 1);
+  connection
+    .execute_batch(
+      "
+      INSERT INTO metadata_entities (
+        id, kind, display_name, provider_id, provider_name, source_path, confidence, updated_at
+      ) VALUES (
+        'online-artist', 'artist', '在线艺术家', 'netease-music', '网易云音乐',
+        'https://music.163.com/artist?id=1', 100, 2
+      );
+      INSERT INTO metadata_entity_links (track_id, kind, entity_id, linked_at)
+        VALUES ('track-1', 'artist', 'online-artist', 2)
+        ON CONFLICT(track_id, kind, entity_id) DO UPDATE SET
+          linked_at = excluded.linked_at;
+      ",
+    )
+    .unwrap();
+  let merged_links: i64 = connection
+    .query_row(
+      "SELECT COUNT(*) FROM metadata_entity_links WHERE track_id = 'track-1' AND kind = 'artist'",
+      [],
+      |row| row.get(0),
+    )
+    .unwrap();
+  assert_eq!(merged_links, 2);
   drop(connection);
   fs::remove_dir_all(root).unwrap();
 }

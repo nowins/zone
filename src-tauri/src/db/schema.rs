@@ -319,7 +319,7 @@ pub(crate) fn ensure_metadata_schema(connection: &Connection) -> Result<(), Stri
         kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist')),
         entity_id TEXT NOT NULL REFERENCES metadata_entities(id) ON DELETE CASCADE,
         linked_at INTEGER NOT NULL,
-        PRIMARY KEY(track_id, kind)
+        PRIMARY KEY(track_id, kind, entity_id)
       );
 
       CREATE TABLE IF NOT EXISTS metadata_fields (
@@ -354,13 +354,81 @@ pub(crate) fn ensure_metadata_schema(connection: &Connection) -> Result<(), Stri
         updated_at INTEGER NOT NULL
       );
 
+      ",
+    )
+    .map_err(|error| format!("无法初始化音乐信息表：{error}"))?;
+  ensure_metadata_entity_links_field_merge_migration(connection)?;
+  connection
+    .execute_batch(
+      "
       CREATE INDEX IF NOT EXISTS metadata_entity_links_entity
         ON metadata_entity_links(entity_id);
+      CREATE INDEX IF NOT EXISTS metadata_entity_links_track_kind
+        ON metadata_entity_links(track_id, kind);
       CREATE INDEX IF NOT EXISTS metadata_fields_entity
         ON metadata_fields(entity_id);
       ",
     )
-    .map_err(|error| format!("无法初始化音乐信息表：{error}"))?;
+    .map_err(|error| format!("无法初始化音乐信息索引：{error}"))?;
+  Ok(())
+}
+
+// Field-level metadata merging keeps one link per provider entity. Databases
+// created by the first unified zone.sqlite release still used the older
+// (track_id, kind) key, which makes the three-column UPSERT conflict target
+// invalid and prevents every metadata candidate from being applied.
+fn ensure_metadata_entity_links_field_merge_migration(
+  connection: &Connection,
+) -> Result<(), String> {
+  let mut statement = connection
+    .prepare("PRAGMA table_info(metadata_entity_links)")
+    .map_err(|error| format!("无法检查音乐信息关联表结构：{error}"))?;
+  let columns = statement
+    .query_map([], |row| {
+      Ok((row.get::<_, String>(1)?, row.get::<_, u32>(5)?))
+    })
+    .map_err(|error| format!("无法读取音乐信息关联表结构：{error}"))?;
+  let mut primary_key = columns
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|error| format!("无法解析音乐信息关联表结构：{error}"))?
+    .into_iter()
+    .filter(|(_, position)| *position > 0)
+    .collect::<Vec<_>>();
+  primary_key.sort_by_key(|(_, position)| *position);
+  let primary_key = primary_key
+    .into_iter()
+    .map(|(name, _)| name)
+    .collect::<Vec<_>>();
+  if primary_key == ["track_id", "kind", "entity_id"] {
+    return Ok(());
+  }
+  if primary_key != ["track_id", "kind"] {
+    return Err(format!(
+      "音乐信息关联表主键结构无法迁移：{}",
+      primary_key.join(", ")
+    ));
+  }
+  drop(statement);
+
+  connection
+    .execute_batch(
+      "
+      BEGIN IMMEDIATE;
+      CREATE TABLE metadata_entity_links_field_merge (
+        track_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('track', 'album', 'artist')),
+        entity_id TEXT NOT NULL REFERENCES metadata_entities(id) ON DELETE CASCADE,
+        linked_at INTEGER NOT NULL,
+        PRIMARY KEY(track_id, kind, entity_id)
+      );
+      INSERT INTO metadata_entity_links_field_merge (track_id, kind, entity_id, linked_at)
+        SELECT track_id, kind, entity_id, linked_at FROM metadata_entity_links;
+      DROP TABLE metadata_entity_links;
+      ALTER TABLE metadata_entity_links_field_merge RENAME TO metadata_entity_links;
+      COMMIT;
+      ",
+    )
+    .map_err(|error| format!("无法迁移音乐信息字段合并结构：{error}"))?;
   Ok(())
 }
 
