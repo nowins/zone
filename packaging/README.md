@@ -2,20 +2,14 @@
 
 三条产物线，共用同一份 release 构建：
 
-| 产物 | 命令 | 输出 | 用途 |
-| --- | --- | --- | --- |
-| NSIS 安装器 | `npm run tauri:build` | `src-tauri/target/release/bundle/nsis/Zone_<ver>_x64-setup.exe` | 官网/网盘分发，默认路线 |
-| MSI 安装器 | `npm run tauri:build`（同上，一次出两个） | `src-tauri/target/release/bundle/msi/Zone_<ver>_x64_en-US.msi` | 企业部署等需要 MSI 的场景 |
-| 商店 NSIS（自包含） | `npm run tauri:build:store` | 同 NSIS 路径（会覆盖普通版） | 商店路线 A：Win32 安装包上架 |
-| MSIX 包 | `npm run package:msix` | `packaging/dist/Zone_<ver>.0_x64.msix` | 商店路线 B / 旁加载测试 |
 
 注意：普通 NSIS 与商店 NSIS 输出同名，先后构建会互相覆盖，发布前按需重新构建。
 
 ## 标准 Windows 安装
 
-`npm run tauri:build` 一次产出 NSIS + MSI：
+`npm run tauri:build` 产出 NSIS 安装器（`targets` 只保留 NSIS，不维护 MSI）：
 
-- NSIS：当前用户安装（免管理员）、中英双语跟随系统、lzma 压缩、开始菜单项。
+- 当前用户安装（免管理员）、中英双语跟随系统、lzma 压缩、开始菜单项。
 - WebView2 使用在线引导（`embedBootstrapper`），安装包体积小，首次安装需联网。
 - 版本号取自 `src-tauri/tauri.conf.json` 的 `version`（三段式）。发版时同步修改该文件与 `src-tauri/Cargo.toml`。
 

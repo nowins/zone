@@ -42,7 +42,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 
 ## 打包与发布
 
-- `npm run tauri:build`：产出标准 NSIS + MSI 安装器（当前用户安装、中英双语、WebView2 在线引导）。
+- `npm run tauri:build`：产出标准 NSIS 安装器（当前用户安装、中英双语、WebView2 在线引导）；不维护 MSI（面向企业批量部署，对本品无需求）。
 - `npm run tauri:build:store`：叠加 `src-tauri/tauri.microsoftstore.conf.json`（WebView2 改为 offlineInstaller），产出商店路线 A 的自包含安装器；与普通 NSIS 输出同名会互相覆盖。
 - `npm run package:msix`：经 `packaging/build-msix.ps1`（需 winapp CLI）产出商店路线 B / 旁加载用 MSIX；版本按 tauri.conf.json 三段转四段盖章，只改 staging 副本。
 - 图标唯一事实源是仓库根 `app-icon.png`；改动后 `npx tauri icon` 重新生成 `src-tauri/icons/`。MSIX 资产在 `packaging/Assets/`。
