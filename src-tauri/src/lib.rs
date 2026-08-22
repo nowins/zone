@@ -269,6 +269,7 @@ pub fn run() {
       podcast::podcast_delete_episode_download,
       podcast::podcast_delete_episode_downloads,
       podcast::podcast_clear_completed_downloads,
+      podcast::podcast_cache_artwork,
       podcast::podcast_save_progress,
     ])
     .run(tauri::generate_context!())

@@ -522,6 +522,15 @@ pub async fn podcast_clear_completed_downloads(
 }
 
 #[tauri::command]
+pub async fn podcast_cache_artwork(
+  state: State<'_, PodcastState>,
+  url: String,
+) -> Result<Option<String>, String> {
+  state.ensure_ready()?;
+  cache_podcast_artwork_file(state.artwork_cache_dir.clone(), url, false).await
+}
+
+#[tauri::command]
 pub async fn podcast_save_progress(
   state: State<'_, PodcastState>,
   episode_id: String,

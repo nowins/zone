@@ -75,6 +75,7 @@ const PODCAST_COMMANDS = [
   "podcast_list_related_episodes",
   "podcast_get_episode_detail",
   "podcast_get_episode_chapters",
+  "podcast_cache_artwork",
   "podcast_set_episode_saved",
   "podcast_list_saved_episodes",
   "podcast_set_episode_played",
@@ -1021,6 +1022,34 @@ test("podcast now-playing queue defaults closed and behaves as an accessible sid
   );
 });
 
+test("system media uses cached podcast artwork and later-listen as favorite", () => {
+  includes(
+    appSource,
+    /invoke<string \| null>\("podcast_cache_artwork",\s*\{\s*url:\s*artworkUrl\s*\}/,
+    "playing podcasts must cache artwork to a local path for the taskbar",
+  );
+  includes(
+    appSource,
+    /coverPath:\s*podcastArtworkCoverPath/,
+    "system media must use the cached podcast artwork path",
+  );
+  includes(
+    appSource,
+    /isFavorite:\s*activePodcastEpisode \? Boolean\(activePodcastEpisode\.saved\)/,
+    "the taskbar heart must reflect later-listen for podcasts",
+  );
+  includes(
+    appSource,
+    /if \(activePodcastEpisode\) void toggleActivePodcastSaved\(\)/,
+    "the taskbar heart must toggle later-listen for podcasts",
+  );
+  excludes(
+    appSource,
+    /activePodcastEpisode \? false : isActiveTrackFavorite/,
+    "podcasts must not hard-disable the taskbar favorite button",
+  );
+});
+
 test("remote podcast artwork is isolated behind the bounded Rust proxy", () => {
   includes(
     podcastArtworkSource,
@@ -1046,6 +1075,11 @@ test("remote podcast artwork is isolated behind the bounded Rust proxy", () => {
     podcastNowPlayingSource,
     /podcastArtworkSrc\(\s*artworkUrl\s*\)/,
     "the full-screen podcast artwork must be proxied",
+  );
+  includes(
+    rustEntrySource,
+    /podcast::podcast_cache_artwork/,
+    "Tauri must register the podcast artwork disk-cache command",
   );
   excludes(
     `${podcastViewSource}\n${podcastPlayerBarSource}\n${podcastNowPlayingSource}`,

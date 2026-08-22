@@ -2,6 +2,8 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use reqwest::header::{self, HeaderMap};
 use reqwest::{StatusCode, Url};
 use std::collections::{HashMap, VecDeque};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use tauri::http::{Method, Request, Response};
 use super::*;
@@ -94,6 +96,111 @@ fn remember_podcast_artwork(key: String, content_type: &str, bytes: &[u8]) {
   }
 }
 
+struct FetchedPodcastArtwork {
+  content_type: String,
+  bytes: Vec<u8>,
+}
+
+fn podcast_artwork_cache_key(url: &Url, allow_private_network: bool) -> String {
+  format!("{}|{url}", u8::from(allow_private_network))
+}
+
+fn podcast_artwork_extension(content_type: &str) -> Option<&'static str> {
+  match content_type {
+    "image/jpeg" => Some("jpg"),
+    "image/png" => Some("png"),
+    "image/gif" => Some("gif"),
+    "image/webp" => Some("webp"),
+    _ => None,
+  }
+}
+
+fn podcast_artwork_file_stem(url: &str) -> String {
+  hash_identifier("podcast-artwork", &[url])
+}
+
+fn existing_podcast_artwork_file(cache_dir: &Path, url: &str) -> Option<PathBuf> {
+  let stem = podcast_artwork_file_stem(url);
+  let entries = fs::read_dir(cache_dir).ok()?;
+  entries.filter_map(|entry| entry.ok()).map(|entry| entry.path()).find(|path| {
+    path.file_stem().and_then(|value| value.to_str()) == Some(stem.as_str())
+      && matches!(
+        path.extension().and_then(|value| value.to_str()),
+        Some("jpg" | "png" | "gif" | "webp")
+      )
+  })
+}
+
+fn write_podcast_artwork_file(
+  cache_dir: &Path,
+  url: &str,
+  content_type: &str,
+  bytes: &[u8],
+) -> Result<PathBuf, String> {
+  let extension = podcast_artwork_extension(content_type)
+    .ok_or_else(|| "播客封面来源返回了不支持的图片类型".to_string())?;
+  fs::create_dir_all(cache_dir).map_err(|error| format!("无法创建播客封面缓存目录：{error}"))?;
+  let path = cache_dir.join(format!("{}.{extension}", podcast_artwork_file_stem(url)));
+  if path.exists() {
+    return Ok(path);
+  }
+  let temp_path = cache_dir.join(format!("{}.{extension}.part", podcast_artwork_file_stem(url)));
+  fs::write(&temp_path, bytes).map_err(|error| format!("无法写入播客封面缓存：{error}"))?;
+  if let Err(error) = fs::rename(&temp_path, &path) {
+    let _ = fs::remove_file(&temp_path);
+    return Err(format!("无法保存播客封面缓存：{error}"));
+  }
+  Ok(path)
+}
+
+async fn fetch_podcast_artwork_bytes(
+  url: Url,
+  allow_private_network: bool,
+) -> Result<FetchedPodcastArtwork, String> {
+  let cache_key = podcast_artwork_cache_key(&url, allow_private_network);
+  if let Some((content_type, bytes)) = cached_podcast_artwork(&cache_key) {
+    return Ok(FetchedPodcastArtwork { content_type, bytes });
+  }
+  let public_response = send_public_get_with_policy(
+    url,
+    PODCAST_ARTWORK_TIMEOUT,
+    None,
+    allow_private_network,
+  )
+  .await?;
+  let content_type = podcast_artwork_content_type(public_response.response.headers())?;
+  let bytes = read_limited(
+    public_response.response,
+    PODCAST_ARTWORK_RESPONSE_LIMIT,
+    "播客封面",
+  )
+  .await?;
+  if !podcast_artwork_magic_matches(&content_type, &bytes) {
+    return Err("播客封面内容格式无效".to_string());
+  }
+  remember_podcast_artwork(cache_key, &content_type, &bytes);
+  Ok(FetchedPodcastArtwork { content_type, bytes })
+}
+
+pub(crate) async fn cache_podcast_artwork_file(
+  cache_dir: PathBuf,
+  artwork_url: String,
+  allow_private_network: bool,
+) -> Result<Option<String>, String> {
+  let url_value = artwork_url.trim();
+  if url_value.is_empty() {
+    return Ok(None);
+  }
+  let url = validate_url_shape_with_policy(url_value, allow_private_network)?;
+  let cache_name = url.as_str().to_string();
+  if let Some(path) = existing_podcast_artwork_file(&cache_dir, &cache_name) {
+    return Ok(Some(path.to_string_lossy().to_string()));
+  }
+  let fetched = fetch_podcast_artwork_bytes(url, allow_private_network).await?;
+  let path = write_podcast_artwork_file(&cache_dir, &cache_name, &fetched.content_type, &fetched.bytes)?;
+  Ok(Some(path.to_string_lossy().to_string()))
+}
+
 pub async fn serve_podcast_artwork_protocol(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
   serve_podcast_artwork_protocol_with_network_policy(request, false).await
 }
@@ -115,48 +222,12 @@ async fn serve_podcast_artwork_protocol_with_network_policy(
     Ok(url) => url,
     Err(error) => return podcast_artwork_text_response(StatusCode::BAD_REQUEST, &error),
   };
-  let cache_key = format!("{}|{url}", u8::from(allow_private_network));
-  if let Some((content_type, bytes)) = cached_podcast_artwork(&cache_key) {
-    let content_length = bytes.len() as u64;
-    let body = if request.method() == Method::HEAD {
-      Vec::new()
-    } else {
-      bytes
-    };
-    return podcast_artwork_response_builder(StatusCode::OK, &content_type, content_length)
-      .body(body)
-      .unwrap();
-  }
-  let public_response = match send_public_get_with_policy(
-    url,
-    PODCAST_ARTWORK_TIMEOUT,
-    None,
-    allow_private_network,
-  )
-  .await
-  {
-    Ok(response) => response,
+  let fetched = match fetch_podcast_artwork_bytes(url, allow_private_network).await {
+    Ok(fetched) => fetched,
     Err(error) => return podcast_artwork_text_response(StatusCode::BAD_GATEWAY, &error),
   };
-  let content_type = match podcast_artwork_content_type(public_response.response.headers()) {
-    Ok(content_type) => content_type,
-    Err(error) => return podcast_artwork_text_response(StatusCode::BAD_GATEWAY, &error),
-  };
-  let bytes = match read_limited(
-    public_response.response,
-    PODCAST_ARTWORK_RESPONSE_LIMIT,
-    "播客封面",
-  )
-  .await
-  {
-    Ok(bytes) => bytes,
-    Err(error) => return podcast_artwork_text_response(StatusCode::BAD_GATEWAY, &error),
-  };
-  if !podcast_artwork_magic_matches(&content_type, &bytes) {
-    return podcast_artwork_text_response(StatusCode::BAD_GATEWAY, "播客封面内容格式无效");
-  }
-
-  remember_podcast_artwork(cache_key, &content_type, &bytes);
+  let content_type = fetched.content_type;
+  let bytes = fetched.bytes;
   let content_length = bytes.len() as u64;
   let body = if request.method() == Method::HEAD {
     Vec::new()
@@ -418,6 +489,52 @@ mod tests {
     );
     assert_eq!(response.body(), &image);
   }
+
+  #[tokio::test]
+  async fn podcast_artwork_disk_cache_reuses_validated_files_and_skips_repeat_fetches() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind artwork server");
+    let address = listener.local_addr().expect("artwork server address");
+    let image = b"\x89PNG\r\n\x1a\nzone-artwork-disk".to_vec();
+    let server_image = image.clone();
+    let server = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.expect("accept single request");
+      let mut request = vec![0u8; 8_192];
+      let _ = stream.read(&mut request).await.expect("read request");
+      let headers = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        server_image.len(),
+      );
+      stream.write_all(headers.as_bytes()).await.expect("write headers");
+      stream.write_all(&server_image).await.expect("write body");
+      stream.shutdown().await.expect("shutdown response");
+    });
+    let directory = test_directory("artwork-disk-cache");
+    let url = format!("http://{address}/disk-cover.png");
+    let first = cache_podcast_artwork_file(directory.clone(), url.clone(), true)
+      .await
+      .expect("cache artwork")
+      .expect("cached path");
+    server.await.expect("server task");
+    let first_path = PathBuf::from(&first);
+    assert_eq!(first_path.extension().and_then(|value| value.to_str()), Some("png"));
+    assert_eq!(fs::read(&first_path).expect("read cached artwork"), image);
+
+    let second = cache_podcast_artwork_file(directory.clone(), url, true)
+      .await
+      .expect("reuse cached artwork")
+      .expect("cached path");
+    assert_eq!(second, first);
+
+    let private = cache_podcast_artwork_file(
+      directory.clone(),
+      "http://127.0.0.1/router.png".to_string(),
+      false,
+    )
+    .await;
+    assert!(private.is_err());
+    fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
   #[tokio::test]
   #[ignore = "requires ZONE_PODCAST_LIVE=1 and public internet access"]
   async fn apple_cn_artwork_proxy_live_smoke() {

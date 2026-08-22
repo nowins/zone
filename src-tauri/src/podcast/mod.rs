@@ -22,6 +22,7 @@ mod util;
 pub(crate) mod test_support;
 
 pub use artwork_protocol::serve_podcast_artwork_protocol;
+pub(crate) use artwork_protocol::cache_podcast_artwork_file;
 pub use commands::*;
 pub use stream_protocol::serve_podcast_stream_protocol;
 pub use types::*;
@@ -87,6 +88,7 @@ pub(crate) const USER_AGENT: &str = "Zone/0.1 (local podcast player)";
 pub struct PodcastState {
   db_path: PathBuf,
   downloads_dir: PathBuf,
+  artwork_cache_dir: PathBuf,
   active_downloads: Arc<Mutex<HashSet<String>>>,
   active_refreshes: Arc<Mutex<HashSet<String>>>,
   refresh_semaphore: Arc<tokio::sync::Semaphore>,
@@ -99,14 +101,28 @@ impl PodcastState {
       .path()
       .app_data_dir()
       .map_err(|error| format!("无法定位播客数据目录：{error}"))?;
-    Self::initialize_at(&app_data_dir)
+    let artwork_cache_dir = app
+      .path()
+      .app_cache_dir()
+      .map(|dir| dir.join("podcast-artwork"))
+      .unwrap_or_else(|_| app_data_dir.join("podcast-artwork"));
+    Self::initialize_at_with_artwork_cache(&app_data_dir, artwork_cache_dir)
   }
 
+  #[cfg(test)]
   pub(crate) fn initialize_at(app_data_dir: &Path) -> Result<Self, String> {
+    Self::initialize_at_with_artwork_cache(app_data_dir, app_data_dir.join("podcast-artwork"))
+  }
+
+  pub(crate) fn initialize_at_with_artwork_cache(
+    app_data_dir: &Path,
+    artwork_cache_dir: PathBuf,
+  ) -> Result<Self, String> {
     fs::create_dir_all(app_data_dir).map_err(|error| format!("无法创建播客数据目录：{error}"))?;
     let db_path = crate::db::initialize_zone_database(app_data_dir)?;
     let downloads_dir = podcast_downloads_dir_for_db(&db_path);
     fs::create_dir_all(&downloads_dir).map_err(|error| format!("无法创建播客下载目录：{error}"))?;
+    fs::create_dir_all(&artwork_cache_dir).map_err(|error| format!("无法创建播客封面缓存目录：{error}"))?;
     let _ = open_database(&db_path)?;
     if let Err(error) = sweep_orphan_download_files(&db_path, &downloads_dir) {
       eprintln!("[podcast] 无法清理播客遗留下载文件：{error}");
@@ -114,6 +130,7 @@ impl PodcastState {
     Ok(Self {
       db_path,
       downloads_dir,
+      artwork_cache_dir,
       active_downloads: Arc::new(Mutex::new(HashSet::new())),
       active_refreshes: Arc::new(Mutex::new(HashSet::new())),
       refresh_semaphore: Arc::new(tokio::sync::Semaphore::new(PODCAST_REFRESH_CONCURRENCY)),
@@ -125,6 +142,7 @@ impl PodcastState {
     Self {
       db_path: PathBuf::new(),
       downloads_dir: PathBuf::new(),
+      artwork_cache_dir: PathBuf::new(),
       active_downloads: Arc::new(Mutex::new(HashSet::new())),
       active_refreshes: Arc::new(Mutex::new(HashSet::new())),
       refresh_semaphore: Arc::new(tokio::sync::Semaphore::new(PODCAST_REFRESH_CONCURRENCY)),

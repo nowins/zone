@@ -597,6 +597,28 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [restored, homePins]);
 
+  const [podcastArtworkCoverPath, setPodcastArtworkCoverPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    const artworkUrl = activePodcastEpisode?.artworkUrl ?? null;
+    if (!artworkUrl) {
+      setPodcastArtworkCoverPath(null);
+      return;
+    }
+    let cancelled = false;
+    void invoke<string | null>("podcast_cache_artwork", { url: artworkUrl })
+      .then((coverPath) => {
+        if (!cancelled) setPodcastArtworkCoverPath(coverPath ?? null);
+      })
+      .catch((error) => {
+        if (!cancelled) setPodcastArtworkCoverPath(null);
+        if (import.meta.env.DEV) console.warn("[podcast] cache artwork failed", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activePodcastEpisode?.artworkUrl]);
+
   const systemMediaItem = useMemo(() => {
     if (!podcastSessionHydrated) return null;
     if (activePodcastEpisode) {
@@ -605,7 +627,7 @@ export default function App() {
         title: activePodcastEpisode.title,
         artist: activePodcastEpisode.podcastTitle,
         album: "播客",
-        coverPath: null,
+        coverPath: podcastArtworkCoverPath,
       };
     }
     if (!activeTrack) return null;
@@ -616,7 +638,7 @@ export default function App() {
       album: activeTrack.album,
       coverPath: activeTrack.cover_path ?? null,
     };
-  }, [activePodcastEpisode, activeTrack, podcastSessionHydrated]);
+  }, [activePodcastEpisode, activeTrack, podcastArtworkCoverPath, podcastSessionHydrated]);
 
   const isActiveTrackFavorite = activeTrack ? favoriteTrackIds.has(activeTrack.id) : false;
 
@@ -769,7 +791,7 @@ export default function App() {
       : canMoveNext,
     duration,
     position: progress,
-    isFavorite: activePodcastEpisode ? false : isActiveTrackFavorite,
+    isFavorite: activePodcastEpisode ? Boolean(activePodcastEpisode.saved) : isActiveTrackFavorite,
     onPlay: () => {
       if (audioRef.current?.paused) togglePlay();
     },
@@ -787,7 +809,8 @@ export default function App() {
     },
     onSeek: seek,
     onFavorite: () => {
-      if (!activePodcastEpisode) toggleFavorite();
+      if (activePodcastEpisode) void toggleActivePodcastSaved();
+      else toggleFavorite();
     },
   });
 
