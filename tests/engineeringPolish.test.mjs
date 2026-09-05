@@ -21,6 +21,12 @@ test("visualizer sampling pauses when document is hidden", () => {
   assert.ok(mosaic.includes("visibilitychange"));
 });
 
+test("canvas frame loops restart after the StrictMode cleanup cycle", () => {
+  const clearsCancelledFrame = /cancelAnimationFrame\(frameRef\.current\);[\s\S]{0,80}frameRef\.current = null;/;
+  assert.match(glow, clearsCancelledFrame);
+  assert.match(mosaic, clearsCancelledFrame);
+});
+
 test("cover selection prefers artist art and bounds image cache", () => {
   assert.ok(wall.includes("pickCoverCandidates"));
   assert.ok(mosaic.includes("MAX_IMAGE_CACHE"));

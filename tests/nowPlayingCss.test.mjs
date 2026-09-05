@@ -236,8 +236,13 @@ test("mosaic canvas animates a multi-color field instead of a brightness sweep",
   assert.ok(!mosaicCanvasSource.includes("sepia(0.66)"));
 });
 
-test("mosaic waits for decoded covers and reveals without text placeholders", () => {
-  assert.ok(mosaicCanvasSource.includes("await preloadWallImages(wallAlbums)"));
+test("mosaic reveals immediately while covers decode progressively without text placeholders", () => {
+  assert.ok(!mosaicCanvasSource.includes("await preloadWallImages(wallAlbums)"));
+  assert.ok(mosaicCanvasSource.includes("preloadWallImagesProgressively(wallAlbums)"));
+  assert.ok(mosaicCanvasSource.includes("WALL_IMAGE_LOAD_CONCURRENCY"));
+  assert.ok(mosaicCanvasSource.includes("withImageLoadSlot"));
+  assert.ok(mosaicCanvasSource.includes("MAX_WALL_IMAGE_EDGE"));
+  assert.ok(mosaicCanvasSource.includes("window.setTimeout(() => finish(false), WALL_PRELOAD_TIMEOUT_MS)"));
   assert.ok(mosaicCanvasSource.includes("image.decode()"));
   assert.ok(mosaicCanvasSource.includes("mosaicTileRevealAmount(tile.seed"));
   assert.ok(mosaicCanvasSource.includes("wallRevealStartedAtRef.current"));

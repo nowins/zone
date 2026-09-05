@@ -20,8 +20,13 @@ import {
   type RgbColor,
 } from "../utils/nowPlayingCanvas";
 
-const imageCache = new Map<string, HTMLImageElement>();
+const imageCache = new Map<string, HTMLCanvasElement>();
+const pendingImageLoads = new Map<string, Promise<HTMLCanvasElement | null>>();
 const MAX_IMAGE_CACHE = 96;
+const MAX_WALL_IMAGE_EDGE = 384;
+const WALL_IMAGE_LOAD_CONCURRENCY = 4;
+const imageLoadWaiters: Array<() => void> = [];
+let activeImageLoadCount = 0;
 const FALLBACK_TINT: RgbColor = { r: 62, g: 50, b: 44 };
 const FALLBACK_PALETTE = createMosaicColorPalette(FALLBACK_TINT);
 const WALL_PRELOAD_TIMEOUT_MS = 1_600;
@@ -69,26 +74,17 @@ export function NowPlayingMosaicCanvas({
   }, [isPlaying]);
 
   useEffect(() => {
-    let cancelled = false;
-    const prepareWall = async () => {
-      await preloadWallImages(wallAlbums);
-      if (cancelled) return;
+    const isFirstWall = albumsRef.current.length === 0;
+    albumsRef.current = wallAlbums;
+    flipRef.current = createMosaicFlipState();
+    const { width, height } = sizeRef.current;
+    tilesRef.current = width > 0 && height > 0
+      ? buildCanvasMosaicTiles(width, height, wallAlbums)
+      : [];
+    wallRevealStartedAtRef.current = isFirstWall ? performance.now() : Number.NEGATIVE_INFINITY;
+    if (isFirstWall) onInitialRevealStart?.();
 
-      const isFirstWall = albumsRef.current.length === 0;
-      albumsRef.current = wallAlbums;
-      flipRef.current = createMosaicFlipState();
-      const { width, height } = sizeRef.current;
-      tilesRef.current = width > 0 && height > 0
-        ? buildCanvasMosaicTiles(width, height, wallAlbums)
-        : [];
-      wallRevealStartedAtRef.current = isFirstWall ? performance.now() : Number.NEGATIVE_INFINITY;
-      if (isFirstWall) onInitialRevealStart?.();
-    };
-
-    void prepareWall();
-    return () => {
-      cancelled = true;
-    };
+    return preloadWallImagesProgressively(wallAlbums);
   }, [onInitialRevealStart, wallAlbums]);
 
   useEffect(() => {
@@ -101,23 +97,19 @@ export function NowPlayingMosaicCanvas({
       return;
     }
 
-    const image = getCachedImage(activeTrack.cover_path);
-    const extract = () => {
+    let cancelled = false;
+    const extract = (image: CanvasImageSource | null) => {
+      if (cancelled) return;
       const palette = extractColorPalette(image);
       targetPaletteRef.current = palette ?? clonePalette(FALLBACK_PALETTE);
     };
 
-    if (image.complete) {
-      if (image.naturalWidth > 0) extract();
-      else targetPaletteRef.current = clonePalette(FALLBACK_PALETTE);
-      return;
-    }
-
-    image.addEventListener("load", extract, { once: true });
-    image.addEventListener("error", () => {
-      targetPaletteRef.current = clonePalette(FALLBACK_PALETTE);
-    }, { once: true });
-    return () => image.removeEventListener("load", extract);
+    const cached = imageCache.get(activeTrack.cover_path);
+    if (cached) extract(cached);
+    else void loadWallImage(activeTrack.cover_path).then(extract);
+    return () => {
+      cancelled = true;
+    };
   }, [activeTrack?.cover_path]);
 
   useEffect(() => {
@@ -149,34 +141,40 @@ export function NowPlayingMosaicCanvas({
     if (!canvas || !context) return;
 
     const draw = (time: number) => {
-      const previousTime = lastTimeRef.current ?? time;
-      const deltaSeconds = Math.min(0.08, Math.max(0.001, (time - previousTime) / 1000));
-      lastTimeRef.current = time;
-      const motionEnabled = motionEnabledRef.current;
-      const frame = getVisualizerFrame();
-      sceneTimeRef.current += deltaSeconds * (motionEnabled ? (isPlayingRef.current ? 1 : 0.1) : 0);
-      paletteRef.current = interpolateMosaicColorPalette(
-        paletteRef.current,
-        targetPaletteRef.current,
-        1 - Math.exp(-deltaSeconds / 1.2),
-      );
-      drawMosaic(
-        context,
-        sizeRef.current,
-        tilesRef.current,
-        albumsRef.current,
-        paletteRef.current,
-        frame.beatPulse,
-        frame.beatPhase,
-        frame.beatConfidence,
-        isPlayingRef.current,
-        flipRef.current,
-        time,
-        sceneTimeRef.current,
-        wallRevealStartedAtRef.current,
-        motionEnabled,
-        colorFieldRendererRef,
-      );
+      try {
+        const previousTime = lastTimeRef.current ?? time;
+        const deltaSeconds = Math.min(0.08, Math.max(0.001, (time - previousTime) / 1000));
+        lastTimeRef.current = time;
+        const motionEnabled = motionEnabledRef.current;
+        const frame = getVisualizerFrame();
+        sceneTimeRef.current += deltaSeconds * (motionEnabled ? (isPlayingRef.current ? 1 : 0.1) : 0);
+        paletteRef.current = interpolateMosaicColorPalette(
+          paletteRef.current,
+          targetPaletteRef.current,
+          1 - Math.exp(-deltaSeconds / 1.2),
+        );
+        drawMosaic(
+          context,
+          sizeRef.current,
+          tilesRef.current,
+          albumsRef.current,
+          paletteRef.current,
+          frame.beatPulse,
+          frame.beatPhase,
+          frame.beatConfidence,
+          isPlayingRef.current,
+          flipRef.current,
+          time,
+          sceneTimeRef.current,
+          wallRevealStartedAtRef.current,
+          motionEnabled,
+          colorFieldRendererRef,
+        );
+      } catch (error) {
+        if (import.meta.env.DEV) console.error("[now-playing:mosaic] draw failed", error);
+        frameRef.current = null;
+        return;
+      }
       if (isDocumentVisible()) {
         frameRef.current = window.requestAnimationFrame(draw);
       } else {
@@ -190,13 +188,21 @@ export function NowPlayingMosaicCanvas({
         frameRef.current = null;
         return;
       }
-      if (!frameRef.current) frameRef.current = window.requestAnimationFrame(draw);
+      if (!frameRef.current) {
+        frameRef.current = window.requestAnimationFrame(draw);
+      }
     };
+    // React StrictMode runs mount effects twice in development. The first
+    // cleanup cancels its pending frame; never let that cancelled request id
+    // make the second setup believe a loop is still alive.
+    if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
     sync();
     document.addEventListener("visibilitychange", sync);
     return () => {
       document.removeEventListener("visibilitychange", sync);
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
       lastTimeRef.current = null;
     };
   }, []);
@@ -385,7 +391,7 @@ function drawTile(
     ? (easedFlip < 0.5 ? flip.fromAlbumIndex : flip.toAlbumIndex)
     : tile.albumIndex;
   const album = albums[albumIndex];
-  const image = album?.coverPath ? getCachedImage(album.coverPath) : null;
+  const image = album?.coverPath ? imageCache.get(album.coverPath) : null;
   const flipScale = isFlipping ? Math.max(0.02, Math.abs(Math.cos(easedFlip * Math.PI))) : 1;
   const flipForeshorten = isFlipping ? 1 - Math.sin(easedFlip * Math.PI) * 0.07 : 1;
   const flipShade = isFlipping ? Math.sin(easedFlip * Math.PI) * 0.5 : 0;
@@ -405,7 +411,7 @@ function drawTile(
   context.fillStyle = "#171717";
   context.fillRect(tile.x, tile.y, tile.width, tile.height);
 
-  if (image?.complete && image.naturalWidth > 0) {
+  if (image && image.width > 0 && image.height > 0) {
     const inheritedAlpha = context.globalAlpha;
     context.globalAlpha = inheritedAlpha * 0.86;
     context.filter = "grayscale(0.92) saturate(0.38) brightness(0.58) contrast(1.1)";
@@ -432,80 +438,156 @@ function drawTile(
   context.restore();
 }
 
-function drawImageCover(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
-  const sourceRatio = image.naturalWidth / image.naturalHeight;
+function drawImageCover(context: CanvasRenderingContext2D, image: HTMLCanvasElement, x: number, y: number, width: number, height: number) {
+  const sourceRatio = image.width / image.height;
   const targetRatio = width / height;
-  let sourceWidth = image.naturalWidth;
-  let sourceHeight = image.naturalHeight;
+  let sourceWidth = image.width;
+  let sourceHeight = image.height;
   let sourceX = 0;
   let sourceY = 0;
 
   if (sourceRatio > targetRatio) {
-    sourceWidth = image.naturalHeight * targetRatio;
-    sourceX = (image.naturalWidth - sourceWidth) / 2;
+    sourceWidth = image.height * targetRatio;
+    sourceX = (image.width - sourceWidth) / 2;
   } else {
-    sourceHeight = image.naturalWidth / targetRatio;
-    sourceY = (image.naturalHeight - sourceHeight) / 2;
+    sourceHeight = image.width / targetRatio;
+    sourceY = (image.height - sourceHeight) / 2;
   }
 
   context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
 }
 
-async function preloadWallImages(albums: AlbumGroup[]) {
+function preloadWallImagesProgressively(albums: AlbumGroup[]) {
   const coverPaths = [...new Set(albums.map((album) => album.coverPath).filter((path): path is string => Boolean(path)))];
-  await Promise.all(coverPaths.map((path) => waitForImage(getCachedImage(path))));
+  let cancelled = false;
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (!cancelled && nextIndex < coverPaths.length) {
+      const path = coverPaths[nextIndex];
+      nextIndex += 1;
+      await loadWallImage(path);
+    }
+  };
+
+  const workerCount = Math.min(WALL_IMAGE_LOAD_CONCURRENCY, coverPaths.length);
+  void Promise.allSettled(Array.from({ length: workerCount }, worker));
+  return () => {
+    cancelled = true;
+  };
 }
 
 function waitForImage(image: HTMLImageElement) {
-  if (image.complete) {
-    if (image.naturalWidth <= 0 || typeof image.decode !== "function") return Promise.resolve();
-    return image.decode().catch(() => undefined);
-  }
-
-  return new Promise<void>((resolve) => {
+  return new Promise<boolean>((resolve) => {
     let timeoutId: number | undefined;
     let settled = false;
-    const finish = () => {
+    const finish = (ready: boolean) => {
       if (settled) return;
       settled = true;
       image.removeEventListener("load", handleLoad);
-      image.removeEventListener("error", finish);
+      image.removeEventListener("error", handleError);
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
-      resolve();
+      resolve(ready);
     };
     const handleLoad = () => {
       if (typeof image.decode !== "function") {
-        finish();
+        finish(image.naturalWidth > 0);
         return;
       }
-      void image.decode().catch(() => undefined).then(finish);
+      void image.decode().then(
+        () => finish(image.naturalWidth > 0),
+        () => finish(false),
+      );
     };
+    const handleError = () => finish(false);
+
+    timeoutId = window.setTimeout(() => finish(false), WALL_PRELOAD_TIMEOUT_MS);
+    if (image.complete) {
+      if (image.naturalWidth > 0) handleLoad();
+      else finish(false);
+      return;
+    }
 
     image.addEventListener("load", handleLoad, { once: true });
-    image.addEventListener("error", finish, { once: true });
-    timeoutId = window.setTimeout(finish, WALL_PRELOAD_TIMEOUT_MS);
+    image.addEventListener("error", handleError, { once: true });
   });
 }
 
-function getCachedImage(path: string) {
-  const url = convertFileSrc(path);
-  const cached = imageCache.get(url);
-  if (cached) return cached;
+function loadWallImage(path: string) {
+  const cached = imageCache.get(path);
+  if (cached) return Promise.resolve(cached);
+  const pending = pendingImageLoads.get(path);
+  if (pending) return pending;
 
+  const load = withImageLoadSlot(() => loadAndResizeWallImage(path)).then((image) => {
+    if (!image) return null;
+    if (imageCache.size >= MAX_IMAGE_CACHE) {
+      const oldestPath = imageCache.keys().next().value;
+      if (oldestPath) {
+        const oldestImage = imageCache.get(oldestPath);
+        imageCache.delete(oldestPath);
+        if (oldestImage) {
+          oldestImage.width = 0;
+          oldestImage.height = 0;
+        }
+      }
+    }
+    imageCache.set(path, image);
+    return image;
+  }).finally(() => {
+    pendingImageLoads.delete(path);
+  });
+  pendingImageLoads.set(path, load);
+  return load;
+}
+
+async function withImageLoadSlot<T>(load: () => Promise<T>) {
+  if (activeImageLoadCount >= WALL_IMAGE_LOAD_CONCURRENCY) {
+    await new Promise<void>((resolve) => imageLoadWaiters.push(resolve));
+  } else {
+    activeImageLoadCount += 1;
+  }
+
+  try {
+    return await load();
+  } finally {
+    const next = imageLoadWaiters.shift();
+    if (next) next();
+    else activeImageLoadCount -= 1;
+  }
+}
+
+async function loadAndResizeWallImage(path: string) {
   const image = new Image();
   image.crossOrigin = "anonymous";
   image.decoding = "async";
-  image.src = url;
-  // Bound cache growth for long listening sessions with large libraries.
-  if (imageCache.size >= MAX_IMAGE_CACHE) {
-    const oldest = imageCache.keys().next().value;
-    if (oldest) imageCache.delete(oldest);
+  image.src = convertFileSrc(path);
+  const ready = await waitForImage(image);
+  if (!ready || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+    image.src = "";
+    return null;
   }
-  imageCache.set(url, image);
-  return image;
+
+  try {
+    const scale = Math.min(1, MAX_WALL_IMAGE_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    image.src = "";
+    return canvas;
+  } catch {
+    image.src = "";
+    return null;
+  }
 }
 
-function extractColorPalette(image: HTMLImageElement) {
+function extractColorPalette(image: CanvasImageSource | null) {
+  if (!image) return null;
   try {
     const canvas = document.createElement("canvas");
     canvas.width = 48;

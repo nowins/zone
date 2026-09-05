@@ -128,11 +128,16 @@ export function AudioGlowCanvas({
       }
       if (!frameRef.current) frameRef.current = window.requestAnimationFrame(draw);
     };
+    // React StrictMode runs mount effects twice in development. Clear the
+    // cancelled id before the second setup so the glow loop can restart.
+    if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
     sync();
     document.addEventListener("visibilitychange", sync);
     return () => {
       document.removeEventListener("visibilitychange", sync);
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
       lastTimeRef.current = null;
     };
   }, []);
