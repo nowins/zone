@@ -1,3 +1,4 @@
+import { recordDiagnostic } from "../utils/diagnostics";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { uniqueIds } from "../utils/music";
@@ -344,6 +345,8 @@ export function usePlaybackControls({
     const resumeGraph = options.resumeGraph
       ?? (() => audioEngineRef.current?.resumeAudioGraph());
 
+    const started = performance.now();
+    recordDiagnostic({ domain: podcastEpisodeId ? "podcast" : "music", event: "play_attempt", attempt: playAttempt });
     void audio
       .play()
       .then(() => {
@@ -360,6 +363,7 @@ export function usePlaybackControls({
           setPodcastPlaybackStatus("playing");
           consumePendingPodcastQueueEpisode(podcastEpisodeId, podcastAudioEpisodeRef.current);
         }
+        recordDiagnostic({ domain: podcastEpisodeId ? "podcast" : "music", event: "play_result", outcome: "ok", attempt: playAttempt, elapsedMs: performance.now() - started });
         void resumeGraph();
       })
       .catch(() => {
@@ -370,6 +374,8 @@ export function usePlaybackControls({
             activeAudioSourceKeyRef.current,
           )
         ) return;
+        recordDiagnostic({ domain: podcastEpisodeId ? "podcast" : "music", event: "play_result", outcome: "error", attempt: playAttempt, elapsedMs: performance.now() - started });
+        showActionNotice("无法开始播放，请重试");
         setIsPlaying(false);
         if (podcastEpisodeId && activePodcastEpisodeRef.current) {
           setPodcastPlaybackStatus("error");
@@ -891,6 +897,7 @@ export function usePlaybackControls({
   }
 
   function handleLoadedMetadata(audio: HTMLAudioElement) {
+    recordDiagnostic({ domain: activePodcastEpisodeRef.current ? "podcast" : "music", event: "metadata_ready" });
     const nextDuration = Number.isFinite(audio.duration) ? Math.max(0, audio.duration) : 0;
     setDuration(nextDuration);
     const pending = pendingPodcastResumeRef.current;
@@ -912,6 +919,8 @@ export function usePlaybackControls({
   }
 
   function handleAudioError() {
+    recordDiagnostic({ domain: activePodcastEpisodeRef.current ? "podcast" : "music", event: "media_error", outcome: "error", code: audioRef.current?.error?.code });
+    if (!activePodcastEpisodeRef.current) showActionNotice("音乐播放失败，请检查文件是否可用后重试");
     setIsPlaying(false);
     if (activePodcastEpisodeRef.current) {
       setPodcastPlaybackStatus("error");

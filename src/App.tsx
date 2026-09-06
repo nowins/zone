@@ -1,3 +1,5 @@
+import { recordDiagnostic } from "./utils/diagnostics";
+import { Button } from "./components/Button";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -22,6 +24,7 @@ import { PodcastNowPlayingView } from "./views/PodcastNowPlayingView";
 import { SettingsView } from "./views/SettingsView";
 import { PodcastView } from "./views/PodcastView";
 import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
+import { migrateLegacyState } from "./utils/legacyMigration";
 import { useMountedRef } from "./hooks/useMountedRef";
 import {
   musicClearLibrary,
@@ -91,6 +94,8 @@ export default function App() {
   const [addToPlaylistTarget, setAddToPlaylistTarget] = useState<ContextPayload | null>(null);
   const [playlistDialog, setPlaylistDialog] = useState<PlaylistDialogState | null>(null);
   const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
+  const [persistenceFailed, setPersistenceFailed] = useState(false);
+  const [retryingPersistence, setRetryingPersistence] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [featureVectors, setFeatureVectors] = useState<Record<string, number[]>>({});
   const actionNoticeTimerRef = useRef<number | null>(null);
@@ -346,6 +351,7 @@ export default function App() {
   const [podcastPinFeeds, setPodcastPinFeeds] = useState<PodcastFeed[]>([]);
   const podcastPinFeedsLoadedRef = useRef(false);
   const podcastPinFeedsMountedRef = useMountedRef();
+  const libraryPersistenceReadyRef = useRef(false);
   const [podcastFeedRequest, setPodcastFeedRequest] = useState<PodcastFeedRequest | null>(null);
   const loadPodcastPinFeeds = useCallback(() => {
     invoke<PodcastFeed[]>("podcast_list_feeds", { includeUnsubscribed: true })
@@ -441,20 +447,13 @@ export default function App() {
         let snapshot = await musicGetLibrarySnapshot();
         const saved = localStorage.getItem(STORAGE_KEY);
         if (!snapshot.hasLibrary && saved) {
-          try {
-            const legacy = JSON.parse(saved);
-            snapshot = await musicImportLegacyPlayerState(legacy);
-            localStorage.removeItem(STORAGE_KEY);
-          } catch (error) {
-            if (import.meta.env.DEV) console.warn("[library] legacy import failed", error);
-            localStorage.removeItem(STORAGE_KEY);
-          }
-        } else if (saved) {
-          // DB is source of truth once populated.
-          localStorage.removeItem(STORAGE_KEY);
+          snapshot = await migrateLegacyState(localStorage, STORAGE_KEY, (legacy) =>
+            musicImportLegacyPlayerState(legacy as Parameters<typeof musicImportLegacyPlayerState>[0]),
+          ) ?? snapshot;
         }
 
         if (cancelled) return;
+        libraryPersistenceReadyRef.current = true;
 
         setFolders(snapshot.folders ?? []);
         setTracks(snapshot.tracks ?? []);
@@ -470,6 +469,8 @@ export default function App() {
         setHomePins(normalizeHomePins(snapshot.homePins));
         setNeedsMetadataRefresh(false);
       } catch (error) {
+        if (cancelled) return;
+        showActionNotice("音乐资料库恢复失败，旧数据已保留，请重启重试");
         if (import.meta.env.DEV) console.warn("[library] restore failed", error);
         // Fallback to legacy localStorage if DB path is unavailable.
         const saved = localStorage.getItem(STORAGE_KEY);
@@ -495,7 +496,7 @@ export default function App() {
             setHomePins(normalizeHomePins(state.homePins));
             setNeedsMetadataRefresh(state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION);
           } catch {
-            localStorage.removeItem(STORAGE_KEY);
+            // Retain even malformed data so recovery never destroys the source.
           }
         }
       } finally {
@@ -510,7 +511,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!restored) return;
+    if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
       void musicSavePlaybackState({
         activeTrackId,
@@ -521,6 +522,8 @@ export default function App() {
         repeat,
         selectedPlaylistId,
       }).catch((error) => {
+        setPersistenceFailed(true);
+        recordDiagnostic({ domain: "library", event: "save_playback_state", outcome: "error" });
         if (import.meta.env.DEV) console.warn("[library] save playback state failed", error);
       });
     }, 250);
@@ -564,9 +567,11 @@ export default function App() {
   }, [restored, tracks.length]);
 
   useEffect(() => {
-    if (!restored) return;
+    if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
       void musicSaveTrackActivity(trackActivity).catch((error) => {
+        setPersistenceFailed(true);
+        recordDiagnostic({ domain: "library", event: "save_track_activity", outcome: "error" });
         if (import.meta.env.DEV) console.warn("[library] save track activity failed", error);
       });
     }, 400);
@@ -574,9 +579,11 @@ export default function App() {
   }, [restored, trackActivity]);
 
   useEffect(() => {
-    if (!restored) return;
+    if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
       void musicSavePlaylists(playlists).catch((error) => {
+        setPersistenceFailed(true);
+        recordDiagnostic({ domain: "library", event: "save_playlists", outcome: "error" });
         if (import.meta.env.DEV) console.warn("[library] save playlists failed", error);
       });
     }, 400);
@@ -584,9 +591,11 @@ export default function App() {
   }, [restored, playlists]);
 
   useEffect(() => {
-    if (!restored) return;
+    if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
       void musicSaveHomePins(homePins).catch((error) => {
+        setPersistenceFailed(true);
+        recordDiagnostic({ domain: "library", event: "save_home_pins", outcome: "error" });
         if (import.meta.env.DEV) console.warn("[library] save home pins failed", error);
       });
     }, 400);
@@ -918,7 +927,25 @@ export default function App() {
       onSave={saveSmartPlaylist}
     />
   ) : null;
-  const actionToastElement = actionNotice ? (
+  async function retryLibraryPersistence() {
+    if (retryingPersistence) return;
+    setRetryingPersistence(true);
+    const results = await Promise.allSettled([
+      musicSavePlaylists(playlists), musicSaveHomePins(homePins), musicSaveTrackActivity(trackActivity),
+      musicSavePlaybackState({ activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId }),
+    ]);
+    const failed = results.some(result => result.status === "rejected");
+    setPersistenceFailed(failed);
+    setRetryingPersistence(false);
+    recordDiagnostic({ domain: "library", event: "save_retry", outcome: failed ? "error" : "ok" });
+    if (!failed) showActionNotice("资料库状态已保存");
+  }
+
+  const actionToastElement = persistenceFailed ? (
+    <div className="action-toast" role="alert">部分资料库状态未保存
+      <Button variant="ghost" busy={retryingPersistence} onClick={() => void retryLibraryPersistence()}>重试</Button>
+    </div>
+  ) : actionNotice ? (
     <div className="action-toast" role="status">{actionNotice}</div>
   ) : null;
   const showSearchResults = resolveSearchSurface(query, searchMode) === "results";

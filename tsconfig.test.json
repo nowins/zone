@@ -10,6 +10,8 @@
     "types": []
   },
   "include": [
+    "src/utils/legacyMigration.ts",
+    "src/utils/diagnostics.ts",
     "src/hooks/useAppHotkeys.ts",
     "src/hooks/useEntranceCompletion.ts",
     "src/hooks/useMountedRef.ts",

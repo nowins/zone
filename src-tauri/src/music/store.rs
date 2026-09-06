@@ -688,19 +688,24 @@ pub(crate) fn import_legacy_player_state(
   legacy: LegacyPlayerStateV1,
 ) -> Result<MusicLibrarySnapshot, String> {
   let mut connection = open_music_db(state)?;
-  if table_has_rows(&connection, "music_tracks")? {
+  let transaction = connection
+    .transaction_with_behavior(TransactionBehavior::Immediate)
+    .map_err(|error| format!("无法开始导入旧播放状态：{error}"))?;
+  // A retained legacy source must not overwrite newer edits on a later retry,
+  // including libraries that contain only playlists or podcast pins.
+  if table_has_rows(&transaction, "music_tracks")?
+    || get_setting::<String>(&transaction, "migration.zone_player_state_v1")?.is_some()
+  {
     set_setting(
-      &connection,
+      &transaction,
       "migration.zone_player_state_v1",
       &Value::String("skipped_existing".into()),
     )?;
+    transaction.commit().map_err(|error| format!("无法确认旧状态迁移：{error}"))?;
     drop(connection);
     return load_library_snapshot(state);
   }
 
-  let transaction = connection
-    .transaction_with_behavior(TransactionBehavior::Immediate)
-    .map_err(|error| format!("无法开始导入旧播放状态：{error}"))?;
   let now = unix_millis();
 
   for folder in &legacy.folders {
@@ -1266,6 +1271,17 @@ pub(crate) fn end_play_session(
 mod tests {
   use super::*;
   use crate::library::Track;
+
+  #[test]
+  fn retrying_empty_music_migration_preserves_newer_podcast_pins() {
+    let state = MusicState::initialize_at(&test_root("retry-empty-migration")).unwrap();
+    let legacy = serde_json::json!({ "homePins": [{ "id": "pin", "kind": "podcastFeed", "targetId": "feed", "createdAt": 1 }] });
+    let first = import_legacy_player_state(&state, serde_json::from_value(legacy.clone()).unwrap()).unwrap();
+    assert_eq!(first.home_pins.len(), 1);
+    save_home_pins(&state, vec![]).unwrap();
+    let retry = import_legacy_player_state(&state, serde_json::from_value(legacy).unwrap()).unwrap();
+    assert!(retry.home_pins.is_empty());
+  }
 
   fn test_root(name: &str) -> std::path::PathBuf {
     let directory = std::env::temp_dir().join(format!(

@@ -1,3 +1,4 @@
+import { recordDiagnostic } from "../utils/diagnostics";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { movePodcastQueueItem, podcastPlaybackForEpisode } from "../utils/podcastPlayback";
@@ -58,6 +59,7 @@ export function usePodcastPlayback({
     duration: number;
   } | null>(null);
   const podcastProgressMutationRef = useRef<Promise<void>>(Promise.resolve());
+  const podcastProgressSaveFailedRef = useRef(false);
   const podcastProgressWriteGateRef = useRef(createPodcastProgressWriteGate());
   const podcastProgressStartedRef = useRef(new Set<string>());
   const podcastAutoQueueAttemptRef = useRef(0);
@@ -877,9 +879,6 @@ export function usePodcastPlayback({
     }
     const positionSeconds = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
     const durationSeconds = Number.isFinite(trackDuration) ? Math.max(0, trackDuration) : 0;
-    const writeEpoch = podcastProgressWriteGateRef.current.capture(
-      episode.episodeId,
-    );
     const now = Date.now();
     const previous = podcastProgressSaveRef.current;
     if (
@@ -891,6 +890,7 @@ export function usePodcastPlayback({
     }
     if (
       force
+      && !podcastProgressSaveFailedRef.current
       && previous?.episodeId === episode.episodeId
       && Math.abs(previous.position - positionSeconds) < 0.25
       && Math.abs(previous.duration - durationSeconds) < 0.25
@@ -898,6 +898,7 @@ export function usePodcastPlayback({
       return podcastProgressMutationRef.current;
     }
 
+    const writeEpoch = podcastProgressWriteGateRef.current.capture(episode.episodeId);
     podcastProgressSaveRef.current = {
       episodeId: episode.episodeId,
       savedAt: now,
@@ -927,8 +928,11 @@ export function usePodcastPlayback({
       }
     });
     podcastProgressMutationRef.current = save.then(
-      () => undefined,
+      () => { podcastProgressSaveFailedRef.current = false; },
       (reason) => {
+        recordDiagnostic({ domain: "podcast", event: "progress_save", outcome: "error" });
+        if (!podcastProgressSaveFailedRef.current) showActionNotice("收听进度保存失败，将自动重试");
+        podcastProgressSaveFailedRef.current = true;
         if (import.meta.env.DEV) console.warn("[podcast] progress save failed", reason);
       },
     );

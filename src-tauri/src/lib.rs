@@ -1,5 +1,6 @@
 mod audio_protocol;
 mod db;
+mod diagnostics;
 mod library;
 mod lyrics;
 mod lyrics_provider;
@@ -202,6 +203,7 @@ pub fn run() {
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
+      diagnostics::export_diagnostics,
       library::select_music_folder,
       lyrics::select_lyrics_file,
       lyrics::export_lyrics_file,

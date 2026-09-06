@@ -6,6 +6,8 @@ import type { QueueInsertMode } from "../app/playbackSettings";
 import { musicAnalyzeFeatures, musicFeatureStatus, type FeatureJobStatus } from "../app/musicLibraryApi";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
+import { exportDiagnostics } from "../utils/diagnostics";
 
 export function SettingsView({
   folders,
@@ -40,6 +42,13 @@ export function SettingsView({
 }) {
   const folderCount = folders.length;
   const { configs, providers, setEnabled, move } = useLyricsProviderSettings();
+  const [diagnosticNotice, setDiagnosticNotice] = useState("");
+  async function saveDiagnostics() {
+    try {
+      const saved = await invoke<boolean>("export_diagnostics", { content: exportDiagnostics() });
+      setDiagnosticNotice(saved ? "诊断记录已导出" : "");
+    } catch { setDiagnosticNotice("导出失败，请重试"); }
+  }
   const [featureStatus, setFeatureStatus] = useState<FeatureJobStatus | null>(null);
   const [featureBusy, setFeatureBusy] = useState(false);
 
@@ -352,6 +361,10 @@ export function SettingsView({
             </Button>
           </section>
 
+          <section className="settings-diagnostics">
+            <Button variant="ghost" onClick={() => void saveDiagnostics()} icon={<FileJson2 size={16} />}>导出诊断记录</Button>
+            {diagnosticNotice && <p role="status">{diagnosticNotice}</p>}
+          </section>
           <section className="settings-danger-zone">
             <span className="settings-kicker">维护</span>
             <h2>清理资料库</h2>
