@@ -1,0 +1,37 @@
+# 播客：产品语义、播放与网络边界
+
+本文由根目录 [AGENTS.md](../../AGENTS.md) 按任务索引引用。文中的行为与安全边界适用于相关改动；标为当前实现的参数用于定位，可在验证后调整。代码路径均相对于仓库根目录。
+
+## 产品与模块边界
+
+- 默认按“收听 / 发现 / 资料库 / 播放列表”组织。收听承载继续收听与关注更新，发现承载 Apple 中国区榜单与搜索；手动 RSS 是辅助入口，下载用于离线收听。
+- 预览、关注、稍后听与下载是独立状态。播客单集、队列、倍速、睡眠定时和进度不得进入音乐队列、收藏、播放统计或音乐节拍预分析。
+- `src/views/PodcastView.tsx` 是页壳；`src/views/podcast/usePodcastViewModel.ts` 持有状态机与加载编排；屏组件经同目录 `api.ts` 调用命令，不直接 `invoke`。`cache.ts` 的模块缓存单例保持统一。
+- `src/hooks/usePodcastPlayback.ts` 拥有单集会话与队列业务，通过 `podcastTransport.ts` 的窄接口接入 `usePlaybackControls.ts`；不要在视图创建另一套播放 ref 或绕过播放尝试门闩。
+- `PodcastPlayerBar` 与 `PodcastNowPlayingView` 提供独立播客控制，不复用音乐正在播放页的拼贴或歌词内部状态。音源仍复用 App 唯一的 `<audio>`。
+- 保存单集称“稍后听”，插入待播首位称“下一集播放”；节目/单集详情保留一个内容大标题，功能性文字可读性见 [组件规范](../component-guidelines.md)。
+
+- 播客正式链路：默认页直接展示继续收听、关注更新与 Apple 中国区热门节目；发现结果可先预览再关注，关注、稍后听与下载状态相互独立。未下载单集通过受控 `zone-podcast` Range 代理即时播放，已下载单集通过 `zone-audio` 本地播放，进度每 5 秒节流且按调用顺序保存；使用独立播客底栏、全屏正在播放和可跨重启恢复的当前单集与待播队列。待播项只在对应音源实际开始播放后消费；单集自然结束会进入待播首项，睡眠定时可在指定分钟或本集结束后暂停。
+
+## 状态与持久化
+
+- 播客状态不写入音乐主状态（`zone.sqlite`）或旧音乐 `localStorage` schema；节目预览/关注状态、单集、稍后听、待播顺序、下载与进度存于应用数据目录的 `podcasts.sqlite`，音频位于同目录下的 `podcast-downloads/`。预览节目可以入库但不出现在资料库，`subscribed` 只表达用户是否关注。Feed 刷新时若单集已从源消失，仅在无进度、未稍后听、未排队、无进行中/完成下载时删除该行；有用户状态的单集会保留。`enclosure_url` 变更会失效对应离线下载。普通进度写仅允许前进，显式 seek/flush 传 `force` 才可回退。播客播放倍速与最后一个活动单集 ID 独立保存在 `zone-podcast-playback-v1`，最后单集重启后以暂停态恢复且不改变音乐播放速度；睡眠定时只存在于当前运行会话。
+
+## 单集列表与时长
+
+- 节目单集列表 `podcast_list_episodes` 默认读取 100 集，支持 `offset`/`limit`（最大 200）；节目页按需加载更多，非活动单集使用 memo 隔离进度刷新。主列表、单集详情和待播优先读取已知真实媒体时长；RSS 时长按秒、MM:SS、HH:MM:SS 严格解析。旧 `duration_parser_version` 在下一次刷新时绕过条件请求重新获取，保留用户进度和待播状态。
+
+## 网络、代理与离线文件
+
+- 播客网络请求由 `src-tauri/src/podcast/`（`network.rs` 与 `apple.rs`）专用客户端处理：Apple 搜索固定 `country=CN`；RSS/音频只允许 HTTP(S)，每次重定向重新校验并固定解析地址，拒绝凭据、fragment、非 80/443 端口与内网/环回 IP。为兼容大陆常见 Clash fake-IP，仅允许“域名解析所得”的 `198.18.0.0/15`，直接输入该网段仍被拒绝。
+- RSS 响应上限 20 MiB，音频上限 2 GiB；下载目标只按数据库中的 episode ID 生成，先写 `.part` 并支持 Range 续传，通过音频魔数后再原子落盘。
+- 删除播客下载只允许清理由数据库 episode ID 推导且位于受控下载目录中的最终文件与精确 `.part`；下载和删除对同一单集互斥，不能让前端传入任意文件路径。
+- `zone-podcast` 协议只接受数据库中的 64 位 episode ID，绝不接受前端传入的远程 URL；每个 Range 响应最多代理 1 MiB，带 CORS，逐跳应用相同 SSRF 校验。上游不支持 Range 且内容超过单块上限时明确失败，由用户选择离线下载。
+- RSS 与目录返回的远程封面不得直接作为 WebView 的 `<img src>`；统一先编码为 URL-safe token，再经 `zone-podcast-artwork` 代理。代理逐跳校验 DNS/重定向，限制 8 MiB，只接受受支持的图片 MIME 与匹配的文件魔数。
+
+## 验证
+
+- 前端模型、命令接线、播放分支或 UI 变化：`npm run build`、`npm test`，重点看 `tests/podcast*.test.mjs` 和 `tests/playbackTransport.test.mjs`。
+- Rust 数据库、网络、协议与下载变化：`cargo check`，补充并运行对应模块测试。真实网络 smoke 默认忽略，仅在显式设置 `ZONE_PODCAST_LIVE=1` 后运行。
+- 播放交互变化实测音乐与播客切换、播放失败/缓冲、暂停后恢复、自然结束续播及待播仅在实际开始后消费；进度相关改动检查 seek 回退、重启暂停恢复与失败重试。列表改动检查加载更多和非活动单集不会随进度无谓重绘。
+- 启动应用沿用根目录的会话授权规则；协议/打包相关改动还需 `npx tauri build --no-bundle`。

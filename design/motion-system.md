@@ -1,6 +1,6 @@
 # Zone 动效系统：Alive in Motion
 
-本文档是 Zone 动效系统的说明书：设计原则、token 体系、`src/motion/` 内核 API，以及新组件接入动效的标准做法。改动动效前请先读这里；改动后请同步本文档与 `AGENTS.md`。
+本文档是 Zone 动效系统的说明书：设计原则、token 体系、`src/motion/` 内核 API，以及新组件接入动效的标准做法。改动动效前请先读这里；改变约定或 API 时同步本文，全局规则或入口变化才更新根目录 `AGENTS.md`。表中数值是当前实现，以 `src/motion/tokens.ts` 为事实源，可按任务需求验证后调整。
 
 ## 设计原则
 
@@ -50,7 +50,9 @@ src/motion/*.ts               内核：弹簧/补间/动画器/FLIP/Presence/页
 
 TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`MOTION_STAGGER`、`SPRING_PRESETS`（`snappy` 近临界阻尼 / `gentle` 页面级 / `bouncy` 约 20% 过冲）。其中 `snappy` 是现役生产预设（FLIP、quickplay 滚轮）；`gentle` / `bouncy` 与 `MOTION_TWEENS` 是**备料预设**，新场景接入时直接使用，没有消费方之前不要当成「已在用」。
 
-弹簧预设之外的例外（保留原值、有意为之）：正在播放入场编排的 `240ms 55ms` / `320ms 850ms`、`.album-play` 900ms 悬停延迟、歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、磁贴系统的 Lumia/Metro 校准组（`FlipTile` peek 600ms 与其 MetroSlideIn 曲线 `(0.22,0,0.05,1)`、flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。
+通用短时长原则用于交互反馈，不给分层编排、悬停等待、循环加载或音频 DSP 包络套统一上限。正在播放入场和 Canvas 收敛使用 `tokens.ts` 中的 `NOW_PLAYING_MOTION`，不要在组件中复制时长。
+
+其他已登记的当前编排：`.album-play` 900ms 悬停延迟、歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、磁贴系统的 Lumia/Metro 校准组（`FlipTile` peek 600ms 与其 MetroSlideIn 曲线 `(0.22,0,0.05,1)`、flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
 
 ## 内核 API（`src/motion/`）
 
@@ -120,15 +122,15 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 ## 守则（Do / Don't）
 
 - 时长/缓动只用 token；新增档位先加进 `tokens.ts` 再用。
-- 只动 `transform` / `opacity`；布局属性动画（width/height/top/left）禁止出现在交互路径上。**已登记的例外**：`.zune-volume` 音量条悬停展开（width，`player.css`）——Zune 式 chrome 展开模式，reflow 范围极小且刻意保留；新增布局属性动画必须先在这里登记。
+- 常规交互使用 `transform` / `opacity`，避免在交互路径上引入布局属性动画（width/height/top/left）。**已登记的例外**：`.zune-volume` 音量条悬停展开（width，`player.css`）；新增布局属性动画需记录必要性并验证性能。已有亮度/模糊细节与 Canvas 媒体背景按各自规范验证，不把 transform/opacity 偏好解释为禁止其绘制。
 - 退场 ≤ 入场时长，且统一走 `--motion-ease-exit` 加速曲线。
 - 媒体时钟驱动的进度（歌词、播放）用 rAF 直读时钟，不叠加 CSS 补间。
-- 不要引入无限循环装饰动画（现有唯一例外：歌词搜索加载呼吸 1.1s）。
+- 不要引入与内容无关的无限装饰动画；加载反馈与正在播放媒体背景有明确用途，分别遵守加载组件规范与 [播放视觉规范](engineering/playback-visuals.md) 的停转规则。
 - 每帧数据（可视化帧）走 `visualizerBus.ts` 单槽总线，不走 React state/props。
 
 ## reduced-motion 约定
 
-全项目只有一个 `@media (prefers-reduced-motion: reduce)` 块：`src/styles/motion.css` 末尾。策略：入场/反馈动画 `animation: none` 落到终态；过渡压到 `--motion-instant`；空间变换（tilt、歌词缩放/模糊、长音拉伸）清零；**退出不留下静止窗口**——所有退场（页面、浮层、chrome）换成 `motion-exit-reduced` 80ms 纯透明度淡出，JS 生命周期（导航计时器、Presence 卸载）经 `resolveExitDurationMs` 收缩到同一 instant 档。新增带动效的组件时把选择器补进清单；JS/rAF 侧用 `useReducedMotion()` 关闭漂移/FLIP/滚轮惯性等连续运动，音频光焰在 reduced-motion 下冻结为静态低亮（冻结 idle 帧输入，非暂停）。
+全项目只有一个 `@media (prefers-reduced-motion: reduce)` 块：`src/styles/motion.css` 末尾。策略：入场/反馈动画 `animation: none` 落到终态；过渡压到 `--motion-instant`；空间变换（tilt、歌词缩放/模糊、长音拉伸）清零；**退出不留下静止窗口**——退场使用短的纯透明度淡出，JS 生命周期（导航计时器、Presence 卸载）经 `resolveExitDurationMs` 收缩到同一 instant 档。新增带动效的组件时把选择器补进清单；JS/rAF 侧用 `useReducedMotion()` 关闭漂移/FLIP/滚轮惯性等连续运动。两个正在播放 Canvas 收敛后停止连续 rAF；播放中的光焰用固定低亮静帧，暂停后消退清空，不播放伪音频动画。
 
 ## 测试与验证
 
@@ -137,4 +139,5 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - `tests/reducedMotion.test.mjs`：reduced-motion 下退出淡出与 JS 生命周期的同步守卫。
 - `tests/lyricsSettingsUi.test.mjs` / `tests/lyricsDisplay.test.mjs`：歌词设置面板的 Presence 接线、显示偏好持久化和字号归一化。
 - CSS/结构守卫（`nowPlayingCss.test.mjs` 等）会因类名/编排变化失败，按新结构同步，不放宽语义。
-- 视觉验收（真实播放、快速连切、FLIP、reduced-motion、窄窗口）需 `npm run tauri:dev` 实测，审查基线见 `docs/lyrics-motion-review.md`。
+- `tests/uiBehavior.test.mjs` / `tests/canvasLifecycle.test.mjs`：真实 React 组件在 StrictMode 下的焦点、入场清理与 Canvas 停转/唤醒行为。
+- 视觉验收检查真实播放、快速连切可打断、FLIP 连续性、reduced-motion、键盘交互与窄窗口。按根目录的启动授权规则实测；歌词专项场景见 [歌词规范](engineering/lyrics.md)，本地 `docs/lyrics-motion-review.md` 若存在可补充参考。
