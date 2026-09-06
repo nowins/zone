@@ -134,6 +134,10 @@ input:focus-visible {
   pointer-events: auto;
 }
 
+.shell-now-playing:has(.now-fullscreen) .titlebar {
+  display: none;
+}
+
 .titlebar {
   z-index: 22;
   display: flex;

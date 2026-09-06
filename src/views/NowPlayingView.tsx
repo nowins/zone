@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEntranceCompletion } from "../hooks/useEntranceCompletion";
-import { ArrowLeft, AudioLines, ChevronDown, Heart } from "lucide-react";
+import { useNowPlayingFullscreen } from "../hooks/useNowPlayingFullscreen";
+import { ArrowLeft, AudioLines, Heart } from "lucide-react";
 import { AudioGlowCanvas } from "../components/AudioGlowCanvas";
 import { Cover } from "../components/Cover";
 import { LyricsStage } from "../components/LyricsStage";
@@ -17,7 +18,6 @@ import { MOTION_DURATIONS, NOW_PLAYING_MOTION } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import type { RepeatMode, Track } from "../types";
 
-const COLLAPSED_QUEUE_COUNT = 3;
 const IDLE_CHROME_DELAY = 5_000;
 const COVER_FLIP_CARD_ANIMATIONS = ["now-track-info-enter", "now-track-card-fade"];
 const COVER_FLIP_WAIT_TIMEOUT_MS = 2_500;
@@ -102,18 +102,16 @@ export function NowPlayingView({
   const isEntering = !useEntranceCompletion(wallRevealStarted, STAGE_ENTRANCE_MS);
   const [flipCoverActive, setFlipCoverActive] = useState(false);
   const [flipDocked, setFlipDocked] = useState(false);
-  const [queueExpanded, setQueueExpanded] = useState(true);
+  const [queueVisible, setQueueVisible] = useState(true);
+  const fullscreen = useNowPlayingFullscreen();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [playlistNameDraft, setPlaylistNameDraft] = useState("正在播放");
   const idleTimer = useRef<number | null>(null);
-  const sidePanelRef = useRef<HTMLElement | null>(null);
   const previousTrackIdRef = useRef(track?.id ?? null);
   const displayedQueue = useMemo(() => queue.length ? queue : track ? [track] : [], [queue, track]);
-  const hasExpandableQueue = displayedQueue.length > COLLAPSED_QUEUE_COUNT;
   const lyricsOpen = surfaceMode === "lyrics" && Boolean(track);
-  const queueOpen = !lyricsOpen && queueExpanded && hasExpandableQueue;
+  const queueOpen = !lyricsOpen && queueVisible;
   const lyrics = useLyrics(track, duration);
-  const hiddenQueueCount = Math.max(0, displayedQueue.length - COLLAPSED_QUEUE_COUNT);
   const [textFading, setTextFading] = useState(false);
   const reducedMotion = useReducedMotion();
   const trackCardRef = useRef<HTMLElement | null>(null);
@@ -134,17 +132,13 @@ export function NowPlayingView({
 
   function toggleLyrics() {
     if (!track) return;
-    setSurfaceMode((current) => {
-      const next = current === "lyrics" ? "ambient" : "lyrics";
-      if (next === "lyrics") setQueueExpanded(false);
-      return next;
-    });
+    setSurfaceMode((current) => current === "lyrics" ? "ambient" : "lyrics");
     wakeChrome();
   }
 
   function toggleQueue() {
     setSurfaceMode("ambient");
-    setQueueExpanded((value) => !value);
+    setQueueVisible(lyricsOpen || !queueVisible);
     wakeChrome();
   }
 
@@ -250,23 +244,18 @@ export function NowPlayingView({
     setSurfaceMode("ambient");
   }, [track]);
 
-  useEffect(() => {
-    const sidePanel = sidePanelRef.current;
-    if (!sidePanel) return;
-    if (lyricsOpen) sidePanel.setAttribute("inert", "");
-    else sidePanel.removeAttribute("inert");
-  }, [lyricsOpen]);
-
-  useLayoutEffect(() => {
-    const list = sidePanelRef.current?.querySelector<HTMLElement>(".now-panel-tracks");
+  const attachQueuePanel = useCallback((panel: HTMLElement | null) => {
+    if (!panel) return;
+    panel.toggleAttribute("inert", !queueOpen);
+    const list = panel.querySelector<HTMLElement>(".now-panel-tracks");
     const current = list?.querySelector<HTMLElement>('[aria-current="true"]');
-    if (!list || !current || lyricsOpen) return;
+    if (!list || !current || !queueOpen) return;
     const viewport = list.getBoundingClientRect();
     const row = current.getBoundingClientRect();
     // Keep the queue order and scroll position; reveal only an offscreen row.
     if (row.top < viewport.top) list.scrollTop += row.top - viewport.top;
     else if (row.bottom > viewport.bottom) list.scrollTop += row.bottom - viewport.bottom;
-  }, [track?.id, queueOpen, lyricsOpen]);
+  }, [track?.id, queueOpen]);
 
   useEffect(() => {
     if (!lyricsOpen) return;
@@ -330,11 +319,13 @@ export function NowPlayingView({
         isPlaying ? "wall-playing" : "wall-paused"
       } ${lyricsOpen ? "lyrics-mode" : "ambient-mode"} ${keyboardSurfaceChange ? "keyboard-surface-change" : ""} ${
         flipCoverActive ? "flip-cover-active" : ""
-      } ${flipDocked ? "flip-docked" : ""}`}
+      } ${flipDocked ? "flip-docked" : ""} ${fullscreen.active ? "now-fullscreen" : ""}`}
       onMouseMove={wakeChrome}
       onMouseDown={wakeChrome}
       onMouseEnter={wakeChrome}
+      onWheelCapture={wakeChrome}
       onKeyDown={wakeChrome}
+      onFocusCapture={wakeChrome}
     >
       <NowPlayingMosaicCanvas
         tracks={tracks}
@@ -377,49 +368,44 @@ export function NowPlayingView({
         <ArrowLeft size={40} strokeWidth={2.55} />
       </button>
 
-      <aside
-        ref={sidePanelRef}
-        className={`now-side-panel ${queueOpen ? "queue-expanded" : ""}`}
-        aria-hidden={lyricsOpen}
-      >
-        <div className="now-panel-tracks">
-          {displayedQueue.length === 0 ? (
-            <div className="now-panel-empty">
-              <strong>暂无播放</strong>
-              <span>请选择一首歌曲</span>
+      <Presence show={queueOpen} exitDurationMs={MOTION_DURATIONS.micro}>
+        <aside
+          ref={attachQueuePanel}
+          className="now-side-panel queue-expanded"
+          aria-label="正在播放列表"
+          aria-hidden={!queueOpen}
+        >
+          <div className="now-panel-tracks">
+            {displayedQueue.length === 0 ? (
+              <div className="now-panel-empty">
+                <strong>暂无播放</strong>
+                <span>请选择一首歌曲</span>
+              </div>
+            ) : null}
+
+            <div className="now-panel-upcoming">
+              {displayedQueue.map((item, index) => (
+                <button
+                  key={`${item.id}-${index}`}
+                  className={item.id === track?.id ? "now-panel-current" : undefined}
+                  aria-current={item.id === track?.id ? "true" : undefined}
+                  onClick={() => item.id === track?.id ? onPlayPause() : onPlay(item, queue)}
+                >
+                  <div className="queue-row">
+                    <AudioLines size={16} aria-hidden="true" style={{ visibility: item.id === track?.id ? "visible" : "hidden" }} />
+                    <strong>{item.title}</strong>
+                  </div>
+                  <span>{item.artist}</span>
+                </button>
+              ))}
             </div>
-          ) : null}
-
-          <div className="now-panel-upcoming">
-            {displayedQueue.map((item, index) => (
-              <button
-                key={`${item.id}-${index}`}
-                className={item.id === track?.id ? "now-panel-current" : undefined}
-                aria-current={item.id === track?.id ? "true" : undefined}
-                onClick={() => item.id === track?.id ? onPlayPause() : onPlay(item, queue)}
-              >
-                <div className="queue-row">
-                  <AudioLines size={16} aria-hidden="true" style={{ visibility: item.id === track?.id ? "visible" : "hidden" }} />
-                  <strong>{item.title}</strong>
-                </div>
-                <span>{item.artist}</span>
-              </button>
-            ))}
           </div>
-        </div>
 
-        {!queueOpen && hiddenQueueCount > 0 ? (
-          <button className="queue-disclosure" onClick={() => setQueueExpanded(true)}>
-            <span>{`展开其余 ${hiddenQueueCount} 首`}</span>
-            <ChevronDown size={14} aria-hidden="true" />
+          <button className="save-queue" onClick={openSaveDialog} disabled={queue.length === 0}>
+            另存为播放列表
           </button>
-        ) : null}
-
-        <button className="save-queue" onClick={openSaveDialog} disabled={queue.length === 0}>
-          另存为播放列表
-        </button>
-
-      </aside>
+        </aside>
+      </Presence>
 
       <section ref={trackCardRef} className={`now-track-card ${textFading ? "card-fading" : ""}`}>
         <Cover artPath={track?.cover_path} label={track?.album ?? "正在播放"} size="mini" />
@@ -459,7 +445,6 @@ export function NowPlayingView({
             shuffle={shuffle}
             repeat={repeat}
             queueActive={queueOpen}
-            queueDisabled={!hasExpandableQueue}
             lyricsActive={lyricsOpen}
             lyricsDisabled={!track}
             onQueue={toggleQueue}
@@ -469,8 +454,12 @@ export function NowPlayingView({
             onPrevious={onPrevious}
             onPlayPause={onPlayPause}
             onNext={onNext}
+            fullscreen={fullscreen.active}
+            fullscreenPending={fullscreen.pending}
+            onFullscreen={() => { fullscreen.toggle(); wakeChrome(); }}
           />
           <VolumeControl volume={volume} onVolume={onVolume} />
+          {fullscreen.error ? <span className="now-fullscreen-error" role="status">{fullscreen.error}</span> : null}
         </div>
       </div>
 

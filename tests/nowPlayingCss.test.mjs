@@ -145,9 +145,10 @@ test("queue and shared bottom controls follow the compact Zune layout", () => {
   assert.ok(nowPlayingView.includes('aria-current={item.id === track?.id'));
   assert.ok(nowPlayingView.includes("useState(true)"), "queue should be expanded on first entry");
   assert.ok(!nowPlayingView.includes("orderedQueue.slice("), "collapsed queue preserves the same items and order");
-  assert.ok(nowPlayingView.includes("className=\"queue-disclosure\""));
-  assert.ok(nowPlayingView.includes("展开其余 ${hiddenQueueCount} 首"));
-  assert.ok(!nowPlayingView.includes("queueExpanded ? 8 : 0"), "collapsed queue must not hide every upcoming track");
+  assert.ok(nowPlayingView.includes("<Presence show={queueOpen}"), "queue toggles the entire panel with an exit transition");
+  assert.ok(nowPlayingView.includes('aria-hidden={!queueOpen}'));
+  assert.ok(!nowPlayingView.includes("queue-disclosure"), "hidden queue must not leave a collapsed preview");
+  assert.ok(!nowPlayingView.includes("hasExpandableQueue"), "visibility also works for short queues");
 });
 
 test("now playing enters in layered Zune order without delaying transport", () => {
