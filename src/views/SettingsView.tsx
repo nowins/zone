@@ -13,6 +13,8 @@ export function SettingsView({
   folders,
   trackCount,
   isScanning,
+  onCancelScan,
+  scanNote,
   metadataProviders,
   onToggleMetadataProvider,
   queueInsertMode,
@@ -28,6 +30,8 @@ export function SettingsView({
   folders: MusicFolder[];
   trackCount: number;
   isScanning: boolean;
+  onCancelScan: () => void;
+  scanNote: string;
   metadataProviders: MetadataProviderDescriptor[];
   onToggleMetadataProvider: (providerId: string, enabled: boolean) => void;
   queueInsertMode: QueueInsertMode;
@@ -347,7 +351,7 @@ export function SettingsView({
               </div>
             </dl>
             <p className={isScanning ? "scan-state scanning" : "scan-state"}>
-              {isScanning ? "正在读取音乐和封面…" : folderCount > 0 ? "资料库已准备就绪" : "等待添加音乐来源"}
+              {scanNote || (isScanning ? "正在读取音乐和封面…" : folderCount > 0 ? "资料库已准备就绪" : "等待添加音乐来源")}
             </p>
             <Button
               variant="ghost"
@@ -359,6 +363,7 @@ export function SettingsView({
             >
               <span>{isScanning ? "正在扫描" : "重新扫描资料库"}</span>
             </Button>
+            {isScanning && <Button variant="ghost" onClick={onCancelScan}>取消扫描</Button>}
           </section>
 
           <section className="settings-diagnostics">

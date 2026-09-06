@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   HomePin,
   MusicFolder,
@@ -70,8 +70,10 @@ export async function musicImportLegacyPlayerState(legacy: LegacyPlayerStateV1) 
   return invoke<MusicLibrarySnapshot>("music_import_legacy_player_state", { legacy });
 }
 
-export async function musicScanLibrary(folders: MusicFolder[]) {
-  return invoke<MusicScanWriteResult>("music_scan_library", { folders });
+export async function musicScanLibrary(folders: MusicFolder[], onProgress: (count: number) => void = () => {}) {
+  const progress = new Channel<number>();
+  progress.onmessage = onProgress;
+  return invoke<MusicScanWriteResult>("music_scan_library", { folders, progress });
 }
 
 export async function musicSavePlaylists(playlists: Playlist[]) {

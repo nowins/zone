@@ -390,14 +390,14 @@ export function usePlaybackControls({
       visualizerUnavailableRef,
       realtimeBeatRef,
       offlineBeatGridRef,
-      beatGridCacheRef,
       beatFrameRef,
-      beatAnalysisRequestRef,
+      cancelBeatAnalysis,
       resumeAudioGraph,
       preAnalyzeBeatGrid,
       publishIdleBeatFrame,
       publishPodcastVisualizerReset,
     } = audioEngineRef.current!;
+    cancelBeatAnalysis();
     const sourceKey = activePlaybackSourceKey;
     const playAttempt = audioPlayAttemptRef.current + 1;
     audioPlayAttemptRef.current = playAttempt;
@@ -427,9 +427,7 @@ export function usePlaybackControls({
       : convertFileSrc(activePlayback.track.path, "zone-audio");
     visualizerUnavailableRef.current = false;
     realtimeBeatRef.current = null;
-    offlineBeatGridRef.current = activePlayback.kind === "music"
-      ? beatGridCacheRef.current.get(activePlayback.track.id) ?? null
-      : null;
+    offlineBeatGridRef.current = null;
     beatFrameRef.current = createIdleBeatFrame();
     if (activePlayback.kind === "music") {
       podcastPlaybackStartedEpisodeRef.current = null;
@@ -442,7 +440,6 @@ export function usePlaybackControls({
       if (podcastPlaybackStartedEpisodeRef.current !== podcastEpisodeId) {
         podcastPlaybackStartedEpisodeRef.current = null;
       }
-      beatAnalysisRequestRef.current += 1;
       publishPodcastVisualizerReset();
       setPodcastPlaybackStatus("loading");
       const { position: startPosition, explicit: explicitStart } =

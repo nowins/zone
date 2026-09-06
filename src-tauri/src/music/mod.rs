@@ -1,5 +1,7 @@
 //! Music library persistence against the unified zone.sqlite database.
 mod commands;
+mod beat_window;
+pub(crate) use beat_window::*;
 mod features;
 mod pcm;
 mod radio;

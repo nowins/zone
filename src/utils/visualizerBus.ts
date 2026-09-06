@@ -41,6 +41,6 @@ export function isDocumentVisible() {
   return document.visibilityState !== "hidden";
 }
 
-export function isVisualizerSurfaceActive(isPlaying: boolean) {
-  return isPlaying && isDocumentVisible();
+export function isVisualizerSurfaceActive(isPlaying: boolean, surfaceVisible = true) {
+  return isPlaying && surfaceVisible && isDocumentVisible();
 }

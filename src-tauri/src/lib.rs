@@ -212,6 +212,9 @@ pub fn run() {
       music::music_get_library_snapshot,
       music::music_import_legacy_player_state,
       music::music_scan_library,
+      music::music_cancel_scan,
+      music::music_decode_beat_window,
+      music::music_cancel_beat_window,
       music::music_save_playlists,
       music::music_save_home_pins,
       music::music_save_track_activity,
@@ -277,4 +280,3 @@ pub fn run() {
     .run(tauri::generate_context!())
     .expect("error while running Zone");
 }
-

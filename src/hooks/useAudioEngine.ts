@@ -1,8 +1,8 @@
+import { recordDiagnostic } from "../utils/diagnostics";
 import { useEffect, useRef } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { VISUALIZER_SAMPLE_COUNT } from "../constants";
 import {
-  analyzePcmBeatGrid,
   createIdleBeatFrame,
   RealtimeBeatAnalyzer,
   type BeatFrame,
@@ -21,9 +21,8 @@ export type AudioEngineHandle = {
   visualizerUnavailableRef: React.MutableRefObject<boolean>;
   realtimeBeatRef: React.MutableRefObject<RealtimeBeatAnalyzer | null>;
   offlineBeatGridRef: React.MutableRefObject<BeatGrid | null>;
-  beatGridCacheRef: React.MutableRefObject<Map<string, BeatGrid | null>>;
   beatFrameRef: React.MutableRefObject<BeatFrame>;
-  beatAnalysisRequestRef: React.MutableRefObject<number>;
+  cancelBeatAnalysis: () => void;
 };
 
 type UseAudioEngineParams = {
@@ -34,6 +33,7 @@ type UseAudioEngineParams = {
   activePlayback: ActivePlayback;
   activePlaybackSourceKey: string | null;
   activeTrackId: string | null;
+  visualizerVisible: boolean;
 };
 
 export function useAudioEngine({
@@ -44,6 +44,7 @@ export function useAudioEngine({
   activePlayback,
   activePlaybackSourceKey,
   activeTrackId,
+  visualizerVisible,
 }: UseAudioEngineParams): AudioEngineHandle {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -59,6 +60,12 @@ export function useAudioEngine({
   const offlineBeatGridRef = useRef<BeatGrid | null>(null);
   const beatGridCacheRef = useRef(new Map<string, BeatGrid | null>());
   const beatAnalysisRequestRef = useRef(0);
+  const beatWorkerRef = useRef<Worker | null>(null);
+  const finishWorkerRef = useRef<(() => void) | null>(null);
+  const nativeCancellationRef = useRef<Promise<unknown>>(Promise.resolve());
+  const activeTrackRef = useRef(activeTrackId);
+  activeTrackRef.current = activeTrackId;
+  useEffect(() => () => cancelBeatAnalysis(), []);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -74,7 +81,7 @@ export function useAudioEngine({
     };
 
     const syncLoop = () => {
-      const shouldRun = isVisualizerSurfaceActive(isPlaying) && activePlayback?.kind === "music";
+      const shouldRun = isVisualizerSurfaceActive(isPlaying, visualizerVisible) && activePlayback?.kind === "music";
       if (!shouldRun) {
         stopLoop();
         beatFrameRef.current = createIdleBeatFrame();
@@ -92,7 +99,7 @@ export function useAudioEngine({
       document.removeEventListener("visibilitychange", onVisibility);
       stopLoop();
     };
-  }, [activePlaybackSourceKey, isPlaying, activePlayback?.kind]);
+  }, [activePlaybackSourceKey, isPlaying, activePlayback?.kind, visualizerVisible]);
 
   function ensureAudioGraph() {
     if (visualizerUnavailableRef.current) return;
@@ -149,51 +156,52 @@ export function useAudioEngine({
     }
   }
 
-  async function preAnalyzeBeatGrid(track: Track) {
-    if (beatGridCacheRef.current.has(track.id)) {
-      offlineBeatGridRef.current = beatGridCacheRef.current.get(track.id) ?? null;
-      return;
-    }
-
-    const requestId = beatAnalysisRequestRef.current + 1;
-    beatAnalysisRequestRef.current = requestId;
-
-    try {
-      const sourceUrl = convertFileSrc(track.path, "zone-audio");
-      const response = await fetch(sourceUrl);
-      if (!response.ok) throw new Error(`beat analysis fetch failed: ${response.status}`);
-      const bytes = await response.arrayBuffer();
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextClass) throw new Error("AudioContext unavailable");
-      const context = audioContextRef.current ?? new AudioContextClass();
-      const shouldClose = !audioContextRef.current;
-      const buffer = await context.decodeAudioData(bytes.slice(0));
-      const mixed = mixAudioBuffer(buffer);
-      const grid = analyzePcmBeatGrid(mixed, buffer.sampleRate);
-      beatGridCacheRef.current.set(track.id, grid);
-      if (shouldClose) void context.close();
-      if (beatAnalysisRequestRef.current === requestId && activeTrackId === track.id) {
-        offlineBeatGridRef.current = grid;
-      }
-    } catch {
-      beatGridCacheRef.current.set(track.id, null);
-      if (beatAnalysisRequestRef.current === requestId && activeTrackId === track.id) {
-        offlineBeatGridRef.current = null;
-      }
-    }
+  function cancelBeatAnalysis() {
+    beatAnalysisRequestRef.current += 1;
+    beatWorkerRef.current?.terminate();
+    beatWorkerRef.current = null;
+    finishWorkerRef.current?.();
+    finishWorkerRef.current = null;
+    nativeCancellationRef.current = invoke("music_cancel_beat_window").catch(() => undefined);
   }
 
-  function mixAudioBuffer(buffer: AudioBuffer) {
-    const length = buffer.length;
-    const channels = Math.min(2, buffer.numberOfChannels);
-    if (channels <= 1) return new Float32Array(buffer.getChannelData(0));
-
-    const mixed = new Float32Array(length);
-    for (let channel = 0; channel < channels; channel += 1) {
-      const data = buffer.getChannelData(channel);
-      for (let index = 0; index < length; index += 1) mixed[index] += data[index] / channels;
+  async function preAnalyzeBeatGrid(track: Track) {
+    const requestId = ++beatAnalysisRequestRef.current;
+    const started = performance.now();
+    try {
+      await nativeCancellationRef.current;
+      if (requestId !== beatAnalysisRequestRef.current) return;
+      const bytes = await invoke<ArrayBuffer>("music_decode_beat_window", { trackId: track.id });
+      if (requestId !== beatAnalysisRequestRef.current) return;
+      const cacheKey = `${track.id}:${Array.from(new Uint8Array(bytes, 0, 24)).join(".")}`;
+      let grid = beatGridCacheRef.current.get(cacheKey);
+      if (grid === undefined) {
+        const worker = new Worker(new URL("../workers/beatAnalysis.worker.ts", import.meta.url), { type: "module" });
+        beatWorkerRef.current = worker;
+        grid = await new Promise<BeatGrid | null>((resolve, reject) => {
+          finishWorkerRef.current = () => resolve(null);
+          worker.onmessage = (event) => event.data.error ? reject(new Error("节拍计算失败")) : resolve(event.data.grid);
+          worker.onerror = () => reject(new Error("节拍计算任务失败"));
+          worker.postMessage(bytes, [bytes]);
+        });
+        if (requestId !== beatAnalysisRequestRef.current) return;
+        worker.terminate();
+        beatWorkerRef.current = null;
+        finishWorkerRef.current = null;
+        if (beatGridCacheRef.current.size >= 32) beatGridCacheRef.current.delete(beatGridCacheRef.current.keys().next().value!);
+        beatGridCacheRef.current.set(cacheKey, grid);
+      }
+      if (activeTrackRef.current === track.id) offlineBeatGridRef.current = grid;
+      recordDiagnostic({ domain: "visualizer", event: "beat_analysis", outcome: "ok", elapsedMs: performance.now() - started });
+    } catch {
+      if (requestId !== beatAnalysisRequestRef.current) return;
+      beatWorkerRef.current?.terminate();
+      beatWorkerRef.current = null;
+      finishWorkerRef.current = null;
+      offlineBeatGridRef.current = null;
+      // Playback remains on the realtime analyzer; failed requests may retry.
+      recordDiagnostic({ domain: "visualizer", event: "beat_analysis", outcome: "error", elapsedMs: performance.now() - started });
     }
-    return mixed;
   }
 
   // Keep the bus frame's beat fields at idle (samples/energy untouched) while
@@ -302,8 +310,7 @@ export function useAudioEngine({
     visualizerUnavailableRef,
     realtimeBeatRef,
     offlineBeatGridRef,
-    beatGridCacheRef,
     beatFrameRef,
-    beatAnalysisRequestRef,
+    cancelBeatAnalysis,
   };
 }

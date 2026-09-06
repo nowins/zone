@@ -72,6 +72,12 @@ pub(crate) fn select_music_folder() -> Option<MusicFolder> {
 
 #[tauri::command]
 pub(crate) fn scan_library(folders: Vec<String>) -> ScanResult {
+  scan_library_controlled(folders, &|| false, &|_| {}).expect("uncancellable scan")
+}
+
+pub(crate) fn scan_library_controlled(
+  folders: Vec<String>, cancelled: &dyn Fn() -> bool, progress: &dyn Fn(usize),
+) -> Result<ScanResult, String> {
   let mut tracks = Vec::new();
   let mut skipped = 0usize;
 
@@ -83,6 +89,7 @@ pub(crate) fn scan_library(folders: Vec<String>) -> ScanResult {
     }
 
     for entry in WalkDir::new(&root).follow_links(false).into_iter().filter_map(Result::ok) {
+      if cancelled() { return Err("曲库扫描已取消".into()); }
       if !entry.file_type().is_file() {
         continue;
       }
@@ -94,6 +101,7 @@ pub(crate) fn scan_library(folders: Vec<String>) -> ScanResult {
       }
 
       tracks.push(track_from_path(path));
+      if tracks.len() % 25 == 0 { progress(tracks.len()); }
     }
   }
 
@@ -106,11 +114,13 @@ pub(crate) fn scan_library(folders: Vec<String>) -> ScanResult {
       .then(a.title.to_lowercase().cmp(&b.title.to_lowercase()))
   });
 
-  ScanResult {
+  if cancelled() { return Err("曲库扫描已取消".into()); }
+  progress(tracks.len());
+  Ok(ScanResult {
     folders,
     tracks,
     skipped,
-  }
+  })
 }
 
 #[tauri::command]

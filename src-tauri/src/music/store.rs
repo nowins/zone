@@ -775,12 +775,11 @@ pub(crate) fn import_legacy_player_state(
   load_library_snapshot(state)
 }
 
-pub(crate) fn scan_and_store_library(
-  state: &MusicState,
-  folders: Vec<MusicFolder>,
+pub(crate) fn scan_and_store_library_controlled(
+  state: &MusicState, folders: Vec<MusicFolder>, cancelled: &dyn Fn() -> bool, progress: &dyn Fn(usize),
 ) -> Result<MusicScanWriteResult, String> {
   let folder_paths = folders.iter().map(|folder| folder.path.clone()).collect::<Vec<_>>();
-  let scan = library::scan_library(folder_paths);
+  let scan = library::scan_library_controlled(folder_paths, cancelled, progress)?;
   let mut connection = open_music_db(state)?;
   let transaction = connection
     .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -804,6 +803,7 @@ pub(crate) fn scan_and_store_library(
     .map(|track| track.id.clone())
     .collect::<HashSet<_>>();
   for track in &scan.tracks {
+    if cancelled() { return Err("曲库扫描已取消".into()); }
     let folder_path = folder_for_path(&folders, &track.path);
     upsert_track(&transaction, track, folder_path.as_deref(), now)?;
   }
@@ -844,6 +844,7 @@ pub(crate) fn scan_and_store_library(
       .map_err(|error| format!("无法标记缺失曲目：{error}"))?;
   }
 
+  if cancelled() { return Err("曲库扫描已取消".into()); }
   let library_revision = bump_library_revision(&transaction)?;
   transaction
     .commit()
@@ -1281,6 +1282,22 @@ mod tests {
     save_home_pins(&state, vec![]).unwrap();
     let retry = import_legacy_player_state(&state, serde_json::from_value(legacy).unwrap()).unwrap();
     assert!(retry.home_pins.is_empty());
+  }
+
+  #[test]
+  fn cancellation_after_scanning_rolls_back_folder_and_revision_changes() {
+    let root = test_root("cancel-scan");
+    let state = MusicState::initialize_at(&root).unwrap();
+    let folder = MusicFolder { path: root.to_string_lossy().to_string(), name: "Original".into() };
+    scan_and_store_library_controlled(&state, vec![folder], &|| false, &|_| {}).unwrap();
+    let before = load_library_snapshot(&state).unwrap();
+    let cancelled = std::cell::Cell::new(false);
+    let result = scan_and_store_library_controlled(&state, vec![], &|| cancelled.get(), &|_| cancelled.set(true));
+    assert!(result.unwrap_err().contains("取消"));
+    let after = load_library_snapshot(&state).unwrap();
+    assert_eq!(after.folders.len(), 1);
+    assert_eq!(after.folders[0].name, before.folders[0].name);
+    assert_eq!(after.library_revision, before.library_revision);
   }
 
   fn test_root(name: &str) -> std::path::PathBuf {

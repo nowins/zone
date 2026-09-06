@@ -1,3 +1,10 @@
+use std::sync::{Mutex, atomic::{AtomicU64, Ordering}};
+static SCAN_GENERATION: AtomicU64 = AtomicU64::new(0);
+static SCAN_LOCK: Mutex<()> = Mutex::new(());
+
+#[tauri::command]
+pub(crate) fn music_cancel_scan() { SCAN_GENERATION.fetch_add(1, Ordering::SeqCst); }
+
 use super::*;
 use std::collections::HashMap;
 use tauri::State;
@@ -20,11 +27,21 @@ pub(crate) fn music_import_legacy_player_state(
 }
 
 #[tauri::command]
-pub(crate) fn music_scan_library(
+pub(crate) async fn music_scan_library(
+  progress: tauri::ipc::Channel<usize>,
   state: State<'_, MusicState>,
   folders: Vec<MusicFolder>,
 ) -> Result<MusicScanWriteResult, String> {
-  scan_and_store_library(state.inner(), folders)
+  let state = state.inner().clone();
+  let generation = SCAN_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+  tauri::async_runtime::spawn_blocking(move || {
+    let _lock = SCAN_LOCK.lock().map_err(|_| "曲库扫描暂不可用".to_string())?;
+    let cancelled = || SCAN_GENERATION.load(Ordering::SeqCst) != generation;
+    if cancelled() { return Err("曲库扫描已取消".into()); }
+    scan_and_store_library_controlled(&state, folders, &cancelled, &|count| { let _ = progress.send(count); })
+  })
+    .await
+    .map_err(|error| format!("曲库扫描任务异常结束：{error}"))?
 }
 
 #[tauri::command]

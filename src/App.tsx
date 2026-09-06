@@ -151,6 +151,7 @@ export default function App() {
     tracks,
     setTracks,
     isScanning,
+    cancelScan,
     scanNote,
     setScanNote,
     restored,
@@ -297,6 +298,7 @@ export default function App() {
     hasEpisodeStartedOnDevice,
   };
   audioEngineRef.current = useAudioEngine({
+    visualizerVisible: page === "nowPlaying",
     audioRef,
     volume,
     progress,
@@ -1258,6 +1260,8 @@ export default function App() {
             onCloseToTrayChange={(enabled) => updatePlaybackBehavior({ closeToTray: enabled })}
             onAddFolder={addFolder}
             onRescan={() => rescan()}
+            onCancelScan={cancelScan}
+            scanNote={scanNote}
             onClear={() => {
               void musicClearLibrary()
                 .catch((error) => {
