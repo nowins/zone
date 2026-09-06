@@ -23,13 +23,14 @@
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
   scroll-snap-type: none;
   scroll-padding-inline: 16px;
 }
 
 .quickplay-viewport::-webkit-scrollbar {
-  display: none;
+  height: 4px;
 }
 
 .quickplay-track {
@@ -90,7 +91,7 @@
 
 .quick-pins {
   width: max-content;
-  min-width: clamp(580px, 47vw, 720px);
+  min-width: 240px;
 }
 
 .quick-pins h2 {
@@ -105,7 +106,7 @@
   color: var(--quiet);
   font-size: 13px;
   border-bottom: 1px solid transparent;
-  opacity: 0;
+  opacity: 0.7;
   transition: color var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), opacity var(--motion-micro) var(--motion-ease-standard);
 }
 

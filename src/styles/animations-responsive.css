@@ -30,7 +30,7 @@
 }
 
 .stage-entering .now-side-panel {
-  animation: now-queue-enter 240ms 55ms var(--motion-ease-entrance) both;
+  animation: now-queue-enter var(--motion-nowQueue) var(--motion-nowQueueDelay) var(--motion-ease-entrance) both;
 }
 
 /* Hidden only by opacity: the 12px rise lives in the animation's from frame
@@ -42,7 +42,7 @@
 }
 
 .stage-entering.wall-reveal-started .now-track-card {
-  animation: now-track-info-enter 320ms 850ms var(--motion-ease-entrance) both;
+  animation: now-track-info-enter var(--motion-nowCard) var(--motion-nowCardDelay) var(--motion-ease-entrance) both;
 }
 
 .stage-entering .now-transport {
@@ -64,11 +64,11 @@
 }
 
 .stage-entering.flip-cover-active.flip-docked .now-track-card {
-  animation: now-track-card-fade 320ms 60ms var(--motion-ease-entrance) both;
+  animation: now-track-card-fade var(--motion-nowCard) var(--motion-nowDockDelay) var(--motion-ease-entrance) both;
 }
 
 .stage-entering.flip-cover-active.flip-docked .now-track-copy {
-  animation: now-track-info-enter 320ms 60ms var(--motion-ease-entrance) both;
+  animation: now-track-info-enter var(--motion-nowCard) var(--motion-nowDockDelay) var(--motion-ease-entrance) both;
 }
 
 @media (max-height: 800px) {

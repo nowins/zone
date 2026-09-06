@@ -564,9 +564,9 @@ export function QuickplayView({
   }
 
   return (
-    <section className={`quickplay ${tracks.length === 0 ? "quickplay-empty" : ""}`}>
+    <section className={`quickplay ${tracks.length === 0 && homePins.length === 0 ? "quickplay-empty" : ""}`}>
       <div className="quickplay-ghost" aria-hidden="true">quickplay</div>
-      {tracks.length === 0 ? (
+      {tracks.length === 0 && homePins.length === 0 ? (
         <div className="quickplay-empty-content">
           <button onClick={() => onOpenCollection("albums")}>打开收藏并添加音乐</button>
         </div>
@@ -857,7 +857,7 @@ export function QuickplayView({
           </article>
         )}
 
-        <article className="quick-group quick-recent">
+        {recentAlbums.length > 0 && (<article className="quick-group quick-recent">
           <button className="quick-heading" onClick={() => onOpenCollection("albums")}>
             <h2>最近添加</h2>
           </button>
@@ -893,7 +893,7 @@ export function QuickplayView({
             ))}
             </div>
           </div>
-        </article>
+        </article>)}
 
         {historyTracks.length > 0 && featuredHistory && (
           <article className="quick-group quick-history">

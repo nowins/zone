@@ -14,6 +14,17 @@ export const MOTION_DURATIONS = {
   loader: 4500,
 } as const;
 
+/** Layered now-playing entrance and the final static Canvas frame. */
+export const NOW_PLAYING_MOTION = {
+  canvasSettle: 1400,
+  nowQueue: 240,
+  nowQueueDelay: 55,
+  nowCard: 320,
+  nowCardDelay: 850,
+  nowDockDelay: 60,
+  nowStage: 1250,
+} as const;
+
 export type MotionDurationName = keyof typeof MOTION_DURATIONS;
 
 /**
@@ -83,6 +94,9 @@ export function applyMotionTokens(root: HTMLElement = document.documentElement):
   const { style } = root;
   for (const name of Object.keys(MOTION_DURATIONS) as MotionDurationName[]) {
     style.setProperty(cssVarName.duration(name), `${MOTION_DURATIONS[name]}ms`);
+  }
+  for (const [name, value] of Object.entries(NOW_PLAYING_MOTION)) {
+    style.setProperty(`--motion-${name}`, `${value}ms`);
   }
   for (const name of Object.keys(MOTION_EASINGS) as MotionEasingName[]) {
     style.setProperty(cssVarName.easing(name), cubicBezierCss(MOTION_EASINGS[name]));

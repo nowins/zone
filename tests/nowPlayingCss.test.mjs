@@ -155,8 +155,8 @@ test("now playing enters in layered Zune order without delaying transport", () =
   assert.ok(cssRule(animationCss, ".stage-entering .now-track-card").includes("opacity: 0"));
   assert.ok(animationCss.includes(".stage-entering.wall-reveal-started .now-track-card"));
   assert.ok(animationCss.includes(".stage-entering .now-transport"));
-  assert.ok(animationCss.includes("animation: now-queue-enter 240ms 55ms"));
-  assert.ok(animationCss.includes("animation: now-track-info-enter 320ms 850ms"));
+  assert.ok(animationCss.includes("animation: now-queue-enter var(--motion-nowQueue) var(--motion-nowQueueDelay)"));
+  assert.ok(animationCss.includes("animation: now-track-info-enter var(--motion-nowCard) var(--motion-nowCardDelay)"));
 });
 
 test("lyrics word fill follows the media clock at animation-frame cadence", () => {

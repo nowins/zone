@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useModalFocus } from "../hooks/useModalFocus";
 import type { FormEvent, ReactNode } from "react";
 
 /**
@@ -39,6 +40,8 @@ export function Dialog({
   actionsClassName?: string;
   children: ReactNode;
 }) {
+  const dialogRef = useRef<HTMLFormElement>(null);
+  useModalFocus(dialogRef);
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape" || busy) return;
@@ -62,6 +65,8 @@ export function Dialog({
       onClick={(event) => event.stopPropagation()}
     >
       <form
+        ref={dialogRef}
+        tabIndex={-1}
         className={boxClasses}
         role="dialog"
         aria-modal="true"

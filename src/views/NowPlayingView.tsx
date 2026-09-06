@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { useEntranceCompletion } from "../hooks/useEntranceCompletion";
 import { ArrowLeft, AudioLines, ChevronDown, Heart } from "lucide-react";
 import { AudioGlowCanvas } from "../components/AudioGlowCanvas";
 import { Cover } from "../components/Cover";
@@ -12,7 +13,7 @@ import { playCoverFlip } from "../motion/coverFlip";
 import { registerFlipElement, takeFlipSource } from "../motion/flip";
 import type { FlipRect } from "../motion/flip";
 import { Presence, useLastNonNull } from "../motion/presence";
-import { MOTION_DURATIONS } from "../motion/tokens";
+import { MOTION_DURATIONS, NOW_PLAYING_MOTION } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { queueAfterCurrent } from "../utils/playback";
 import type { RepeatMode, Track } from "../types";
@@ -24,7 +25,7 @@ const COVER_FLIP_WAIT_TIMEOUT_MS = 2_500;
 // Total stage-entrance budget: the wall reveal plus the track card's delayed
 // entrance must settle before `stage-entering` clears (see
 // animations-responsive.css for the paired keyframes).
-const STAGE_ENTRANCE_MS = 1_250;
+const STAGE_ENTRANCE_MS = NOW_PLAYING_MOTION.nowStage;
 
 /**
  * Resolves once the track card's entrance animation reaches the given phase
@@ -98,15 +99,14 @@ export function NowPlayingView({
   const [chromeMode, setChromeMode] = useState<"active" | "immersive">("active");
   const [surfaceMode, setSurfaceMode] = useState<"ambient" | "lyrics">("ambient");
   const [keyboardSurfaceChange, setKeyboardSurfaceChange] = useState(false);
-  const [isEntering, setIsEntering] = useState(true);
   const [wallRevealStarted, setWallRevealStarted] = useState(false);
+  const isEntering = !useEntranceCompletion(wallRevealStarted, STAGE_ENTRANCE_MS);
   const [flipCoverActive, setFlipCoverActive] = useState(false);
   const [flipDocked, setFlipDocked] = useState(false);
   const [queueExpanded, setQueueExpanded] = useState(true);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [playlistNameDraft, setPlaylistNameDraft] = useState("正在播放");
   const idleTimer = useRef<number | null>(null);
-  const entranceTimer = useRef<number | null>(null);
   const sidePanelRef = useRef<HTMLElement | null>(null);
   const previousTrackIdRef = useRef(track?.id ?? null);
   const orderedQueue = useMemo(() => queueAfterCurrent(queue, track?.id ?? null), [queue, track?.id]);
@@ -154,8 +154,6 @@ export function NowPlayingView({
 
   const handleInitialWallRevealStart = useCallback(() => {
     setWallRevealStarted(true);
-    if (entranceTimer.current) window.clearTimeout(entranceTimer.current);
-    entranceTimer.current = window.setTimeout(() => setIsEntering(false), STAGE_ENTRANCE_MS);
   }, []);
 
   function openSaveDialog() {
@@ -181,7 +179,6 @@ export function NowPlayingView({
     wakeChrome();
     return () => {
       if (idleTimer.current) window.clearTimeout(idleTimer.current);
-      if (entranceTimer.current) window.clearTimeout(entranceTimer.current);
     };
   }, []);
 

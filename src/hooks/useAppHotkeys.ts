@@ -25,7 +25,12 @@ export function useAppHotkeys(handlers: HotkeyHandlers, enabled = true) {
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented) return;
+      if (event.isComposing) return;
       if (isEditableTarget(event.target)) return;
+      if (event.target instanceof Element && event.target.closest(
+        'button, a[href], summary, [role="button"], [role^="menuitem"], [role="slider"], [role="tab"], [role="checkbox"], [role="radio"]',
+      )) return;
+      if (document.querySelector('[aria-modal="true"], [role="menu"]')) return;
       if (event.altKey || event.ctrlKey || event.metaKey) return;
 
       const key = event.key;

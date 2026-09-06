@@ -22,6 +22,7 @@ import { PodcastNowPlayingView } from "./views/PodcastNowPlayingView";
 import { SettingsView } from "./views/SettingsView";
 import { PodcastView } from "./views/PodcastView";
 import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
+import { useMountedRef } from "./hooks/useMountedRef";
 import {
   musicClearLibrary,
   musicGetLibrarySnapshot,
@@ -344,7 +345,7 @@ export default function App() {
   // 取消关注后依然可解析；播客库修订（播放/标记/下载）会刷新未读数。
   const [podcastPinFeeds, setPodcastPinFeeds] = useState<PodcastFeed[]>([]);
   const podcastPinFeedsLoadedRef = useRef(false);
-  const podcastPinFeedsMountedRef = useRef(true);
+  const podcastPinFeedsMountedRef = useMountedRef();
   const [podcastFeedRequest, setPodcastFeedRequest] = useState<PodcastFeedRequest | null>(null);
   const loadPodcastPinFeeds = useCallback(() => {
     invoke<PodcastFeed[]>("podcast_list_feeds", { includeUnsubscribed: true })
@@ -354,11 +355,6 @@ export default function App() {
         setPodcastPinFeeds(feeds);
       })
       .catch(() => undefined);
-  }, []);
-  useEffect(() => {
-    return () => {
-      podcastPinFeedsMountedRef.current = false;
-    };
   }, []);
   useEffect(() => {
     loadPodcastPinFeeds();

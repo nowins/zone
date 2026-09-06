@@ -10,6 +10,9 @@
     "types": []
   },
   "include": [
+    "src/hooks/useAppHotkeys.ts",
+    "src/hooks/useEntranceCompletion.ts",
+    "src/hooks/useMountedRef.ts",
     "src/utils/visualizer.ts",
     "src/utils/visualizerBus.ts",
     "src/utils/nowPlayingWall.ts",
