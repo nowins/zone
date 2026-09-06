@@ -7,6 +7,7 @@ import { buildNowPlayingWall } from "../utils/nowPlayingWall";
 import { getVisualizerFrame, isDocumentVisible } from "../utils/visualizerBus";
 import {
   buildCanvasMosaicTiles,
+  advanceMosaicArtwork,
   createMosaicColorPalette,
   createMosaicColorFieldSampler,
   createMosaicFlipState,
@@ -18,6 +19,7 @@ import {
   type MosaicColorPalette,
   type MosaicFlipState,
   type MosaicTile,
+  type MosaicArtworkState,
   type RgbColor,
 } from "../utils/nowPlayingCanvas";
 
@@ -57,6 +59,7 @@ export function NowPlayingMosaicCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
   const tilesRef = useRef<MosaicTile[]>([]);
+  const artworkRef = useRef<Array<MosaicArtworkState<HTMLCanvasElement>>>([]);
   const albumsRef = useRef<AlbumGroup[]>([]);
   const isPlayingRef = useRef(isPlaying);
   const paletteRef = useRef<MosaicColorPalette>(clonePalette(FALLBACK_PALETTE));
@@ -72,6 +75,7 @@ export function NowPlayingMosaicCanvas({
   const motionEnabledRef = useRef(true);
   const reducedMotion = useReducedMotion();
   const wallAlbums = useMemo(() => buildNowPlayingWall(tracks, activeTrack), [tracks, activeTrack]);
+  const wallKey = wallAlbums.map(album => album.coverPath ?? "").join("\0");
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -83,15 +87,15 @@ export function NowPlayingMosaicCanvas({
     albumsRef.current = wallAlbums;
     flipRef.current = createMosaicFlipState();
     const { width, height } = sizeRef.current;
-    tilesRef.current = width > 0 && height > 0
-      ? buildCanvasMosaicTiles(width, height, wallAlbums)
-      : [];
+    if (tilesRef.current.length === 0 && width > 0 && height > 0) {
+      tilesRef.current = buildCanvasMosaicTiles(width, height, wallAlbums);
+    }
     wallRevealStartedAtRef.current = isFirstWall ? performance.now() : Number.NEGATIVE_INFINITY;
     if (isFirstWall) onInitialRevealStart?.();
     invalidateRef.current();
 
     return preloadWallImagesProgressively(wallAlbums);
-  }, [onInitialRevealStart, wallAlbums]);
+  }, [onInitialRevealStart, wallKey]);
 
   useEffect(() => {
     motionEnabledRef.current = !reducedMotion;
@@ -137,6 +141,7 @@ export function NowPlayingMosaicCanvas({
       tilesRef.current = albumsRef.current.length > 0
         ? buildCanvasMosaicTiles(width, height, albumsRef.current)
         : [];
+      artworkRef.current.length = tilesRef.current.length;
     };
 
     const observer = new ResizeObserver(resize);
@@ -179,13 +184,14 @@ export function NowPlayingMosaicCanvas({
           wallRevealStartedAtRef.current,
           motionEnabled,
           colorFieldRendererRef,
+          artworkRef.current,
         );
       } catch (error) {
         if (import.meta.env.DEV) console.error("[now-playing:mosaic] draw failed", error);
         frameRef.current = null;
         return;
       }
-      if (isDocumentVisible() && ((isPlayingRef.current && motionEnabledRef.current) || time < settleUntilRef.current)) {
+      if (isDocumentVisible() && ((isPlayingRef.current && motionEnabledRef.current) || time < settleUntilRef.current || artworkRef.current.some(state => state.previous))) {
         frameRef.current = window.requestAnimationFrame(draw);
       } else {
         frameRef.current = null;
@@ -244,10 +250,13 @@ function drawMosaic(
   wallRevealStartedAt: number,
   motionEnabled: boolean,
   colorFieldRendererRef: { current: MosaicColorFieldRenderer | null },
+  artwork: Array<MosaicArtworkState<HTMLCanvasElement>>,
 ) {
   const { width, height, dpr } = size;
   if (width <= 1 || height <= 1) return;
 
+  const readyAlbums = albums.filter(album => album.coverPath && imageCache.has(album.coverPath));
+  const fallbackImages = readyAlbums.map(album => imageCache.get(album.coverPath!)!);
   updateMosaicFlipState(flipState, tiles, {
     isPlaying: isPlaying && motionEnabled,
     beatPulse,
@@ -288,7 +297,8 @@ function drawMosaic(
       : null;
     context.save();
     context.globalAlpha *= tileReveal;
-    drawTile(context, tile, albums, flip);
+    const state = artwork[index] ??= { image: null, previous: null, startedAt: 0 };
+    drawTile(context, tile, albums, flip, state, fallbackImages[index % Math.max(1, fallbackImages.length)] ?? null, time, motionEnabled);
     context.restore();
   }
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -402,6 +412,10 @@ function drawTile(
     toAlbumIndex: number;
     direction: -1 | 1;
   } | null,
+  artwork: MosaicArtworkState<HTMLCanvasElement>,
+  fallback: HTMLCanvasElement | null,
+  time: number,
+  motionEnabled: boolean,
 ) {
   const isFlipping = flip !== null && flip.progress >= 0 && flip.progress <= 1;
   const easedFlip = isFlipping ? easeInOutCubic(flip.progress) : 0;
@@ -409,7 +423,10 @@ function drawTile(
     ? (easedFlip < 0.5 ? flip.fromAlbumIndex : flip.toAlbumIndex)
     : tile.albumIndex;
   const album = albums[albumIndex];
-  const image = album?.coverPath ? imageCache.get(album.coverPath) : null;
+  const candidate = album?.coverPath ? imageCache.get(album.coverPath) ?? null : null;
+  const mix = advanceMosaicArtwork(artwork, candidate, fallback, time,
+    motionEnabled ? NOW_PLAYING_MOTION.mosaicReplace : 0,
+    motionEnabled ? tile.seed * NOW_PLAYING_MOTION.mosaicReplaceStagger : 0);
   const flipScale = isFlipping ? Math.max(0.02, Math.abs(Math.cos(easedFlip * Math.PI))) : 1;
   const flipForeshorten = isFlipping ? 1 - Math.sin(easedFlip * Math.PI) * 0.07 : 1;
   const flipShade = isFlipping ? Math.sin(easedFlip * Math.PI) * 0.5 : 0;
@@ -429,11 +446,13 @@ function drawTile(
   context.fillStyle = "#171717";
   context.fillRect(tile.x, tile.y, tile.width, tile.height);
 
-  if (image && image.width > 0 && image.height > 0) {
+  if (artwork.image) {
     const inheritedAlpha = context.globalAlpha;
-    context.globalAlpha = inheritedAlpha * 0.86;
-    context.filter = "grayscale(0.92) saturate(0.38) brightness(0.58) contrast(1.1)";
-    drawImageCover(context, image, tile.x, tile.y, tile.width, tile.height);
+    context.filter = "grayscale(0.92) saturate(0.38) brightness(0.5) contrast(1.1)";
+    // Keep the old cover opaque underneath, avoiding a dark gap halfway.
+    if (artwork.previous) drawImageCover(context, artwork.previous, tile.x, tile.y, tile.width, tile.height);
+    context.globalAlpha *= mix;
+    drawImageCover(context, artwork.image, tile.x, tile.y, tile.width, tile.height);
     context.filter = "none";
     context.globalAlpha = inheritedAlpha;
   }
@@ -542,12 +561,9 @@ function loadWallImage(path: string) {
     if (imageCache.size >= MAX_IMAGE_CACHE) {
       const oldestPath = imageCache.keys().next().value;
       if (oldestPath) {
-        const oldestImage = imageCache.get(oldestPath);
         imageCache.delete(oldestPath);
-        if (oldestImage) {
-          oldestImage.width = 0;
-          oldestImage.height = 0;
-        }
+        // A visible tile may still hold this decoded surface during a dissolve.
+        // Let GC reclaim it after the final tile releases it; never blank it.
       }
     }
     imageCache.set(path, image);

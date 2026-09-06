@@ -31,6 +31,29 @@ export type MosaicTile = {
   flipDelay: number;
 };
 
+export type MosaicArtworkState<T> = {
+  image: T | null;
+  previous: T | null;
+  startedAt: number;
+};
+
+/** Never replace decoded artwork with a pending/failed image. Finish an
+ * in-flight dissolve before retargeting so rapid skips cannot flash a layer. */
+export function advanceMosaicArtwork<T>(
+  state: MosaicArtworkState<T>, candidate: T | null, fallback: T | null,
+  time: number, duration: number, delay: number,
+) {
+  if (state.previous && time >= state.startedAt + duration) state.previous = null;
+  if (!state.image) state.image = candidate ?? fallback;
+  else if (candidate && candidate !== state.image && !state.previous) {
+    state.previous = state.image;
+    state.image = candidate;
+    state.startedAt = time + delay;
+  }
+  if (duration <= 0) state.previous = null;
+  return state.previous ? smoothstep(0, Math.max(1, duration), time - state.startedAt) : 1;
+}
+
 export type MosaicFlipState = {
   tileIndex: number;
   startedAt: number;

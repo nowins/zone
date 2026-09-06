@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCanvasMosaicTiles,
+  advanceMosaicArtwork,
   createMosaicColorFieldMotion,
   createMosaicColorPalette,
   extractMosaicColorPalette,
@@ -13,6 +14,26 @@ import {
   sampleMosaicColorField,
   updateMosaicFlipState,
 } from "../.tmp/visualizer-tests/utils/nowPlayingCanvas.js";
+
+test("wall keeps decoded covers through failed loads and rapid retargeting", () => {
+  const a = {}, b = {}, c = {};
+  const state = { image: null, previous: null, startedAt: 0 };
+  advanceMosaicArtwork(state, null, a, 0, 900, 100);
+  assert.equal(state.image, a, "a decoded fallback fills an unavailable tile");
+  assert.equal(advanceMosaicArtwork(state, b, null, 10, 900, 100), 0);
+  assert.equal(state.previous, a);
+  const middle = advanceMosaicArtwork(state, c, null, 560, 900, 100);
+  assert.ok(middle > 0 && middle < 1);
+  assert.equal(state.image, b, "rapid skips finish the visible dissolve before replacing it");
+  advanceMosaicArtwork(state, c, null, 1020, 900, 100);
+  assert.equal(state.previous, b);
+  assert.equal(state.image, c);
+  advanceMosaicArtwork(state, null, null, 2200, 900, 100);
+  assert.equal(state.image, c, "a failed target never blanks a good tile");
+  assert.equal(state.previous, null, "old surfaces are released after a transition");
+  assert.equal(advanceMosaicArtwork(state, a, null, 2210, 0, 0), 1);
+  assert.equal(state.previous, null, "reduced motion immediately reaches a static cover");
+});
 
 test("canvas mosaic layout is stable, varied, and square-only", () => {
   const albums = [

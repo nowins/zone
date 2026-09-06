@@ -70,7 +70,7 @@ export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
     ...coveredOthers,
   ];
 
-  if (active) {
+  if (active?.cover_path) {
     const activeAlbum = {
       key: albumKey(active.album, active.album_artist ?? active.artist),
       album: active.album,

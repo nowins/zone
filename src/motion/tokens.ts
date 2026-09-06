@@ -17,6 +17,8 @@ export const MOTION_DURATIONS = {
 /** Layered now-playing entrance and the final static Canvas frame. */
 export const NOW_PLAYING_MOTION = {
   canvasSettle: 1400,
+  mosaicReplace: 900,
+  mosaicReplaceStagger: 240,
   nowQueue: 240,
   nowQueueDelay: 55,
   nowCard: 320,

@@ -66,3 +66,10 @@ function makeTrack(id, artist, album, coverPath) {
     cover_path: coverPath,
   };
 }
+
+test("an active song without cover art never inserts blank albums into a covered wall", () => {
+  const missing = makeTrack("missing", "Artist", "No cover", null);
+  const covered = makeTrack("covered", "Other", "Cover", "cover.jpg");
+  const wall = buildNowPlayingWall([missing, covered], missing);
+  assert.ok(wall.every(album => album.coverPath === "cover.jpg"));
+});
