@@ -35,6 +35,17 @@ export type ZuneMountainFrame = ZuneGlowFrame & {
   ridgePeak: number;
 };
 
+/** A light falloff, not a filled silhouette. Each live audio column diffuses
+ * upward continuously, so the eye never sees a stroked mountain boundary. */
+export function zuneGlowRadiance(height: number, heat: number, rise: number) {
+  const drive = clamp((height - 0.008) / 0.492, 0, 1);
+  if (drive === 0) return 0;
+  const reach = 0.028 + drive * 0.26 + clamp(heat, 0, 1) * 0.04;
+  const tail = Math.exp(-((Math.max(0, rise) / reach) ** 1.8));
+  const floor = Math.exp(-Math.max(0, rise) / 0.045);
+  return clamp(drive ** 0.9 * (tail * 1.4 + floor * 0.28), 0, 1);
+}
+
 export function createZuneGlowFrame({
   energy,
   beatPulse,

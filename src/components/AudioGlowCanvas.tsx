@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import {
   createZuneMountainFrame,
   type ZuneMountainFrame,
-  type ZuneMountainPoint,
+  zuneGlowRadiance,
 } from "../utils/audioGlow";
 import { createIdleVisualizerFrame } from "../utils/visualizer";
 import { getVisualizerFrame, isDocumentVisible } from "../utils/visualizerBus";
@@ -79,6 +79,7 @@ export function AudioGlowCanvas({
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
 
+    let field: GlowField | null = null;
     const draw = (time: number) => {
       const previous = lastTimeRef.current ?? time;
       const delta = Math.min(0.08, Math.max(0.001, (time - previous) / 1000));
@@ -115,13 +116,14 @@ export function AudioGlowCanvas({
       const glowFrame = smoothMountainFrame(targetFrame, ridgeHeightsRef.current, delta, playing);
       ridgeHeightsRef.current = glowFrame.ridgePoints.map((point) => point.height);
 
+      if (!field && sizeRef.current.width > 1) field = createGlowField();
       drawGlow(
         context,
         sizeRef.current,
         glowFrame,
         playing,
         volumeRef.current,
-        frame.beatConfidence,
+        field,
       );
       if (isDocumentVisible() && ((isPlayingRef.current && !reducedMotionRef.current) || time < settleUntilRef.current)) {
         frameRef.current = window.requestAnimationFrame(draw);
@@ -161,227 +163,59 @@ export function AudioGlowCanvas({
   return <canvas ref={canvasRef} className="audio-glow-canvas" aria-hidden="true" />;
 }
 
+type GlowField = {
+  canvas: HTMLCanvasElement;
+  context: CanvasRenderingContext2D;
+  pixels: ImageData;
+};
+
+function createGlowField(): GlowField | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = 240;
+  canvas.height = 72;
+  const context = canvas.getContext("2d");
+  return context ? { canvas, context, pixels: context.createImageData(canvas.width, canvas.height) } : null;
+}
+
 function drawGlow(
   context: CanvasRenderingContext2D,
   size: { width: number; height: number; dpr: number },
   frame: ZuneMountainFrame,
   isPlaying: boolean,
   volume: number,
-  beatConfidence: number,
+  field: GlowField | null,
 ) {
   const { width, height, dpr } = size;
   if (width <= 1 || height <= 1) return;
-
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, width, height);
-  if (!isPlaying || !frame.active || frame.centerIntensity < 0.018) return;
+  if (!isPlaying || !frame.active || !field || frame.ridgePoints.length === 0) return;
 
-  const mutedGain = volume <= 0.01 ? 0.38 : 1;
-  const confidenceGain = 0.92 + beatConfidence * 0.08;
-  const gain = mutedGain * confidenceGain * 1.25;
-  const centerX = width * frame.bodyCenterX;
-  const baseY = height * 1.04;
-  const bodyY = height * (0.96 - frame.bodyLift);
-  const bodyRadiusX = width * frame.bodyWidth * 0.5;
-  const bodyRadiusY = height * frame.bodyHeight * 0.88;
-
-  context.save();
+  const { canvas, pixels } = field;
+  const points = frame.ridgePoints;
+  const gain = (volume <= 0.01 ? 0.38 : 1) * (0.68 + frame.bodyAlpha * 0.5);
+  for (let column = 0; column < canvas.width; column += 1) {
+    const position = column / (canvas.width - 1) * (points.length - 1);
+    const index = Math.floor(position);
+    const a = points[index], b = points[Math.min(points.length - 1, index + 1)];
+    const blend = position - index;
+    const reach = a.height + (b.height - a.height) * blend;
+    const heat = a.heat + (b.heat - a.heat) * blend;
+    for (let row = 0; row < canvas.height; row += 1) {
+      const rise = 1 - row / (canvas.height - 1);
+      const light = zuneGlowRadiance(reach, heat, rise) * gain;
+      const offset = (row * canvas.width + column) * 4;
+      pixels.data[offset] = 246;
+      pixels.data[offset + 1] = 32 + Math.min(1, light) * 66;
+      pixels.data[offset + 2] = 9 + Math.min(1, light) * 15;
+      pixels.data[offset + 3] = Math.min(1, light) * 220;
+    }
+  }
+  field.context.putImageData(pixels, 0, 0);
   context.globalCompositeOperation = "source-over";
-  drawMountainBody(context, frame.ridgePoints, width, height, {
-    alpha: 0.48 * gain,
-    blur: 5,
-    heightScale: height * 0.76,
-    bottom: height + 6,
-    stops: [
-      [0, "rgba(132, 18, 8, 0.34)"],
-      [0.5, "rgba(104, 9, 5, 0.3)"],
-      [1, "rgba(48, 2, 2, 0.18)"],
-    ],
-  });
-  drawGlowEllipse(context, centerX, baseY, bodyRadiusX * 1.16, height * 0.24, frame.baseAlpha * 0.42 * gain, [
-    [0, "rgba(112, 12, 4, 0.48)"],
-    [0.5, "rgba(74, 5, 3, 0.22)"],
-    [1, "rgba(0, 0, 0, 0)"],
-  ], 18);
-  context.globalCompositeOperation = "screen";
-  drawMountainBody(context, frame.ridgePoints, width, height, {
-    alpha: (0.42 + frame.crestAlpha * 0.7) * gain,
-    blur: 16,
-    heightScale: height * 0.98,
-    bottom: height + 10,
-    stops: [
-      [0, "rgba(255, 74, 30, 0.28)"],
-      [0.48, "rgba(190, 22, 10, 0.28)"],
-      [1, "rgba(70, 3, 3, 0.12)"],
-    ],
-  });
-  drawMountainBody(context, frame.ridgePoints, width, height, {
-    alpha: (0.5 + frame.bodyAlpha * 0.34) * gain,
-    blur: 6,
-    heightScale: height * 0.84,
-    bottom: height + 4,
-    stops: [
-      [0, "rgba(255, 112, 50, 0.44)"],
-      [0.44, "rgba(224, 42, 16, 0.42)"],
-      [1, "rgba(92, 5, 4, 0.18)"],
-    ],
-  });
-  drawGlowEllipse(context, centerX, baseY, bodyRadiusX * 1.18, height * 0.26, frame.baseAlpha * 1.05 * gain, [
-    [0, "rgba(150, 18, 5, 0.48)"],
-    [0.48, "rgba(96, 7, 3, 0.24)"],
-    [1, "rgba(0, 0, 0, 0)"],
-  ], 16);
-  drawGlowEllipse(context, centerX, bodyY, bodyRadiusX, bodyRadiusY, frame.bodyAlpha * 0.18 * gain, [
-    [0, "rgba(255, 92, 30, 0.68)"],
-    [0.38, "rgba(218, 36, 12, 0.42)"],
-    [0.76, "rgba(110, 8, 5, 0.22)"],
-    [1, "rgba(0, 0, 0, 0)"],
-  ], 20);
-  drawGlowEllipse(context, centerX, bodyY + height * 0.04, bodyRadiusX * 0.58, bodyRadiusY * 0.52, frame.bodyAlpha * 0.1 * gain, [
-    [0, "rgba(255, 156, 76, 0.52)"],
-    [0.44, "rgba(255, 82, 28, 0.26)"],
-    [1, "rgba(0, 0, 0, 0)"],
-  ], 10);
-  drawMountainCrest(context, frame.ridgePoints, width, height, gain);
-  drawHotspots(context, frame, width, height, gain);
-  context.restore();
-
-  clearTopSafety(context, width, height);
-}
-
-function drawMountainBody(
-  context: CanvasRenderingContext2D,
-  points: ZuneMountainPoint[],
-  width: number,
-  height: number,
-  options: {
-    alpha: number;
-    blur: number;
-    heightScale: number;
-    bottom: number;
-    stops: Array<[number, string]>;
-  },
-) {
-  if (points.length < 2 || options.alpha <= 0) return;
-  context.save();
-  context.globalAlpha = options.alpha;
-  context.filter = options.blur > 0 ? `blur(${options.blur}px)` : "none";
-  const gradient = context.createLinearGradient(0, height * 0.42, 0, options.bottom);
-  for (const [offset, color] of options.stops) gradient.addColorStop(offset, color);
-  context.fillStyle = gradient;
-  buildMountainPath(context, points, width, options.bottom, options.heightScale);
-  context.fill();
-  context.restore();
-}
-
-function drawMountainCrest(
-  context: CanvasRenderingContext2D,
-  points: ZuneMountainPoint[],
-  width: number,
-  height: number,
-  gain: number,
-) {
-  if (points.length < 2) return;
-  const crest = context.createLinearGradient(0, 0, width, 0);
-  for (let index = 0; index < points.length; index += 4) {
-    const point = points[index];
-    crest.addColorStop(point.x, `rgba(255, ${Math.round(58 + point.heat * 92)}, 42, ${0.12 + point.heat * 0.5})`);
-  }
-
-  context.save();
-  context.globalAlpha = 0.36 * gain;
-  context.filter = "blur(4px)";
-  context.strokeStyle = crest;
-  context.lineWidth = 4;
-  context.beginPath();
-  buildMountainCrestPath(context, points, width, height * 0.88, height + 4);
-  context.stroke();
-  context.restore();
-}
-
-function buildMountainPath(
-  context: CanvasRenderingContext2D,
-  points: ZuneMountainPoint[],
-  width: number,
-  bottom: number,
-  heightScale: number,
-) {
-  context.beginPath();
-  context.moveTo(0, bottom);
-  buildMountainCrestPath(context, points, width, heightScale, bottom);
-  context.lineTo(width, bottom);
-  context.closePath();
-}
-
-function buildMountainCrestPath(
-  context: CanvasRenderingContext2D,
-  points: ZuneMountainPoint[],
-  width: number,
-  heightScale: number,
-  bottom: number,
-) {
-  const first = points[0];
-  context.lineTo(first.x * width, bottom - first.height * heightScale);
-  for (let index = 1; index < points.length - 1; index += 1) {
-    const point = points[index];
-    const next = points[index + 1];
-    const pointX = point.x * width;
-    const pointY = bottom - point.height * heightScale;
-    const midpointX = ((point.x + next.x) / 2) * width;
-    const midpointY = bottom - ((point.height + next.height) / 2) * heightScale;
-    context.quadraticCurveTo(pointX, pointY, midpointX, midpointY);
-  }
-  const last = points[points.length - 1];
-  context.lineTo(last.x * width, bottom - last.height * heightScale);
-}
-
-function drawHotspots(context: CanvasRenderingContext2D, frame: ZuneMountainFrame, width: number, height: number, gain: number) {
-  if (frame.hotspots.length === 0) return;
-  for (const hotspot of frame.hotspots) {
-    drawGlowEllipse(context, width * hotspot.x, height * hotspot.y, width * hotspot.radius, height * hotspot.radius * 1.4, hotspot.alpha * gain, [
-      [0, "rgba(255, 186, 116, 0.54)"],
-      [0.36, "rgba(255, 86, 36, 0.18)"],
-      [1, "rgba(0, 0, 0, 0)"],
-    ], 3);
-  }
-}
-
-function drawGlowEllipse(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  radiusX: number,
-  radiusY: number,
-  alpha: number,
-  stops: Array<[number, string]>,
-  blur: number,
-) {
-  if (alpha <= 0 || radiusX <= 0 || radiusY <= 0) return;
-  context.save();
-  context.translate(x, y);
-  context.scale(radiusX, radiusY);
-  context.globalAlpha = alpha;
-  context.filter = blur > 0 ? `blur(${blur}px)` : "none";
-  const gradient = context.createRadialGradient(0, 0, 0.04, 0, 0, 1);
-  for (const [offset, color] of stops) gradient.addColorStop(offset, color);
-  context.fillStyle = gradient;
-  context.beginPath();
-  context.arc(0, 0, 1, 0, Math.PI * 2);
-  context.fill();
-  context.restore();
-}
-
-function clearTopSafety(context: CanvasRenderingContext2D, width: number, height: number) {
-  const fade = context.createLinearGradient(0, 0, 0, height);
-  fade.addColorStop(0, "rgba(0, 0, 0, 1)");
-  fade.addColorStop(0.46, "rgba(0, 0, 0, 1)");
-  fade.addColorStop(0.54, "rgba(0, 0, 0, 0.42)");
-  fade.addColorStop(0.64, "rgba(0, 0, 0, 0)");
-  fade.addColorStop(1, "rgba(0, 0, 0, 0)");
-  context.globalCompositeOperation = "destination-out";
-  context.fillStyle = fade;
-  context.fillRect(0, 0, width, height);
-  context.globalCompositeOperation = "source-over";
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(canvas, 0, 0, width, height);
 }
 
 function smoothTransient(current: number, target: number, delta: number, attackSeconds: number, decaySeconds: number) {

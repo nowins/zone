@@ -92,9 +92,11 @@ function createSpectralContour(bands: number[], attacks: number[], count: number
       const level = bands[band];
       const attack = attacks[band] ?? 0;
       const weight = band < 3 ? 1.15 : band < 8 ? 0.8 : 0.26;
-      const width = band < 3 ? 0.14 + level * 0.055 + attack * 0.035 : 0.065 + level * 0.035;
+      const width = band < 3 ? 0.06 + level * 0.035 + attack * 0.025 : 0.025 + level * 0.025;
       const volume = gaussian(x, BAND_CENTERS[band], width);
-      body += volume * level ** 1.25 * weight;
+      // Preserve separate volumes: adding overlapping bands saturated the
+      // entire middle into the same smooth arch on dense recordings.
+      body = Math.max(body, volume * level ** 1.25 * weight);
       crest += gaussian(x, BAND_CENTERS[band], width * 0.62) * attack * Math.sqrt(level) * weight;
     }
     const edge = 0.28 + Math.sin(Math.PI * x) ** 0.55 * 0.72;

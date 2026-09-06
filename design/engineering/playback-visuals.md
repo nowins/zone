@@ -51,6 +51,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
   - 用本地专辑/艺术家封面做拼贴，优先当前艺术家的专辑。
   - 从当前封面派生柔和色彩罩染；另有动态色彩场（`createMosaicColorFieldSampler`，`globalCompositeOperation = "color"`）沿多角度慢变轨迹漂移，色相随位置变化。
   - 只做缓慢的平移/缩放，动效像呼吸而不是幻灯片；磁贴随机翻面稀少且缓慢。
+  - 换曲保留磁贴几何与已解码图像；新图解码完成后逐片交叉淡化，连续切歌接续当前过渡。同专辑不重建墙；缺失或失败封面保留旧图，首次加载使用其他已就绪封面补位。缓存淘汰不得清空仍被磁贴引用的画布。
 - 入场：
   - 页面以 `now-stage-dissolve`（纯透明度溶解）进入，无位移/缩放。
   - 队列面板先淡入，拼贴墙磁贴非顺序错峰显现，曲目卡随后淡入；FLIP 飞行时等待落位再接续。时长与延迟由 `src/motion/tokens.ts` 的 `NOW_PLAYING_MOTION` 及 `src/styles/animations-responsive.css` 编排，不在本文固定毫秒值。
@@ -61,8 +62,10 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 控制：
   - 极简线性控制；无操作约 5 秒后 chrome 直接隐藏（`IDLE_CHROME_DELAY` 进入 `chrome-immersive`），只留下拼贴与歌曲信息，无中间虚化态。
   - 控制区不应主导页面。
+  - 正在播放列表保持播放队列原顺序，当前曲目只高亮；超出可见范围时仅滚动列表使其露出。底部进度与播放按钮分区留白，此页隐藏全局设置入口，保留窗口控制。
 - 可视化：
   - 应像底部低暗的红/橙色光晕或火焰（`audioGlow.ts` 生成真实音频轮廓），不是传统均衡器。
+  - 当前渲染将各频段的局部能量映射为向上连续衰减的低分辨率光场，再平滑放大；不描边或填充封闭山形。频段使用独立局部包络，避免相加饱和后整片变成固定拱形。
   - 外层 `.visualizer` 背景保持透明或极淡。
   - 避免规则滚动的正弦波，运动由低频/低中频能量与波形包络驱动。
 - 歌词模式：
@@ -82,4 +85,5 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 协议或原生解码变化运行 `cargo check` 与相应 Rust 测试；协议/发布路径变化还需 `npx tauri build --no-bundle`。
 - 播放协议和可视化行为必须在真实 Tauri 音乐播放中验证：进入/退出、换曲、seek、静音、暂停/恢复、文档隐藏及 reduced-motion。纯浏览器 Vite 不能证明自定义协议或 CORS 链路正常。
 - 光焰改动比较不同音乐及同一首歌的安静/节奏段落，检查峰位、宽度和局部亮度确实随信号变化；色场改动检查首次入场与换封面过渡。至少检查默认窗口和最小窗口，涉及高分辨率 Canvas 性能时补相应尺寸验证。
+- 队列改动检查点击中间曲目、上一首/下一首与折叠态定位；封面改动检查慢加载、加载失败、同专辑和连续切歌，过渡不得中途变亮或露出空白。
 - 启动应用遵循根目录授权规则；若必要交互验证无法完成，说明尚未验证的部分，不用静态检查冒充实测通过。

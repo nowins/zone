@@ -4,7 +4,24 @@ import test from "node:test";
 import {
   createZuneGlowFrame,
   createZuneMountainFrame,
+  zuneGlowRadiance,
 } from "../.tmp/visualizer-tests/utils/audioGlow.js";
+
+test("audio light diffuses continuously upward and strong local energy expands its reach", () => {
+  assert.equal(zuneGlowRadiance(0.008, 0, 0), 0);
+  assert.equal(zuneGlowRadiance(0, 1, 0.1), 0, "no source energy means no light");
+  const calm = zuneGlowRadiance(0.1, 0.15, 0.15);
+  const hit = zuneGlowRadiance(0.4, 0.8, 0.15);
+  assert.ok(hit > calm * 4);
+  let previous = 1;
+  for (let i = 0; i <= 100; i++) {
+    const value = zuneGlowRadiance(0.4, 0.8, i / 100);
+    assert.ok(value <= previous && value >= 0);
+    assert.ok(Math.abs(value - previous) < 0.24, "no hard silhouette boundary");
+    previous = value;
+  }
+  assert.ok(zuneGlowRadiance(0.5, 1, 0.8) < 0.01, "upper controls stay clear");
+});
 
 test("quiet Zune glow frame stays inactive", () => {
   const frame = createZuneGlowFrame({
@@ -160,9 +177,10 @@ test("AudioGlowCanvas renderer no longer uses a traditional path horizon", () =>
 
   assert.ok(!source.includes("drawFlamePath"));
   assert.ok(source.includes("createZuneMountainFrame"));
-  assert.ok(source.includes("drawMountainBody"));
-  assert.ok(source.includes("quadraticCurveTo"));
-  assert.ok(source.includes("createRadialGradient"));
+  assert.ok(source.includes("zuneGlowRadiance"));
+  assert.ok(source.includes("putImageData"));
+  assert.ok(!source.includes("quadraticCurveTo"), "light must not have a stroked mountain rim");
+  assert.ok(!source.includes("drawGlowEllipse"), "large ellipses must not erase local signal variation");
   assert.ok(source.includes("source-over"));
 });
 
