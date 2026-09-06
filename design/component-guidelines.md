@@ -29,6 +29,7 @@
 - 字体栈：`"Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI Light", "Microsoft YaHei UI", "Segoe UI", sans-serif`，全局 `user-select: none`（输入框除外）。
 - 展示标题：`font-weight: 200–250`，`letter-spacing` 约 `-0.05em`，`line-height < 1`。
 - 正文/列表：400；次级信息用 `--muted`。
+- 播客正在播放的时间、倍速、睡眠与动作标签至少 12px；节目/单集详情只保留一个内容大标题。保存单集统一称“稍后听”，插入待播首位称“下一集播放”。
 - 幽灵大字（`.quickplay-ghost` / `.collection-ghost` / `.podcast-ghost`）：`position: absolute`、低透明度、允许裁切，`aria-hidden`。
 
 ### 2.3 动效令牌（`src/motion/tokens.ts`，经 `applyMotionTokens()` 注入 `:root`）
@@ -42,6 +43,10 @@
 | 弹簧 | `SPRING_PRESETS.snappy` / `gentle` / `bouncy` | 按压回弹 / 页面级 / 确认反馈 |
 
 规则：**新动效一律消费令牌，禁止就地硬编码时长和曲线**。`cycle` 用于慢速环境循环（磁贴轮换交叉淡化），`loader` 只用于循环加载器，两者都不得作为过渡时长。
+
+正在播放的分层入场使用同文件中的 `NOW_PLAYING_MOTION` 编排值（队列、曲目卡及各自延迟），不扩展通用时长档位。Canvas 的最终静帧收敛时间同样来自此表。
+
+光焰形状由真实频段包络与瞬态决定，允许峰顶位置、宽度与局部亮度随乐段变化；不得再次用固定中央山形覆盖采样轮廓，也不得在静音时播放兜底动画。音频包络的 attack/release 是 DSP 参数，不属于 UI 转场时长。光焰画布为 `clamp(148px, 19vh, 230px)`，可见主体限制在底部约一半，保留控制区可读性。拼贴色场用 RGB 连续混合，避免换色过程中出现色相最短弧的方向跳变。
 
 ## 3. 动效语言
 

@@ -56,9 +56,10 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 
 ## Git 工作流
 
-- 每个被确认的功能或聚焦的修复单独一个提交，提交信息简洁、有描述性。
-- 在用户明确确认功能通过验收之前，不要提交。
-- 验收后，只暂存属于该功能的文件并自动提交，不再二次确认。
+- 每个功能或聚焦的修复单独一个提交，提交信息简洁、有描述性。
+- 用户已授权：工作完成且适用的验证通过后，自动创建本地提交，无需等待用户再次验收或确认；用户明确要求暂不提交时除外。
+- 验证按本文件的构建、测试与交互要求执行，不用无关检查代替必要验证；必要验证失败或无法完成时，保留改动并说明原因，不宣称验证通过。
+- 只暂存属于该功能的文件或修改片段；提交后报告提交号与验证结果。自动提交的授权不包含自动推送、发布或部署。
 - 不要把无关的工作区改动混入功能提交。
 
 ## 代码结构
@@ -184,7 +185,7 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 
 ## 持久化
 
-- 应用状态存于 `localStorage`，键为 `src/constants.ts` 的 `STORAGE_KEY`（`zone-player-state-v1`）。
+- 音乐主状态存于应用数据目录的 `zone.sqlite`（`src-tauri/src/db/` + `music/`）；`zone-player-state-v1` 仅作为旧版迁移源。只有原生导入提交并返回读取快照、且成功保存 `-backup` 后才删除旧键。恢复失败时保留原始数据，并暂停自动数据库写回。
 - 曲库 schema 版本为 `LIBRARY_SCHEMA_VERSION`（当前 6）。
 - 收藏是 id 为 `DEFAULT_PLAYLIST_ID`（`favorites`）的默认播放列表；读取播放列表状态时必须用 `normalizePlaylists`，让旧状态补齐默认收藏列表。
 - home pins 用 `normalizeHomePins`/`reconcileHomePins` 做归一化与对账。
@@ -192,6 +193,16 @@ Zone 是一个受 Microsoft Zune 4.8 启发的本地音乐播放器，技术栈�
 - 播客状态不写入音乐 `localStorage` schema；节目预览/关注状态、单集、稍后听、待播顺序、下载与进度存于应用数据目录的 `podcasts.sqlite`，音频位于同目录下的 `podcast-downloads/`。预览节目可以入库但不出现在资料库，`subscribed` 只表达用户是否关注。Feed 刷新时若单集已从源消失，仅在无进度、未稍后听、未排队、无进行中/完成下载时删除该行；有用户状态的单集会保留。`enclosure_url` 变更会失效对应离线下载。普通进度写仅允许前进，显式 seek/flush 传 `force` 才可回退。播客播放倍速与最后一个活动单集 ID 独立保存在 `zone-podcast-playback-v1`，最后单集重启后以暂停态恢复且不改变音乐播放速度；睡眠定时只存在于当前运行会话。
 
 ## 播放与 Web Audio
+
+### 扫描、预分析与诊断
+
+- 曲库扫描由异步 `music_scan_library` 在 `spawn_blocking` 中串行执行，通过 `Channel<usize>` 上报已读取曲目数；`music_cancel_scan` 使当前任务失效。取消时不得提交部分曲库结果。
+- 音乐节拍预分析通过 `music_decode_beat_window`：只接受数据库曲目 ID，原生端最多解码前 30 秒、22050 Hz 单声道，传输有版本/文件修改时间/长度头的二进制 PCM；`music_cancel_beat_window` 取消旧请求。节拍计算在 `src/workers/beatAnalysis.worker.ts` 执行，前端只缓存最多 32 个按文件版本区分的节拍结果。失败回退到实时分析，不影响播放；播客不得进入此链路。
+- 可视化采样仅在音乐正在播放、正在播放页可见且窗口文档可见时运行。两个 Canvas 在暂停/减少动态效果后收敛并停止连续 rAF，由封面加载、尺寸、播放状态或可见性变化唤醒。
+- 音频光焰采用 4096 点 FFT（平滑 0.35、上限 -12 dB）与真实 PCM 静音门限；12 个频段独立包络和瞬态在 `AudioVisualizerAnalyzer` 生成连续轮廓。实例随采样会话创建，seek 时清理旧段落的瞬态；总线传递 samples/transients/bass/texture，Canvas 不再叠加固定中央山形或时钟正弦扰动。无信号发布零帧，预测拍点只有实时瞬态确认后才能驱动光焰。
+- 拼贴色场及换封面过渡使用连续 RGB 插值；不要恢复嵌套 HSL 最短弧插值，接近 180° 的换色会在初始化产生空间断层。
+- `zone-diagnostics-v1` 只保留最近 200 条本地结构化事件（播放尝试、媒体错误、预分析和保存结果），不存原始错误、文件路径或 RSS URL。设置中的导出由原生 `export_diagnostics` 保存对话框完成。音乐保存失败显示可重试反馈。
+- 节目单集列表 `podcast_list_episodes` 默认读取 100 集，支持 `offset`/`limit`（最大 200）；节目页按需加载更多，非活动单集使用 memo 隔离进度刷新。主列表、单集详情和待播优先读取已知真实媒体时长；RSS 时长按秒、MM:SS、HH:MM:SS 严格解析。旧 `duration_parser_version` 在下一次刷新时绕过条件请求重新获取，保留用户进度和待播状态。
 
 可视化必须使用真实音频分析，播放音乐时不允许用空闲动画冒充。
 
