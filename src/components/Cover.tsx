@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { initials } from "../utils/music";
 
@@ -30,9 +30,23 @@ export function Cover({
   const resolvedClassName = className ?? (size === "mini" ? "mini-cover" : "cover");
   const imageSrc = src ?? (artPath ? convertFileSrc(artPath) : null);
 
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  useEffect(() => {
+    setFailedSrc(null);
+  }, [imageSrc]);
+
+  const showImage = Boolean(imageSrc) && failedSrc !== imageSrc;
+
   return (
     <div className={resolvedClassName} style={{ "--accent-index": index % 6 } as CSSProperties}>
-      {imageSrc ? <img src={imageSrc} alt="" draggable={false} /> : fallback ?? <span>{initials(label)}</span>}
+      {showImage && imageSrc ? (
+        <img
+          src={imageSrc}
+          alt=""
+          draggable={false}
+          onError={() => setFailedSrc(imageSrc)}
+        />
+      ) : fallback ?? <span>{initials(label)}</span>}
     </div>
   );
 }
