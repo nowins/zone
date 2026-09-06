@@ -100,8 +100,8 @@ fn store_feed(
       INSERT INTO podcast_feeds (
         id, feed_url, title, author, description, artwork_url,
         etag, last_modified, last_fetched_at, subscribed,
-        subscribed_at, last_checked_at, last_refresh_error
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+        subscribed_at, last_checked_at, last_refresh_error, duration_parser_version
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1)
       ON CONFLICT(id) DO UPDATE SET
         feed_url = excluded.feed_url,
         title = excluded.title,
@@ -114,7 +114,8 @@ fn store_feed(
         subscribed = excluded.subscribed,
         subscribed_at = excluded.subscribed_at,
         last_checked_at = excluded.last_checked_at,
-        last_refresh_error = excluded.last_refresh_error
+        last_refresh_error = excluded.last_refresh_error,
+        duration_parser_version = excluded.duration_parser_version
       ",
       params![
         feed.id,
@@ -203,6 +204,16 @@ fn store_feed(
         .map_err(|error| format!("无法保存播客单集：{error}"))?;
       inserted_count += inserted;
       if inserted == 0 {
+        // Progress may contain a copy of old feed metadata (e.g. mark as played
+        // before the audio was loaded). Correct only that copy, preserving a
+        // distinct measured duration and all user queue/saved/progress state.
+        transaction.execute(
+          "UPDATE podcast_progress SET duration_seconds = ?2
+           WHERE episode_id = ?1 AND duration_seconds = (
+             SELECT duration_seconds FROM podcast_episodes WHERE id = ?1
+           ) AND ?2 > 0",
+          params![episode.id, episode.duration_seconds],
+        ).map_err(|error| format!("无法校正播客时长：{error}"))?;
         // Enclosure URL identity drives streaming and offline files. Refresh must
         // drop managed downloads before the episode row switches to the new URL,
         // otherwise playbackLocalPath keeps serving a stale CDN object.
@@ -581,10 +592,12 @@ pub(crate) fn list_refresh_targets(
   let mut statement = connection
     .prepare(
       "
-      SELECT id, feed_url, title, author, artwork_url, etag, last_modified
+      SELECT id, feed_url, title, author, artwork_url,
+        CASE WHEN duration_parser_version >= 1 THEN etag ELSE NULL END,
+        CASE WHEN duration_parser_version >= 1 THEN last_modified ELSE NULL END
       FROM podcast_feeds
       WHERE ((?1 IS NULL AND subscribed = 1) OR id = ?1)
-        AND (?2 = 1 OR last_checked_at IS NULL OR last_checked_at <= ?3)
+        AND (?2 = 1 OR duration_parser_version < 1 OR last_checked_at IS NULL OR last_checked_at <= ?3)
       ORDER BY COALESCE(last_checked_at, 0), title COLLATE NOCASE
       ",
     )

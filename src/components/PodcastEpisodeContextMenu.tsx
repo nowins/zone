@@ -214,7 +214,7 @@ function PodcastEpisodeMenuSurface({
           <Play size={17} />
           <span>
             {menu.episode.progressSeconds > 0 && !menu.episode.completed
-              ? "继续播放"
+              ? "继续收听"
               : "播放"}
           </span>
         </button>

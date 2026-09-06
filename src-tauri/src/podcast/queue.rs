@@ -319,7 +319,7 @@ pub(crate) fn list_queue(db_path: &Path, downloads_dir: &Path) -> Result<Vec<Pod
       "
       SELECT
         e.id, e.feed_id, e.title, e.description, e.published_at,
-        e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+        COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
         COALESCE(d.state, 'none'), d.local_path,
         COALESCE(d.downloaded_bytes, 0), COALESCE(d.total_bytes, e.expected_bytes),
         COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),

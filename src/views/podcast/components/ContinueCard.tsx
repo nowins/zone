@@ -63,7 +63,7 @@ function ContinueCard({
         type="button"
         className="podcast-play-action"
         onClick={onPlay}
-        title={active && isPlaying ? "暂停" : "继续播放"}
+        title={active && isPlaying ? "暂停" : "继续收听"}
       >
         {active && isPlaying
           ? <Pause size={18} fill="currentColor" />

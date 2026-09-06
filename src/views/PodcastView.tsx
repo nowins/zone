@@ -73,7 +73,7 @@ export function PodcastView(props: PodcastViewProps) {
     <section className="content-band podcast-page">
       <p className="podcast-ghost" aria-hidden="true">podcasts</p>
 
-      <header className="podcast-header">
+      <header className={`podcast-header ${screen === "show" || screen === "episode" ? "podcast-header-detail" : ""}`}>
         <div className="podcast-heading">
           <span>{eyebrow}</span>
           <h1 ref={headingRef} tabIndex={-1}>{heading}</h1>
@@ -158,7 +158,7 @@ export function PodcastView(props: PodcastViewProps) {
               className={screen === "playlist" ? "active" : ""}
               onClick={() => changeRootScreen("playlist")}
             >
-              播放列表
+              待播
             </button>
           </nav>
         )}

@@ -44,7 +44,7 @@ pub(crate) fn get_recent_preview(
           LIMIT 1
         )
       FROM podcast_feeds f
-      WHERE f.feed_url = ?1 AND f.last_fetched_at >= ?2
+      WHERE f.feed_url = ?1 AND f.last_fetched_at >= ?2 AND f.duration_parser_version >= 1
       LIMIT 1
       ",
       params![normalized_url, cutoff],
@@ -172,10 +172,17 @@ pub(crate) fn set_following(db_path: &Path, feed_id: &str, following: bool) -> R
   Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn list_episodes(
   db_path: &Path,
   downloads_dir: &Path,
   feed_id: &str,
+) -> Result<Vec<PodcastEpisode>, String> {
+  list_episode_page(db_path, downloads_dir, feed_id, 0, 5000)
+}
+
+pub(crate) fn list_episode_page(
+  db_path: &Path, downloads_dir: &Path, feed_id: &str, offset: usize, limit: usize,
 ) -> Result<Vec<PodcastEpisode>, String> {
   let connection = open_database(db_path)?;
   let mut statement = connection
@@ -183,7 +190,7 @@ pub(crate) fn list_episodes(
       "
       SELECT
         e.id, e.feed_id, e.title, e.description, e.published_at,
-        e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+        COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
         COALESCE(d.state, 'none'), d.local_path,
         COALESCE(d.downloaded_bytes, 0), d.total_bytes,
         COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
@@ -196,13 +203,13 @@ pub(crate) fn list_episodes(
       LEFT JOIN podcast_progress p ON p.episode_id = e.id
       LEFT JOIN podcast_saved_episodes s ON s.episode_id = e.id
       WHERE e.feed_id = ?1
-      ORDER BY e.published_at IS NULL, e.published_at DESC, e.title COLLATE NOCASE
-      LIMIT 5000
+      ORDER BY e.published_at IS NULL, e.published_at DESC, e.title COLLATE NOCASE, e.id
+      LIMIT ?2 OFFSET ?3
       ",
     )
     .map_err(|error| format!("无法读取播客单集：{error}"))?;
   let rows = statement
-    .query_map([feed_id], |row| podcast_episode_from_row(row, downloads_dir))
+    .query_map(params![feed_id, limit.min(5000) as i64, offset.min(i64::MAX as usize) as i64], |row| podcast_episode_from_row(row, downloads_dir))
     .map_err(|error| format!("无法读取播客单集：{error}"))?;
   rows
     .collect::<Result<Vec<_>, _>>()
@@ -229,7 +236,7 @@ pub(crate) fn list_related_episodes(
       )
       SELECT
         e.id, e.feed_id, e.title, e.description, e.published_at,
-        e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+        COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
         COALESCE(d.state, 'none'), d.local_path,
         COALESCE(d.downloaded_bytes, 0), d.total_bytes,
         COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
@@ -272,7 +279,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
     "
     SELECT
       e.id, e.feed_id, e.title, e.description, e.published_at,
-      e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+      COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
       COALESCE(d.state, 'none'), d.local_path,
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
@@ -296,7 +303,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
     "
     SELECT
       e.id, e.feed_id, e.title, e.description, e.published_at,
-      e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+      COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
       COALESCE(d.state, 'none'), d.local_path,
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
@@ -320,7 +327,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
     "
     SELECT
       e.id, e.feed_id, e.title, e.description, e.published_at,
-      e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+      COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
       COALESCE(d.state, 'none'), d.local_path,
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
@@ -346,7 +353,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
     "
     SELECT
       e.id, e.feed_id, e.title, e.description, e.published_at,
-      e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+      COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
       COALESCE(d.state, 'none'), d.local_path,
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
@@ -378,7 +385,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
     "
     SELECT
       e.id, e.feed_id, e.title, e.description, e.published_at,
-      e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+      COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
       COALESCE(d.state, 'none'), d.local_path,
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
@@ -406,7 +413,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
     "
     SELECT
       e.id, e.feed_id, e.title, e.description, e.published_at,
-      e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+      COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
       COALESCE(d.state, 'none'), d.local_path,
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
@@ -429,7 +436,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
     "
     SELECT
       e.id, e.feed_id, e.title, e.description, e.published_at,
-      e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+      COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
       COALESCE(d.state, 'none'), d.local_path,
       COALESCE(d.downloaded_bytes, 0), d.total_bytes,
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
@@ -509,7 +516,7 @@ pub(crate) fn list_downloads(
         "
         SELECT
           e.id, e.feed_id, e.title, e.description, e.published_at,
-          e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+          COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
           d.state, d.local_path, d.downloaded_bytes, d.total_bytes,
           COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
           f.title, f.artwork_url,
@@ -674,7 +681,7 @@ pub(crate) fn podcast_episode_from_row(
 pub(crate) const PODCAST_EPISODE_DETAIL_SELECT: &str = "
   SELECT
     e.id, e.feed_id, e.title, e.description, e.published_at,
-    e.duration_seconds, e.enclosure_url, e.enclosure_type, e.artwork_url,
+    COALESCE(NULLIF(p.duration_seconds, 0), e.duration_seconds), e.enclosure_url, e.enclosure_type, e.artwork_url,
     COALESCE(d.state, 'none'), d.local_path,
     COALESCE(d.downloaded_bytes, 0), d.total_bytes,
     COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
@@ -926,6 +933,57 @@ pub(crate) fn set_episodes_played(
 mod tests {
   use super::*;
   use crate::podcast::test_support::*;
+
+  #[test]
+  fn thousand_and_five_thousand_episode_libraries_page_without_gaps() {
+    for count in [1000, 5000] {
+      let directory = test_directory(&format!("episode-pages-{count}"));
+      let state = PodcastState::initialize_at(&directory).unwrap();
+      let parsed = parsed_fixture_with_episode_count(count);
+      let feed_id = parsed.feed.id.clone();
+      let expected: Vec<_> = parsed.episodes.iter().map(|episode| episode.id.clone()).collect();
+      store_subscription(&state.db_path, parsed).unwrap();
+      let started = std::time::Instant::now();
+      let mut ids = Vec::new();
+      for offset in (0..count).step_by(100) {
+        let page = list_episode_page(&state.db_path, &state.downloads_dir, &feed_id, offset, 100).unwrap();
+        assert_eq!(page.len(), 100);
+        ids.extend(page.into_iter().map(|episode| episode.id));
+      }
+      assert_eq!(ids, expected);
+      assert!(list_episode_page(&state.db_path, &state.downloads_dir, &feed_id, count, 100).unwrap().is_empty());
+      eprintln!("{count} episodes: all 100-item pages read in {:?}", started.elapsed());
+    }
+  }
+
+  #[test]
+  fn measured_duration_survives_refresh_and_old_metadata_copies_are_corrected() {
+    let directory = test_directory("duration-read-model");
+    let state = PodcastState::initialize_at(&directory).unwrap();
+    let mut parsed = parsed_fixture("https://media.example.test/duration.mp3");
+    parsed.episodes[0].duration_seconds = Some(9.0);
+    let feed_id = parsed.feed.id.clone();
+    let episode_id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed.clone()).unwrap();
+    save_progress(&state.db_path, &episode_id, 13.0, 591.0).unwrap();
+    let read = || list_episodes(&state.db_path, &state.downloads_dir, &feed_id).unwrap().remove(0);
+    assert_eq!(read().duration_seconds, Some(591.0));
+    assert_eq!(read().progress_seconds, 13.0);
+    parsed.episodes[0].duration_seconds = Some(574.0);
+    store_preview(&state.db_path, parsed.clone()).unwrap();
+    assert_eq!(read().duration_seconds, Some(591.0));
+    let connection = open_database(&state.db_path).unwrap();
+    connection.execute("UPDATE podcast_episodes SET duration_seconds = 9", []).unwrap();
+    connection.execute("UPDATE podcast_progress SET duration_seconds = 9", []).unwrap();
+    connection.execute("UPDATE podcast_feeds SET duration_parser_version = 0, etag = 'old'", []).unwrap();
+    let targets = list_refresh_targets(&state.db_path, Some(&feed_id), false, unix_time_millis()).unwrap();
+    assert_eq!(targets.len(), 1);
+    assert!(targets[0].etag.is_none());
+    store_preview(&state.db_path, parsed).unwrap();
+    assert_eq!(read().duration_seconds, Some(574.0));
+    assert_eq!(read().progress_seconds, 13.0);
+    assert!(list_refresh_targets(&state.db_path, Some(&feed_id), false, unix_time_millis()).unwrap().is_empty());
+  }
 
   #[test]
   fn recent_preview_reuses_database_content_until_refresh_is_due() {

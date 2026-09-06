@@ -658,7 +658,7 @@ export function PodcastNowPlayingView({
               onClick={onToggleSaved}
             >
               <Bookmark size={14} fill={episode.saved ? "currentColor" : "none"} />
-              {episode.saved ? "已存储" : "存储"}
+              {episode.saved ? "已加入稍后听" : "稍后听"}
             </button>
           </div>
         </section>

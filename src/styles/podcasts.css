@@ -39,6 +39,15 @@
   min-width: 0;
 }
 
+.podcast-header-detail {
+  flex-basis: 66px;
+}
+
+.podcast-header-detail .podcast-heading h1 {
+  font-size: 30px;
+  line-height: 1.1;
+}
+
 .podcast-heading > span,
 .podcast-show-hero > div > span {
   display: block;

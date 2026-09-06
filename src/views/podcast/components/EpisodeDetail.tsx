@@ -81,7 +81,7 @@ function EpisodeDetail({
   const playLabel = active && isPlaying
     ? "暂停"
     : episode.progressSeconds > 0 && !episode.completed
-      ? "继续播放"
+      ? "继续收听"
       : "播放";
   const downloadProgressLabel = downloading
     ? podcastDownloadProgressLabel(episode)
@@ -152,7 +152,7 @@ function EpisodeDetail({
         </button>
         <button type="button" onClick={onPlayNext}>
           <SkipForward size={16} />
-          接着播放
+          下一集播放
         </button>
         <button type="button" onClick={onAddQueue}>
           <ListMusic size={16} />
@@ -167,7 +167,7 @@ function EpisodeDetail({
           {action === "save"
             ? <MetroLoader size={16} />
             : <Bookmark size={16} fill={episode.saved ? "currentColor" : "none"} />}
-          {episode.saved ? "取消保存" : "保存"}
+          {episode.saved ? "移出稍后听" : "稍后听"}
         </button>
         {episode.localPath ? (
           <button

@@ -50,6 +50,9 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
     loadDiscovery,
   } = vm;
   const searchFieldRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (vm.searchFocusRequest > 0) searchFieldRef.current?.querySelector("input")?.focus();
+  }, [vm.searchFocusRequest]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [historyDismissed, setHistoryDismissed] = useState(false);
   const [historyHighlight, setHistoryHighlight] = useState(-1);

@@ -37,8 +37,8 @@ export function browseApplePodcasts(limit: number) {
   return invoke<PodcastDiscoveryShow[]>("podcast_browse_apple", { limit });
 }
 
-export function listPodcastEpisodes(feedId: string) {
-  return invoke<PodcastEpisode[]>("podcast_list_episodes", { feedId });
+export function listPodcastEpisodes(feedId: string, offset = 0, limit = 100) {
+  return invoke<PodcastEpisode[]>("podcast_list_episodes", { feedId, offset, limit });
 }
 
 export function refreshPodcastFeeds(options: {

@@ -155,13 +155,16 @@ export function useNavigation({
 
   useEffect(() => {
     function handleCollectionSearchKeys(event: KeyboardEvent) {
+      if (event.isComposing || event.defaultPrevented) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        if (page === "podcasts") return;
         event.preventDefault();
         focusCollectionSearch();
         return;
       }
 
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || page !== "collection") return;
       if (contextMenu || infoTarget || addToPlaylistTarget || playlistDialog || smartPlaylistDialog) return;
 
       if (resolveSearchSurface(query, searchMode) === "results") {

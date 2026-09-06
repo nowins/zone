@@ -123,7 +123,7 @@
   gap: 8px;
   padding: 0 3px;
   color: rgba(247, 242, 246, 0.54);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .podcast-now-queue-trigger:hover,
@@ -138,7 +138,7 @@
 .podcast-now-queue-trigger em {
   min-width: 16px;
   color: currentColor;
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
   font-variant-numeric: tabular-nums;
   text-align: center;
@@ -203,7 +203,7 @@
   overflow: hidden;
   padding: 3px 0;
   color: var(--accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 560;
   letter-spacing: 0.045em;
   text-overflow: ellipsis;
@@ -217,7 +217,7 @@
 .podcast-now-eyebrow > span {
   flex: 0 0 auto;
   color: rgba(247, 242, 246, 0.32);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .podcast-now-copy h1 {
@@ -241,7 +241,7 @@
   gap: 7px 14px;
   margin-top: 17px;
   color: rgba(247, 242, 246, 0.38);
-  font-size: 9px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -261,7 +261,7 @@
   margin: 0;
   overflow: hidden;
   color: rgba(247, 242, 246, 0.42);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.65;
   white-space: pre-line;
   -webkit-box-orient: vertical;
@@ -286,7 +286,7 @@
   margin-top: 8px;
   padding: 3px 0;
   color: rgba(247, 242, 246, 0.48);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .podcast-now-description > button:hover,
@@ -307,7 +307,7 @@
   gap: 6px;
   padding: 5px 0;
   color: rgba(247, 242, 246, 0.48);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .podcast-now-copy-actions button:hover,
@@ -383,7 +383,7 @@
 
 .podcast-now-queue > header span {
   color: rgba(247, 242, 246, 0.46);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .podcast-now-queue-header-actions {
@@ -395,7 +395,7 @@
 .podcast-now-queue-header-actions button {
   min-height: 36px;
   color: rgba(247, 242, 246, 0.5);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .podcast-now-queue-header-actions button:hover {
@@ -491,7 +491,7 @@
 
 .podcast-now-queue-select > span:first-child {
   color: rgba(247, 242, 246, 0.4);
-  font-size: 10px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -516,7 +516,7 @@
 
 .podcast-now-queue-select small {
   color: rgba(247, 242, 246, 0.48);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .podcast-now-queue-select:hover strong {
@@ -573,13 +573,13 @@
 }
 
 .podcast-now-queue-empty span {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .podcast-now-queue-empty small {
   max-width: 210px;
   color: rgba(247, 242, 246, 0.44);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -592,7 +592,7 @@
   margin-top: 9px;
   padding: 5px 0;
   color: rgba(247, 242, 246, 0.52);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .podcast-now-next:hover {
@@ -641,7 +641,7 @@
   gap: 7px;
   padding: 4px 0;
   color: rgba(247, 242, 246, 0.48);
-  font-size: 9px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -683,7 +683,7 @@
 .podcast-now-primary-controls > button > span {
   position: absolute;
   color: currentColor;
-  font-size: 7px;
+  font-size: 12px;
   font-weight: 750;
   line-height: 1;
 }
@@ -741,7 +741,7 @@
   display: block;
   margin-bottom: 8px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 540;
 }
 
@@ -764,7 +764,7 @@
   gap: 6px;
   padding: 5px 6px;
   color: rgba(247, 242, 246, 0.5);
-  font-size: 9px;
+  font-size: 12px;
   text-align: left;
 }
 
@@ -794,7 +794,7 @@
   align-items: center;
   gap: 7px;
   color: rgba(247, 242, 246, 0.45);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .podcast-now-status.error {

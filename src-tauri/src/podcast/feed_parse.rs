@@ -63,6 +63,9 @@ pub(crate) struct ParsedPodcastChapter {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ParsedEpisodeExtensions {
   pub(crate) resources: Vec<ParsedEpisodeResource>,
+  // Some(None) means an explicit but invalid duration: do not fall back to
+  // feed-rs's permissive NPT parser (which treats MM:SS as seconds).
+  pub(crate) duration_seconds: Option<Option<f64>>,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct PodcastRefreshTarget {
@@ -633,6 +636,17 @@ fn extract_episode_extensions(
         let Some(entry_index) = current_entry else {
           continue;
         };
+        if namespace_is(namespace_uri.as_deref(), b"http://www.itunes.com/dtds/podcast-1.0.dtd")
+          && local_name.as_ref() == b"duration"
+        {
+          let text = reader.read_text(element.name()).ok()?;
+          let text = text.decode().ok()?;
+          extensions[entry_index].duration_seconds = Some(
+            parse_podcast_duration_xml(&text),
+          );
+          base_stack.pop(); // read_text consumed the matching End event.
+          continue;
+        }
         collect_episode_extension_element(
           namespace_uri.as_deref(),
           &element,
@@ -930,6 +944,40 @@ fn normalize_parsed_episode_resources(resources: &mut Vec<ParsedEpisodeResource>
   }
 }
 
+fn parse_podcast_duration_xml(value: &str) -> Option<f64> {
+  let mut reader = Reader::from_str(value);
+  let mut text = String::new();
+  loop {
+    match reader.read_event().ok()? {
+      Event::Text(value) => text.push_str(&value.decode().ok()?),
+      Event::CData(value) => text.push_str(&value.decode().ok()?),
+      Event::GeneralRef(value) => text.push(value.resolve_char_ref().ok()??),
+      Event::Comment(_) => {},
+      Event::Eof => break,
+      _ => return None,
+    }
+  }
+  parse_podcast_duration(&text)
+}
+
+fn parse_podcast_duration(value: &str) -> Option<f64> {
+  let parts = value.trim().split(':').collect::<Vec<_>>();
+  if parts.is_empty() || parts.len() > 3 { return None; }
+  let mut total = 0.0;
+  for (index, part) in parts.iter().enumerate() {
+    if part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit() || byte == b'.') {
+      return None;
+    }
+    let number = part.parse::<f64>().ok()?;
+    let last = index + 1 == parts.len();
+    if !number.is_finite() || (!last && part.contains('.')) || (index > 0 && number >= 60.0) {
+      return None;
+    }
+    total = total * 60.0 + number;
+  }
+  (total.is_finite() && total > 0.0 && total <= i64::MAX as f64 / 1000.0).then_some(total)
+}
+
 fn is_feed_entry_element(name: &[u8]) -> bool {
   name == b"item" || name == b"entry"
 }
@@ -1073,6 +1121,7 @@ fn normalize_feed(
       &feed_id,
       artwork_url.as_deref(),
       rss_enclosures.get(index).and_then(Option::as_ref),
+      episode_extensions.and_then(|extensions| extensions.get(index)).and_then(|entry| entry.duration_seconds),
       episode_extensions
         .map(|extensions| {
           extensions
@@ -1101,6 +1150,7 @@ fn normalize_episode(
   feed_id: &str,
   feed_artwork: Option<&str>,
   rss_enclosure: Option<&Enclosure>,
+  explicit_duration: Option<Option<f64>>,
   resources: Option<Vec<ParsedEpisodeResource>>,
 ) -> Option<ParsedPodcastEpisode> {
   let enclosure = rss_enclosure.cloned().or_else(|| find_enclosure(entry))?;
@@ -1130,11 +1180,12 @@ fn normalize_episode(
         .map(|value| plain_text(value, PODCAST_DESCRIPTION_LIMIT))
         .filter(|value| !value.is_empty())
     });
-  let duration_seconds = entry
+  let duration_seconds = explicit_duration.unwrap_or_else(|| entry
     .media
     .iter()
     .find_map(|media| media.duration.map(|duration| duration.as_secs_f64()))
-    .or(enclosure.duration_seconds);
+    .or(enclosure.duration_seconds))
+    .filter(|value| value.is_finite() && *value > 0.0);
   let artwork_url = entry
     .media
     .iter()
@@ -1274,6 +1325,25 @@ mod tests {
   use tokio::io::AsyncWriteExt;
   use tokio::net::TcpListener;
   use rusqlite::params;
+
+  #[test]
+  fn duration_formats_are_parsed_without_truncating_minutes() {
+    for (value, expected) in [
+      ("09:34", Some(574.0)), ("16:20", Some(980.0)),
+      ("01:13:00", Some(4380.0)), ("574", Some(574.0)),
+      (" 1:02.5 ", Some(62.5)), ("120:00", Some(7200.0)),
+      ("0", None), ("1:60", None), ("1:60:00", None),
+      ("-9", None), ("9 seconds", None), ("NaN", None), ("1::2", None),
+    ] {
+      assert_eq!(parse_podcast_duration(value), expected, "{value}");
+    }
+    for (value, expected) in [("09:34", Some(574.0)), ("16:20", Some(980.0)),
+      ("<![CDATA[09:34]]>", Some(574.0)), ("0&#57;:34", Some(574.0)), ("1:60", None)] {
+      let xml = format!(r#"<rss version="2.0" xmlns:pod="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel><title>测试</title><link>https://example.test</link><description>测试</description><item><guid>one</guid><title>单集</title><enclosure url="https://example.test/a.mp3" type="audio/mpeg"/><pod:duration>{value}</pod:duration></item></channel></rss>"#);
+      let parsed = parse_feed_bytes(xml.as_bytes(), "https://example.test/feed.xml", None, None, None, None, None).unwrap();
+      assert_eq!(parsed.episodes[0].duration_seconds, expected, "RSS {value}");
+    }
+  }
 
   #[test]
   fn rss_feed_is_normalized_to_stable_feed_and_episode_records() {

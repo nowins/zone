@@ -159,6 +159,18 @@ export function usePodcastViewModel({
   const restoredSearchState = restoredSession?.searchState === "loading"
     ? "idle"
     : restoredSession?.searchState;
+  const [searchFocusRequest, setSearchFocusRequest] = useState(0);
+  useEffect(() => {
+    function focusPodcastSearch(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.isComposing || document.querySelector('[aria-modal="true"]')) return;
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "f") return;
+      event.preventDefault();
+      changeRootScreen("discover");
+      setSearchFocusRequest(value => value + 1);
+    }
+    window.addEventListener("keydown", focusPodcastSearch);
+    return () => window.removeEventListener("keydown", focusPodcastSearch);
+  }, []);
   const [screen, setScreen] = useState<PodcastScreen>(
     restoredSession?.screen ?? "listen",
   );
@@ -241,6 +253,9 @@ export function usePodcastViewModel({
   const [selectedFeed, setSelectedFeed] = useState<PodcastFeed | null>(
     restoredSession?.selectedFeed ?? null,
   );
+  const [hasMoreEpisodes, setHasMoreEpisodes] = useState(true);
+  const episodePageLoadingRef = useRef(false);
+  const [loadingEpisodePage, setLoadingEpisodePage] = useState(false);
   const [episodes, setEpisodes] = useState<PodcastEpisode[]>(
     restoredSession?.episodes ?? [],
   );
@@ -453,6 +468,7 @@ export function usePodcastViewModel({
       const nextEpisodes = await podcastApi.listPodcastEpisodes(feed.id);
       if (episodeListRequestRef.current !== requestId) return null;
       setEpisodes(nextEpisodes);
+      setHasMoreEpisodes(nextEpisodes.length === 100);
       setEpisodeState("ready");
       return nextEpisodes;
     } catch (reason) {
@@ -463,6 +479,28 @@ export function usePodcastViewModel({
       return null;
     }
   }, []);
+
+  async function loadMoreEpisodes() {
+    if (!selectedFeed || episodePageLoadingRef.current || episodeState === "loading" || !hasMoreEpisodes) return;
+    const requestId = episodeListRequestRef.current;
+    episodePageLoadingRef.current = true;
+    setLoadingEpisodePage(true);
+    try {
+      const page = await podcastApi.listPodcastEpisodes(selectedFeed.id, episodes.length);
+      if (episodeListRequestRef.current !== requestId) return;
+      setEpisodes(current => {
+        const ids = new Set(current.map(episode => episode.id));
+        return [...current, ...page.filter(episode => !ids.has(episode.id))];
+      });
+      setHasMoreEpisodes(page.length === 100);
+    } catch {
+      if (episodeListRequestRef.current === requestId) setError("读取更多单集失败，请重试");
+    } finally {
+      episodePageLoadingRef.current = false;
+      setLoadingEpisodePage(false);
+    }
+  }
+
 
   const refreshSubscribedFeeds = useCallback(async () => {
     if (feedRefreshActive.current) return;
@@ -2194,11 +2232,11 @@ export function usePodcastViewModel({
     )
     : -1;
   const heading = screen === "show" && selectedFeed
-    ? selectedFeed.title
+    ? "节目"
     : screen === "episode"
-      ? selectedEpisodeDetail?.episode.title ?? "单集"
+      ? "单集"
       : screen === "playlist"
-        ? "播放列表"
+        ? "待播"
         : "播客";
   const eyebrow = screen === "show"
     ? selectedFeed?.author || "节目"
@@ -2210,6 +2248,7 @@ export function usePodcastViewModel({
 
   return {
     screen,
+    searchFocusRequest,
     returnScreen,
     heading,
     eyebrow,
@@ -2337,6 +2376,9 @@ export function usePodcastViewModel({
     setQueueRemovalIntent,
     confirmQueueRemoval,
     displayedEpisodes,
+    hasMoreEpisodes,
+    loadingEpisodePage,
+    loadMoreEpisodes,
     episodeState,
     loadEpisodes,
     refreshSelectedFeed,

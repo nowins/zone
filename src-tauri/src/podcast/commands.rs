@@ -180,12 +180,14 @@ pub async fn podcast_list_downloads(
 pub async fn podcast_list_episodes(
   state: State<'_, PodcastState>,
   feed_id: String,
+  offset: Option<usize>,
+  limit: Option<usize>,
 ) -> Result<Vec<PodcastEpisode>, String> {
   state.ensure_ready()?;
   validate_identifier(&feed_id)?;
   let db_path = state.db_path.clone();
   let downloads_dir = state.downloads_dir.clone();
-  tauri::async_runtime::spawn_blocking(move || list_episodes(&db_path, &downloads_dir, &feed_id))
+  tauri::async_runtime::spawn_blocking(move || list_episode_page(&db_path, &downloads_dir, &feed_id, offset.unwrap_or(0), limit.unwrap_or(100).clamp(1, 200)))
     .await
     .map_err(|error| format!("播客数据任务异常结束：{error}"))?
 }

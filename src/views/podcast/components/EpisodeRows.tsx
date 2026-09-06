@@ -176,7 +176,7 @@ function EpisodeRow({
                 active && isPlaying
                   ? "暂停"
                   : episode.progressSeconds > 0
-                    ? "继续播放"
+                    ? "继续收听"
                     : "播放"
               }
             >
@@ -232,7 +232,7 @@ function CurrentEpisodeRow({
         type="button"
         className="podcast-play-action"
         onClick={onPlay}
-        title={isPlaying ? "暂停" : "继续播放"}
+        title={isPlaying ? "暂停" : "继续收听"}
       >
         {isPlaying
           ? <Pause size={18} fill="currentColor" />

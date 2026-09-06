@@ -552,6 +552,12 @@ pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), Strin
   ensure_database_column(
     connection,
     "podcast_feeds",
+    "duration_parser_version",
+    "duration_parser_version INTEGER NOT NULL DEFAULT 0",
+  )?;
+  ensure_database_column(
+    connection,
+    "podcast_feeds",
     "subscribed",
     "subscribed INTEGER NOT NULL DEFAULT 1",
   )?;
