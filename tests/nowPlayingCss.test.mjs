@@ -84,7 +84,7 @@ test("track info keeps Zune-like left anchor hierarchy", () => {
   assert.ok(albumRule.includes("text-transform: uppercase"));
   assert.ok(copyRule.includes("display: flex"));
   assert.ok(copyRule.includes("flex-direction: column"));
-  assert.ok(copyRule.includes("overflow: hidden"));
+  assert.ok(copyRule.includes("overflow: visible"), "favorite ring and keyboard focus must not be clipped by the text container");
   assert.ok(titleRule.includes("width: 100%"));
   assert.ok(titleRule.includes("text-overflow: ellipsis"));
   assert.ok(px(titleRule, "margin-top") >= 14, "song title should have breathing room from album metadata");
@@ -121,9 +121,10 @@ test("queue and shared bottom controls follow the compact Zune layout", () => {
   assert.ok(transportRule.includes("height: var(--now-transport-height)"));
   assert.ok(transportControlsRule.includes("height: var(--now-transport-height)"));
   assert.ok(transportControlsRule.includes("background: transparent"));
-  assert.ok(transportRule.includes("grid-template-columns: minmax(0, 1fr) auto"), "progress and buttons reserve separate columns");
-  assert.ok(progressRule.includes("width: min(100%, 480px)"));
-  assert.ok(!progressRule.includes("position: absolute"), "progress must not overlap controls at narrow widths");
+  assert.ok(progressRule.includes("left: 50%"), "progress stays centered on the page, independently of the right controls");
+  assert.ok(progressRule.includes("transform: translateX(-50%)"));
+  assert.ok(progressRule.includes("bottom: 16px"));
+  assert.ok(transportControlsRule.includes("right: clamp(28px, 2.6vw, 52px)"));
   assert.ok(px(glowRule, "max-height") <= 230, "the canvas may grow but its ridge must remain in the bottom half");
   assert.ok(nowPlayingView.includes("<PlaybackProgress"));
   assert.ok(nowPlayingView.includes("<TransportControls"));

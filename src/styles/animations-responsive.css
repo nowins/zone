@@ -349,7 +349,7 @@
   }
 
   .now-transport .zune-progress {
-    width: min(100%, 480px);
+    width: min(300px, 32vw);
   }
 
   .zune-volume input {
