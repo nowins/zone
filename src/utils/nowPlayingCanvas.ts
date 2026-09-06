@@ -171,7 +171,7 @@ export function interpolateMosaicColorPalette(
   amount: number,
 ): MosaicColorPalette {
   const progress = clamp(amount, 0, 1);
-  return from.map((color, index) => lerpHslColor(color, to[index], progress)) as MosaicColorPalette;
+  return from.map((color, index) => lerpRgb(color, to[index], progress)) as MosaicColorPalette;
 }
 
 export function createMosaicColorFieldMotion(timeSeconds: number): MosaicColorFieldMotion {
@@ -203,9 +203,8 @@ export function createMosaicColorFieldSampler(
   palette: MosaicColorPalette,
   timeSeconds: number,
 ) {
-  const hslPalette = palette.map(rgbToHsl);
   const motion = createMosaicColorFieldMotion(timeSeconds);
-  return (x: number, y: number) => sampleMosaicColorFieldHsl(hslPalette, motion, timeSeconds, x, y);
+  return (x: number, y: number) => sampleMosaicColorFieldRgb(palette, motion, timeSeconds, x, y);
 }
 
 export function createMosaicFlipState(): MosaicFlipState {
@@ -317,8 +316,8 @@ export function averageImageColor(data: Uint8ClampedArray): RgbColor {
     : ZUNE_BASE;
 }
 
-function sampleMosaicColorFieldHsl(
-  palette: Array<{ h: number; s: number; l: number }>,
+function sampleMosaicColorFieldRgb(
+  palette: MosaicColorPalette,
   motion: MosaicColorFieldMotion,
   timeSeconds: number,
   x: number,
@@ -340,9 +339,13 @@ function sampleMosaicColorFieldHsl(
     + Math.cos((rotatedX - rotatedY) * 2.7 + timeSeconds * 0.09) * 0.04;
   const horizontal = smoothstep(-0.52, 0.52, warpX);
   const vertical = smoothstep(-0.48, 0.5, warpY);
-  const upper = lerpHsl(palette[0], palette[1], horizontal);
-  const lower = lerpHsl(palette[2], palette[3], 1 - horizontal);
-  return hslToRgb(lerpHsl(upper, lower, vertical));
+  // Nested shortest-arc hue interpolation changes direction at 180 degrees.
+  // That branch cut produced a moving seam, especially during palette entry.
+  // Cartesian interpolation stays continuous over both space and palette time;
+  // the renderer's color blend still preserves the artwork's luminance.
+  const upper = lerpRgb(palette[0], palette[1], horizontal);
+  const lower = lerpRgb(palette[2], palette[3], 1 - horizontal);
+  return lerpRgb(upper, lower, vertical);
 }
 
 function canOccupy(
@@ -466,19 +469,11 @@ function positiveModulo(value: number, divisor: number) {
   return ((value % divisor) + divisor) % divisor;
 }
 
-function lerpHslColor(from: RgbColor, to: RgbColor, amount: number) {
-  return hslToRgb(lerpHsl(rgbToHsl(from), rgbToHsl(to), amount));
-}
-
-function lerpHsl(
-  from: { h: number; s: number; l: number },
-  to: { h: number; s: number; l: number },
-  amount: number,
-) {
+function lerpRgb(from: RgbColor, to: RgbColor, amount: number): RgbColor {
   const progress = clamp(amount, 0, 1);
   return {
-    h: normalizeHue(from.h + shortestHueDistance(to.h, from.h) * progress),
-    s: from.s + (to.s - from.s) * progress,
-    l: from.l + (to.l - from.l) * progress,
+    r: from.r + (to.r - from.r) * progress,
+    g: from.g + (to.g - from.g) * progress,
+    b: from.b + (to.b - from.b) * progress,
   };
 }

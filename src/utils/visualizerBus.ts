@@ -1,8 +1,12 @@
 import { VISUALIZER_SAMPLE_COUNT } from "../constants.js";
 import { createIdleBeatFrame } from "./beatAnalysis.js";
+import { createSilentVisualizerFrame } from "./visualizer.js";
 
 export interface VisualizerFrameData {
   samples: number[];
+  transients: number[];
+  bass: number;
+  texture: number;
   energy: number;
   beatPulse: number;
   beatPhase: number;
@@ -13,8 +17,7 @@ export interface VisualizerFrameData {
 function createIdleVisualizerFrameData(): VisualizerFrameData {
   const beat = createIdleBeatFrame();
   return {
-    samples: Array.from({ length: VISUALIZER_SAMPLE_COUNT }, () => 0.035),
-    energy: 0.055,
+    ...createSilentVisualizerFrame(VISUALIZER_SAMPLE_COUNT),
     beatPulse: beat.beatPulse,
     beatPhase: beat.beatPhase,
     onsetStrength: beat.onsetStrength,

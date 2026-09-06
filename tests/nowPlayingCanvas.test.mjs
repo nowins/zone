@@ -80,6 +80,51 @@ test("track palette changes interpolate without flashing through unrelated brigh
   assert.ok(halfway.every((color) => relativeLuminance(color) < 0.2));
 });
 
+test("color field has no spatial seam during cold entry or cover palette changes", () => {
+  const fallback = createMosaicColorPalette({ r: 62, g: 50, b: 44 });
+  const targets = [
+    // Extracted from the cover which exposed the initialization seam. Its
+    // corners straddle the 180-degree route switch at ~30% interpolation.
+    [{ r: 26.56, g: 93.29, b: 68.03 }, { r: 26.50, g: 88.25, b: 70.47 },
+      { r: 29.04, g: 49.04, b: 93.36 }, { r: 26.03, g: 37.63, b: 91.27 }],
+    createMosaicColorPalette({ r: 20, g: 65, b: 190 }),
+    createMosaicColorPalette({ r: 195, g: 32, b: 45 }),
+    createMosaicColorPalette({ r: 35, g: 150, b: 78 }),
+    [{ r: 100, g: 20, b: 20 }, { r: 20, g: 100, b: 20 }, { r: 20, g: 20, b: 100 }, { r: 100, g: 85, b: 20 }],
+  ];
+  let maximum = 0;
+  for (const target of targets) {
+    for (const progress of [0, 0.15, 0.3, 0.5, 0.85, 1]) {
+      const palette = interpolateMosaicColorPalette(fallback, target, progress);
+      for (const time of [0, 1, 12, 50]) {
+        for (let row = 0; row < 64; row++) {
+          for (let column = 0; column < 64; column++) {
+            const x = column / 64, y = row / 64;
+            const color = sampleMosaicColorField(palette, time, x, y);
+            maximum = Math.max(maximum,
+              colorDistance(color, sampleMosaicColorField(palette, time, x + 1 / 64, y)),
+              colorDistance(color, sampleMosaicColorField(palette, time, x, y + 1 / 64)));
+          }
+        }
+      }
+    }
+  }
+  assert.ok(maximum < 12, `adjacent field samples must blend across hue wrap; largest jump ${maximum}`);
+});
+
+test("neighboring palette transition frames cannot flip the field's hue route", () => {
+  const from = createMosaicColorPalette({ r: 62, g: 50, b: 44 });
+  const to = createMosaicColorPalette({ r: 25, g: 65, b: 195 });
+  for (let step = 1; step <= 120; step++) {
+    const previous = interpolateMosaicColorPalette(from, to, (step - 1) / 120);
+    const next = interpolateMosaicColorPalette(from, to, step / 120);
+    for (const [x, y] of [[0.1, 0.2], [0.4, 0.3], [0.5, 0.5], [0.8, 0.7]]) {
+      assert.ok(colorDistance(sampleMosaicColorField(previous, step / 60, x, y),
+        sampleMosaicColorField(next, step / 60, x, y)) < 3);
+    }
+  }
+});
+
 test("mosaic wall breathes across useful distances without exposing its edges", () => {
   const first = createMosaicMotion(0);
   const later = createMosaicMotion(16);

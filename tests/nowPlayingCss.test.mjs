@@ -34,7 +34,7 @@ test("now playing visual layers are canvas based", () => {
 
   assert.ok(mosaicRule.includes("position: absolute"));
   assert.ok(mosaicRule.includes("inset: 0"));
-  assert.ok(glowRule.includes("height: clamp(88px, 8vh, 122px)"));
+  assert.ok(glowRule.includes("height: clamp(148px, 19vh, 230px)"));
   assert.ok(!glowRule.includes("22vh"));
   assert.ok(glowRule.includes("mix-blend-mode: screen"));
   assert.ok(!nowPlayingCss.includes(".album-wall"), "old DOM album wall styles should stay out of now playing CSS");
@@ -124,7 +124,7 @@ test("queue and shared bottom controls follow the compact Zune layout", () => {
   assert.ok(progressRule.includes("bottom: 16px"));
   assert.ok(progressRule.includes("left: 50%"));
   assert.ok(progressRule.includes("width: clamp(310px, 24vw, 520px)"));
-  assert.ok(px(glowRule, "max-height") <= 122, "glow should stay below the raised progress area");
+  assert.ok(px(glowRule, "max-height") <= 230, "the canvas may grow but its ridge must remain in the bottom half");
   assert.ok(nowPlayingView.includes("<PlaybackProgress"));
   assert.ok(nowPlayingView.includes("<TransportControls"));
   assert.ok(playerBarView.includes("<PlaybackProgress"));

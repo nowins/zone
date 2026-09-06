@@ -8,8 +8,8 @@ import {
   type BeatFrame,
   type BeatGrid,
 } from "../utils/beatAnalysis";
-import { createAudioVisualizerFrame, createIdleVisualizerFrame } from "../utils/visualizer";
-import { getVisualizerFrame, isDocumentVisible, isVisualizerSurfaceActive, publishVisualizerFrame } from "../utils/visualizerBus";
+import { AudioVisualizerAnalyzer, createAudioVisualizerFrame, createSilentVisualizerFrame } from "../utils/visualizer";
+import { isDocumentVisible, isVisualizerSurfaceActive, publishVisualizerFrame } from "../utils/visualizerBus";
 import type { ActivePlayback } from "./usePlaybackControls";
 import type { Track } from "../types";
 
@@ -51,10 +51,7 @@ export function useAudioEngine({
   const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const outputGainRef = useRef<GainNode | null>(null);
   const visualizerFrameRef = useRef<number | null>(null);
-  const visualizerSilenceFramesRef = useRef(0);
   const visualizerUnavailableRef = useRef(false);
-  const visualizerEnergyRef = useRef(0.055);
-  const visualizerSamplesRef = useRef<number[]>([]);
   const beatFrameRef = useRef<BeatFrame>(createIdleBeatFrame());
   const realtimeBeatRef = useRef<RealtimeBeatAnalyzer | null>(null);
   const offlineBeatGridRef = useRef<BeatGrid | null>(null);
@@ -120,8 +117,11 @@ export function useAudioEngine({
 
       if (!analyserRef.current) {
         const analyser = audioContextRef.current.createAnalyser();
-        analyser.fftSize = 2048;
-        analyser.smoothingTimeConstant = 0.78;
+        analyser.fftSize = 4096;
+        analyser.smoothingTimeConstant = 0.35;
+        // Leave headroom for mastered rock/pop; the default -30 dB ceiling
+        // flattened their bass bins and hid changes within loud sections.
+        analyser.maxDecibels = -12;
         analyserRef.current = analyser;
       }
 
@@ -204,12 +204,10 @@ export function useAudioEngine({
     }
   }
 
-  // Keep the bus frame's beat fields at idle (samples/energy untouched) while
-  // playback is paused or switching tracks, mirroring the old beatFrame reset.
+  // Clear the previous source's energy as well as its beat timing.
   function publishIdleBeatFrame() {
-    const current = getVisualizerFrame();
     publishVisualizerFrame({
-      ...current,
+      ...createSilentVisualizerFrame(VISUALIZER_SAMPLE_COUNT),
       beatPulse: 0,
       beatPhase: 0,
       onsetStrength: 0,
@@ -219,8 +217,7 @@ export function useAudioEngine({
 
   function publishPodcastVisualizerReset() {
     publishVisualizerFrame({
-      samples: Array.from({ length: VISUALIZER_SAMPLE_COUNT }, () => 0.035),
-      energy: 0.055,
+      ...createSilentVisualizerFrame(VISUALIZER_SAMPLE_COUNT),
       beatPulse: 0,
       beatPhase: 0,
       onsetStrength: 0,
@@ -232,6 +229,7 @@ export function useAudioEngine({
     void resumeAudioGraph();
     const frequencyData = new Uint8Array(analyserRef.current?.frequencyBinCount ?? 512);
     const timeData = new Uint8Array(analyserRef.current?.fftSize ?? 1024);
+    const visualizer = new AudioVisualizerAnalyzer();
     const sample = () => {
       if (!isDocumentVisible() || !isPlaying) {
         visualizerFrameRef.current = null;
@@ -239,12 +237,8 @@ export function useAudioEngine({
         return;
       }
       const analyser = analyserRef.current;
-      let frame = createIdleVisualizerFrame(
-        VISUALIZER_SAMPLE_COUNT,
-        performance.now() * 0.001,
-        audioRef.current?.currentTime ?? progress,
-      );
-      let beat = beatFrameRef.current;
+      let frame = createSilentVisualizerFrame(VISUALIZER_SAMPLE_COUNT);
+      let beat = createIdleBeatFrame();
 
       if (analyser && !visualizerUnavailableRef.current) {
         analyser.getByteFrequencyData(frequencyData);
@@ -256,8 +250,7 @@ export function useAudioEngine({
           audioContextRef.current?.sampleRate,
           analyser.fftSize,
         );
-        visualizerSilenceFramesRef.current = audioFrame.active ? 0 : visualizerSilenceFramesRef.current + 1;
-        if (visualizerSilenceFramesRef.current < 28) frame = audioFrame;
+        frame = visualizer.update(audioFrame, audioRef.current?.currentTime ?? progress);
 
         if (!realtimeBeatRef.current) realtimeBeatRef.current = new RealtimeBeatAnalyzer();
         beat = realtimeBeatRef.current.update(
@@ -271,29 +264,15 @@ export function useAudioEngine({
         beatFrameRef.current = beat;
       }
 
-      const previousEnergy = visualizerEnergyRef.current;
-      const energy = frame.energy > previousEnergy
-        ? previousEnergy * 0.64 + frame.energy * 0.36
-        : previousEnergy * 0.9 + frame.energy * 0.1;
-      visualizerEnergyRef.current = energy;
-
-      if (visualizerSamplesRef.current.length !== VISUALIZER_SAMPLE_COUNT) {
-        visualizerSamplesRef.current = Array.from({ length: VISUALIZER_SAMPLE_COUNT }, () => 0.035);
-      }
-      const samples = visualizerSamplesRef.current.map((previous, index) => {
-        const next = frame.samples[index] ?? 0.035;
-        return next > previous
-          ? previous * 0.58 + next * 0.42
-          : previous * 0.9 + next * 0.1;
-      });
-      visualizerSamplesRef.current = samples;
-
       publishVisualizerFrame({
-        samples,
-        energy,
-        beatPulse: beat.beatPulse,
+        samples: frame.samples,
+        transients: frame.transients,
+        energy: frame.energy,
+        bass: frame.bass,
+        texture: frame.texture,
+        beatPulse: beat.beatPulse * Math.min(1, frame.onsetStrength * 2),
         beatPhase: beat.beatPhase,
-        onsetStrength: beat.onsetStrength,
+        onsetStrength: frame.onsetStrength,
         beatConfidence: beat.confidence,
       });
       visualizerFrameRef.current = requestAnimationFrame(sample);

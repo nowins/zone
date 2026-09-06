@@ -1,3 +1,4 @@
+import { NOW_PLAYING_MOTION } from "../motion/tokens";
 import { useEffect, useMemo, useRef } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { AlbumGroup, Track } from "../types";
@@ -20,6 +21,7 @@ import {
   type RgbColor,
 } from "../utils/nowPlayingCanvas";
 
+const imageReadyListeners = new Set<() => void>();
 const imageCache = new Map<string, HTMLCanvasElement>();
 const pendingImageLoads = new Map<string, Promise<HTMLCanvasElement | null>>();
 const MAX_IMAGE_CACHE = 96;
@@ -63,6 +65,8 @@ export function NowPlayingMosaicCanvas({
   const flipRef = useRef<MosaicFlipState>(createMosaicFlipState());
   const frameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
+  const invalidateRef = useRef<() => void>(() => {});
+  const settleUntilRef = useRef(0);
   const sceneTimeRef = useRef(0);
   const wallRevealStartedAtRef = useRef(Number.NEGATIVE_INFINITY);
   const motionEnabledRef = useRef(true);
@@ -71,6 +75,7 @@ export function NowPlayingMosaicCanvas({
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
+    invalidateRef.current();
   }, [isPlaying]);
 
   useEffect(() => {
@@ -83,17 +88,20 @@ export function NowPlayingMosaicCanvas({
       : [];
     wallRevealStartedAtRef.current = isFirstWall ? performance.now() : Number.NEGATIVE_INFINITY;
     if (isFirstWall) onInitialRevealStart?.();
+    invalidateRef.current();
 
     return preloadWallImagesProgressively(wallAlbums);
   }, [onInitialRevealStart, wallAlbums]);
 
   useEffect(() => {
     motionEnabledRef.current = !reducedMotion;
+    invalidateRef.current();
   }, [reducedMotion]);
 
   useEffect(() => {
     if (!activeTrack?.cover_path) {
       targetPaletteRef.current = clonePalette(FALLBACK_PALETTE);
+      invalidateRef.current();
       return;
     }
 
@@ -102,6 +110,7 @@ export function NowPlayingMosaicCanvas({
       if (cancelled) return;
       const palette = extractColorPalette(image);
       targetPaletteRef.current = palette ?? clonePalette(FALLBACK_PALETTE);
+      invalidateRef.current();
     };
 
     const cached = imageCache.get(activeTrack.cover_path);
@@ -124,6 +133,7 @@ export function NowPlayingMosaicCanvas({
       sizeRef.current = { width, height, dpr };
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
+      invalidateRef.current();
       tilesRef.current = albumsRef.current.length > 0
         ? buildCanvasMosaicTiles(width, height, albumsRef.current)
         : [];
@@ -147,7 +157,7 @@ export function NowPlayingMosaicCanvas({
         lastTimeRef.current = time;
         const motionEnabled = motionEnabledRef.current;
         const frame = getVisualizerFrame();
-        sceneTimeRef.current += deltaSeconds * (motionEnabled ? (isPlayingRef.current ? 1 : 0.1) : 0);
+        sceneTimeRef.current += deltaSeconds * (motionEnabled ? (isPlayingRef.current ? 1 : 0) : 0);
         paletteRef.current = interpolateMosaicColorPalette(
           paletteRef.current,
           targetPaletteRef.current,
@@ -175,7 +185,7 @@ export function NowPlayingMosaicCanvas({
         frameRef.current = null;
         return;
       }
-      if (isDocumentVisible()) {
+      if (isDocumentVisible() && ((isPlayingRef.current && motionEnabledRef.current) || time < settleUntilRef.current)) {
         frameRef.current = window.requestAnimationFrame(draw);
       } else {
         frameRef.current = null;
@@ -192,15 +202,23 @@ export function NowPlayingMosaicCanvas({
         frameRef.current = window.requestAnimationFrame(draw);
       }
     };
+    const invalidate = () => {
+      settleUntilRef.current = performance.now() + NOW_PLAYING_MOTION.canvasSettle;
+      sync();
+    };
+    invalidateRef.current = invalidate;
     // React StrictMode runs mount effects twice in development. The first
     // cleanup cancels its pending frame; never let that cancelled request id
     // make the second setup believe a loop is still alive.
     if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
     frameRef.current = null;
-    sync();
-    document.addEventListener("visibilitychange", sync);
+    imageReadyListeners.add(invalidate);
+    invalidate();
+    document.addEventListener("visibilitychange", invalidate);
     return () => {
-      document.removeEventListener("visibilitychange", sync);
+      document.removeEventListener("visibilitychange", invalidate);
+      invalidateRef.current = () => {};
+      imageReadyListeners.delete(invalidate);
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
       lastTimeRef.current = null;
@@ -533,6 +551,7 @@ function loadWallImage(path: string) {
       }
     }
     imageCache.set(path, image);
+    imageReadyListeners.forEach(listener => listener());
     return image;
   }).finally(() => {
     pendingImageLoads.delete(path);

@@ -412,9 +412,9 @@
   bottom: 0;
   z-index: 4;
   width: 100%;
-  height: clamp(88px, 8vh, 122px);
-  min-height: 88px;
-  max-height: 122px;
+  height: clamp(148px, 19vh, 230px);
+  min-height: 148px;
+  max-height: 230px;
   display: block;
   pointer-events: none;
   mix-blend-mode: screen;

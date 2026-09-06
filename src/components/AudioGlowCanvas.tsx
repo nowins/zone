@@ -1,3 +1,4 @@
+import { NOW_PLAYING_MOTION } from "../motion/tokens";
 import { useEffect, useRef } from "react";
 import {
   createZuneMountainFrame,
@@ -34,17 +35,22 @@ export function AudioGlowCanvas({
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
   const frameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
+  const invalidateRef = useRef<() => void>(() => {});
+  const settleUntilRef = useRef(0);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
+    invalidateRef.current();
   }, [isPlaying]);
 
   useEffect(() => {
     volumeRef.current = volume;
+    invalidateRef.current();
   }, [volume]);
 
   useEffect(() => {
     reducedMotionRef.current = reducedMotion;
+    invalidateRef.current();
   }, [reducedMotion]);
 
   useEffect(() => {
@@ -59,6 +65,7 @@ export function AudioGlowCanvas({
       sizeRef.current = { width, height, dpr };
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
+      invalidateRef.current();
     };
 
     const observer = new ResizeObserver(resize);
@@ -83,15 +90,18 @@ export function AudioGlowCanvas({
       const energyValue = reduced ? (playing ? REDUCED_GLOW_ENERGY : 0) : playing ? Math.max(0, frame.energy) : 0;
       const beatValue = reduced ? 0 : playing ? frame.beatPulse : 0;
       const onsetValue = reduced ? 0 : playing ? frame.onsetStrength : 0;
+      const bassValue = reduced || !playing ? 0 : frame.bass;
+      const textureValue = reduced || !playing ? 0 : frame.texture;
       const hit = Math.max(beatValue, onsetValue);
 
-      bodyRef.current = smoothTransient(bodyRef.current, playing ? energyValue * 0.84 + hit * 0.26 : 0, delta, 0.08, playing ? 0.62 : 0.12);
-      spreadRef.current = smoothTransient(spreadRef.current, playing ? energyValue * 0.5 + hit * 0.56 : 0, delta, 0.09, playing ? 0.7 : 0.14);
-      crestRef.current = smoothTransient(crestRef.current, playing ? hit * 0.82 + energyValue * 0.22 : 0, delta, 0.065, playing ? 0.48 : 0.1);
+      bodyRef.current = smoothTransient(bodyRef.current, playing ? energyValue * 0.6 + bassValue * 0.5 + hit * 0.12 : 0, delta, 0.08, playing ? 0.62 : 0.12);
+      spreadRef.current = smoothTransient(spreadRef.current, playing ? bassValue * 0.64 + energyValue * 0.22 + hit * 0.34 : 0, delta, 0.09, playing ? 0.7 : 0.14);
+      crestRef.current = smoothTransient(crestRef.current, playing ? hit * 0.82 + textureValue * 0.22 : 0, delta, 0.065, playing ? 0.48 : 0.1);
       hotspotRef.current = smoothTransient(hotspotRef.current, playing ? onsetValue * 0.84 + beatValue * 0.2 : 0, delta, 0.055, playing ? 0.3 : 0.08);
 
       const targetFrame = createZuneMountainFrame({
         samples: reduced ? REDUCED_GLOW_SAMPLES : frame.samples,
+        transients: reduced ? [] : frame.transients,
         energy: energyValue,
         beatPulse: beatValue,
         onsetStrength: onsetValue,
@@ -113,7 +123,7 @@ export function AudioGlowCanvas({
         volumeRef.current,
         frame.beatConfidence,
       );
-      if (isDocumentVisible()) {
+      if (isDocumentVisible() && ((isPlayingRef.current && !reducedMotionRef.current) || time < settleUntilRef.current)) {
         frameRef.current = window.requestAnimationFrame(draw);
       } else {
         frameRef.current = null;
@@ -128,14 +138,20 @@ export function AudioGlowCanvas({
       }
       if (!frameRef.current) frameRef.current = window.requestAnimationFrame(draw);
     };
+    const invalidate = () => {
+      settleUntilRef.current = performance.now() + NOW_PLAYING_MOTION.canvasSettle;
+      sync();
+    };
+    invalidateRef.current = invalidate;
     // React StrictMode runs mount effects twice in development. Clear the
     // cancelled id before the second setup so the glow loop can restart.
     if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
     frameRef.current = null;
-    sync();
-    document.addEventListener("visibilitychange", sync);
+    invalidate();
+    document.addEventListener("visibilitychange", invalidate);
     return () => {
-      document.removeEventListener("visibilitychange", sync);
+      document.removeEventListener("visibilitychange", invalidate);
+      invalidateRef.current = () => {};
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
       lastTimeRef.current = null;
@@ -163,7 +179,7 @@ function drawGlow(
   const mutedGain = volume <= 0.01 ? 0.38 : 1;
   const confidenceGain = 0.92 + beatConfidence * 0.08;
   const gain = mutedGain * confidenceGain * 1.25;
-  const centerX = width * 0.5;
+  const centerX = width * frame.bodyCenterX;
   const baseY = height * 1.04;
   const bodyY = height * (0.96 - frame.bodyLift);
   const bodyRadiusX = width * frame.bodyWidth * 0.5;
@@ -215,13 +231,13 @@ function drawGlow(
     [0.48, "rgba(96, 7, 3, 0.24)"],
     [1, "rgba(0, 0, 0, 0)"],
   ], 16);
-  drawGlowEllipse(context, centerX, bodyY, bodyRadiusX, bodyRadiusY, frame.bodyAlpha * 0.42 * gain, [
+  drawGlowEllipse(context, centerX, bodyY, bodyRadiusX, bodyRadiusY, frame.bodyAlpha * 0.18 * gain, [
     [0, "rgba(255, 92, 30, 0.68)"],
     [0.38, "rgba(218, 36, 12, 0.42)"],
     [0.76, "rgba(110, 8, 5, 0.22)"],
     [1, "rgba(0, 0, 0, 0)"],
   ], 20);
-  drawGlowEllipse(context, centerX, bodyY + height * 0.04, bodyRadiusX * 0.58, bodyRadiusY * 0.52, frame.bodyAlpha * 0.24 * gain, [
+  drawGlowEllipse(context, centerX, bodyY + height * 0.04, bodyRadiusX * 0.58, bodyRadiusY * 0.52, frame.bodyAlpha * 0.1 * gain, [
     [0, "rgba(255, 156, 76, 0.52)"],
     [0.44, "rgba(255, 82, 28, 0.26)"],
     [1, "rgba(0, 0, 0, 0)"],
@@ -267,11 +283,10 @@ function drawMountainCrest(
 ) {
   if (points.length < 2) return;
   const crest = context.createLinearGradient(0, 0, width, 0);
-  crest.addColorStop(0, "rgba(136, 20, 10, 0.2)");
-  crest.addColorStop(0.18, "rgba(214, 48, 20, 0.42)");
-  crest.addColorStop(0.5, "rgba(255, 132, 66, 0.62)");
-  crest.addColorStop(0.82, "rgba(214, 48, 20, 0.42)");
-  crest.addColorStop(1, "rgba(136, 20, 10, 0.2)");
+  for (let index = 0; index < points.length; index += 4) {
+    const point = points[index];
+    crest.addColorStop(point.x, `rgba(255, ${Math.round(58 + point.heat * 92)}, 42, ${0.12 + point.heat * 0.5})`);
+  }
 
   context.save();
   context.globalAlpha = 0.36 * gain;
@@ -379,7 +394,7 @@ function smoothMountainFrame(frame: ZuneMountainFrame, previousHeights: number[]
   if (!isPlaying || frame.ridgePoints.length === 0) return { ...frame, ridgePoints: [], ridgePeak: 0 };
   const ridgePoints = frame.ridgePoints.map((point, index) => {
     const previous = previousHeights[index] ?? point.height;
-    const tau = point.height > previous ? 0.045 : 0.18;
+    const tau = point.height > previous ? 0.02 : 0.09;
     const height = previous + (point.height - previous) * (1 - Math.exp(-delta / tau));
     return { ...point, height };
   });

@@ -3,7 +3,10 @@ import test from "node:test";
 import {
   createAudioVisualizerFrame,
   createIdleVisualizerFrame,
+  createSilentVisualizerFrame,
+  AudioVisualizerAnalyzer,
 } from "../.tmp/visualizer-tests/utils/visualizer.js";
+import { createZuneMountainFrame } from "../.tmp/visualizer-tests/utils/audioGlow.js";
 
 const SAMPLE_COUNT = 180;
 const SAMPLE_RATE = 44_100;
@@ -68,6 +71,70 @@ function fillFrequencyRange(data, startFrequency, endFrequency, value) {
     data[index] = value;
   }
 }
+
+function tonalFrame(start, end, level = 230) {
+  const frequencies = new Uint8Array(FFT_SIZE / 2);
+  fillFrequencyRange(frequencies, start, end, level);
+  return createAudioVisualizerFrame(frequencies, createWaveform(58), SAMPLE_COUNT, SAMPLE_RATE, FFT_SIZE);
+}
+
+test("equal PCM loudness with different frequency content moves the body and changes its contour", () => {
+  const bass = tonalFrame(45, 135);
+  const voice = tonalFrame(230, 500);
+  const mountain = (frame) => createZuneMountainFrame({
+    ...frame, energy: 0.4, beatPulse: 0, onsetStrength: 0, beatPhase: 1, time: 0,
+  });
+  const low = mountain(bass), mid = mountain(voice);
+  assert.ok(Math.abs(low.bodyCenterX - mid.bodyCenterX) > 0.06);
+  const normalize = (points) => points.map(p => p.height / Math.max(...points.map(p => p.height)));
+  const a = normalize(low.ridgePoints), b = normalize(mid.ridgePoints);
+  const difference = a.reduce((sum, value, i) => sum + Math.abs(value - b[i]), 0) / a.length;
+  assert.ok(difference > 0.2, `contour must change, not just its overall height: ${difference}`);
+});
+
+test("a fresh drum attack has local crests which settle on a sustained sound", () => {
+  const analyzer = new AudioVisualizerAnalyzer();
+  analyzer.update(createSilentVisualizerFrame(SAMPLE_COUNT), 0);
+  let frame = analyzer.update(tonalFrame(45, 135), 1 / 60);
+  const attack = Math.max(...frame.transients);
+  assert.ok(attack > 0.2);
+  assert.ok(frame.onsetStrength > 0.5);
+  for (let i = 2; i < 100; i++) frame = analyzer.update(tonalFrame(45, 135), i / 60);
+  assert.ok(Math.max(...frame.transients) < attack * 0.01);
+  assert.ok(frame.onsetStrength < 0.01);
+  assert.ok(Math.max(...frame.samples) > 0.1, "sustained bass keeps body without invented beats");
+});
+
+test("seeking and restart discard previous section attacks", () => {
+  const analyzer = new AudioVisualizerAnalyzer();
+  analyzer.update(createSilentVisualizerFrame(SAMPLE_COUNT), 0);
+  analyzer.update(tonalFrame(45, 135), 1 / 60);
+  for (const time of [90, 10]) {
+    const frame = analyzer.update(tonalFrame(230, 500), time);
+    assert.equal(frame.onsetStrength, 0);
+    assert.ok(frame.transients.every(value => value === 0));
+  }
+});
+
+test("silence never falls back to an animated signal, even with stale FFT energy", () => {
+  const frequencyData = new Uint8Array(FFT_SIZE / 2).fill(230);
+  const silent = createAudioVisualizerFrame(frequencyData, new Uint8Array(FFT_SIZE).fill(128), SAMPLE_COUNT);
+  assert.equal(silent.energy, 0);
+  assert.equal(silent.active, false);
+  assert.ok(silent.samples.every(value => value === 0));
+  const analyzer = new AudioVisualizerAnalyzer();
+  analyzer.update(tonalFrame(45, 135), 0);
+  let frame;
+  for (let i = 1; i <= 180; i++) frame = analyzer.update(silent, i / 60);
+  assert.equal(frame.energy, 0);
+  assert.equal(frame.onsetStrength, 0);
+  assert.ok(Math.max(...frame.samples) < 0.00001);
+});
+
+test("a sustained spectrum is independent of wall-clock animation time", () => {
+  const input = { ...tonalFrame(45, 135), beatPulse: 0, onsetStrength: 0, beatPhase: 1 };
+  assert.deepEqual(createZuneMountainFrame({ ...input, time: 0 }), createZuneMountainFrame({ ...input, time: 50 }));
+});
 
 function frequencyToBin(frequency) {
   return Math.round((frequency * FFT_SIZE) / SAMPLE_RATE);

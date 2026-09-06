@@ -6,11 +6,12 @@ import {
   publishVisualizerFrame,
 } from "../.tmp/visualizer-tests/utils/visualizerBus.js";
 
-test("idle default frame matches the previous React state defaults", () => {
+test("initial bus frame is silent until real media samples arrive", () => {
   const frame = getVisualizerFrame();
   assert.equal(frame.samples.length, VISUALIZER_SAMPLE_COUNT);
-  assert.ok(frame.samples.every((sample) => sample === 0.035));
-  assert.equal(frame.energy, 0.055);
+  assert.ok(frame.samples.every((sample) => sample === 0));
+  assert.ok(frame.transients.every((sample) => sample === 0));
+  assert.equal(frame.energy, 0);
   assert.equal(frame.beatPulse, 0);
   assert.equal(frame.beatPhase, 0);
   assert.equal(frame.onsetStrength, 0);
