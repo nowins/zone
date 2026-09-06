@@ -15,10 +15,9 @@ import type { FlipRect } from "../motion/flip";
 import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS, NOW_PLAYING_MOTION } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
-import { queueAfterCurrent } from "../utils/playback";
 import type { RepeatMode, Track } from "../types";
 
-const COLLAPSED_UPCOMING_COUNT = 2;
+const COLLAPSED_QUEUE_COUNT = 3;
 const IDLE_CHROME_DELAY = 5_000;
 const COVER_FLIP_CARD_ANIMATIONS = ["now-track-info-enter", "now-track-card-fade"];
 const COVER_FLIP_WAIT_TIMEOUT_MS = 2_500;
@@ -109,15 +108,12 @@ export function NowPlayingView({
   const idleTimer = useRef<number | null>(null);
   const sidePanelRef = useRef<HTMLElement | null>(null);
   const previousTrackIdRef = useRef(track?.id ?? null);
-  const orderedQueue = useMemo(() => queueAfterCurrent(queue, track?.id ?? null), [queue, track?.id]);
-  const hasExpandableQueue = orderedQueue.length > COLLAPSED_UPCOMING_COUNT;
+  const displayedQueue = useMemo(() => queue.length ? queue : track ? [track] : [], [queue, track]);
+  const hasExpandableQueue = displayedQueue.length > COLLAPSED_QUEUE_COUNT;
   const lyricsOpen = surfaceMode === "lyrics" && Boolean(track);
   const queueOpen = !lyricsOpen && queueExpanded && hasExpandableQueue;
   const lyrics = useLyrics(track, duration);
-  const upcomingQueue = useMemo(() => {
-    return queueOpen ? orderedQueue : orderedQueue.slice(0, COLLAPSED_UPCOMING_COUNT);
-  }, [orderedQueue, queueOpen]);
-  const hiddenQueueCount = Math.max(0, orderedQueue.length - COLLAPSED_UPCOMING_COUNT);
+  const hiddenQueueCount = Math.max(0, displayedQueue.length - COLLAPSED_QUEUE_COUNT);
   const [textFading, setTextFading] = useState(false);
   const reducedMotion = useReducedMotion();
   const trackCardRef = useRef<HTMLElement | null>(null);
@@ -261,6 +257,17 @@ export function NowPlayingView({
     else sidePanel.removeAttribute("inert");
   }, [lyricsOpen]);
 
+  useLayoutEffect(() => {
+    const list = sidePanelRef.current?.querySelector<HTMLElement>(".now-panel-tracks");
+    const current = list?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!list || !current || lyricsOpen) return;
+    const viewport = list.getBoundingClientRect();
+    const row = current.getBoundingClientRect();
+    // Keep the queue order and scroll position; reveal only an offscreen row.
+    if (row.top < viewport.top) list.scrollTop += row.top - viewport.top;
+    else if (row.bottom > viewport.bottom) list.scrollTop += row.bottom - viewport.bottom;
+  }, [track?.id, queueOpen, lyricsOpen]);
+
   useEffect(() => {
     if (!lyricsOpen) return;
     function handleLyricsKeyDown(event: KeyboardEvent) {
@@ -376,25 +383,25 @@ export function NowPlayingView({
         aria-hidden={lyricsOpen}
       >
         <div className="now-panel-tracks">
-          {track ? (
-            <button className="now-panel-current" onClick={() => onPlay(track, queue)} disabled={!track}>
-              <div className="queue-row">
-                <AudioLines size={16} />
-                <strong>{track.title}</strong>
-              </div>
-              <span>{track.artist}</span>
-            </button>
-          ) : (
+          {displayedQueue.length === 0 ? (
             <div className="now-panel-empty">
               <strong>暂无播放</strong>
               <span>请选择一首歌曲</span>
             </div>
-          )}
+          ) : null}
 
           <div className="now-panel-upcoming">
-            {upcomingQueue.map((item, index) => (
-              <button key={`${item.id}-${index}`} onClick={() => onPlay(item, queue)}>
-                <strong>{item.title}</strong>
+            {displayedQueue.map((item, index) => (
+              <button
+                key={`${item.id}-${index}`}
+                className={item.id === track?.id ? "now-panel-current" : undefined}
+                aria-current={item.id === track?.id ? "true" : undefined}
+                onClick={() => item.id === track?.id ? onPlayPause() : onPlay(item, queue)}
+              >
+                <div className="queue-row">
+                  <AudioLines size={16} aria-hidden="true" style={{ visibility: item.id === track?.id ? "visible" : "hidden" }} />
+                  <strong>{item.title}</strong>
+                </div>
                 <span>{item.artist}</span>
               </button>
             ))}
@@ -423,10 +430,11 @@ export function NowPlayingView({
           <button
             className={`now-favorite ${isFavorite ? "favorite-active" : ""}`}
             title={isFavorite ? "取消收藏" : "添加到收藏"}
+            aria-pressed={isFavorite}
             onClick={onToggleFavorite}
             disabled={!track}
           >
-            <Heart size={18} fill={isFavorite ? "currentColor" : "none"} />
+            <Heart size={22} fill={isFavorite ? "currentColor" : "none"} />
           </button>
         </div>
       </section>

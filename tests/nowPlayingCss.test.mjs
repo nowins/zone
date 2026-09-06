@@ -121,9 +121,9 @@ test("queue and shared bottom controls follow the compact Zune layout", () => {
   assert.ok(transportRule.includes("height: var(--now-transport-height)"));
   assert.ok(transportControlsRule.includes("height: var(--now-transport-height)"));
   assert.ok(transportControlsRule.includes("background: transparent"));
-  assert.ok(progressRule.includes("bottom: 16px"));
-  assert.ok(progressRule.includes("left: 50%"));
-  assert.ok(progressRule.includes("width: clamp(310px, 24vw, 520px)"));
+  assert.ok(transportRule.includes("grid-template-columns: minmax(0, 1fr) auto"), "progress and buttons reserve separate columns");
+  assert.ok(progressRule.includes("width: min(100%, 480px)"));
+  assert.ok(!progressRule.includes("position: absolute"), "progress must not overlap controls at narrow widths");
   assert.ok(px(glowRule, "max-height") <= 230, "the canvas may grow but its ridge must remain in the bottom half");
   assert.ok(nowPlayingView.includes("<PlaybackProgress"));
   assert.ok(nowPlayingView.includes("<TransportControls"));
@@ -139,9 +139,11 @@ test("queue and shared bottom controls follow the compact Zune layout", () => {
   assert.ok(progressInputRule.includes("grid-column: 1 / -1"));
   assert.ok(playbackProgressView.includes("zune-progress-time-start"));
   assert.ok(playbackProgressView.includes("zune-progress-time-end"));
-  assert.ok(nowPlayingView.includes("queueAfterCurrent(queue"), "queue should keep every item around the active track");
+  assert.ok(!nowPlayingView.includes("queueAfterCurrent("), "changing songs must not rotate the displayed queue");
+  assert.ok(nowPlayingView.includes("displayedQueue.map("));
+  assert.ok(nowPlayingView.includes('aria-current={item.id === track?.id'));
   assert.ok(nowPlayingView.includes("useState(true)"), "queue should be expanded on first entry");
-  assert.ok(nowPlayingView.includes("orderedQueue.slice(0, COLLAPSED_UPCOMING_COUNT)"));
+  assert.ok(!nowPlayingView.includes("orderedQueue.slice("), "collapsed queue preserves the same items and order");
   assert.ok(nowPlayingView.includes("className=\"queue-disclosure\""));
   assert.ok(nowPlayingView.includes("展开其余 ${hiddenQueueCount} 首"));
   assert.ok(!nowPlayingView.includes("queueExpanded ? 8 : 0"), "collapsed queue must not hide every upcoming track");

@@ -5,10 +5,12 @@ export function Titlebar({
   isSettings,
   onOpenSettings,
   closeToTray = true,
+  showSettings = true,
 }: {
   isSettings: boolean;
   onOpenSettings: () => void;
   closeToTray?: boolean;
+  showSettings?: boolean;
 }) {
   const appWindow = getCurrentWindow();
 
@@ -16,7 +18,7 @@ export function Titlebar({
     <header className="titlebar" data-tauri-drag-region>
       <div data-tauri-drag-region />
       <div className="window-controls">
-        <button
+        {showSettings ? <button
           className={isSettings ? "titlebar-settings active" : "titlebar-settings"}
           onClick={onOpenSettings}
           title="设置"
@@ -24,7 +26,7 @@ export function Titlebar({
         >
           <Settings2 size={13} aria-hidden="true" />
           <span>设置</span>
-        </button>
+        </button> : null}
         <button onClick={() => appWindow.minimize()} title="最小化">
           <Minus size={15} />
         </button>

@@ -995,6 +995,7 @@ export default function App() {
         onEnded={onEnded}
       />
       <Titlebar
+        showSettings={page !== "nowPlaying"}
         isSettings={page === "settings"}
         onOpenSettings={() => navigatePage("settings")}
         closeToTray={closeToTray}
