@@ -27,6 +27,25 @@ export const NOW_PLAYING_MOTION = {
   nowStage: 1250,
 } as const;
 
+/** WP tile timing: interaction, readable live updates and staggered arrival. */
+export const TILE_MOTION = {
+  longPress: 550,
+  firstMin: 6_000,
+  firstMax: 14_000,
+  intervalMin: 24_000,
+  intervalMax: 48_000,
+  hold: 5_000,
+  peek: 600,
+  flipHalf: 200,
+  cellHalf: 280,
+  cellMin: 8_000,
+  cellMax: 18_000,
+  stagger: 46,
+  staggerMax: 460,
+  entranceWindow: 900,
+  peekEasing: [0.22, 0, 0.05, 1],
+} as const;
+
 export type MotionDurationName = keyof typeof MOTION_DURATIONS;
 
 /**

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
+const quickplaySource = ["src/views/QuickplayView.tsx", "src/components/tiles/QuickplayPinBoard.tsx"].map(path => readFileSync(path, "utf8")).join("\n");
 const playlistsHookSource = readFileSync("src/hooks/usePlaylists.ts", "utf8");
 const appSource = readFileSync("src/App.tsx", "utf8");
 const quickplayCss = readFileSync("src/styles/quickplay.css", "utf8");
@@ -28,7 +28,7 @@ test("quickplay resolves pinned podcast feeds into proxied-artwork tiles", () =>
   );
   includes(
     quickplaySource,
-    /variant=\{item\.podcastFeed \? "peek" : "flip"\}/,
+    /variant=\{item\.podcastFeed \|\| item\.size === "wide" \? "peek" : "flip"\}/,
     "podcast pins must reveal live info with the vertical peek, not the card flip",
   );
   includes(
@@ -38,7 +38,7 @@ test("quickplay resolves pinned podcast feeds into proxied-artwork tiles", () =>
   );
   includes(
     quickplaySource,
-    /item\.podcastFeed\.latestEpisodeTitle \?\? item\.title/,
+    /item\.podcastFeed\?\.latestEpisodeTitle \?\? item\.title/,
     "the peek back must headline the latest episode title",
   );
   includes(

@@ -46,6 +46,14 @@ const emptySource = readFileSync("src/components/EmptyState.tsx", "utf8");
 const playerBarSource = readFileSync("src/components/PlayerBar.tsx", "utf8");
 const podcastPlayerBarSource = readFileSync("src/components/PodcastPlayerBar.tsx", "utf8");
 const titlebarSource = readFileSync("src/components/Titlebar.tsx", "utf8");
+const pinBoardSource = readFileSync("src/components/tiles/QuickplayPinBoard.tsx", "utf8");
+
+test("tile editing and appearance use Chinese functional labels", () => {
+  for (const label of ["固定", "完成", "编辑", "外观", "取消固定", "磁贴外观", "尺寸", "背景", "动态内容", "保存", "取消"]) {
+    assert.ok(pinBoardSource.includes(label), `tile action must remain localized: ${label}`);
+  }
+  assert.ok(pinBoardSource.includes('small: "小", medium: "中", wide: "宽", large: "大"'));
+});
 
 test("collection totals are shown once and use Chinese units", () => {
   assert.ok(!artistSource.includes("<p>{artists.length}"));

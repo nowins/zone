@@ -253,14 +253,20 @@ fn replace_playlist(connection: &Connection, playlist: &PlaylistRecord, now: i64
 }
 
 fn replace_home_pins(connection: &Connection, pins: &[HomePinRecord]) -> Result<(), String> {
+  for pin in pins {
+    if pin.size.as_deref().is_some_and(|v| !matches!(v, "small" | "medium" | "wide" | "large"))
+      || pin.tone.as_deref().is_some_and(|v| !matches!(v, "cover" | "pink" | "teal" | "blue" | "orange" | "purple")) {
+      return Err("无效的磁贴外观设置".into());
+    }
+  }
   connection
     .execute("DELETE FROM music_home_pins", [])
     .map_err(|error| format!("无法清理 quickplay 固定项：{error}"))?;
   for (position, pin) in pins.iter().enumerate() {
     connection
       .execute(
-        "INSERT INTO music_home_pins (id, kind, target_id, position, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![pin.id, pin.kind, pin.target_id, position as i64, pin.created_at],
+        "INSERT INTO music_home_pins (id, kind, target_id, position, created_at, size, live, tone) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![pin.id, pin.kind, pin.target_id, position as i64, pin.created_at, pin.size, pin.live, pin.tone],
       )
       .map_err(|error| format!("无法保存 quickplay 固定项：{error}"))?;
   }
@@ -554,7 +560,7 @@ fn list_home_pins(connection: &Connection) -> Result<Vec<HomePinRecord>, String>
   let mut statement = connection
     .prepare(
       "
-      SELECT id, kind, target_id, created_at
+      SELECT id, kind, target_id, created_at, size, live, tone
       FROM music_home_pins
       ORDER BY position ASC, created_at ASC
       ",
@@ -567,6 +573,9 @@ fn list_home_pins(connection: &Connection) -> Result<Vec<HomePinRecord>, String>
         kind: row.get(1)?,
         target_id: row.get(2)?,
         created_at: row.get(3)?,
+        size: row.get(4)?,
+        live: row.get(5)?,
+        tone: row.get(6)?,
       })
     })
     .map_err(|error| format!("无法读取 quickplay 固定项：{error}"))?
@@ -893,9 +902,12 @@ pub(crate) fn save_playlists(state: &MusicState, playlists: Vec<PlaylistRecord>)
 }
 
 pub(crate) fn save_home_pins(state: &MusicState, pins: Vec<HomePinRecord>) -> Result<(), String> {
-  let connection = open_music_db(state)?;
-  replace_home_pins(&connection, &pins)?;
-  let _ = bump_library_revision(&connection)?;
+  let mut connection = open_music_db(state)?;
+  let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+    .map_err(|error| format!("无法开始保存磁贴：{error}"))?;
+  replace_home_pins(&transaction, &pins)?;
+  let _ = bump_library_revision(&transaction)?;
+  transaction.commit().map_err(|error| format!("无法提交磁贴设置：{error}"))?;
   Ok(())
 }
 
@@ -1285,6 +1297,37 @@ mod tests {
   }
 
   #[test]
+  fn home_pin_customization_round_trips_and_failed_replacement_is_atomic() {
+    let root = test_root("pin-customization");
+    let state = MusicState::initialize_at(&root).unwrap();
+    let small: HomePinRecord = serde_json::from_value(serde_json::json!({
+      "id": "track:one", "kind": "track", "targetId": "one", "createdAt": 17,
+      "size": "small", "tone": "teal", "live": false
+    })).unwrap();
+    let legacy: HomePinRecord = serde_json::from_value(serde_json::json!({
+      "id": "podcastFeed:two", "kind": "podcastFeed", "targetId": "two", "createdAt": 20
+    })).unwrap();
+    save_home_pins(&state, vec![legacy.clone(), small.clone()]).unwrap();
+    let reopened = MusicState::initialize_at(&root).unwrap();
+    let before = load_library_snapshot(&reopened).unwrap();
+    assert_eq!(before.home_pins[0].id, legacy.id);
+    assert_eq!(before.home_pins[0].size, None);
+    assert_eq!(before.home_pins[1].size.as_deref(), Some("small"));
+    assert_eq!(before.home_pins[1].tone.as_deref(), Some("teal"));
+    assert_eq!(before.home_pins[1].live, Some(false));
+    // A constraint failure after the first INSERT must restore the entire wall.
+    assert!(save_home_pins(&state, vec![small.clone(), small.clone()]).is_err());
+    let mut invalid = small.clone();
+    invalid.tone = Some("invalid".into());
+    assert!(save_home_pins(&state, vec![invalid]).is_err());
+    let after = load_library_snapshot(&state).unwrap();
+    assert_eq!(serde_json::to_value(&before.home_pins).unwrap(), serde_json::to_value(&after.home_pins).unwrap());
+    assert_eq!(before.library_revision, after.library_revision);
+    save_home_pins(&state, vec![small, legacy]).unwrap();
+    assert_eq!(load_library_snapshot(&state).unwrap().home_pins[0].id, "track:one");
+  }
+
+  #[test]
   fn cancellation_after_scanning_rolls_back_folder_and_revision_changes() {
     let root = test_root("cancel-scan");
     let state = MusicState::initialize_at(&root).unwrap();
@@ -1474,6 +1517,9 @@ mod tests {
         kind: "track".to_string(),
         target_id: "track-1".to_string(),
         created_at: 30,
+        size: None,
+        live: None,
+        tone: None,
       }],
     };
 

@@ -445,6 +445,11 @@ mod tests {
       )
       .expect("legacy pin survives migration");
     assert_eq!(surviving, "t1");
+    let defaults: (Option<String>, Option<bool>, Option<String>) = connection.query_row(
+      "SELECT size, live, tone FROM music_home_pins WHERE id = 'track:t1'", [],
+      |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).expect("legacy tile gains nullable customization fields");
+    assert_eq!(defaults, (None, None, None));
     connection
       .execute(
         "INSERT INTO music_home_pins (id, kind, target_id, position, created_at)

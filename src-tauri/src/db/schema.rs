@@ -208,6 +208,9 @@ pub(crate) fn ensure_music_schema(connection: &Connection) -> Result<(), String>
     )
     .map_err(|error| format!("无法初始化音乐表：{error}"))?;
   ensure_music_home_pins_kind_migration(connection)?;
+  ensure_database_column(connection, "music_home_pins", "size", "size TEXT")?;
+  ensure_database_column(connection, "music_home_pins", "live", "live INTEGER")?;
+  ensure_database_column(connection, "music_home_pins", "tone", "tone TEXT")?;
   Ok(())
 }
 

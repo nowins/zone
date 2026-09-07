@@ -23,9 +23,13 @@
   filter: none;
 }
 
-/* Intrinsic Win8 tile sizes (medium 150px, wide/large 2x150 + one 10px
+/* Intrinsic WP tile sizes (small 70px, medium 150px, wide/large 2x150 + one 10px
    gutter). Zero-specificity :where() defaults, so any host sizing — e.g.
    quickplay's grid-driven pins — wins regardless of stylesheet order. */
+:where(.tile-small) {
+  width: 70px;
+  height: 70px;
+}
 :where(.tile-medium) {
   width: 150px;
   height: 150px;
@@ -89,7 +93,6 @@
 }
 .tile-flip-v-peek .tile-face-back {
   transform: translateY(var(--tile-peek, 100%));
-  will-change: transform;
 }
 
 /* Flip variant (square tiles): the whole surface card-flips around its

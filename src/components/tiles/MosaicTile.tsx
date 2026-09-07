@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { animateValue } from "../../motion/animate";
 import type { AnimationHandle } from "../../motion/animate";
 import { easeInCubic, easeOutCubic } from "../../motion/math";
+import { TILE_MOTION } from "../../motion/tokens";
+import { useTileActivity } from "./useTileActivity";
 import { useReducedMotion } from "../../motion/useReducedMotion";
 
 // Layout is sized to the covers we actually have. Empty transparent slots
@@ -22,16 +24,6 @@ function layoutForPool(poolSize: number): { layout: MosaicLayout; cells: number 
   return { layout: "grid", cells: 8 };
 }
 
-// People-hub cadence: sparse, staggered single-cell flips. 2–6s felt like a
-// screensaver; real hub tiles change on the order of many seconds.
-const MIN_CELL_FLIP_MS = 8_000;
-const MAX_CELL_FLIP_MS = 18_000;
-const FIRST_FLIP_MIN_MS = 4_000;
-const FIRST_FLIP_MAX_MS = 10_000;
-// Half-flip was 160ms and read as a hard snap; longer ease gives the card
-// weight without feeling sluggish.
-const CELL_FLIP_HALF_MS = 280;
-
 function randomDelay(minMs: number, maxMs: number): number {
   return minMs + Math.random() * (maxMs - minMs);
 }
@@ -47,9 +39,11 @@ function initialCells(poolSize: number, cellCount: number): number[] {
  *
  * Layout capacity never exceeds the pool, so the tile stays fully filled.
  * When every cover is already shown the mosaic rests; it never forces a
- * paired exchange of two cells. Under reduced motion a cell simply swaps.
+ * paired exchange of two cells. Editing, reduced motion and hidden tiles suspend the scheduler.
  */
-export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
+export function MosaicFrames({ pool, paused = false }: { pool: ReactNode[]; paused?: boolean }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const active = useTileActivity(hostRef);
   const images = pool.slice(0, 9);
   const { layout, cells: cellCount } = layoutForPool(images.length);
   const [cells, setCells] = useState<number[]>(() => initialCells(images.length, cellCount));
@@ -68,7 +62,7 @@ export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
 
   useEffect(() => {
     // Need spare covers to rotate; a fully-shown pool stays still.
-    if (images.length <= cellCount) return undefined;
+    if (images.length <= cellCount || paused || !active || reducedMotion) return undefined;
     let cancelled = false;
     let timer: number | undefined;
 
@@ -88,10 +82,6 @@ export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
     // Single-cell card flip: edge-on, swap content at the apex, continue from
     // the opposite edge so the motion reads as one continuous turn.
     const flipCell = (cellIndex: number, poolIndex: number) => {
-      if (reducedMotion) {
-        applyTarget(cellIndex, poolIndex);
-        return;
-      }
       const inner = innerRefs.current[cellIndex];
       if (!inner || flipsRef.current[cellIndex]) return;
       // Promote the cell only for the flip's duration — a permanent
@@ -101,7 +91,7 @@ export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
       const firstHalf = animateValue({
         from: 0,
         to: -90,
-        tween: { durationMs: CELL_FLIP_HALF_MS, easing: easeInCubic },
+        tween: { durationMs: TILE_MOTION.cellHalf, easing: easeInCubic },
         onUpdate: (value) => setAngle(cellIndex, value),
         onComplete: () => {
           if (cancelled) return;
@@ -110,7 +100,7 @@ export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
           const secondHalf = animateValue({
             from: 90,
             to: 0,
-            tween: { durationMs: CELL_FLIP_HALF_MS, easing: easeOutCubic },
+            tween: { durationMs: TILE_MOTION.cellHalf, easing: easeOutCubic },
             onUpdate: (value) => setAngle(cellIndex, value),
             onComplete: () => {
               flipsRef.current[cellIndex] = null;
@@ -146,10 +136,10 @@ export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
       if (cancelled) return;
       const move = chooseMove();
       if (move) flipCell(move.cellIndex, move.poolIndex);
-      timer = window.setTimeout(tick, randomDelay(MIN_CELL_FLIP_MS, MAX_CELL_FLIP_MS));
+      timer = window.setTimeout(tick, randomDelay(TILE_MOTION.cellMin, TILE_MOTION.cellMax));
     };
 
-    timer = window.setTimeout(tick, randomDelay(FIRST_FLIP_MIN_MS, FIRST_FLIP_MAX_MS));
+    timer = window.setTimeout(tick, randomDelay(TILE_MOTION.firstMin, TILE_MOTION.firstMax));
     return () => {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
@@ -161,10 +151,10 @@ export function MosaicFrames({ pool }: { pool: ReactNode[] }) {
         inner.style.willChange = "";
       }
     };
-  }, [images.length, cellCount, reducedMotion]);
+  }, [images.length, cellCount, paused, active, reducedMotion]);
 
   return (
-    <div className={`tile-mosaic layout-${layout}`}>
+    <div ref={hostRef} className={`tile-mosaic layout-${layout}`}>
       {cells.map((poolIndex, cellIndex) => (
         <div className="tile-mosaic-cell" key={cellIndex}>
           <div

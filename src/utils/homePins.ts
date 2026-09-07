@@ -1,5 +1,5 @@
 import { MAX_HOME_PINS } from "../constants.js";
-import type { ContextPayload, HomePin, HomePinKind, HomePinSize, Playlist, Track } from "../types";
+import type { ContextPayload, HomePin, HomePinCustomization, HomePinKind, HomePinSize, Playlist, Track } from "../types";
 import { albumKey } from "./music.js";
 
 const HOME_PIN_KINDS = new Set<HomePinKind>([
@@ -15,7 +15,19 @@ export function homePinId(kind: HomePinKind, targetId: string) {
 }
 
 /** Size ladder for quickplay tiles, smallest to largest. */
-export const HOME_PIN_SIZES = ["medium", "wide", "large"] as const satisfies readonly HomePinSize[];
+export const HOME_PIN_SIZES = ["small", "medium", "wide", "large"] as const satisfies readonly HomePinSize[];
+export const HOME_PIN_TONES = {
+  cover: { label: "封面", color: "transparent" },
+  pink: { label: "洋红", color: "#a40058" },
+  teal: { label: "青绿", color: "#007b73" },
+  blue: { label: "钴蓝", color: "#2458a8" },
+  orange: { label: "橙色", color: "#b74800" },
+  purple: { label: "紫色", color: "#713b9b" },
+} as const;
+
+export function customizeHomePin(pins: HomePin[], pinId: string, patch: HomePinCustomization): HomePin[] {
+  return normalizeHomePins(pins.map(pin => pin.id === pinId ? { ...pin, ...patch } : pin));
+}
 
 // Artists and playlists have always been wide; keep that as their default so
 // existing walls look unchanged until the user resizes a pin explicitly.
@@ -89,6 +101,8 @@ export function normalizeHomePins(value: unknown): HomePin[] {
       targetId,
       createdAt: Number.isFinite(candidate.createdAt) ? Number(candidate.createdAt) : 0,
       ...(size !== undefined ? { size } : {}),
+      ...(typeof candidate.live === "boolean" ? { live: candidate.live } : {}),
+      ...(candidate.tone && Object.prototype.hasOwnProperty.call(HOME_PIN_TONES, candidate.tone) ? { tone: candidate.tone } : {}),
     });
     if (result.length === MAX_HOME_PINS) break;
   }
@@ -119,8 +133,8 @@ export function moveHomePin(pins: HomePin[], sourceId: string, targetId: string,
   if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return pins;
   const next = [...pins];
   const [source] = next.splice(sourceIndex, 1);
-  // The target index shifts once the source is out, so recompute it in the
-  // shortened array; dropping on the right half of a tile places after it.
+  // Recompute the target index after removing the source. The board decides
+  // whether the pointer is on the before or after half of the target.
   const insertAt = next.findIndex((pin) => pin.id === targetId) + (placeAfter ? 1 : 0);
   next.splice(insertAt, 0, source);
   return next;

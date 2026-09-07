@@ -38,7 +38,7 @@
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。
 - `src/constants.ts`：`STORAGE_KEY = "zone-player-state-v1"`、`LIBRARY_SCHEMA_VERSION = 6`、`DEFAULT_PLAYLIST_ID = "favorites"`、`MAX_HOME_PINS = 12`、`VISUALIZER_SAMPLE_COUNT = 180`。
 - `src/views/`：页面级视图。
-  - `QuickplayView.tsx`：Zune quickplay 首页，可固定/排序磁贴。
+  - `QuickplayView.tsx`：Zune quickplay 首页，解析固定内容；`components/tiles/QuickplayPinBoard.tsx` 负责 WP 风格磁贴编辑、重排与外观，`usePinDrag.ts` 通过指针捕获管理拖动、跟随预览与取消，不依赖 WebView2 的 HTML 拖放；`useTileActivity.ts` 管理动态可见性。
   - `LibraryView.tsx`：收藏页标签切换（专辑/艺术家/歌曲/播放列表），保持轻薄并向下委托。
   - `ArtistBrowser.tsx`：Zune 风格艺术家导航（艺术家 → 专辑 → 歌曲）。
   - `PlaylistBrowser.tsx`：当前队列与已存播放列表（含智能播放列表）。
@@ -60,7 +60,7 @@
   - `podcastArtwork.ts` / `podcastPlayback.ts`：播客代理封面 URL、播放模型归一化、实时播放状态覆盖和待播顺序移动。
   - `playback.ts`：队列移动/随机顺序/边界解析。
   - `smartPlaylist.ts`：智能播放列表规则求值与归一化。
-  - `homePins.ts`：quickplay 固定项的归一化、移动、对账。
+  - `homePins.ts`：quickplay 固定项的归一化、移动、外观设置与对账。
   - `visualizer.ts` / `beatAnalysis.ts` / `audioGlow.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格、Zune 光焰与封面拼贴的纯计算部分。
   - `visualizerBus.ts`：可视化帧的单槽 latest-frame 总线（`publishVisualizerFrame` / `getVisualizerFrame`）。`useAudioEngine` 采样循环发布，正在播放页两个 Canvas 在活动的 rAF 中拉取；暂停/减少动态效果后收敛停转，不经 React state/props。
   - `lyrics.ts` / `amllTtml.ts` / `qrc.ts`：plain、LRC、增强 LRC、TTML、AMLL 元数据和 QQ QRC 的解析与归一化。

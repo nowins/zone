@@ -1,7 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, DragEvent, KeyboardEvent, MouseEvent, PointerEvent } from "react";
-import { GripVertical, Pin, PinOff, Play, RectangleHorizontal, Sparkles, Square, SquareSquare } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
+import { Play } from "lucide-react";
 import { Cover } from "../components/Cover";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import { animateValue } from "../motion/animate";
@@ -9,14 +8,14 @@ import type { AnimationHandle } from "../motion/animate";
 import { registerFlipElement } from "../motion/flip";
 import { SPRING_PRESETS } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
-import { homePinSize, nextHomePinSize, stepHomePinSize } from "../utils/homePins";
+import { homePinSize } from "../utils/homePins";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
 import {
   buildQuickplayBlocks,
 } from "../utils/quickplayBlocks";
 import { pickCoverCandidates } from "../utils/nowPlayingWall";
 import { podcastArtworkSrc } from "../utils/podcastArtwork";
-import { FlipTile, MosaicFrames } from "../components/tiles";
+import { QuickplayPinBoard, type ResolvedPin } from "../components/tiles/QuickplayPinBoard";
 import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type {
   AlbumGroup,
@@ -24,6 +23,7 @@ import type {
   ContextPayload,
   HomePin,
   HomePinSize,
+  HomePinCustomization,
   Playlist,
   PodcastFeed,
   Track,
@@ -31,37 +31,6 @@ import type {
   ViewMode,
 } from "../types";
 
-type ResolvedPin = {
-  pin: HomePin;
-  title: string;
-  subtitle: string;
-  tracks: Track[];
-  artPaths: string[];
-  payload: ContextPayload | null;
-  /** Resolved tile size: the pin's explicit choice, else the kind default. */
-  size: HomePinSize;
-  isSmart: boolean;
-  /** Glanceable live line for the tile back (e.g. "12 首 · 3 天前听过"). */
-  liveLine: string;
-  /** Pinned show: artwork goes through the podcast artwork proxy, and presses
-      deep-link into the podcast page instead of the music transport. */
-  podcastFeed?: PodcastFeed;
-  podcastArtwork?: string | null;
-  /** "今天更新" style recency line for the podcast peek back face. */
-  podcastRecency?: string;
-};
-
-const HOME_PIN_SIZE_LABELS: Record<HomePinSize, string> = {
-  medium: "标准",
-  wide: "宽版",
-  large: "大版",
-};
-
-const HOME_PIN_SIZE_ICONS: Record<HomePinSize, LucideIcon> = {
-  medium: Square,
-  wide: RectangleHorizontal,
-  large: SquareSquare,
-};
 
 let quickplayScrollPosition = 0;
 
@@ -97,6 +66,7 @@ export function QuickplayView({
   onMovePin,
   onShiftPin,
   onResizePin,
+  onCustomizePin,
   onTogglePin,
   onContextMenu,
   podcastActive = false,
@@ -121,6 +91,7 @@ export function QuickplayView({
   onMovePin: (sourceId: string, targetId: string, placeAfter?: boolean) => void;
   onShiftPin: (pinId: string, direction: -1 | 1) => void;
   onResizePin: (pinId: string, size: HomePinSize) => void;
+  onCustomizePin: (pinId: string, patch: HomePinCustomization) => void;
   onTogglePin: (payload: ContextPayload) => void;
   onContextMenu: (event: MouseEvent, payload: ContextPayload) => void;
   podcastActive?: boolean;
@@ -133,9 +104,6 @@ export function QuickplayView({
     target: null,
     handle: null,
   });
-  const [editingPins, setEditingPins] = useState(false);
-  const [draggedPinId, setDraggedPinId] = useState<string | null>(null);
-  const pinsGridRef = useRef<HTMLDivElement | null>(null);
   const reducedMotion = useReducedMotion();
   // A podcast owns the shared audio element. Continue must not treat the
   // leftover music track as a live session, or resume would restart the show.
@@ -344,24 +312,6 @@ export function QuickplayView({
   }, [tracks.length, mostPlayedTracks.length, forgottenFavoriteTracks.length, historyTracks.length, recentAlbums.length]);
 
   useEffect(() => {
-    if (resolvedPins.length === 0) setEditingPins(false);
-  }, [resolvedPins.length]);
-
-  // Play the staggered tile entrance once when the pins first mount, then
-  // release the class so re-renders/drag/edit don't replay the reveal. Run in
-  // layout effect so the initial (hidden) state is set before paint.
-  useLayoutEffect(() => {
-    const grid = pinsGridRef.current;
-    if (!grid) return undefined;
-    grid.classList.add("tiles-enter");
-    const timer = window.setTimeout(() => grid.classList.remove("tiles-enter"), 900);
-    return () => {
-      window.clearTimeout(timer);
-      grid.classList.remove("tiles-enter");
-    };
-  }, [resolvedPins.length > 0]);
-
-  useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
 
@@ -479,52 +429,6 @@ export function QuickplayView({
     }
   }
 
-  function handlePinKey(event: KeyboardEvent<HTMLElement>, pinId: string) {
-    if (!editingPins || !event.altKey) return;
-    if (event.key === "ArrowLeft") {
-      onShiftPin(pinId, -1);
-      event.preventDefault();
-    } else if (event.key === "ArrowRight") {
-      onShiftPin(pinId, 1);
-      event.preventDefault();
-    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      // Alt+Up/Down steps the tile through the size ladder, clamped at the
-      // ends — keyboard parity with the edit-mode resize button.
-      const item = resolvedPins.find((candidate) => candidate.pin.id === pinId);
-      if (!item) return;
-      onResizePin(pinId, stepHomePinSize(item.size, event.key === "ArrowUp" ? 1 : -1));
-      event.preventDefault();
-    }
-  }
-
-  function handleDrop(event: DragEvent<HTMLElement>, targetId: string) {
-    if (!editingPins) return;
-    event.preventDefault();
-    const sourceId = event.dataTransfer.getData("text/plain") || draggedPinId;
-    if (!sourceId) {
-      setDraggedPinId(null);
-      return;
-    }
-    // The drop half picks the insertion side: left half = before the target,
-    // right half = after it — WP/Win8-style placement, not a plain swap.
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const placeAfter = event.clientX > bounds.left + bounds.width / 2;
-    onMovePin(sourceId, targetId, placeAfter);
-    setDraggedPinId(null);
-  }
-
-  // Dropping on empty grid space moves the tile to the end of the wall.
-  function handleGridDrop(event: DragEvent<HTMLElement>) {
-    if (!editingPins || event.target !== event.currentTarget) return;
-    event.preventDefault();
-    const sourceId = event.dataTransfer.getData("text/plain") || draggedPinId;
-    const last = resolvedPins[resolvedPins.length - 1];
-    if (sourceId && last && sourceId !== last.pin.id) {
-      onMovePin(sourceId, last.pin.id, true);
-    }
-    setDraggedPinId(null);
-  }
-
   function continueContextPayload(): ContextPayload | null {
     if (!continueItem) return null;
     if (continueItem.kind === "track" && continueTrack) {
@@ -580,170 +484,28 @@ export function QuickplayView({
           onKeyDown={handlePanoramaKey}
         >
           <div className="quickplay-track">
-        <article className="quick-group quick-pins">
-          <div className="quick-section-title quick-pins-title">
-            <h2>固定</h2>
-            {resolvedPins.length > 0 && (
-              <button
-                className="quick-pins-edit"
-                aria-pressed={editingPins}
-                onClick={() => setEditingPins((value) => !value)}
-              >
-                {editingPins ? "完成" : "编辑"}
-              </button>
-            )}
-          </div>
-          {resolvedPins.length === 0 ? (
-            <button className="quick-pins-empty" onClick={() => onOpenCollection("albums")}>
-              <Pin size={22} />
-              <span>固定音乐到这里</span>
-            </button>
-          ) : (
-            <div className="quick-section-scroll">
-              <div
-                ref={pinsGridRef}
-                className={`quick-pins-grid ${editingPins ? "editing" : ""}`}
-                onDragOver={(event) => {
-                  if (editingPins) event.preventDefault();
-                }}
-                onDrop={handleGridDrop}
-              >
-              {resolvedPins.map((item, index) => {
-                const nextPinSize = nextHomePinSize(item.size);
-                const NextSizeIcon = HOME_PIN_SIZE_ICONS[nextPinSize];
-                return (
-                <article
-                  className={`quick-pin ${item.size} ${draggedPinId === item.pin.id ? "dragging" : ""}`}
-                  key={item.pin.id}
-                  style={{ "--tile-stagger-delay": `${Math.min(index * 46, 460)}ms` } as CSSProperties}
-                  draggable={editingPins}
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = "move";
-                    event.dataTransfer.setData("text/plain", item.pin.id);
-                    setDraggedPinId(item.pin.id);
-                  }}
-                  onDragEnd={() => setDraggedPinId(null)}
-                  onDragOver={(event) => {
-                    if (editingPins) event.preventDefault();
-                  }}
-                  onDrop={(event) => handleDrop(event, item.pin.id)}
-                  onContextMenu={(event) => {
-                    if (item.payload) onContextMenu(event, item.payload);
-                  }}
-                  // In edit mode the tile renders as a div (no nested button
-                  // swallowing HTML5 drag), so the article owns focus and the
-                  // Alt+arrow keyboard reorder.
-                  tabIndex={editingPins ? 0 : undefined}
-                  onKeyDown={(event) => handlePinKey(event, item.pin.id)}
-                >
-                  <FlipTile
-                    size={item.size}
-                    variant={item.podcastFeed ? "peek" : "flip"}
-                    className="quick-pin-tile"
-                    title={item.podcastFeed ? `打开节目 ${item.title}` : `播放 ${item.title}`}
-                    paused={editingPins}
-                    disabled={editingPins}
-                    asButton={!editingPins}
-                    onPress={() => {
-                      if (editingPins) return;
-                      if (item.podcastFeed) {
-                        onOpenPodcastFeed?.(item.pin.targetId);
-                        return;
-                      }
-                      if (item.pin.kind === "track") {
-                        const track = item.tracks[0];
-                        if (track) onPlay(track, item.payload?.playbackTracks ?? item.tracks);
-                      } else {
-                        onPlayTracks(item.tracks);
-                      }
-                    }}
-                    onContextMenu={(event) => {
-                      if (item.payload) onContextMenu(event, item.payload);
-                    }}
-                      front={
-                        <>
-                          <span className="tile-face-art">
-                            <PinArtwork item={item} index={index} />
-                          </span>
-                          {/* Front identity: names must be glanceable without
-                              waiting 45-110s for the back, and edit mode
-                              pauses the flip entirely. */}
-                          {item.podcastFeed ? (
-                            <span className="quick-pin-front-band">
-                              <strong>{item.title}</strong>
-                              <small>
-                                {item.podcastFeed.unplayedCount > 0
-                                  ? item.liveLine
-                                  : item.subtitle}
-                              </small>
-                            </span>
-                          ) : (
-                            <strong className="quick-pin-front-title">{item.title}</strong>
-                          )}
-                        </>
-                      }
-                      back={
-                        item.podcastFeed ? (
-                          <>
-                            <span className="tile-back-kicker">播客节目</span>
-                            <strong className="quick-pin-back-headline">
-                              {item.podcastFeed.latestEpisodeTitle ?? item.title}
-                            </strong>
-                            <span className="tile-back-live">
-                              {[item.podcastRecency, item.liveLine]
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="tile-back-kicker">
-                              {item.isSmart ? "智能歌单" : "我的音乐"}
-                            </span>
-                            <strong>{item.title}</strong>
-                            <span className="tile-back-live">{item.liveLine}</span>
-                            {/* Artist/playlist subtitles duplicate the live
-                                line's count, so only track/album backs carry
-                                one — at any tile size. */}
-                            {(item.pin.kind === "track" || item.pin.kind === "album") && (
-                              <small>{item.subtitle}</small>
-                            )}
-                          </>
-                        )
-                      }
-                    />
-                  {editingPins && (
-                    <div className="quick-pin-edit-tools">
-                      <GripVertical size={17} aria-hidden="true" />
-                      <div className="quick-pin-edit-actions">
-                        <button
-                          onClick={() => onResizePin(item.pin.id, nextPinSize)}
-                          title={`调整为${HOME_PIN_SIZE_LABELS[nextPinSize]}`}
-                        >
-                          <NextSizeIcon size={15} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (item.podcastFeed) {
-                              onTogglePodcastPin?.(item.pin.targetId);
-                            } else if (item.payload) {
-                              onTogglePin(item.payload);
-                            }
-                          }}
-                          title={`取消固定 ${item.title}`}
-                        >
-                          <PinOff size={17} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </article>
-              );})}
-              </div>
-
-            </div>
-          )}
-        </article>
+        <QuickplayPinBoard
+          items={resolvedPins}
+          onOpenCollection={() => onOpenCollection("albums")}
+          onMovePin={onMovePin}
+          onShiftPin={onShiftPin}
+          onResizePin={onResizePin}
+          onCustomizePin={onCustomizePin}
+          onUnpin={(item) => {
+            if (item.podcastFeed) onTogglePodcastPin?.(item.pin.targetId);
+            else if (item.payload) onTogglePin(item.payload);
+          }}
+          onContextMenu={(event, item) => {
+            if (item.payload) onContextMenu(event, item.payload);
+          }}
+          onActivate={(item) => {
+            if (item.podcastFeed) onOpenPodcastFeed?.(item.pin.targetId);
+            else if (item.pin.kind === "track") {
+              const track = item.tracks[0];
+              if (track) onPlay(track, item.payload?.playbackTracks ?? item.tracks);
+            } else onPlayTracks(item.tracks);
+          }}
+        />
 
         {continueItem ? (
         <article className="quick-group quick-continue">
@@ -952,39 +714,5 @@ export function QuickplayView({
         </div>
       )}
     </section>
-  );
-}
-
-function PinArtwork({ item, index }: { item: ResolvedPin; index: number }) {
-  if (item.podcastFeed) {
-    return (
-      <div className="quick-pin-art">
-        <Cover src={item.podcastArtwork} label={item.title} size="large" index={index} />
-      </div>
-    );
-  }
-
-  if (item.artPaths.length <= 1) {
-    return (
-      <div className="quick-pin-art">
-        <Cover artPath={item.artPaths[0]} label={item.title} size="large" index={index} />
-        {item.isSmart && <Sparkles className="quick-pin-smart" size={21} aria-hidden="true" />}
-      </div>
-    );
-  }
-
-  // Multi-cover (wide) pins use a WP7 People-hub mosaic: square cells — album
-  // art is never cropped into strips — that sparingly card-flip one cell at a
-  // time to reveal unused covers. Layout capacity matches the pool so the
-  // tile never shows empty transparent slots.
-  return (
-    <div className="quick-pin-art">
-      <MosaicFrames
-        pool={item.artPaths.map((artPath, artIndex) => (
-          <Cover key={artPath} artPath={artPath} label={item.title} size="mini" index={index + artIndex} />
-        ))}
-      />
-      {item.isSmart && <Sparkles className="quick-pin-smart" size={21} aria-hidden="true" />}
-    </div>
   );
 }

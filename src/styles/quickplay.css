@@ -123,45 +123,57 @@
 }
 
 .quick-pins-grid {
+  --pin-gap: 8px;
+  --pin-unit: calc((var(--quick-pin-art) - var(--pin-gap)) / 2);
   width: max-content;
   min-width: 100%;
   display: inline-grid;
-  grid-auto-flow: column dense;
-  /* Tile captions live inside the tile back face now, so rows are pure art
-     height (no extra caption band). */
-  grid-template-rows: repeat(3, var(--quick-pin-art));
-  grid-auto-columns: var(--quick-pin-art);
-  gap: 8px 10px;
-  align-items: start;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(6, var(--pin-unit));
+  grid-auto-columns: var(--pin-unit);
+  gap: var(--pin-gap);
+  align-items: stretch;
+  padding: 7px;
 }
 
 .quick-pin {
   position: relative;
   min-width: 0;
-  /* One grid row tall by default (medium/wide); large spans two rows. */
-  height: var(--quick-pin-art);
-  transition: opacity var(--motion-micro) var(--motion-ease-standard), transform var(--motion-content) var(--motion-ease-emphasis);
-}
-
-.quick-pin.wide {
-  grid-column: span 2;
-}
-
-.quick-pin.large {
   grid-column: span 2;
   grid-row: span 2;
-  /* Two rows plus the row gap the span skips over. */
-  height: calc(var(--quick-pin-art) * 2 + 8px);
+  height: 100%;
+  transform-origin: top left;
+  transition: opacity var(--motion-micro) var(--motion-ease-standard);
 }
-
-.quick-pins-grid.editing .quick-pin {
-  cursor: grab;
+.quick-pin.small { grid-column: span 1; grid-row: span 1; }
+.quick-pin.wide { grid-column: span 4; }
+.quick-pin.large { grid-column: span 4; grid-row: span 4; }
+.quick-pin > .tile { width: 100%; height: 100%; }
+.quick-pins-grid.editing .quick-pin { cursor: grab; }
+.quick-pins-grid.editing { touch-action: none; user-select: none; }
+.quick-pins-grid.editing .quick-pin:not(.selected) > .tile { opacity: 0.72; }
+.quick-pins-grid.editing .quick-pin > .tile { pointer-events: none; }
+.quick-pin.selected { z-index: 3; outline: 2px solid #fff; outline-offset: 2px; }
+.quick-pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.quick-pin.dragging { cursor: grabbing; outline: 2px dashed var(--accent); outline-offset: -2px; }
+.quick-pin.dragging > .tile { opacity: 0.18; }
+.quick-pin.dragging::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background: rgba(236, 0, 140, 0.12);
+  pointer-events: none;
 }
-
-.quick-pin.dragging {
-  opacity: 0.38;
-  transform: scale(0.98);
-  cursor: grabbing;
+.quick-pin.quick-pin-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 90;
+  pointer-events: none;
+  transition: none;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .quick-album > button,
@@ -198,8 +210,7 @@
   background: rgba(8, 5, 9, 0.72);
 }
 
-/* Front identity strip: the back face only shows after a 45-110s dwell and
-   edit mode pauses flipping, so the pin name must live on the front. */
+/* Front identity remains readable without waiting for a live update. */
 .quick-pin-front-title {
   position: absolute;
   inset: auto 0 0;
@@ -249,32 +260,77 @@
 
 .quick-pin-edit-tools {
   position: absolute;
-  inset: 0 0 auto;
-  height: 31px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-left: 7px;
-  color: rgba(255, 255, 255, 0.86);
-  background: rgba(8, 5, 9, 0.82);
-  cursor: grab;
+  inset: 0;
+  pointer-events: none;
 }
-
 .quick-pin-edit-tools button {
-  width: 31px;
-  height: 31px;
+  position: absolute;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
-}
-
-.quick-pin-edit-actions {
-  display: flex;
-}
-
-.quick-pin-edit-tools button:hover {
+  border: 2px solid #fff;
+  border-radius: 50%;
   color: #fff;
-  background: var(--accent);
+  background: #121014;
+  pointer-events: auto;
 }
+.quick-pin-unpin { top: -6px; right: -6px; }
+.quick-pin-resize { bottom: -6px; right: -6px; }
+.quick-pin-edit-tools button:hover { background: var(--accent); }
+.quick-pin-edit-tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.quick-pins-help {
+  margin: 8px 7px 0;
+  contain: inline-size;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.quick-pins .quick-pins-edit,
+.quick-pins .quick-pins-customize { min-width: 0; padding: 4px 1px; }
+.quick-pins .quick-pins-edit { font-size: 13px; }
+.quick-pins .quick-pins-customize { color: var(--muted); font-size: 13px; }
+.quick-pin.toned .tile-face-front,
+.quick-pin.toned .tile-face-back { background: var(--pin-tone); }
+.quick-pin.toned .quick-pin-front-title,
+.quick-pin.toned .quick-pin-front-band { background: none; }
+.quick-pin-symbol { position: absolute; inset: 0 0 20px; display: grid; place-items: center; }
+.quick-pin-symbol svg { width: 40px; height: 40px; stroke-width: 1.5; color: #fff; }
+.quick-pin.small .quick-pin-symbol { inset: 0; }
+.quick-pin.small .quick-pin-symbol svg { width: 27px; height: 27px; }
+.quick-pin.large .quick-pin-symbol svg { width: 68px; height: 68px; }
+.quick-pin-badge { position: absolute; top: 3px; right: 4px; padding: 1px 3px; font-size: 11px; background: #111; color: #fff; }
+.quick-pin .tile-back-kicker { font-size: 10px; letter-spacing: 0; line-height: 1.2; margin-bottom: 4px; }
+.quick-pin .tile-face-back strong { font-size: 15px; line-height: 1.2; flex-shrink: 0; }
+.quick-pin .tile-face-back { justify-content: center; padding: 9px 10px; }
+.quick-pin .tile-back-live { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+.quick-pin .tile-face-back small { color: rgba(255,255,255,0.75); }
+.quick-pin.large .tile-face-back strong { font-size: 24px; }
+.quick-pin.large .quick-pin-front-title { font-size: 16px; }
+
+.playlist-dialog.pin-appearance-dialog { width: min(460px, calc(100vw - 48px)); max-height: calc(100vh - 150px); overflow-y: auto; padding: 24px 28px; }
+.playlist-dialog.pin-appearance-dialog h2 { overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.playlist-dialog.pin-appearance-dialog fieldset { padding: 0; margin: 20px 0; border: 0; min-width: 0; }
+.playlist-dialog.pin-appearance-dialog legend { margin-bottom: 12px; color: var(--muted); font-size: 13px; }
+.playlist-dialog .pin-size-choices, .playlist-dialog .pin-tone-choices { display: flex; gap: 12px; flex-wrap: wrap; }
+.playlist-dialog .pin-size-choices label { display: flex; align-items: center; gap: 7px; padding: 6px 0; font-size: 13px; cursor: pointer; width: auto; }
+.playlist-dialog.pin-appearance-dialog input { accent-color: var(--accent); width: 14px; height: 14px; padding: 0; margin: 0; box-shadow: none; }
+.playlist-dialog.pin-appearance-dialog input:focus { box-shadow: none; }
+.playlist-dialog.pin-appearance-dialog input:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.playlist-dialog .pin-size-shape { width: 16px; height: 16px; background: currentColor; margin: 0; }
+.playlist-dialog .pin-size-shape.small { width: 8px; height: 8px; }
+.playlist-dialog .pin-size-shape.wide { width: 30px; }
+.playlist-dialog .pin-size-shape.large { width: 24px; height: 24px; }
+.playlist-dialog .pin-tone-choices label { position: relative; display: grid; gap: 6px; justify-items: center; cursor: pointer; width: auto; }
+.playlist-dialog .pin-tone-choices input { position: absolute; width: 40px; height: 40px; margin: 0; opacity: 0; cursor: pointer; }
+.playlist-dialog .pin-tone-choices label > span { display: block; width: 40px; height: 40px; margin: 0; outline: 1px solid rgba(255,255,255,.15); }
+.playlist-dialog .pin-tone-choices input:checked + span { outline: 2px solid white; outline-offset: 3px; }
+.playlist-dialog .pin-tone-choices input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 3px; }
+.playlist-dialog .pin-tone-choices .cover { width: 100%; height: 100%; margin: 0; }
+.playlist-dialog .pin-tone-choices small { color: var(--muted); font-size: 11px; }
+.playlist-dialog .pin-live-choice { display: flex; align-items: center; gap: 8px; font-size: 14px; width: auto; }
+.playlist-dialog .pin-live-hint { margin: 8px 0 0 24px; font-size: 12px; color: var(--muted); }
+
 
 .quick-pins-empty {
   width: min(390px, 36vw);

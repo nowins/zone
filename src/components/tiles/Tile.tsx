@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { tiltPressClear, tiltPressDown } from "../../utils/tiltPress";
 import type { KeyboardEvent, PointerEvent } from "react";
 
-export type TileSize = "medium" | "wide" | "large";
+export type TileSize = "small" | "medium" | "wide" | "large";
 
 /**
  * Base Metro tile: a fixed-size, hard-clipped surface that carries the shared
@@ -63,6 +63,7 @@ export function Tile({
       className={classes}
       style={style}
       title={title}
+      aria-label={title}
       aria-disabled={disabled || undefined}
       onClick={handleClick}
       onContextMenu={onContextMenu}

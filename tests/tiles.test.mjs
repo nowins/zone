@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 
 const tileSource = readFileSync("src/components/tiles/Tile.tsx", "utf8");
+const tokenSource = readFileSync("src/motion/tokens.ts", "utf8");
 const flipSource = readFileSync("src/components/tiles/FlipTile.tsx", "utf8");
 const cycleSource = readFileSync("src/components/tiles/CycleTile.tsx", "utf8");
 const iconicSource = readFileSync("src/components/tiles/IconicTile.tsx", "utf8");
@@ -13,7 +14,7 @@ const motionCss = readFileSync("src/styles/motion.css", "utf8");
 const quickplayCss = readFileSync("src/styles/quickplay.css", "utf8");
 const collectionCss = readFileSync("src/styles/collection.css", "utf8");
 const stylesEntry = readFileSync("src/styles.css", "utf8");
-const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
+const quickplaySource = ["src/views/QuickplayView.tsx", "src/components/tiles/QuickplayPinBoard.tsx"].map(path => readFileSync(path, "utf8")).join("\n");
 const tiltPressSource = readFileSync("src/utils/tiltPress.ts", "utf8");
 
 test("tile system exports Flip/Cycle/Iconic and wires its stylesheet", () => {
@@ -65,7 +66,7 @@ test("quickplay pins pick the reveal variant per pin kind", () => {
   // Music pins whole-tile flip to their info back (WP7 squares); podcast pins
   // use the WP8 peek slide so show info scrolls up over the cover. The variant
   // stays an explicit prop choice at the call site.
-  assert.ok(quickplaySource.includes('variant={item.podcastFeed ? "peek" : "flip"}'));
+  assert.ok(quickplaySource.includes('variant={item.podcastFeed || item.size === "wide" ? "peek" : "flip"}'));
   assert.ok(flipSource.includes('variant = "peek"'));
   assert.ok(indexSource.includes("TileRevealVariant"));
 });
@@ -73,10 +74,10 @@ test("quickplay pins pick the reveal variant per pin kind", () => {
 test("peek state machine: dwell exists, direction state stays out of effect deps", () => {
   // Root-cause guards for the "flash and gone" regression:
   // the back layer must dwell visible before sliding away.
-  assert.ok(flipSource.includes("PEEK_HOLD_MS"), "peek must hold the back layer visible");
+  assert.ok(flipSource.includes("TILE_MOTION.hold"), "peek must hold the back layer visible");
   // Direction state lives in the effect closure; putting showBack in the deps
   // re-ran the effect mid-cycle and cleanup parked the back layer instantly.
-  assert.ok(flipSource.includes("[paused, live, reducedMotion, variant]"));
+  assert.ok(flipSource.includes("[paused, live, active, reducedMotion, variant]"));
   assert.ok(!flipSource.includes("showBack]"), "showBack must not be an effect dep");
   // Slides start from the layer's actual position, never snapping to a fixed
   // endpoint first.
@@ -88,7 +89,7 @@ test("peek state machine: dwell exists, direction state stays out of effect deps
   assert.ok(flipSource.includes("animationRef.current?.cancel()"));
   assert.ok(flipSource.includes("animationRef.current = animateValue"));
   // schedule() must not fire after the effect is cancelled.
-  assert.ok(/const schedule = \(\) => \{\s*if \(cancelled\) return;/.test(flipSource));
+  assert.ok(/const schedule = \(first = false\) => \{\s*if \(cancelled\) return;/.test(flipSource));
   // The mid-flip completion guard also respects cancellation.
   assert.ok(flipSource.includes("if (cancelled) return;"));
 });
@@ -96,11 +97,11 @@ test("peek state machine: dwell exists, direction state stays out of effect deps
 test("each variant uses its calibrated curve and duration", () => {
   // Peek: one continuous 600ms sweep on the MangoTile MetroSlideIn curve
   // (0.22, 0, 0.05, 1) — a gentle push off, then a long glide home.
-  assert.ok(flipSource.includes("PEEK_MS = 600"));
+  assert.ok(tokenSource.includes("peek: 600") && flipSource.includes("TILE_MOTION.peek"));
   assert.ok(flipSource.includes("metroSlideIn"));
-  assert.ok(flipSource.includes("cubicBezier(0.22, 0, 0.05, 1"));
+  assert.ok(tokenSource.includes("peekEasing: [0.22, 0, 0.05, 1]") && flipSource.includes("cubicBezier(...TILE_MOTION.peekEasing)"));
   // Flip: two brisk physical half-sweeps across the apex (WP7 People-hub feel).
-  assert.ok(flipSource.includes("FLIP_HALF_MS = 200"));
+  assert.ok(tokenSource.includes("flipHalf: 200") && flipSource.includes("TILE_MOTION.flipHalf"));
   assert.ok(flipSource.includes("easing: accelerate"));
   assert.ok(flipSource.includes("easing: decelerate"));
 });
@@ -109,10 +110,9 @@ test("keyboard reorder stays reachable in edit mode", () => {
   // Tile must remain focusable: aria-disabled, never the disabled attribute.
   assert.ok(tileSource.includes('aria-disabled={disabled || undefined}'));
   assert.ok(!/disabled=\{disabled\}/.test(tileSource), "button must not use the disabled attribute");
-  assert.ok(quickplaySource.includes("onKeyDown={(event) => handlePinKey(event, item.pin.id)}"));
-  // In edit mode the pin renders as a div so the draggable article owns the
-  // HTML5 drag - a nested <button> would swallow the drag start.
-  assert.ok(quickplaySource.includes("asButton={!editingPins}"));
+  assert.ok(quickplaySource.includes("onKeyDown={event => pinKey(event, item)}"));
+  // In edit mode the article owns focus, selection and pointer gestures.
+  assert.ok(quickplaySource.includes("asButton={!editing}"));
   assert.ok(flipSource.includes("asButton?: boolean"));
 });
 
@@ -137,19 +137,19 @@ test("quickplay pins are user-resizable and freely placeable in edit mode", () =
   assert.ok(quickplaySource.includes("homePinSize(pin)"), "size must resolve via homePinSize");
   assert.ok(quickplaySource.includes("size={item.size}"), "the tile must consume the resolved size");
   assert.ok(/quick-pin \$\{item\.size\}/.test(quickplaySource), "the grid item class must be the size");
-  assert.ok(/\.quick-pin\.large\s*\{[^}]*grid-row:\s*span 2/s.test(quickplayCss), "large pins must span two grid rows");
+  assert.ok(/\.quick-pin\.large\s*\{[^}]*grid-row:\s*span 4/s.test(quickplayCss), "large pins must span four half-size grid rows");
   // The tile and inner art fill whatever height the grid item claims.
   assert.ok(/\.quick-pin-tile\s*\{[^}]*height:\s*100%/s.test(tilesCss));
   assert.ok(/\.quick-pin-art\s*\{[^}]*height:\s*100%/s.test(quickplayCss));
   // Edit tools carry a resize affordance cycling the ladder, next to unpin.
   assert.ok(quickplaySource.includes("nextHomePinSize(item.size)"));
-  assert.ok(quickplaySource.includes("onResizePin(item.pin.id, nextPinSize)"));
+  assert.ok(quickplaySource.includes("onResizePin(item.pin.id, nextHomePinSize(item.size))"));
   assert.ok(/调整为/.test(quickplaySource), "resize tooltip must be localized");
   // Keyboard parity: Alt+Up/Down steps sizes (Alt+Left/Right moves).
   assert.ok(quickplaySource.includes("stepHomePinSize"));
   // Drop position picks the insertion side; the grid background appends.
-  assert.ok(quickplaySource.includes("placeAfter"));
-  assert.ok(quickplaySource.includes("handleGridDrop"));
+  assert.ok(quickplaySource.includes("placement.after"));
+  assert.ok(quickplaySource.includes("onMove: previewDrop"));
 });
 
 test("entrance is a turnstile pivot from the bottom edge, staggered, flash-free", () => {
@@ -170,11 +170,11 @@ test("flat Metro baseline: no acrylic glass variant, sharp edges", () => {
 
 test("tiles flip sparingly and only when there is live content to reveal", () => {
   // Slow, WP-like cadence (tens of seconds), not a constant blink.
-  assert.ok(flipSource.includes("MIN_INTERVAL_MS = 45_000"));
-  assert.ok(flipSource.includes("MAX_INTERVAL_MS = 110_000"));
+  assert.ok(tokenSource.includes("intervalMin: 24_000"));
+  assert.ok(tokenSource.includes("intervalMax: 48_000"));
   // A live gate: tiles with nothing to reveal never flip on their own.
   assert.ok(flipSource.includes("live?: boolean"));
-  assert.ok(/if \(paused \|\| !live\) \{[\s\S]*?return undefined;/.test(flipSource));
+  assert.ok(/if \(paused \|\| !live \|\| !active \|\| reducedMotion\) \{[\s\S]*?return undefined;/.test(flipSource));
   // Quickplay reveals a real glanceable line (recent-play/stats), not a static
   // "已固定" placeholder.
   assert.ok(quickplaySource.includes("liveLine"));
@@ -224,7 +224,7 @@ test("wide multi-cover pins use the People-hub mosaic, never cropped strips", ()
   assert.ok(!quickplaySource.includes("tile-collection"), "image-collection must be replaced by mosaic");
   assert.ok(!tilesCss.includes("tile-collection"), "image-collection styles must be removed");
   // Cells flip individually on a jittered cadence.
-  assert.ok(mosaicSource.includes("MIN_CELL_FLIP_MS"));
+  assert.ok(mosaicSource.includes("TILE_MOTION.cellMin"));
   assert.ok(mosaicSource.includes("Math.random()"));
   assert.ok(mosaicSource.includes("--cell-flip"));
   // Card-swap rotates edge-on, swaps, then returns from the opposite edge.
@@ -258,7 +258,7 @@ test("mosaic layout tiers by pool size and never duplicates a cover", () => {
   assert.ok(!/\[a, current\[b\]\],\s*\[b, current\[a\]\]/s.test(mosaicSource), "must not exchange two cells as a pair");
   assert.ok(mosaicSource.includes("images.length <= cellCount"), "must rest when every cover is already shown");
   // Cadence is sparse, not screensaver-fast.
-  assert.ok(mosaicSource.includes("8_000") || mosaicSource.includes("8000"), "min flip interval should be multi-second");
+  assert.ok(tokenSource.includes("cellMin: 8_000"), "min flip interval should be multi-second");
   // Empty cells / initials placeholders stay gone — capacity matches pool.
   assert.ok(!mosaicSource.includes("placeholder"), "initials placeholders must be gone");
   // will-change is JS-managed for the flip's duration, not a permanent layer

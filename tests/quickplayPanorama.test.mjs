@@ -12,7 +12,7 @@ const appSource = [
   "src/hooks/usePlaylists.ts",
   "src/App.tsx",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
-const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
+const quickplaySource = ["src/views/QuickplayView.tsx", "src/components/tiles/QuickplayPinBoard.tsx"].map(path => readFileSync(path, "utf8")).join("\n");
 const quickplayBlocksSource = readFileSync("src/utils/quickplayBlocks.ts", "utf8");
 const menuSource = readFileSync("src/components/ContextMenu.tsx", "utf8");
 const quickplayCss = readFileSync("src/styles/quickplay.css", "utf8");
@@ -92,11 +92,12 @@ test("home pins persist and support all durable collection entity types", () => 
   assert.ok(menuSource.includes("从 quickplay 取消固定"));
 });
 
-test("edit mode keeps the whole tile draggable instead of a nested button", () => {
-  // In edit mode the artwork/caption surface must not be a nested <button>,
-  // which would swallow the drag start and break tile reordering.
-  assert.ok(quickplaySource.includes("draggable={editingPins}"));
-  assert.ok(quickplaySource.includes("tabIndex={0}"), "edit-mode surface keeps keyboard Alt+arrow reorder");
+test("edit mode gives the whole tile pointer and keyboard reordering", () => {
+  assert.ok(quickplaySource.includes("onPointerDownCapture={event => pointerDown(event, item)}"));
+  assert.ok(quickplaySource.includes("onPointerMove={pointerDrag.move}"));
+  assert.ok(quickplaySource.includes("onPointerUp={pointerDrag.release}"));
+  assert.ok(cssRule(quickplayCss, ".quick-pins-grid.editing").includes("touch-action: none"));
+  assert.ok(quickplaySource.includes("tabIndex={editing ? 0 : undefined}"), "edit-mode surface keeps keyboard Alt+arrow reorder");
   const editingTileRule = cssRule(quickplayCss, ".quick-pins-grid.editing .quick-pin");
   assert.ok(editingTileRule.includes("cursor: grab"));
   assert.ok(cssRule(quickplayCss, ".quick-pin.dragging").includes("cursor: grabbing"));

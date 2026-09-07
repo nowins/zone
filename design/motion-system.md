@@ -48,11 +48,13 @@ src/motion/*.ts               内核：弹簧/补间/动画器/FLIP/Presence/页
 | `--motion-drift-s/m/l` | 8/22/48px | 位移幅度三档 |
 | `--motion-stagger-step/max` | 24/144ms | 列表错峰步进与上限 |
 
-TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`MOTION_STAGGER`、`SPRING_PRESETS`（`snappy` 近临界阻尼 / `gentle` 页面级 / `bouncy` 约 20% 过冲）。其中 `snappy` 是现役生产预设（FLIP、quickplay 滚轮）；`gentle` / `bouncy` 与 `MOTION_TWEENS` 是**备料预设**，新场景接入时直接使用，没有消费方之前不要当成「已在用」。
+TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`MOTION_STAGGER`、`SPRING_PRESETS`（`snappy` 近临界阻尼 / `gentle` 页面级 / `bouncy` 约 20% 过冲）。其中 `snappy` 是现役生产预设（FLIP、quickplay 滚轮）；`MOTION_TWEENS.standard` 用于磁贴重排／尺寸调整的 FLIP 补间；`gentle` / `bouncy` 仍是**备料预设**。
 
 通用短时长原则用于交互反馈，不给分层编排、悬停等待、循环加载或音频 DSP 包络套统一上限。正在播放入场和 Canvas 收敛使用 `tokens.ts` 中的 `NOW_PLAYING_MOTION`，不要在组件中复制时长。
 
-其他已登记的当前编排：`.album-play` 900ms 悬停延迟、歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、磁贴系统的 Lumia/Metro 校准组（`FlipTile` peek 600ms 与其 MetroSlideIn 曲线 `(0.22,0,0.05,1)`、flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
+`tokens.ts` 中的 `TILE_MOTION` 统一维护磁贴长按、首次更新、后续更新间隔、背面停留、peek／flip／单格翻面及入场错峰参数。当前首轮更新在可见后 6–14 秒，后续间隔 24–48 秒，背面停留 5 秒，各磁贴独立错峰。小磁贴与关闭动态的磁贴不循环；`useTileActivity` 统一监听可视区、页面可见性与悬停／聚焦，编辑切换 DOM 宿主时重新绑定。reduced-motion 下停止自动翻面和封面替换，重排直接落到终态。
+
+其他已登记的当前编排：`.album-play` 900ms 悬停延迟、歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、`TILE_MOTION` 中的 Lumia/Metro 校准组（`FlipTile` peek 600ms 与其 MetroSlideIn 曲线 `(0.22,0,0.05,1)`、flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
 
 ## 内核 API（`src/motion/`）
 
@@ -139,5 +141,6 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - `tests/reducedMotion.test.mjs`：reduced-motion 下退出淡出与 JS 生命周期的同步守卫。
 - `tests/lyricsSettingsUi.test.mjs` / `tests/lyricsDisplay.test.mjs`：歌词设置面板的 Presence 接线、显示偏好持久化和字号归一化。
 - CSS/结构守卫（`nowPlayingCss.test.mjs` 等）会因类名/编排变化失败，按新结构同步，不放宽语义。
+- `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、内容停留、隐藏／编辑／reduced-motion 停转与恢复，以及长按、键盘和外观设置行为。
 - `tests/uiBehavior.test.mjs` / `tests/canvasLifecycle.test.mjs`：真实 React 组件在 StrictMode 下的焦点、入场清理与 Canvas 停转/唤醒行为。
 - 视觉验收检查真实播放、快速连切可打断、FLIP 连续性、reduced-motion、键盘交互与窄窗口。按根目录的启动授权规则实测；歌词专项场景见 [歌词规范](engineering/lyrics.md)，本地 `docs/lyrics-motion-review.md` 若存在可补充参考。

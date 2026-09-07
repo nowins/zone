@@ -228,8 +228,10 @@ export type TrackActivityMap = Record<string, TrackActivity>;
 
 export type HomePinKind = "track" | "album" | "artist" | "playlist" | "podcastFeed";
 
-/** Win8.1-style tile sizes: 1x1 square, 2x1 wide, 2x2 large. */
-export type HomePinSize = "medium" | "wide" | "large";
+/** WP small/medium/wide; large remains supported for existing desktop walls. */
+export type HomePinSize = "small" | "medium" | "wide" | "large";
+export type HomePinTone = "cover" | "pink" | "teal" | "blue" | "orange" | "purple";
+export type HomePinCustomization = { size?: HomePinSize; live?: boolean; tone?: HomePinTone };
 
 export type HomePin = {
   id: string;
@@ -238,6 +240,8 @@ export type HomePin = {
   createdAt: number;
   /** Explicit tile size picked in quickplay edit mode; absent = kind default. */
   size?: HomePinSize;
+  live?: boolean;
+  tone?: HomePinTone;
 };
 
 export type ContextPayload = {

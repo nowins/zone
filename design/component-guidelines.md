@@ -101,7 +101,7 @@
 | --- | --- |
 | `Button` | 唯一动作按钮原语（样式在 `controls.css`）：variant 定角色（`outline` 描边默认 / `primary` 强调 / `danger` 危险 / `solid` 填充 CTA / `page` 左侧强调条页面动作 / `ghost` 纯文本），size 定几何（`sm`/`md`/`lg`/`xl`）；`busy` 自动禁用并前置 `MetroLoader`，图标走 `icon` prop |
 | `Dialog` | 深色确认/表单对话框壳：遮罩 + kicker/标题 + 可选右侧动作行，Escape/点遮罩取消、`busy` 时锁定；保留 `playlist-dialog` 基类让 swivel 入场与 Presence 退场继续生效。例外：`SmartPlaylistDialog` 是编辑器表面（不走壳，底部动作用 `Button`）；正在播放的保存列表对话框是刻意的浅色主题，保持独立 |
-| `tiles/`（`Tile` / `FlipTile` / `CycleTile` / `IconicTile` / `MosaicFrames`） | Metro 磁贴系统（`tiles.css`）：`Tile` 提供统一倾斜按压与裁切表面；`FlipTile` 有 peek/flip 两种背面揭示；`MosaicFrames` 是 People-hub 封面墙；`CycleTile` / `IconicTile` 是备料模板——暂无消费方，接入前不算「已在用」。quickplay 固定项用 `FlipTile variant="flip"` + `MosaicFrames` |
+| `tiles/`（`Tile` / `FlipTile` / `CycleTile` / `IconicTile` / `MosaicFrames`） | Metro 磁贴系统（`tiles.css`）：`Tile` 提供统一倾斜按压与裁切表面；`FlipTile` 有 peek/flip 两种背面揭示；`MosaicFrames` 是 People-hub 封面墙；`CycleTile` / `IconicTile` 是备料模板——暂无消费方，接入前不算「已在用」。quickplay 固定项由 `QuickplayPinBoard` 编排，宽磁贴与播客用 peek，其余音乐磁贴用 flip；小磁贴静态显示 |
 | `Cover` | 唯一封面渲染入口：`artPath`（本地文件）与 `src`（已解析 URL）二选一；默认音乐封面类（accent-index 渐变占位 + 首字母），`className`/`fallback` 供上下文适配——播客经 `PodcastArtwork` 适配器（`podcast-artwork` 类 + 字符/Podcast 图标占位） |
 | `MetroLoader` | 唯一加载指示（见 §3.5） |
 | `EmptyState` | 页面级空态（空曲库：字标 + `Button` solid xl 动作）；区块级空态/加载用播客 `primitives.tsx` 的 `PodcastEmpty` / `PodcastLoading`（`MetroLoader` + 延迟淡入）。不写解释段落 |
@@ -118,7 +118,10 @@
 ### 4.3 页面级
 
 - 页面根动画统一 `motion-page-enter`；不再新增页面级入场关键帧。
-- quickplay：固定项是 `tiles/` 磁贴墙（`FlipTile` 翻面揭示动态 + `MosaicFrames` 封面墙）+ 分组级联；可拖拽排序（编辑态下禁用倾斜按压与翻面）。
+- quickplay：保留 Zune 横向全景与分组，固定区采用 WP 8.1 的小／中／宽磁贴，兼容既有大磁贴。网格以小磁贴为单位，中为 2×2、宽为 4×2、大为 4×4；组宽随内容增长，窄窗口不强留半屏空白。
+- 固定区由 `QuickplayPinBoard` 负责：编辑按钮、长按或 F2 进入，选中一块后显示取消固定与缩放角标；拖动采用指针捕获，磁贴跟随指针并预览重排，在固定区内释放后保存。移出固定区松手、Esc、指针取消或窗口失焦均取消当前拖动，不改持久顺序。Alt+左右移动、Alt+上下缩放、非拖动时 Esc 完成；编辑时不触发播放。
+- “外观”用 `Dialog` + `Presence` 提供尺寸、封面／纯色背景和动态内容开关。中及以上尺寸正面保留名称，小磁贴保留封面或图标，按钮始终有稳定的可访问名称；播客小磁贴可显示未听数。外观与顺序按 [持久化规范](engineering/persistence.md) 保存。
+- `FlipTile` 揭示真实歌曲／专辑／播放列表信息或播客最新单集，`MosaicFrames` 只替换尚未显示的封面；编辑、悬停、键盘聚焦、页面隐藏、离开可视区及 reduced-motion 时暂停自动变化。
 - now playing：拼贴背景 + 光焰 + 歌词模式同空间切换；chrome 无操作约 5s 进入沉浸态。
 - 播客：`src/views/podcast/` 按 screens/components 分层，加载态全部走 `PodcastLoading`（内含 `MetroLoader`）。
 - 播客 hover 语言（已登记）：封面卡用第 4 级（封面降 opacity、轻抬 2px），列表行只做文字即时提亮，均无行级背景，详见 `design/motion-system.md` Hover 反馈分级。
@@ -143,3 +146,5 @@
 3. 加入 reduced-motion 关停规则；JS 等待用 `resolveExitDurationMs()`。
 4. 新功能性文案为中文；跑 `npm test` 确认源码/CSS 守卫同步更新。
 5. 改了组件或视觉约定就同步本文；全局规则或文档入口变化才更新根目录 `AGENTS.md`。
+
+磁贴交互验证同时覆盖长按后的点击抑制、取消拖动、尺寸混排、键盘焦点、外观取消／保存／恢复，以及默认和最小窗口下的角标与长标题裁切。运行时入口为 `tests/tileInteraction.test.mjs`。

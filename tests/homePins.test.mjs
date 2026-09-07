@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   applyHomePinToggle,
   applyHomePinToggleForPin,
+  customizeHomePin,
   defaultHomePinSize,
   homePinForPayload,
   homePinId,
@@ -188,13 +189,32 @@ test("pin sizes default by kind, validate on normalize and persist explicitly", 
 });
 
 test("resize cycles wrap for the edit button and clamp for keyboard steps", () => {
+  assert.equal(nextHomePinSize("small"), "medium");
+  assert.equal(stepHomePinSize("small", -1), "small");
   assert.equal(nextHomePinSize("medium"), "wide");
   assert.equal(nextHomePinSize("wide"), "large");
-  assert.equal(nextHomePinSize("large"), "medium");
+  assert.equal(nextHomePinSize("large"), "small");
   assert.equal(stepHomePinSize("medium", 1), "wide");
-  assert.equal(stepHomePinSize("medium", -1), "medium");
+  assert.equal(stepHomePinSize("medium", -1), "small");
   assert.equal(stepHomePinSize("large", 1), "large");
   assert.equal(stepHomePinSize("large", -1), "wide");
+});
+
+test("small tiles and appearance preferences survive normalization, resizing and reordering", () => {
+  const pins = normalizeHomePins([
+    { kind: "track", targetId: "one", size: "small", live: false, tone: "teal" },
+    { kind: "album", targetId: "two", size: "medium", live: "false", tone: "constructor" },
+  ]);
+  assert.equal(pins[0].size, "small");
+  assert.equal(pins[0].live, false);
+  assert.equal(pins[0].tone, "teal");
+  assert.equal(pins[1].live, undefined);
+  assert.equal(pins[1].tone, undefined);
+  const customized = customizeHomePin(pins, "track:one", { tone: "purple", live: true });
+  const moved = shiftHomePin(setHomePinSize(customized, "track:one", "wide"), "track:one", 1);
+  assert.deepEqual(moved[1], { ...pins[0], tone: "purple", live: true, size: "wide" });
+  assert.equal(pins[0].tone, "teal", "updates do not mutate the saved snapshot");
+  assert.deepEqual(normalizeHomePins(JSON.parse(JSON.stringify(moved))), moved);
 });
 
 test("toggle pins/unpins against the latest array so rapid clicks never duplicate", () => {

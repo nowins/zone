@@ -102,6 +102,12 @@ pub(crate) struct HomePinRecord {
   pub kind: String,
   pub target_id: String,
   pub created_at: i64,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub size: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub live: Option<bool>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub tone: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
