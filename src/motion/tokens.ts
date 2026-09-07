@@ -46,6 +46,16 @@ export const TILE_MOTION = {
   peekEasing: [0.22, 0, 0.05, 1],
 } as const;
 
+/** Panorama depth follows real scroll distance; no idle movement. */
+export const PANORAMA_MOTION = {
+  titleRatio: 0.22,
+  backdropRatio: 0.08,
+  titleTravel: 480,
+  backdropTravel: 240,
+  coastMs: 160,
+  velocityWindow: 80,
+} as const;
+
 export type MotionDurationName = keyof typeof MOTION_DURATIONS;
 
 /**
@@ -113,6 +123,7 @@ function cubicBezierCss(points: readonly [number, number, number, number]): stri
  */
 export function applyMotionTokens(root: HTMLElement = document.documentElement): void {
   const { style } = root;
+  style.setProperty("--panorama-backdrop-travel", `${PANORAMA_MOTION.backdropTravel}px`);
   for (const name of Object.keys(MOTION_DURATIONS) as MotionDurationName[]) {
     style.setProperty(cssVarName.duration(name), `${MOTION_DURATIONS[name]}ms`);
   }

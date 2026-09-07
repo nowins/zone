@@ -6,32 +6,68 @@
   height: calc(100% - 78px);
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* Keep the page root stable while each depth plane follows scroll. */
+  animation: quickplay-fade-in var(--motion-page) var(--motion-ease-entrance) both;
+}
+
+.quickplay-backdrop {
+  position: absolute;
+  inset: 0 calc(-1 * var(--panorama-backdrop-travel)) 0 0;
+  pointer-events: none;
   background:
     radial-gradient(ellipse 36% 76% at 55% 60%, rgba(112, 14, 61, 0.3) 0%, rgba(74, 8, 43, 0.17) 47%, rgba(11, 7, 12, 0) 82%),
     radial-gradient(ellipse 30% 60% at 78% 64%, rgba(92, 10, 52, 0.14) 0%, rgba(11, 7, 12, 0) 78%);
-  /* Opacity-only entrance: the page travel animation was carrying the large
-     ghost type from mid-screen into its corner on every cold start. */
-  animation: quickplay-fade-in var(--motion-page) var(--motion-ease-entrance) both;
 }
 
 .quickplay-viewport {
   position: relative;
   z-index: 1;
   width: 100%;
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  scrollbar-width: none;
   scroll-snap-type: none;
   scroll-padding-inline: 16px;
 }
 
 .quickplay-viewport::-webkit-scrollbar {
-  height: 4px;
+  display: none;
 }
+.quickplay-viewport.is-panning { cursor: grabbing; }
+.quickplay-viewport.is-panning * { pointer-events: none; }
+.quickplay-viewport:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+.quick-panorama-nav {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: none;
+  align-items: center;
+  align-self: flex-start;
+  gap: 14px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 0 12px 5px;
+}
+.quick-panorama-nav[hidden] { display: none; }
+.quick-panorama-nav .button {
+  min-width: 0;
+  min-height: 28px;
+  padding: 3px 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.quick-panorama-nav .quick-panorama-link[aria-current] { color: var(--accent); }
+.quick-panorama-nav .button:hover:not(:disabled) { color: #fff; }
+.quick-panorama-nav .quick-panorama-arrow { width: 28px; }
+.quick-panorama-nav .button:disabled { opacity: 0.25; }
 
 .quickplay-track {
   position: relative;
@@ -46,7 +82,7 @@
 }
 
 .quickplay-ghost {
-  /* This is a sibling of the scroll viewport, so scrollLeft can never move it. */
+  /* A sibling depth plane; scroll restoration positions it before paint. */
   position: absolute;
   z-index: 0;
   top: clamp(6px, 1vh, 14px);
@@ -365,6 +401,10 @@
   color: var(--accent);
 }
 
+.quick-continue > .quick-section-scroll {
+  container-type: size;
+}
+
 .quick-heading {
   display: block;
   padding: 0;
@@ -428,13 +468,14 @@
 }
 
 .quick-feature {
-  width: var(--quick-feature-size);
+  /* Reserve caption space inside the actual section height, including short windows. */
+  width: min(100%, var(--quick-feature-size), max(160px, calc(100cqh - 62px)));
 }
 
 .quick-feature .cover {
-  width: var(--quick-feature-size);
-  height: var(--quick-feature-size);
-  aspect-ratio: auto;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
 }
 
 .quick-feature .cover,
@@ -495,6 +536,9 @@
   padding: 13px 0 0;
   text-align: left;
 }
+
+.quick-feature > .quick-caption { padding-top: 8px; }
+.quick-caption strong, .quick-caption span { line-height: 1.3; }
 
 .quick-caption strong,
 .quick-caption span,

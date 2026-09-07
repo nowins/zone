@@ -13,6 +13,7 @@ const appSource = [
   "src/App.tsx",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 const quickplaySource = ["src/views/QuickplayView.tsx", "src/components/tiles/QuickplayPinBoard.tsx"].map(path => readFileSync(path, "utf8")).join("\n");
+const panoramaHookSource = readFileSync("src/hooks/useQuickplayPanorama.ts", "utf8");
 const quickplayBlocksSource = readFileSync("src/utils/quickplayBlocks.ts", "utf8");
 const menuSource = readFileSync("src/components/ContextMenu.tsx", "utf8");
 const quickplayCss = readFileSync("src/styles/quickplay.css", "utf8");
@@ -25,31 +26,30 @@ test("quickplay is a keyboard and mouse-wheel accessible horizontal panorama", (
   assert.ok(viewportRule.includes("overflow-y: hidden"), "page stays a horizontal panorama, not a vertical page");
   assert.ok(viewportRule.includes("scroll-snap-type: none"));
   assert.ok(quickplaySource.includes('className="quickplay-viewport"'));
-  assert.ok(quickplaySource.includes('window.addEventListener("wheel", handleWheel, { passive: false, capture: true })'));
-  assert.ok(quickplaySource.includes("quick-section-scroll"), "dense sections own their vertical scrollports");
-  assert.ok(quickplayCss.includes(".quick-section-scroll"), "section scroll styles exist");
-  assert.ok(quickplaySource.includes("viewport.scrollLeft = nextScrollLeft"), "reduced motion keeps the direct jump");
-  assert.ok(quickplaySource.includes("spring: SPRING_PRESETS.snappy"), "wheel pans ride the motion kernel spring for inertia");
-  assert.ok(quickplaySource.includes("running.retarget(nextScrollLeft)"), "consecutive wheel ticks retarget the in-flight spring");
-  assert.ok(quickplaySource.includes('window.removeEventListener("wheel", handleWheel, true);'));
-  assert.ok(quickplaySource.includes("scrollAnimRef.current.handle?.cancel();"), "cleanup cancels the in-flight spring");
-  assert.ok(quickplaySource.includes("}, [tracks.length, reducedMotion]);"));
-  assert.ok(!quickplaySource.includes("handlePanoramaPointerDown"));
-  assert.ok(!quickplaySource.includes("handlePanoramaPointerMove"));
-  assert.ok(quickplaySource.includes("onKeyDown={handlePanoramaKey}"));
-  assert.ok(quickplaySource.includes("quickplay-ghost"));
-  assert.ok(!quickplaySource.includes("ghost.style.transform"), "ghost must not parallax with scrollLeft restore");
+  assert.ok(viewportRule.includes("scrollbar-width: none"), "native full-width scroll chrome stays hidden");
+  assert.ok(quickplaySource.includes('aria-label="首页分组"'), "compact navigation replaces the hidden scrollbar");
+  assert.ok(quickplaySource.includes("{...panorama.viewportProps}"), "keyboard and pointer handlers reach the viewport");
+  assert.ok(panoramaHookSource.includes('viewport.addEventListener("wheel", wheel, { passive: false })'));
+  assert.ok(!panoramaHookSource.includes('window.addEventListener("wheel"'), "portal dialogs and transport must not be hijacked");
+  assert.ok(quickplaySource.includes("quick-section-scroll"));
+  assert.ok(quickplayCss.includes(".quick-section-scroll"));
+  assert.ok(panoramaHookSource.includes("spring: SPRING_PRESETS.snappy"));
+  assert.ok(panoramaHookSource.includes("running.retarget(target)"));
+  assert.ok(panoramaHookSource.includes('viewport.removeEventListener("wheel", wheel)'));
+  assert.ok(panoramaHookSource.includes("motion.current.handle?.cancel()"));
+  assert.ok(panoramaHookSource.includes("new ResizeObserver(measure)"), "pin sizes and window resizes update navigation bounds");
+  assert.ok(panoramaHookSource.includes("panoramaDepth(left, reducedMotion)"));
 });
 
 test("pin fronts carry a persistent title and the panorama keeps its pink wash", () => {
   // Pin names must be glanceable on the front — the back face only appears
-  // after a 45-110s dwell and edit mode pauses flipping entirely.
+  // after its live-update delay and edit mode pauses flipping entirely.
   const frontTitleRule = cssRule(quickplayCss, ".quick-pin-front-title");
   assert.ok(frontTitleRule.includes("position: absolute"));
   assert.ok(frontTitleRule.includes("pointer-events: none"));
   assert.ok(quickplaySource.includes("quick-pin-front-title"));
   const quickplayRule = cssRule(quickplayCss, ".quickplay");
-  assert.ok(quickplayRule.includes("radial-gradient"));
+  assert.ok(cssRule(quickplayCss, ".quickplay-backdrop").includes("radial-gradient"));
   assert.ok(quickplayCss.includes("rgba(128, 35, 76, 0.36)"));
   // The old hover play badge and caption band are gone from the DOM and CSS.
   assert.ok(!quickplaySource.includes("quick-pin-play"));

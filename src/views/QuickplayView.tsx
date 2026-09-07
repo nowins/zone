@@ -1,12 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
-import { Play } from "lucide-react";
+import { useMemo } from "react";
+import type { MouseEvent } from "react";
+import { ChevronLeft, ChevronRight, Play } from "lucide-react";
+import { Button } from "../components/Button";
+import { useQuickplayPanorama } from "../hooks/useQuickplayPanorama";
 import { Cover } from "../components/Cover";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
-import { animateValue } from "../motion/animate";
-import type { AnimationHandle } from "../motion/animate";
 import { registerFlipElement } from "../motion/flip";
-import { SPRING_PRESETS } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { homePinSize } from "../utils/homePins";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
@@ -31,8 +30,6 @@ import type {
   ViewMode,
 } from "../types";
 
-
-let quickplayScrollPosition = 0;
 
 function coverPathsForTracks(tracks: Track[], limit: number, preferredArtist?: string | null) {
   const preferred = pickCoverCandidates(tracks, limit, preferredArtist);
@@ -99,11 +96,6 @@ export function QuickplayView({
   onOpenPodcastFeed?: (feedId: string) => void;
   onTogglePodcastPin?: (feedId: string) => void;
 }) {
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const scrollAnimRef = useRef<{ target: number | null; handle: AnimationHandle | null }>({
-    target: null,
-    handle: null,
-  });
   const reducedMotion = useReducedMotion();
   // A podcast owns the shared audio element. Continue must not treat the
   // leftover music track as a live session, or resume would restart the show.
@@ -304,130 +296,16 @@ export function QuickplayView({
   const featuredHistory = historyTracks[0] ?? null;
   const compactHistory = historyTracks.slice(1, 4);
 
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    viewport.scrollLeft = quickplayScrollPosition;
-    handleScroll();
-  }, [tracks.length, mostPlayedTracks.length, forgottenFavoriteTracks.length, historyTracks.length, recentAlbums.length]);
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-
-    const handleWheel = (event: WheelEvent) => {
-      const eventTarget = event.target;
-      const viewportBounds = viewport.getBoundingClientRect();
-      const isWithinViewport = event.clientX >= viewportBounds.left
-        && event.clientX <= viewportBounds.right
-        && event.clientY >= viewportBounds.top
-        && event.clientY <= viewportBounds.bottom;
-      const comesFromViewport = eventTarget instanceof Node && viewport.contains(eventTarget);
-      if (!comesFromViewport && !isWithinViewport) return;
-      const maxScrollLeft = viewport.scrollWidth - viewport.clientWidth;
-      if (maxScrollLeft <= 1) return;
-
-      const unit = event.deltaMode === 1 ? 32 : event.deltaMode === 2 ? viewport.clientWidth : 1;
-      const deltaX = event.deltaX * unit;
-      const legacyWheelDelta = (event as WheelEvent & { wheelDelta?: number }).wheelDelta ?? 0;
-      const deltaY = (event.deltaY || -legacyWheelDelta) * unit;
-      // WP panorama keeps the page horizontal. Vertical wheel only stays
-      // native when the pointer is over a section's own scrollport that can
-      // actually move further in that direction.
-      const sectionScroll = eventTarget instanceof Element
-        ? eventTarget.closest(".quick-section-scroll")
-        : null;
-      if (
-        sectionScroll instanceof HTMLElement
-        && Math.abs(deltaY) >= Math.abs(deltaX)
-        && !event.shiftKey
-      ) {
-        const maxTop = sectionScroll.scrollHeight - sectionScroll.clientHeight;
-        if (maxTop > 1) {
-          const atTop = sectionScroll.scrollTop <= 0;
-          const atBottom = sectionScroll.scrollTop >= maxTop - 1;
-          if ((deltaY < 0 && !atTop) || (deltaY > 0 && !atBottom)) return;
-        }
-      }
-      const delta = Math.abs(deltaY) >= Math.abs(deltaX) ? deltaY : deltaX;
-      if (!delta) return;
-
-      // Wheel pans run through the motion kernel's spring so the panorama
-      // decelerates with WP7-like inertia; consecutive ticks retarget the
-      // in-flight spring, carrying its velocity instead of restarting. The
-      // near-critical snappy preset keeps tracking tight (a softer spring
-      // lags noticeably behind fast wheel input).
-      const base = scrollAnimRef.current.handle
-        ? (scrollAnimRef.current.target ?? viewport.scrollLeft)
-        : viewport.scrollLeft;
-      const nextScrollLeft = Math.max(0, Math.min(maxScrollLeft, base + delta));
-      if (nextScrollLeft === base) return;
-      event.preventDefault();
-      if (reducedMotion) {
-        scrollAnimRef.current.handle?.cancel();
-        scrollAnimRef.current.handle = null;
-        scrollAnimRef.current.target = null;
-        viewport.scrollLeft = nextScrollLeft;
-        return;
-      }
-      scrollAnimRef.current.target = nextScrollLeft;
-      const running = scrollAnimRef.current.handle;
-      if (running) {
-        running.retarget(nextScrollLeft);
-      } else {
-        scrollAnimRef.current.handle = animateValue({
-          from: viewport.scrollLeft,
-          to: nextScrollLeft,
-          spring: SPRING_PRESETS.snappy,
-          onUpdate: (value) => {
-            viewport.scrollLeft = value;
-          },
-          onComplete: () => {
-            scrollAnimRef.current.handle = null;
-          },
-        });
-      }
-    };
-
-    window.addEventListener("wheel", handleWheel, { passive: false, capture: true });
-    return () => {
-      window.removeEventListener("wheel", handleWheel, true);
-      scrollAnimRef.current.handle?.cancel();
-      scrollAnimRef.current.handle = null;
-      scrollAnimRef.current.target = null;
-    };
-  }, [tracks.length, reducedMotion]);
-
-  function handleScroll() {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    quickplayScrollPosition = viewport.scrollLeft;
-  }
-
-  function handlePanoramaKey(event: KeyboardEvent<HTMLElement>) {
-    if (event.target !== event.currentTarget) return;
-    const viewport = event.currentTarget;
-    // Keyboard paging owns the scroll position now; stop any in-flight
-    // wheel-inertia spring so the two never fight over scrollLeft.
-    scrollAnimRef.current.handle?.cancel();
-    scrollAnimRef.current.handle = null;
-    scrollAnimRef.current.target = null;
-    const step = Math.max(320, viewport.clientWidth * 0.72);
-    const behavior = reducedMotion ? "auto" : "smooth";
-    if (event.key === "ArrowRight" || event.key === "PageDown") {
-      viewport.scrollBy({ left: step, behavior });
-      event.preventDefault();
-    } else if (event.key === "ArrowLeft" || event.key === "PageUp") {
-      viewport.scrollBy({ left: -step, behavior });
-      event.preventDefault();
-    } else if (event.key === "Home") {
-      viewport.scrollTo({ left: 0, behavior });
-      event.preventDefault();
-    } else if (event.key === "End") {
-      viewport.scrollTo({ left: viewport.scrollWidth, behavior });
-      event.preventDefault();
-    }
-  }
+  const empty = tracks.length === 0 && homePins.length === 0;
+  const sections = useMemo(() => [
+    { id: "pins", label: "固定" },
+    ...(continueItem ? [{ id: "continue", label: "继续播放" }] : []),
+    ...(mostPlayedTracks.length ? [{ id: "most", label: "最常播放" }] : []),
+    ...(forgottenFavoriteTracks.length ? [{ id: "forgotten", label: "久违收藏" }] : []),
+    ...(recentAlbums.length ? [{ id: "recent", label: "最近添加" }] : []),
+    ...(historyTracks.length ? [{ id: "history", label: "播放历史" }] : []),
+  ], [Boolean(continueItem), mostPlayedTracks.length > 0, forgottenFavoriteTracks.length > 0, recentAlbums.length > 0, historyTracks.length > 0]);
+  const panorama = useQuickplayPanorama(!empty, sections);
 
   function continueContextPayload(): ContextPayload | null {
     if (!continueItem) return null;
@@ -468,20 +346,20 @@ export function QuickplayView({
   }
 
   return (
-    <section className={`quickplay ${tracks.length === 0 && homePins.length === 0 ? "quickplay-empty" : ""}`}>
-      <div className="quickplay-ghost" aria-hidden="true">quickplay</div>
-      {tracks.length === 0 && homePins.length === 0 ? (
+    <section className={`quickplay ${empty ? "quickplay-empty" : ""}`}>
+      <div className="quickplay-backdrop" ref={panorama.backdropRef} aria-hidden="true" />
+      <div className="quickplay-ghost" ref={panorama.titleRef} aria-hidden="true">quickplay</div>
+      {empty ? (
         <div className="quickplay-empty-content">
           <button onClick={() => onOpenCollection("albums")}>打开收藏并添加音乐</button>
         </div>
-      ) : (
+      ) : (<>
         <div
-          ref={viewportRef}
+          ref={panorama.viewportRef}
           className="quickplay-viewport"
           aria-label="快速播放全景"
           tabIndex={0}
-          onScroll={handleScroll}
-          onKeyDown={handlePanoramaKey}
+          {...panorama.viewportProps}
         >
           <div className="quickplay-track">
         <QuickplayPinBoard
@@ -508,7 +386,7 @@ export function QuickplayView({
         />
 
         {continueItem ? (
-        <article className="quick-group quick-continue">
+        <article className="quick-group quick-continue" id="quickplay-continue" data-panorama-section="continue">
           <h2>继续播放</h2>
             <div className="quick-section-scroll">
               <div
@@ -540,7 +418,7 @@ export function QuickplayView({
         ) : null}
 
         {mostPlayedTracks.length > 0 && (
-          <article className="quick-group quick-most">
+          <article className="quick-group quick-most" id="quickplay-most" data-panorama-section="most">
             <button className="quick-heading" onClick={() => onOpenCollection("songs")}>
               <h2>最常播放</h2>
             </button>
@@ -580,7 +458,7 @@ export function QuickplayView({
         )}
 
         {forgottenFavoriteTracks.length > 0 && (
-          <article className="quick-group quick-forgotten">
+          <article className="quick-group quick-forgotten" id="quickplay-forgotten" data-panorama-section="forgotten">
             <button className="quick-heading" onClick={() => onOpenCollection("playlists")}>
               <h2>久违收藏</h2>
             </button>
@@ -619,7 +497,7 @@ export function QuickplayView({
           </article>
         )}
 
-        {recentAlbums.length > 0 && (<article className="quick-group quick-recent">
+        {recentAlbums.length > 0 && (<article className="quick-group quick-recent" id="quickplay-recent" data-panorama-section="recent">
           <button className="quick-heading" onClick={() => onOpenCollection("albums")}>
             <h2>最近添加</h2>
           </button>
@@ -658,7 +536,7 @@ export function QuickplayView({
         </article>)}
 
         {historyTracks.length > 0 && featuredHistory && (
-          <article className="quick-group quick-history">
+          <article className="quick-group quick-history" id="quickplay-history" data-panorama-section="history">
             <button className="quick-heading" onClick={() => onOpenCollection("songs")}>
               <h2>播放历史</h2>
             </button>
@@ -712,7 +590,16 @@ export function QuickplayView({
         )}
           </div>
         </div>
-      )}
+        <nav className="quick-panorama-nav" aria-label="首页分组" hidden={!panorama.status.overflow}>
+          <Button variant="ghost" size="sm" className="quick-panorama-arrow" aria-label="上一组" title="上一组"
+            disabled={!panorama.status.previous} onClick={event => panorama.step(-1, event.detail !== 0)} icon={<ChevronLeft size={18} />} />
+          {sections.map(section => <Button key={section.id} variant="ghost" size="sm" className="quick-panorama-link"
+            aria-controls={`quickplay-${section.id}`} aria-current={panorama.status.activeId === section.id ? "location" : undefined}
+            onClick={event => panorama.goTo(section.id, event.detail !== 0)}>{section.label}</Button>)}
+          <Button variant="ghost" size="sm" className="quick-panorama-arrow" aria-label="下一组" title="下一组"
+            disabled={!panorama.status.next} onClick={event => panorama.step(1, event.detail !== 0)} icon={<ChevronRight size={18} />} />
+        </nav>
+      </>)}
     </section>
   );
 }

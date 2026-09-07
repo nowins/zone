@@ -244,7 +244,7 @@ export function QuickplayPinBoard({ items, onOpenCollection, onMovePin, onShiftP
     }} /> : null;
   const lastDialog = useLastNonNull(dialog);
 
-  return <article className="quick-group quick-pins" onKeyDown={event => {
+  return <article className="quick-group quick-pins" id="quickplay-pins" data-panorama-section="pins" onKeyDown={event => {
     if (event.key === "Escape" && editing && !customizingId) { event.preventDefault(); event.stopPropagation(); finishEdit(); }
   }}>
     <div className="quick-section-title quick-pins-title">

@@ -609,6 +609,7 @@ button.tilt-pressed {
 
   .tilt-pressed,
   .quickplay-ghost,
+  .quickplay-backdrop,
   .lyrics-settings-toggle:active,
   .lyrics-settings-switch-row:active,
   .lyrics-font-size-options button:active,

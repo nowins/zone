@@ -14,6 +14,7 @@ test("podcast-only quickplay survives StrictMode and opens its show after hydrat
   const dom = new JSDOM('<body><div id="root"></div></body>');
   for (const name of ["window", "document", "Node", "Element", "HTMLElement"]) globalThis[name] = dom.window[name];
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  globalThis.ResizeObserver = class { observe() {} disconnect() {} };
   window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
   const root = createRoot(document.getElementById("root"));
   let opened = null;
