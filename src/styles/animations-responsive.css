@@ -310,13 +310,8 @@
     padding-right: 132px;
   }
 
-  .quick-recent,
-  .quick-history {
+  .quick-recent {
     width: 326px;
-  }
-
-  .history-layout {
-    grid-template-columns: minmax(180px, 1fr) 96px;
   }
 
   .player {

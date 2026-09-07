@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { MouseEvent } from "react";
-import { ChevronLeft, ChevronRight, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import { Button } from "../components/Button";
 import { useQuickplayPanorama } from "../hooks/useQuickplayPanorama";
 import { Cover } from "../components/Cover";
@@ -124,6 +124,7 @@ export function QuickplayView({
       return album ? [album] : [];
     });
   }, [albums, autoBlocks]);
+  // Never invent history from the library order — empty history stays empty.
   const historyTracks = useMemo(() => {
     const items = autoBlocks.find((block) => block.id === "history")?.items ?? [];
     return items.flatMap((item) => item.tracks[0] ? [item.tracks[0]] : []);
@@ -292,18 +293,14 @@ export function QuickplayView({
       }];
     });
   }, [activity, albums, artists, favoriteTrackIds, homePins, playlists, podcastFeeds, tracks]);
-  // Never invent history from the library order — empty history stays empty.
-  const featuredHistory = historyTracks[0] ?? null;
-  const compactHistory = historyTracks.slice(1, 4);
-
   const empty = tracks.length === 0 && homePins.length === 0;
   const sections = useMemo(() => [
-    { id: "pins", label: "固定" },
-    ...(continueItem ? [{ id: "continue", label: "继续播放" }] : []),
-    ...(mostPlayedTracks.length ? [{ id: "most", label: "最常播放" }] : []),
-    ...(forgottenFavoriteTracks.length ? [{ id: "forgotten", label: "久违收藏" }] : []),
-    ...(recentAlbums.length ? [{ id: "recent", label: "最近添加" }] : []),
-    ...(historyTracks.length ? [{ id: "history", label: "播放历史" }] : []),
+    "pins",
+    ...(continueItem ? ["continue"] : []),
+    ...(mostPlayedTracks.length ? ["most"] : []),
+    ...(forgottenFavoriteTracks.length ? ["forgotten"] : []),
+    ...(recentAlbums.length ? ["recent"] : []),
+    ...(historyTracks.length ? ["history"] : []),
   ], [Boolean(continueItem), mostPlayedTracks.length > 0, forgottenFavoriteTracks.length > 0, recentAlbums.length > 0, historyTracks.length > 0]);
   const panorama = useQuickplayPanorama(!empty, sections);
 
@@ -356,6 +353,7 @@ export function QuickplayView({
       ) : (<>
         <div
           ref={panorama.viewportRef}
+          id="quickplay-viewport"
           className="quickplay-viewport"
           aria-label="快速播放全景"
           tabIndex={0}
@@ -535,40 +533,19 @@ export function QuickplayView({
           </div>
         </article>)}
 
-        {historyTracks.length > 0 && featuredHistory && (
+        {historyTracks.length > 0 && (
           <article className="quick-group quick-history" id="quickplay-history" data-panorama-section="history">
             <button className="quick-heading" onClick={() => onOpenCollection("songs")}>
               <h2>播放历史</h2>
             </button>
             <div className="quick-section-scroll">
-              <div className="history-layout">
-              <div
-                className="history-feature"
-                onContextMenu={(event) =>
-                  onContextMenu(event, {
-                    kind: "track",
-                    title: featuredHistory.title,
-                    subtitle: `${featuredHistory.artist} / ${featuredHistory.album}`,
-                    tracks: [featuredHistory],
-                    playbackTracks: tracks,
-                  })
-                }
-              >
-                <button onClick={() => onPlay(featuredHistory, tracks)}>
-                  <Cover artPath={featuredHistory.cover_path} label={featuredHistory.album} size="large" index={5} />
-                </button>
-                <strong>{featuredHistory.title}</strong>
-                <span>{featuredHistory.artist}</span>
-              </div>
-              <div className="history-stack">
-                {compactHistory.map((track, index) => (
-                  <button
-                    key={track.id}
+              <ol className="quick-history-list">
+                {historyTracks.map((track, index) => (
+                  <li key={track.id}>
+                  <Button variant="ghost" className="quick-history-row"
                     onClick={() => onPlay(track, tracks)}
-                    onPointerDown={tiltPressDown}
-                    onPointerUp={tiltPressClear}
-                    onPointerLeave={tiltPressClear}
-                    onPointerCancel={tiltPressClear}
+                    aria-label={`播放 ${track.title} · ${track.artist}`}
+                    title={`${track.title}\n${track.artist}`}
                     onContextMenu={(event) =>
                       onContextMenu(event, {
                         kind: "track",
@@ -580,25 +557,20 @@ export function QuickplayView({
                     }
                   >
                     <Cover artPath={track.cover_path} label={track.album} size="large" index={index + 2} />
-                    <span><strong>{track.title}</strong>{track.artist}</span>
-                  </button>
+                    <span className="quick-history-copy"><strong>{track.title}</strong><span>{track.artist}</span></span>
+                  </Button>
+                  </li>
                 ))}
-              </div>
-              </div>
+              </ol>
             </div>
           </article>
         )}
           </div>
         </div>
-        <nav className="quick-panorama-nav" aria-label="首页分组" hidden={!panorama.status.overflow}>
-          <Button variant="ghost" size="sm" className="quick-panorama-arrow" aria-label="上一组" title="上一组"
-            disabled={!panorama.status.previous} onClick={event => panorama.step(-1, event.detail !== 0)} icon={<ChevronLeft size={18} />} />
-          {sections.map(section => <Button key={section.id} variant="ghost" size="sm" className="quick-panorama-link"
-            aria-controls={`quickplay-${section.id}`} aria-current={panorama.status.activeId === section.id ? "location" : undefined}
-            onClick={event => panorama.goTo(section.id, event.detail !== 0)}>{section.label}</Button>)}
-          <Button variant="ghost" size="sm" className="quick-panorama-arrow" aria-label="下一组" title="下一组"
-            disabled={!panorama.status.next} onClick={event => panorama.step(1, event.detail !== 0)} icon={<ChevronRight size={18} />} />
-        </nav>
+        <input ref={panorama.scrollbarRef} className="quick-panorama-scrollbar" type="range"
+          min={0} step="any" defaultValue={0} disabled={!panorama.overflow}
+          aria-label="首页横向滚动" aria-controls="quickplay-viewport" aria-hidden={!panorama.overflow}
+          {...panorama.scrollbarProps} />
       </>)}
     </section>
   );

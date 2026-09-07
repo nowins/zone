@@ -149,7 +149,7 @@ export function buildRecentAddedBlock(input: QuickplayBlocksInput, limit = 6): Q
   };
 }
 
-export function buildHistoryBlock(input: QuickplayBlocksInput, limit = 4): QuickplayBlock {
+export function buildHistoryBlock(input: QuickplayBlocksInput, limit = 12): QuickplayBlock {
   const trackMap = new Map(input.tracks.map((track) => [track.id, track]));
   // Only real play-history ids. Never pad with library order — that made the
   // section look full of random album art and feel completely inert.

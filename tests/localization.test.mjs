@@ -49,9 +49,9 @@ const titlebarSource = readFileSync("src/components/Titlebar.tsx", "utf8");
 const pinBoardSource = readFileSync("src/components/tiles/QuickplayPinBoard.tsx", "utf8");
 const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
 
-test("panorama navigation exposes Chinese group and direction labels", () => {
-  for (const label of ["首页分组", "上一组", "下一组", "固定", "继续播放", "最常播放", "久违收藏", "最近添加", "播放历史"]) {
-    assert.ok(quickplaySource.includes(label), `panorama action must remain localized: ${label}`);
+test("panorama scrolling and section headings keep Chinese labels", () => {
+  for (const label of ["首页横向滚动", "固定", "继续播放", "最常播放", "久违收藏", "最近添加", "播放历史"]) {
+    assert.ok((quickplaySource + pinBoardSource).includes(label), `panorama action must remain localized: ${label}`);
   }
 });
 

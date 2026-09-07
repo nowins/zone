@@ -27,7 +27,8 @@ test("quickplay is a keyboard and mouse-wheel accessible horizontal panorama", (
   assert.ok(viewportRule.includes("scroll-snap-type: none"));
   assert.ok(quickplaySource.includes('className="quickplay-viewport"'));
   assert.ok(viewportRule.includes("scrollbar-width: none"), "native full-width scroll chrome stays hidden");
-  assert.ok(quickplaySource.includes('aria-label="首页分组"'), "compact navigation replaces the hidden scrollbar");
+  assert.ok(quickplaySource.includes('aria-label="首页横向滚动"'), "compact scrollbar stays keyboard accessible");
+  assert.ok(!quickplaySource.includes("quick-panorama-nav"), "section headings must not be duplicated in a navigation row");
   assert.ok(quickplaySource.includes("{...panorama.viewportProps}"), "keyboard and pointer handlers reach the viewport");
   assert.ok(panoramaHookSource.includes('viewport.addEventListener("wheel", wheel, { passive: false })'));
   assert.ok(!panoramaHookSource.includes('window.addEventListener("wheel"'), "portal dialogs and transport must not be hijacked");

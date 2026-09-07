@@ -4,7 +4,7 @@ import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { panoramaDepth, panoramaStatus, panoramaStep, panoramaWheel } from "../.tmp/visualizer-tests/utils/quickplayPanorama.js";
+import { panoramaDepth, panoramaStep, panoramaWheel } from "../.tmp/visualizer-tests/utils/quickplayPanorama.js";
 
 await build({ stdin: { contents: `export { useQuickplayPanorama } from './src/hooks/useQuickplayPanorama';
 export { _setAnimationClockForTesting } from './src/motion/animate';`, resolveDir: process.cwd(), loader: "tsx" },
@@ -22,8 +22,7 @@ test("panorama depth and group stops remain bounded at either edge", () => {
   assert.equal(panoramaStep(0, 1, 600, groups), 284);
   assert.equal(panoramaStep(600, -1, 600, groups), 284);
   assert.equal(panoramaStep(600, 1, 600, groups), 600);
-  assert.equal(panoramaStatus(600, 400, 600, groups).activeId, "history");
-  assert.equal(panoramaStatus(0, 1100, 0, groups).overflow, false);
+  assert.equal(panoramaStep(0, 1, 0, groups), 0);
 });
 
 test("vertical lists retain wheel ownership, while Shift and horizontal input pan", () => {
@@ -38,9 +37,11 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
   const dom = new JSDOM('<body><div id="root"></div><div id="portal"></div></body>');
   for (const key of ["window", "document", "Node", "Element", "HTMLElement"]) globalThis[key] = dom.window[key];
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  const observers = new Set(), frames = [], mediaListeners = new Set();
+  const observers = new Set(), frames = [], mediaListeners = new Set(), timers = new Map();
   const layout = { width: 400, scrollWidth: 1100 };
-  let now = 0, hidden = false, current;
+  let now = 0, hidden = false, current, timerId = 0;
+  window.setTimeout = (fn, delay) => { const id = ++timerId; timers.set(id, { fn, at: now + delay }); return id; };
+  window.clearTimeout = id => timers.delete(id);
   const media = { matches: false, addEventListener: (_, fn) => mediaListeners.add(fn), removeEventListener: (_, fn) => mediaListeners.delete(fn) };
   window.matchMedia = () => media;
   Object.defineProperty(document, "hidden", { get: () => hidden });
@@ -61,17 +62,22 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
   HTMLElement.prototype.releasePointerCapture = function () { this.captured = null; };
   const sections = [{ id: "pins", label: "固定" }, { id: "continue", label: "继续播放" }, { id: "history", label: "播放历史" }];
   function Harness({ enabled = true }) {
-    current = useQuickplayPanorama(enabled, sections);
+    current = useQuickplayPanorama(enabled, sections.map(section => section.id));
     return React.createElement("section", null,
       React.createElement("div", { className: "quickplay-ghost", ref: current.titleRef }),
       React.createElement("div", { className: "quickplay-backdrop", ref: current.backdropRef }),
       enabled && React.createElement("div", { className: "quickplay-viewport", ref: current.viewportRef, tabIndex: 0, ...current.viewportProps },
         React.createElement("div", null, sections.map((section, index) => React.createElement("article", { key: section.id, "data-panorama-section": section.id, "data-left": 16 + index * 320 },
-          React.createElement("button", null, section.label), React.createElement("div", { className: "quick-section-scroll" }))))));
+          React.createElement("button", null, section.label), React.createElement("div", { className: "quick-section-scroll" }))))),
+      enabled && React.createElement("input", { className: "quick-panorama-scrollbar", ref: current.scrollbarRef,
+        type: "range", min: 0, step: "any", defaultValue: 0, disabled: !current.overflow, ...current.scrollbarProps }));
   }
   let root = createRoot(document.getElementById("root"));
   const render = async enabled => act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Harness, { enabled }))));
-  const advance = async ms => act(async () => { const end = now + ms; while (now < end) { now += 16; frames.splice(0).forEach(fn => fn(now)); } });
+  const advance = async ms => act(async () => { const end = now + ms; while (now < end) {
+    now += 16; frames.splice(0).forEach(fn => fn(now));
+    for (const [id, timer] of timers) if (timer.at <= now) { timers.delete(id); timer.fn(); }
+  } });
   const wheel = async (element, params, legacyDelta) => {
     const event = new window.WheelEvent("wheel", { deltaY: 120, bubbles: true, cancelable: true, ...params });
     if (legacyDelta !== undefined) Object.defineProperty(event, "wheelDelta", { value: legacyDelta });
@@ -82,12 +88,18 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
   try {
     await render(false); await render(true);
     let viewport = document.querySelector(".quickplay-viewport");
+    let scrollbar = document.querySelector(".quick-panorama-scrollbar");
+    assert.equal(scrollbar.classList.contains("is-scrolling"), false, "mount does not flash a scrollbar");
     await key(viewport, "Home");
     assert.equal(await wheel(viewport, {}), true);
     await advance(80);
     assert.ok(viewport.scrollLeft > 0 && viewport.scrollLeft < 120);
+    assert.equal(scrollbar.classList.contains("is-scrolling"), true);
+    assert.equal(scrollbar.valueAsNumber, viewport.scrollLeft);
     await wheel(viewport, {}); await advance(1200);
     assert.equal(Math.round(viewport.scrollLeft), 240, "successive wheel ticks accumulate without restarting velocity");
+    await advance(800);
+    assert.equal(scrollbar.classList.contains("is-scrolling"), false, "the bar sleeps once scrolling settles");
     assert.notEqual(document.querySelector(".quickplay-ghost").style.transform, "translate3d(0px, 0, 0)");
     assert.equal(await wheel(document.getElementById("portal"), {}), false);
     const nested = viewport.querySelector(".quick-section-scroll");
@@ -104,15 +116,20 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
     assert.equal(viewport.scrollLeft, 88, "coarse legacy fields cannot enlarge or suppress a fine horizontal gesture over a list");
     await key(viewport.querySelector("button"), "End");
     assert.equal(viewport.scrollLeft, 88, "nested controls retain their shortcuts");
-    await act(async () => current.goTo("history", false));
-    assert.equal(viewport.scrollLeft, 640);
-    assert.equal(current.status.activeId, "history");
+    assert.equal(await wheel(scrollbar, { deltaX: 8, deltaY: 0 }), true);
+    assert.equal(viewport.scrollLeft, 96, "the visible scrollbar is not a dead zone for wheel input");
+    await key(viewport, "End");
+    assert.equal(viewport.scrollLeft, 700);
     const restoredTransform = document.querySelector(".quickplay-ghost").style.transform;
     await act(async () => root.unmount());
     assert.equal(observers.size, 0);
+    assert.equal(timers.size, 0);
     root = createRoot(document.getElementById("root")); await render(true);
     viewport = document.querySelector(".quickplay-viewport");
-    assert.equal(viewport.scrollLeft, 640);
+    scrollbar = document.querySelector(".quick-panorama-scrollbar");
+    assert.equal(viewport.scrollLeft, 700);
+    assert.equal(scrollbar.valueAsNumber, 700);
+    assert.equal(scrollbar.classList.contains("is-scrolling"), false, "restoring a page is not a new user scroll");
     assert.equal(document.querySelector(".quickplay-ghost").style.transform, restoredTransform, "restoration positions both layers before paint");
     await act(async () => { media.matches = true; mediaListeners.forEach(fn => fn()); });
     assert.equal(document.querySelector(".quickplay-ghost").style.transform, "translate3d(0px, 0, 0)");
@@ -120,11 +137,26 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
     assert.equal(viewport.scrollLeft, 120);
     await act(async () => { layout.width = 1000; observers.forEach(o => o.fn()); });
     assert.equal(viewport.scrollLeft, 100);
-    assert.equal(current.status.next, false, "resize clamps the navigation range");
+    assert.equal(scrollbar.max, "100", "resize updates the actual scroll range");
+    await act(async () => {
+      scrollbar.value = "42";
+      scrollbar.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
+    assert.equal(viewport.scrollLeft, 42, "scrubbing the scrollbar controls the viewport");
+    const pointer = async type => act(async () => scrollbar.dispatchEvent(Object.assign(new window.Event(type, { bubbles: true }), { button: 0, pointerId: 9 })));
+    await pointer("pointerdown"); await advance(1500);
+    assert.equal(scrollbar.classList.contains("is-scrolling"), true, "the thumb remains available during a long drag");
+    await pointer("pointerup"); await advance(800);
+    assert.equal(scrollbar.classList.contains("is-scrolling"), false);
+    await act(async () => { layout.width = 1200; observers.forEach(o => o.fn()); });
+    assert.equal(scrollbar.disabled, true, "all content fits, so the scrollbar has no focus stop");
+    await act(async () => { layout.width = 1000; observers.forEach(o => o.fn()); });
     await act(async () => { media.matches = false; mediaListeners.forEach(fn => fn()); });
     await key(viewport, "Home"); await wheel(viewport, {});
     await act(async () => { hidden = true; document.dispatchEvent(new window.Event("visibilitychange")); });
     const stopped = viewport.scrollLeft; await advance(1200);
     assert.equal(viewport.scrollLeft, stopped);
-  } finally { await act(async () => root.unmount()); assert.equal(observers.size, 0); assert.equal(mediaListeners.size, 0); dom.window.close(); }
+    assert.equal(scrollbar.classList.contains("is-scrolling"), false);
+    assert.equal(timers.size, 0);
+  } finally { await act(async () => root.unmount()); assert.equal(observers.size, 0); assert.equal(timers.size, 0); assert.equal(mediaListeners.size, 0); dom.window.close(); }
 });

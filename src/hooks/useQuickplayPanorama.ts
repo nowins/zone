@@ -1,45 +1,75 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { animateValue, type AnimationHandle } from "../motion/animate";
 import { PANORAMA_MOTION, SPRING_PRESETS } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
-import { clampPanorama, panoramaDepth, panoramaStatus, panoramaStep, panoramaWheel, type PanoramaMetric, type PanoramaSection, type PanoramaStatus } from "../utils/quickplayPanorama";
+import { clampPanorama, panoramaDepth, panoramaStep, panoramaWheel, type PanoramaMetric } from "../utils/quickplayPanorama";
 
 let savedScrollLeft = 0;
-const INITIAL: PanoramaStatus = { activeId: "pins", previous: false, next: false, overflow: false };
 
-export function useQuickplayPanorama(enabled: boolean, sections: PanoramaSection[]) {
+export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
+  const scrollbarRef = useRef<HTMLInputElement>(null);
   const metrics = useRef<PanoramaMetric[]>([]);
   const motion = useRef<{ handle: AnimationHandle | null; target: number }>({ handle: null, target: 0 });
-  const preferred = useRef<string | null>(null);
   const restored = useRef(false);
-  const statusRef = useRef(INITIAL);
-  const [status, setStatus] = useState(INITIAL);
+  const lastLeft = useRef(0);
+  const overflowRef = useRef(false);
+  const [overflow, setOverflow] = useState(false);
+  const fadeTimer = useRef<number | null>(null);
+  const scrollbarPointer = useRef<number | null>(null);
   const drag = useRef<{ pointerId: number; startX: number; startY: number; left: number; lastX: number; time: number; velocity: number; moving: boolean } | null>(null);
   const reducedMotion = useReducedMotion();
-  const sectionKey = sections.map(section => section.id).join("|");
+  const sectionKey = sectionIds.join("|");
+
+  function clearFadeTimer() {
+    if (fadeTimer.current !== null) window.clearTimeout(fadeTimer.current);
+    fadeTimer.current = null;
+  }
+  function revealScrollbar() {
+    if (!overflowRef.current || document.hidden) return;
+    scrollbarRef.current?.classList.add("is-scrolling");
+    clearFadeTimer();
+    if (scrollbarPointer.current !== null) return;
+    fadeTimer.current = window.setTimeout(() => {
+      fadeTimer.current = null;
+      scrollbarRef.current?.classList.remove("is-scrolling");
+    }, PANORAMA_MOTION.scrollbarIdle);
+  }
+  function hideScrollbar() {
+    clearFadeTimer();
+    const pointer = scrollbarPointer.current;
+    scrollbarPointer.current = null;
+    const scrollbar = scrollbarRef.current;
+    if (pointer !== null && scrollbar?.hasPointerCapture(pointer)) scrollbar.releasePointerCapture(pointer);
+    scrollbar?.classList.remove("is-scrolling");
+  }
 
   function stop() {
     motion.current.handle?.cancel();
     motion.current.handle = null;
   }
-  function sync() {
+  function sync(reveal = true) {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const left = viewport.scrollLeft;
+    const max = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
     savedScrollLeft = left;
     const depth = panoramaDepth(left, reducedMotion);
     if (titleRef.current) titleRef.current.style.transform = `translate3d(${depth.title}px, 0, 0)`;
     if (backdropRef.current) backdropRef.current.style.transform = `translate3d(${depth.backdrop}px, 0, 0)`;
-    const next = panoramaStatus(left, viewport.clientWidth, viewport.scrollWidth - viewport.clientWidth, metrics.current, preferred.current);
-    const previous = statusRef.current;
-    // React only receives a section/boundary change, never frame positions.
-    if (next.activeId !== previous.activeId || next.previous !== previous.previous || next.next !== previous.next || next.overflow !== previous.overflow) {
-      statusRef.current = next;
-      setStatus(next);
+    const canScroll = max > 1;
+    // React only receives an overflow change, never frame positions.
+    if (canScroll !== overflowRef.current) {
+      overflowRef.current = canScroll;
+      setOverflow(canScroll);
     }
+    const scrollbar = scrollbarRef.current;
+    if (scrollbar) scrollbar.value = String(clampPanorama(left, max));
+    if (!canScroll) hideScrollbar();
+    else if (reveal && Math.abs(left - lastLeft.current) > 0.01) revealScrollbar();
+    lastLeft.current = left;
   }
   function measure() {
     const viewport = viewportRef.current;
@@ -50,13 +80,18 @@ export function useQuickplayPanorama(enabled: boolean, sections: PanoramaSection
       return { id: element.dataset.panoramaSection!, left: rect.left - bounds.left + viewport.scrollLeft, width: rect.width };
     });
     const max = viewport.scrollWidth - viewport.clientWidth;
+    const scrollbar = scrollbarRef.current;
+    if (scrollbar) {
+      scrollbar.max = String(Math.max(0, max));
+      scrollbar.style.setProperty("--panorama-thumb-width", `${Math.max(24, scrollbar.clientWidth * viewport.clientWidth / Math.max(1, viewport.scrollWidth))}px`);
+    }
     viewport.scrollLeft = clampPanorama(restored.current ? viewport.scrollLeft : savedScrollLeft, max);
     restored.current = true;
     if (motion.current.handle) {
       motion.current.target = clampPanorama(motion.current.target, max);
       motion.current.handle.retarget(motion.current.target);
     }
-    sync();
+    sync(false);
   }
   function panTo(left: number, smooth: boolean) {
     const viewport = viewportRef.current;
@@ -71,18 +106,9 @@ export function useQuickplayPanorama(enabled: boolean, sections: PanoramaSection
       onComplete: () => { motion.current.handle = null; sync(); },
     });
   }
-  function goTo(id: string, smooth = true) {
-    measure();
-    const group = metrics.current.find(metric => metric.id === id);
-    if (!group) return;
-    preferred.current = id;
-    panTo(group.left - (metrics.current[0]?.left ?? 0), smooth);
-    sync();
-  }
   function step(direction: -1 | 1, smooth = true) {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    preferred.current = null;
     const left = motion.current.handle ? motion.current.target : viewport.scrollLeft;
     panTo(panoramaStep(left, direction, viewport.scrollWidth - viewport.clientWidth, metrics.current), smooth);
   }
@@ -90,6 +116,7 @@ export function useQuickplayPanorama(enabled: boolean, sections: PanoramaSection
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!enabled || !viewport) return;
+    const scrollbar = scrollbarRef.current;
     stop();
     measure();
     const resize = new ResizeObserver(measure);
@@ -109,25 +136,28 @@ export function useQuickplayPanorama(enabled: boolean, sections: PanoramaSection
         verticalOverflow: Boolean(section && section.scrollHeight - section.clientHeight > 1),
       });
       if (!intent) return;
-      preferred.current = null;
       const base = intent.smooth && motion.current.handle ? motion.current.target : viewport.scrollLeft;
       const target = clampPanorama(base + intent.delta, viewport.scrollWidth - viewport.clientWidth);
       if (target === base) return;
       event.preventDefault();
       panTo(target, intent.smooth);
     };
-    const hidden = () => { if (document.hidden) { stop(); cancelDrag(); } };
+    const blur = () => { stop(); cancelDrag(); hideScrollbar(); };
+    const hidden = () => { if (document.hidden) blur(); };
     // Scope wheel capture to the panorama; portal dialogs and the player own theirs.
     viewport.addEventListener("wheel", wheel, { passive: false });
+    scrollbar?.addEventListener("wheel", wheel, { passive: false });
     document.addEventListener("visibilitychange", hidden);
-    window.addEventListener("blur", cancelDrag);
+    window.addEventListener("blur", blur);
     return () => {
       stop();
       cancelDrag();
+      hideScrollbar();
       resize.disconnect();
       viewport.removeEventListener("wheel", wheel);
+      scrollbar?.removeEventListener("wheel", wheel);
       document.removeEventListener("visibilitychange", hidden);
-      window.removeEventListener("blur", cancelDrag);
+      window.removeEventListener("blur", blur);
     };
   }, [enabled, sectionKey, reducedMotion]);
 
@@ -137,7 +167,6 @@ export function useQuickplayPanorama(enabled: boolean, sections: PanoramaSection
     event.preventDefault();
     event.stopPropagation();
     stop();
-    preferred.current = null;
     if (event.key === "Home") panTo(0, false);
     else if (event.key === "End") panTo(Infinity, false);
     else step(event.key === "ArrowLeft" || event.key === "PageUp" ? -1 : 1, false);
@@ -148,7 +177,6 @@ export function useQuickplayPanorama(enabled: boolean, sections: PanoramaSection
     if ((event.target as Element).closest("button, a, input, select, textarea, .quick-pin, .quick-section-scroll, [role='button']")) return;
     const viewport = event.currentTarget;
     if (viewport.scrollWidth <= viewport.clientWidth + 1) return;
-    preferred.current = null;
     drag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, left: viewport.scrollLeft,
       lastX: event.clientX, time: event.timeStamp, velocity: 0, moving: false };
     viewport.setPointerCapture(event.pointerId);
@@ -183,8 +211,29 @@ export function useQuickplayPanorama(enabled: boolean, sections: PanoramaSection
     if (current.moving && event.timeStamp - current.time < PANORAMA_MOTION.velocityWindow && !reducedMotion) panTo(event.currentTarget.scrollLeft + current.velocity * PANORAMA_MOTION.coastMs, true);
   }
 
-  return { viewportRef, titleRef, backdropRef, status, goTo, step,
-    viewportProps: { onScroll: sync, onKeyDown, onPointerDown, onPointerMove, onPointerUp,
+  function onScrollbarInput(event: FormEvent<HTMLInputElement>) {
+    panTo(event.currentTarget.valueAsNumber, false);
+  }
+  function onScrollbarPointerDown(event: PointerEvent<HTMLInputElement>) {
+    if (event.button !== 0) return;
+    stop();
+    scrollbarPointer.current = event.pointerId;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    revealScrollbar();
+  }
+  function onScrollbarPointerUp() {
+    const pointer = scrollbarPointer.current;
+    if (pointer === null) return;
+    scrollbarPointer.current = null;
+    if (pointer !== null && scrollbarRef.current?.hasPointerCapture(pointer)) scrollbarRef.current.releasePointerCapture(pointer);
+    revealScrollbar();
+  }
+
+  return { viewportRef, titleRef, backdropRef, scrollbarRef, overflow,
+    scrollbarProps: { onInput: onScrollbarInput, onFocus: stop,
+      onPointerDown: onScrollbarPointerDown, onPointerUp: onScrollbarPointerUp,
+      onPointerCancel: hideScrollbar, onLostPointerCapture: onScrollbarPointerUp },
+    viewportProps: { onScroll: () => sync(), onKeyDown, onPointerDown, onPointerMove, onPointerUp,
       onPointerCancel: cancelDrag, onLostPointerCapture: cancelDrag, onFocusCapture: stop },
   };
 }

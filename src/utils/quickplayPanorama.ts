@@ -1,9 +1,7 @@
 import { PANORAMA_MOTION } from "../motion/tokens.js";
 import { clamp } from "../motion/math.js";
 
-export type PanoramaSection = { id: string; label: string };
 export type PanoramaMetric = { id: string; left: number; width: number };
-export type PanoramaStatus = { activeId: string; previous: boolean; next: boolean; overflow: boolean };
 export const clampPanorama = (value: number, max: number) => clamp(value, 0, Math.max(0, max));
 
 export function panoramaDepth(left: number, reduced: boolean) {
@@ -11,14 +9,6 @@ export function panoramaDepth(left: number, reduced: boolean) {
     title: reduced ? 0 : -Math.min(PANORAMA_MOTION.titleTravel, Math.max(0, left) * PANORAMA_MOTION.titleRatio),
     backdrop: reduced ? 0 : -Math.min(PANORAMA_MOTION.backdropTravel, Math.max(0, left) * PANORAMA_MOTION.backdropRatio),
   };
-}
-
-export function panoramaStatus(left: number, width: number, max: number, groups: PanoramaMetric[], preferred?: string | null): PanoramaStatus {
-  const inset = groups[0]?.left ?? 0;
-  const selected = groups.find(group => group.id === preferred && group.left < left + width && group.left + group.width > left);
-  const leading = groups.find(group => group.left + group.width > left + inset + 1) ?? groups[groups.length - 1];
-  const active = selected ?? (max > 1 && left >= max - 1 ? groups[groups.length - 1] : leading);
-  return { activeId: active?.id ?? "", previous: left > 1, next: left < max - 1, overflow: max > 1 };
 }
 
 export function panoramaStep(left: number, direction: -1 | 1, max: number, groups: PanoramaMetric[]) {

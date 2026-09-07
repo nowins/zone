@@ -54,6 +54,7 @@ export const PANORAMA_MOTION = {
   backdropTravel: 240,
   coastMs: 160,
   velocityWindow: 80,
+  scrollbarIdle: 700,
 } as const;
 
 export type MotionDurationName = keyof typeof MOTION_DURATIONS;

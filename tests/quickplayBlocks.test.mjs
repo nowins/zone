@@ -57,7 +57,7 @@ test("continue with no play history falls back to the most recently added album"
   assert.equal(block?.items[0]?.id, "zebra\0zeta");
 });
 
-test("history dedups by album identity, not by album name", () => {
+test("history keeps distinct tracks even when album names match", () => {
   const tracks = [
     track("one", { album: "Greatest Hits", artist: "Alpha" }),
     track("two", { album: "Greatest Hits", artist: "Beta" }),
@@ -216,6 +216,13 @@ test("quickplay blocks omit empty auto sections", () => {
   assert.ok(!ids.includes("history"));
   assert.ok(!ids.includes("mostPlayed"));
   assert.ok(!ids.includes("forgottenFavorites"));
+});
+
+test("history offers twelve recent tracks while excluding missing, repeated and current entries", () => {
+  const tracks = Array.from({ length: 16 }, (_, index) => track(String(index)));
+  const block = buildHistoryBlock({ tracks, albums: [], playlists: [], activity: {}, favoriteTrackIds: new Set(),
+    historyIds: ["missing", "0", "1", "1", ...tracks.slice(2).map(track => track.id)], activeTrack: tracks[0] });
+  assert.deepEqual(block.items.map(item => item.id), tracks.slice(1, 13).map(track => track.id));
 });
 
 test("the view consumes buildQuickplayBlocks and never re-implements the continue fallback", () => {

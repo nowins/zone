@@ -42,32 +42,46 @@
 .quickplay-viewport.is-panning * { pointer-events: none; }
 .quickplay-viewport:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 
-.quick-panorama-nav {
-  position: relative;
+.quick-panorama-scrollbar {
+  position: absolute;
   z-index: 2;
-  display: flex;
-  flex: none;
-  align-items: center;
-  align-self: flex-start;
-  gap: 14px;
-  max-width: 100%;
-  min-height: 36px;
-  padding: 0 12px 5px;
-}
-.quick-panorama-nav[hidden] { display: none; }
-.quick-panorama-nav .button {
+  left: 50%;
+  bottom: 3px;
+  transform: translateX(-50%);
+  width: clamp(144px, 18vw, 220px);
   min-width: 0;
-  min-height: 28px;
-  padding: 3px 0;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
-  white-space: nowrap;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  appearance: none;
+  cursor: ew-resize;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-micro) var(--motion-ease-exit);
 }
-.quick-panorama-nav .quick-panorama-link[aria-current] { color: var(--accent); }
-.quick-panorama-nav .button:hover:not(:disabled) { color: #fff; }
-.quick-panorama-nav .quick-panorama-arrow { width: 28px; }
-.quick-panorama-nav .button:disabled { opacity: 0.25; }
+.quick-panorama-scrollbar.is-scrolling,
+.quick-panorama-scrollbar:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.quick-panorama-scrollbar:disabled { opacity: 0; pointer-events: none; }
+.quick-panorama-scrollbar::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(247, 242, 246, 0.1);
+}
+.quick-panorama-scrollbar::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--panorama-thumb-width, 32px);
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(247, 242, 246, 0.52);
+}
+.quick-panorama-scrollbar::-moz-range-track { height: 3px; border-radius: 2px; background: rgba(247, 242, 246, 0.1); }
+.quick-panorama-scrollbar::-moz-range-thumb { width: var(--panorama-thumb-width, 32px); height: 3px; border: 0; border-radius: 2px; background: rgba(247, 242, 246, 0.52); }
 
 .quickplay-track {
   position: relative;
@@ -78,7 +92,7 @@
   display: flex;
   align-items: stretch;
   gap: clamp(52px, 5vw, 78px);
-  padding: clamp(42px, 5.5vh, 64px) max(14vw, 180px) 18px 16px;
+  padding: clamp(42px, 5.5vh, 64px) max(14vw, 180px) 28px 16px;
 }
 
 .quickplay-ghost {
@@ -212,8 +226,7 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
-.quick-album > button,
-.history-stack > button {
+.quick-album > button {
   transition: transform var(--motion-content) var(--motion-ease-emphasis);
 }
 
@@ -446,21 +459,18 @@
 }
 
 .quick-pins-grid,
-.quick-feature,
-.history-layout {
+.quick-feature {
   min-height: 0;
 }
 
 .quick-feature,
-.quick-album,
-.history-feature {
+.quick-album {
   min-width: 0;
 }
 
 .quick-cover-button,
 .quick-feature > button,
-.quick-album > button,
-.history-feature > button {
+.quick-album > button {
   position: relative;
   width: 100%;
   display: block;
@@ -479,18 +489,14 @@
 }
 
 .quick-feature .cover,
-.quick-album .cover,
-.history-feature .cover,
-.history-stack .cover {
+.quick-album .cover {
   margin: 0;
   outline: 1px solid rgba(255, 255, 255, 0.05);
   transition: filter var(--motion-micro) var(--motion-ease-standard), transform var(--motion-content) var(--motion-ease-standard);
 }
 
 .quick-cover-button:hover .cover,
-.quick-album > button:hover .cover,
-.history-feature > button:hover .cover,
-.history-stack > button:hover .cover {
+.quick-album > button:hover .cover {
   z-index: 1;
   filter: brightness(1.08);
   transform: scale(1.02);
@@ -543,10 +549,7 @@
 .quick-caption strong,
 .quick-caption span,
 .quick-album strong,
-.quick-album span,
-.history-feature strong,
-.history-feature span,
-.history-stack span {
+.quick-album span {
   min-width: 0;
   display: block;
   overflow: hidden;
@@ -554,15 +557,13 @@
   white-space: nowrap;
 }
 
-.quick-caption strong,
-.history-feature > strong {
+.quick-caption strong {
   color: #fff;
   font-size: 18px;
   font-weight: 400;
 }
 
-.quick-caption span,
-.history-feature > span {
+.quick-caption span {
   margin-top: 3px;
   color: var(--muted);
   font-size: 15px;
@@ -591,17 +592,13 @@
 
 .quick-most .quick-album > button,
 .quick-forgotten .quick-album > button,
-.quick-recent .quick-album > button,
-.history-feature > button,
-.history-stack > button {
+.quick-recent .quick-album > button {
   min-width: 0;
 }
 
 .quick-most .cover,
 .quick-forgotten .cover,
-.quick-recent .cover,
-.history-feature .cover,
-.history-stack .cover {
+.quick-recent .cover {
   width: 100%;
   aspect-ratio: 1;
   height: auto;
@@ -620,44 +617,52 @@
 }
 
 .quick-history {
-  width: clamp(360px, 30vw, 420px);
+  width: clamp(390px, 42vw, 500px);
 }
 
-.history-layout {
+.quick-history-list {
   display: grid;
-  grid-template-columns: minmax(205px, 1.3fr) minmax(112px, 0.62fr);
-  gap: 12px;
-}
-
-.history-feature > strong {
-  margin-top: 12px;
-}
-
-.history-stack {
-  min-width: 0;
-  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
-  gap: 12px;
+  gap: 12px 22px;
+  margin: 0;
+  padding: 3px;
+  list-style: none;
 }
-
-.history-stack > button {
+.quick-history-list > li { min-width: 0; }
+.quick-history-row.button {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 10px;
   min-width: 0;
+  min-height: 52px;
+  width: 100%;
   padding: 0;
   text-align: left;
-}
-
-.history-stack span {
-  margin-top: 6px;
   color: var(--muted);
-  font-size: 11px;
 }
-
-.history-stack span strong {
+.quick-history-row .cover {
+  width: 52px;
+  height: 52px;
+  margin: 0;
+  outline: 1px solid rgba(255, 255, 255, 0.05);
+}
+.quick-history-copy { min-width: 0; }
+.quick-history-copy strong,
+.quick-history-copy > span {
   display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+.quick-history-copy strong {
   color: rgba(255, 255, 255, 0.88);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 400;
 }
+.quick-history-copy > span { margin-top: 4px; font-size: 12px; }
+.quick-history-row:hover .quick-history-copy strong { color: #fff; }
 
 .quickplay-empty {
   overflow: hidden;
