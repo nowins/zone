@@ -144,22 +144,10 @@
   }
 
   .now-side-panel {
+    --now-panel-top: clamp(110px, 22vh, 220px);
     right: 28px;
     bottom: calc(var(--now-transport-height) + var(--now-panel-gap));
     width: min(340px, 42vw);
-  }
-
-  .now-panel-tracks {
-    max-height: min(24vh, 180px);
-    padding: 0;
-  }
-
-  .now-side-panel.queue-expanded {
-    top: clamp(110px, 22vh, 220px);
-  }
-
-  .now-side-panel.queue-expanded .now-panel-tracks {
-    max-height: none;
   }
 
   .now-panel-current strong,
@@ -207,14 +195,6 @@
     right: 24px;
     bottom: calc(var(--now-transport-height) + var(--now-panel-gap));
     width: auto;
-  }
-
-  .now-panel-tracks {
-    max-height: 180px;
-  }
-
-  .now-side-panel.queue-expanded .now-panel-tracks {
-    max-height: none;
   }
 
   .save-playlist-dialog {

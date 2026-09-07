@@ -72,12 +72,13 @@ export function cubicBezier(
   };
 }
 
-/** Ready-made evaluators for the four core easing tokens. */
+/** Ready-made evaluators for the shared easing tokens. */
 export const MOTION_TWEENS: Record<MotionEasingKey, (t: number) => number> = {
   standard: cubicBezier(...MOTION_EASINGS.standard),
   entrance: cubicBezier(...MOTION_EASINGS.entrance),
   exit: cubicBezier(...MOTION_EASINGS.exit),
   emphasis: cubicBezier(...MOTION_EASINGS.emphasis),
+  dissolve: cubicBezier(...MOTION_EASINGS.dissolve),
 };
 
 type MotionEasingKey = keyof typeof MOTION_EASINGS;

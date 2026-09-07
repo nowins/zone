@@ -44,7 +44,7 @@
 .now-transport {
   position: absolute;
   z-index: 6;
-  transition: opacity var(--motion-chrome) var(--motion-ease-standard), transform var(--motion-chrome) var(--motion-ease-standard);
+  transition: opacity var(--motion-content) var(--motion-ease-standard);
 }
 
 .now-back {
@@ -57,7 +57,7 @@
   border: 0;
   color: rgba(255, 255, 255, 0.82);
   background: transparent;
-  transition: color var(--motion-content) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-standard), opacity var(--motion-chrome) var(--motion-ease-standard);
+  transition: color var(--motion-content) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-standard), opacity var(--motion-content) var(--motion-ease-standard);
 }
 
 .now-back::before {
@@ -208,17 +208,19 @@
 }
 
 .now-side-panel {
+  --now-panel-top: clamp(118px, 25vh, 300px);
   right: clamp(28px, 2.6vw, 52px);
   bottom: calc(var(--now-transport-height) + var(--now-panel-gap));
+  max-height: calc(100% - var(--now-panel-top) - var(--now-transport-height) - var(--now-panel-gap));
   width: clamp(330px, 22.5vw, 440px);
   display: grid;
-  grid-template-rows: minmax(0, auto) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 8px;
   min-height: 0;
   padding: 0 10px 10px;
   color: rgba(255, 255, 255, 0.88);
   background: rgba(0, 0, 0, 0.58);
-  transition: opacity var(--motion-micro) var(--motion-ease-standard);
+  transition: opacity var(--motion-content) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-standard);
 }
 
 @starting-style {
@@ -228,16 +230,13 @@
 .motion-exit .now-side-panel {
   opacity: 0;
   pointer-events: none;
-}
-
-.now-side-panel.queue-expanded {
-  top: clamp(118px, 25vh, 300px);
-  grid-template-rows: minmax(0, 1fr) auto;
+  transition-duration: var(--motion-micro);
+  transition-timing-function: var(--motion-ease-exit);
 }
 
 .now-panel-tracks {
   min-width: 0;
-  max-height: clamp(150px, 11.5vw, 176px);
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0;
@@ -257,14 +256,6 @@
 
 .now-panel-tracks::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.42);
-}
-
-.now-side-panel.queue-expanded .now-panel-tracks {
-  height: 100%;
-  max-height: none;
-  min-height: 0;
-  overflow-y: auto;
-  padding-bottom: 8px;
 }
 
 .now-panel-current,
@@ -523,20 +514,11 @@
 }
 
 .chrome-immersive .now-back,
+.chrome-immersive .now-side-panel,
 .chrome-immersive .now-transport {
   opacity: 0;
   pointer-events: none;
-  transform: translateY(14px);
-}
-
-.chrome-immersive .now-side-panel {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(18px);
-}
-
-.chrome-immersive .now-track-card {
-  opacity: 0.88;
+  transition: opacity var(--motion-chrome) var(--motion-ease-dissolve);
 }
 
 .chrome-immersive .audio-glow-canvas {

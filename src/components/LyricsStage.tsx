@@ -1,5 +1,6 @@
 import { SlidersHorizontal } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -355,6 +356,10 @@ export function LyricsStage({
     </Presence>
   );
 
+  const attachStage = useCallback((element: HTMLElement | null) => {
+    element?.toggleAttribute("inert", !visible);
+  }, [visible]);
+
   if (!document) {
     const emptyLabel = status === "loading"
       ? "正在查找歌词"
@@ -362,7 +367,7 @@ export function LyricsStage({
         ? "歌词无法读取"
         : "没有找到歌词";
     return (
-      <section className={`lyrics-stage ${visible ? "is-visible" : ""}`} aria-hidden={!visible} aria-label="歌词">
+      <section ref={attachStage} className={`lyrics-stage ${visible ? "is-visible" : ""}`} aria-hidden={!visible} aria-label="歌词">
         <div className="lyrics-empty" title={error}>
           <p>{emptyLabel}</p>
           {status !== "loading" && status !== "idle" ? (
@@ -390,6 +395,7 @@ export function LyricsStage({
 
   return (
     <section
+      ref={attachStage}
       className={`lyrics-stage ${visible ? "is-visible" : ""} ${browsing ? "is-browsing" : ""} ${
         isPlain ? "is-plain" : ""
       } ${

@@ -52,15 +52,15 @@ test("now playing artwork is full bleed without a recording-frame inset", () => 
 
 test("chrome hides directly after idle without an intermediate dimmed state", () => {
   const immersiveGlowRule = cssRule(nowPlayingCss, ".chrome-immersive .audio-glow-canvas");
-  const immersivePanelRule = cssRule(nowPlayingCss, ".chrome-immersive .now-side-panel");
-  const immersiveTransportRule = cssRule(nowPlayingCss, ".chrome-immersive .now-back,\n.chrome-immersive .now-transport");
+  const immersiveRule = cssRule(nowPlayingCss, ".chrome-immersive .now-back,\n.chrome-immersive .now-side-panel,\n.chrome-immersive .now-transport");
 
   assert.ok(!nowPlayingCss.includes(".chrome-idle"), "the dimmed intermediate chrome state should be removed");
   assert.ok(!nowPlayingView.includes("chromeMode(\"active\" | \"idle\""), "chrome should go straight from active to hidden");
   assert.ok(immersiveGlowRule.includes("opacity: 1"));
-  assert.ok(immersivePanelRule.includes("opacity: 0"));
-  assert.ok(immersivePanelRule.includes("pointer-events: none"));
-  assert.ok(immersiveTransportRule.includes("opacity: 0"));
+  assert.ok(immersiveRule.includes("opacity: 0"));
+  assert.ok(immersiveRule.includes("pointer-events: none"));
+  assert.ok(immersiveRule.includes("var(--motion-chrome) var(--motion-ease-dissolve)"));
+  assert.ok(!immersiveRule.includes("transform:"), "idle chrome dissolves in place without jumping or sliding");
   assert.ok(nowPlayingView.includes("const IDLE_CHROME_DELAY = 5_000"));
   assert.ok(nowPlayingCss.includes(".chrome-immersive"));
 });
@@ -93,8 +93,6 @@ test("track info keeps Zune-like left anchor hierarchy", () => {
 test("queue and shared bottom controls follow the compact Zune layout", () => {
   const panelRule = cssRule(nowPlayingCss, ".now-side-panel");
   const trackListRule = cssRule(nowPlayingCss, ".now-panel-tracks");
-  const expandedPanelRule = cssRule(nowPlayingCss, ".now-side-panel.queue-expanded");
-  const expandedTrackListRule = cssRule(nowPlayingCss, ".now-side-panel.queue-expanded .now-panel-tracks");
   const transportRule = cssRuleLast(nowPlayingCss, ".now-transport");
   const transportControlsRule = cssRule(nowPlayingCss, ".now-transport-controls");
   const progressRule = cssRule(nowPlayingCss, ".now-transport .zune-progress");
@@ -108,13 +106,14 @@ test("queue and shared bottom controls follow the compact Zune layout", () => {
   const progressInputRule = cssRule(playerCss, ".zune-progress input");
   const glowRule = cssRule(nowPlayingCss, ".audio-glow-canvas");
 
-  assert.ok(px(trackListRule, "max-height") <= 180, "right queue should stay compact by default");
+  assert.ok(trackListRule.includes("min-height: 0"));
   assert.ok(panelRule.includes("bottom: calc(var(--now-transport-height) + var(--now-panel-gap))"));
   assert.ok(panelRule.includes("background: rgba(0, 0, 0, 0.58)"));
-  assert.ok(expandedPanelRule.includes("top: clamp(118px, 25vh, 300px)"));
-  assert.ok(expandedTrackListRule.includes("height: 100%"));
-  assert.ok(expandedTrackListRule.includes("max-height: none"));
-  assert.ok(expandedTrackListRule.includes("overflow-y: auto"));
+  assert.ok(panelRule.includes("max-height: calc(100% - var(--now-panel-top) - var(--now-transport-height) - var(--now-panel-gap))"));
+  assert.ok(!/(?:^|\n)\s*(?:height|top):/.test(panelRule), "short queues take their content height instead of stretching between fixed edges");
+  assert.ok(!nowPlayingCss.includes("queue-expanded"));
+  assert.ok(!animationCss.includes("queue-expanded"));
+  assert.ok(trackListRule.includes("overflow-y: auto"));
   assert.ok(px(controlsRule, "width") <= 30, "secondary controls should remain visually light");
   assert.ok(px(playRule, "width") <= 42, "play control should not dominate the bottom bar");
   assert.ok(transportRule.includes("bottom: 0"));
@@ -146,7 +145,7 @@ test("queue and shared bottom controls follow the compact Zune layout", () => {
   assert.ok(nowPlayingView.includes("useState(true)"), "queue should be expanded on first entry");
   assert.ok(!nowPlayingView.includes("orderedQueue.slice("), "collapsed queue preserves the same items and order");
   assert.ok(nowPlayingView.includes("<Presence show={queueOpen}"), "queue toggles the entire panel with an exit transition");
-  assert.ok(nowPlayingView.includes('aria-hidden={!queueOpen}'));
+  assert.ok(nowPlayingView.includes('aria-hidden={!queueOpen || chromeMode === "immersive"}'));
   assert.ok(!nowPlayingView.includes("queue-disclosure"), "hidden queue must not leave a collapsed preview");
   assert.ok(!nowPlayingView.includes("hasExpandableQueue"), "visibility also works for short queues");
 });

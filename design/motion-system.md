@@ -6,7 +6,7 @@
 
 动效的存在是为了让界面可理解、有生命感、帮助用户建立空间心智模型——不是为了好看。六条工作原则：
 
-1. **短**：绝大多数过渡 ≤260ms，拒绝拖沓。退场永远比入场更快更轻。
+1. **短**：绝大多数过渡 ≤260ms，拒绝拖沓。常规交互退场比入场更快更轻。
 2. **物理感**：惯性、减速，不是生硬的线性运动。可打断的动画从当前值/当前速度接力，不从头重播。
 3. **延续性**：元素在页面之间有来处和去处（成对出入场、封面 FLIP），不是完全断裂。
 4. **分级幅度**：重要内容动得更明显，次要内容更克制——位移用 `--motion-drift-l/m/s` 三档区分（封面/标题大、列表项小）。
@@ -35,7 +35,7 @@ src/motion/*.ts               内核：弹簧/补间/动画器/FLIP/Presence/页
 | --- | --- | --- |
 | `--motion-instant` | 80ms | reduced-motion 下的近似即时反馈 |
 | `--motion-press` | 110ms | 按压回弹、图标切换 |
-| `--motion-micro` | 160ms | 浮层过渡、**所有退场** |
+| `--motion-micro` | 160ms | 浮层过渡、常规交互退场 |
 | `--motion-content` | 220ms | 内容出现、feather 入场 |
 | `--motion-page` | 260ms | 页面入场、舞台溶解 |
 | `--motion-chrome` | 700ms | 正在播放页 chrome 隐没（刻意慢） |
@@ -45,12 +45,15 @@ src/motion/*.ts               内核：弹簧/补间/动画器/FLIP/Presence/页
 | `--motion-ease-entrance` | (0.18,0.88,0.24,1) | 入场专用 |
 | `--motion-ease-exit` | (0.55,0.06,0.68,0.19) | 加速离场，**退场专用** |
 | `--motion-ease-emphasis` | (0.175,0.885,0.32,1.275) | 轻微过冲（tilt 按压） |
+| `--motion-ease-dissolve` | (0.4,0,0.6,1) | 正在播放闲置隐藏的渐缓溶解 |
 | `--motion-drift-s/m/l` | 8/22/48px | 位移幅度三档 |
 | `--motion-stagger-step/max` | 24/144ms | 列表错峰步进与上限 |
 
 TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`MOTION_STAGGER`、`SPRING_PRESETS`（`snappy` 近临界阻尼 / `gentle` 页面级 / `bouncy` 约 20% 过冲）。其中 `snappy` 是现役生产预设（FLIP、quickplay 滚轮）；`MOTION_TWEENS.standard` 用于磁贴重排／尺寸调整的 FLIP 补间；`gentle` / `bouncy` 仍是**备料预设**。
 
 通用短时长原则用于交互反馈，不给分层编排、悬停等待、循环加载或音频 DSP 包络套统一上限。正在播放入场和 Canvas 收敛使用 `tokens.ts` 中的 `NOW_PLAYING_MOTION`，不要在组件中复制时长。
+
+正在播放闲置隐藏是自动退隐的刻意例外：返回、队列、底部控制区共用 chrome 档 700ms 与 dissolve 曲线，在原位同步降低透明度；唤回用 content 档 220ms 与 standard 曲线，CSS transition 从中间值反向接续，不重新挂载或重播入场。歌曲信息不随闲置状态变暗。用户主动隐藏队列仍走 micro 档 Presence；reduced-motion 下两类过渡均收缩至 instant 档。暂停、焦点和操作中的计时保护见 [播放视觉规范](engineering/playback-visuals.md)。
 
 `tokens.ts` 中的 `TILE_MOTION` 统一维护磁贴长按、首次更新、后续更新间隔、背面停留、peek／flip／单格翻面及入场错峰参数。当前首轮更新在可见后 6–14 秒，后续间隔 24–48 秒，背面停留 5 秒，各磁贴独立错峰。小磁贴与关闭动态的磁贴不循环；`useTileActivity` 统一监听可视区、页面可见性与悬停／聚焦，编辑切换 DOM 宿主时重新绑定。reduced-motion 下停止自动翻面和封面替换，重排直接落到终态。
 
@@ -62,7 +65,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 - `math.ts` — `clamp` / `clampInt` / `lerp` / `smoothstep` / `easeOutCubic` / `easeInCubic`。所有 util 的统一来源，不要再本地重复实现（`visualizer` / `beatAnalysis` / `audioGlow` / `tiltPress` / `nowPlayingCanvas` / `lyricsMotion` 均已收编）。
 - `spring.ts` — 半隐式欧拉弹簧：`createSpring(from)`、`advanceSpring(state, preset, target, dtMs)`、`springSettled(state, target)`。retarget 时把上次返回的 state（含 velocity）继续传入即得惯性接力。
-- `tween.ts` — `cubicBezier(x1,y1,x2,y2)` 求值器；`MOTION_TWEENS` 是与四条 easing token 同源的预建函数。
+- `tween.ts` — `cubicBezier(x1,y1,x2,y2)` 求值器；`MOTION_TWEENS` 是与 easing token 同源的预建函数。
 - `animate.ts` — `animateValue({ from, to, spring? | tween?, onUpdate, onComplete })` → `{ cancel, retarget }`。全应用共享一个 rAF 循环，空闲自动停转；测试可注入假时钟（`_setAnimationClockForTesting`）。
 - `flip.ts` — FLIP registry：`registerFlipSource / registerFlipElement(id, ...)`、`takeFlipSource(id)`（取出即删，>1s 过期）、`computeFlipDelta(source, target)`。
 - `coverFlip.ts` — 封面共享元素飞行编排：`playCoverFlip({ source, target, imageSrc, holdUntil?, revealTargetWhen?, onDocked? })`。弹簧等 `clone.decode()` 就绪才起飞（400ms 超时兜底），飞行全程每帧重测目标矩形，落地带速度比例动态模糊。仅在「播放条/quickplay 大封面 ↔ 正在播放曲目卡」链路使用；新共享元素场景参考它另建编排，不要直接散写克隆逻辑。
@@ -127,7 +130,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 
 - 时长/缓动只用 token；新增档位先加进 `tokens.ts` 再用。
 - 常规交互使用 `transform` / `opacity`，避免在交互路径上引入布局属性动画（width/height/top/left）。**已登记的例外**：`.zune-volume` 音量条悬停展开（width，`player.css`）；新增布局属性动画需记录必要性并验证性能。已有亮度/模糊细节与 Canvas 媒体背景按各自规范验证，不把 transform/opacity 偏好解释为禁止其绘制。
-- 退场 ≤ 入场时长，且统一走 `--motion-ease-exit` 加速曲线。
+- 常规交互退场 ≤ 入场时长，且统一走 `--motion-ease-exit` 加速曲线；正在播放的自动闲置退隐使用上文登记的缓慢溶解。
 - 媒体时钟驱动的进度（歌词、播放）用 rAF 直读时钟，不叠加 CSS 补间。
 - 不要引入与内容无关的无限装饰动画；加载反馈与正在播放媒体背景有明确用途，分别遵守加载组件规范与 [播放视觉规范](engineering/playback-visuals.md) 的停转规则。
 - 每帧数据（可视化帧）走 `visualizerBus.ts` 单槽总线，不走 React state/props。

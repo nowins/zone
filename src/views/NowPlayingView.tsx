@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEntranceCompletion } from "../hooks/useEntranceCompletion";
 import { useNowPlayingFullscreen } from "../hooks/useNowPlayingFullscreen";
@@ -107,6 +108,9 @@ export function NowPlayingView({
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [playlistNameDraft, setPlaylistNameDraft] = useState("正在播放");
   const idleTimer = useRef<number | null>(null);
+  const stageRef = useRef<HTMLElement | null>(null);
+  const queuePanelRef = useRef<HTMLElement | null>(null);
+  const pointerHeld = useRef(false);
   const previousTrackIdRef = useRef(track?.id ?? null);
   const displayedQueue = useMemo(() => queue.length ? queue : track ? [track] : [], [queue, track]);
   const lyricsOpen = surfaceMode === "lyrics" && Boolean(track);
@@ -120,9 +124,21 @@ export function NowPlayingView({
   const flipSourceRef = useRef<FlipRect | null>(null);
   const flipConsumedRef = useRef(false);
 
+  function clearChromeFade() {
+    if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
+    idleTimer.current = null;
+  }
+
   function scheduleChromeFade() {
-    if (idleTimer.current) window.clearTimeout(idleTimer.current);
-    idleTimer.current = window.setTimeout(() => setChromeMode("immersive"), IDLE_CHROME_DELAY);
+    clearChromeFade();
+    if (!isPlaying || saveDialogOpen || isEntering || document.hidden || pointerHeld.current) return;
+    idleTimer.current = window.setTimeout(() => {
+      idleTimer.current = null;
+      const focused = document.activeElement;
+      // A keyboard user must never lose the control they are reading or using.
+      if (stageRef.current?.contains(focused) && focused?.matches(":focus-visible")) return;
+      setChromeMode("immersive");
+    }, IDLE_CHROME_DELAY);
   }
 
   function wakeChrome() {
@@ -166,11 +182,34 @@ export function NowPlayingView({
   }
 
   useEffect(() => {
+    function wakeFromKeyboard() {
+      // Restore tabbability before the browser performs this key's default
+      // focus action; a deferred React commit would skip the hidden controls.
+      if (stageRef.current?.classList.contains("chrome-immersive")) flushSync(wakeChrome);
+      else wakeChrome();
+    }
+    function releasePointer() { pointerHeld.current = false; wakeChrome(); }
+    function suspend() { pointerHeld.current = false; clearChromeFade(); }
+    function visibilityChanged() { if (document.hidden) suspend(); else wakeChrome(); }
+    // Listen outside the stage as well: hidden controls are inert, so the first
+    // Tab or transport shortcut may arrive on the document instead of a child.
+    window.addEventListener("keydown", wakeFromKeyboard);
+    window.addEventListener("pointerup", releasePointer);
+    window.addEventListener("pointercancel", releasePointer);
+    window.addEventListener("blur", suspend);
+    window.addEventListener("focus", wakeChrome);
+    document.addEventListener("visibilitychange", visibilityChanged);
     wakeChrome();
     return () => {
-      if (idleTimer.current) window.clearTimeout(idleTimer.current);
+      clearChromeFade();
+      window.removeEventListener("keydown", wakeFromKeyboard);
+      window.removeEventListener("pointerup", releasePointer);
+      window.removeEventListener("pointercancel", releasePointer);
+      window.removeEventListener("blur", suspend);
+      window.removeEventListener("focus", wakeChrome);
+      document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, []);
+  }, [isPlaying, saveDialogOpen, isEntering]);
 
   // Shared-element cover hand-off (push in): the player bar or the quickplay
   // feature cover registered where this track's art was; fly a clone from
@@ -245,8 +284,9 @@ export function NowPlayingView({
   }, [track]);
 
   const attachQueuePanel = useCallback((panel: HTMLElement | null) => {
+    queuePanelRef.current = panel;
     if (!panel) return;
-    panel.toggleAttribute("inert", !queueOpen);
+    panel.toggleAttribute("inert", !queueOpen || chromeMode === "immersive");
     const list = panel.querySelector<HTMLElement>(".now-panel-tracks");
     const current = list?.querySelector<HTMLElement>('[aria-current="true"]');
     if (!list || !current || !queueOpen) return;
@@ -256,6 +296,14 @@ export function NowPlayingView({
     if (row.top < viewport.top) list.scrollTop += row.top - viewport.top;
     else if (row.bottom > viewport.bottom) list.scrollTop += row.bottom - viewport.bottom;
   }, [track?.id, queueOpen]);
+
+  useLayoutEffect(() => {
+    queuePanelRef.current?.toggleAttribute("inert", !queueOpen || chromeMode === "immersive");
+  }, [queueOpen, chromeMode]);
+
+  const attachChrome = useCallback((element: HTMLElement | null) => {
+    element?.toggleAttribute("inert", chromeMode === "immersive");
+  }, [chromeMode]);
 
   useEffect(() => {
     if (!lyricsOpen) return;
@@ -313,6 +361,7 @@ export function NowPlayingView({
 
   return (
     <section
+      ref={stageRef}
       className={`now-playing-stage chrome-${chromeMode} ${isEntering ? "stage-entering" : ""} ${
         wallRevealStarted ? "wall-reveal-started" : ""
       } ${
@@ -321,11 +370,12 @@ export function NowPlayingView({
         flipCoverActive ? "flip-cover-active" : ""
       } ${flipDocked ? "flip-docked" : ""} ${fullscreen.active ? "now-fullscreen" : ""}`}
       onMouseMove={wakeChrome}
-      onMouseDown={wakeChrome}
+      onPointerDownCapture={() => { pointerHeld.current = true; wakeChrome(); }}
       onMouseEnter={wakeChrome}
       onWheelCapture={wakeChrome}
       onKeyDown={wakeChrome}
       onFocusCapture={wakeChrome}
+      onBlurCapture={wakeChrome}
     >
       <NowPlayingMosaicCanvas
         tracks={tracks}
@@ -364,16 +414,16 @@ export function NowPlayingView({
         onResetTimingOffset={lyrics.resetTimingOffset}
         onInteraction={wakeChrome}
       />
-      <button className="now-back" onClick={handleBack} title="返回收藏">
+      <button ref={attachChrome} className="now-back" aria-hidden={chromeMode === "immersive"} onClick={handleBack} title="返回收藏">
         <ArrowLeft size={40} strokeWidth={2.55} />
       </button>
 
       <Presence show={queueOpen} exitDurationMs={MOTION_DURATIONS.micro}>
         <aside
           ref={attachQueuePanel}
-          className="now-side-panel queue-expanded"
+          className="now-side-panel"
           aria-label="正在播放列表"
-          aria-hidden={!queueOpen}
+          aria-hidden={!queueOpen || chromeMode === "immersive"}
         >
           <div className="now-panel-tracks">
             {displayedQueue.length === 0 ? (
@@ -430,7 +480,7 @@ export function NowPlayingView({
         volume={volume}
       />
 
-      <div className="now-transport">
+      <div ref={attachChrome} className="now-transport" aria-hidden={chromeMode === "immersive"}>
         <PlaybackProgress
           label={track?.title ?? "Zone"}
           progress={progress}

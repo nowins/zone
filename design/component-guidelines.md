@@ -37,7 +37,7 @@
 | 类别 | 令牌 | 值 |
 | --- | --- | --- |
 | 时长 | `--motion-instant` / `press` / `micro` / `content` / `page` / `chrome` / `cycle` / `loader` | 80 / 110 / 160 / 220 / 260 / 700 / 800 / 4500 ms |
-| 缓动 | `--motion-ease-standard` / `entrance` / `exit` / `emphasis` | 强 ease-out / 入场 / 加速离场 / 轻微过冲 |
+| 缓动 | `--motion-ease-standard` / `entrance` / `exit` / `emphasis` / `dissolve` | 强 ease-out / 入场 / 加速离场 / 轻微过冲 / 闲置缓慢溶解 |
 | 位移 | `--motion-drift-s` / `m` / `l` | 8 / 22 / 48 px |
 | 错峰 | `--motion-stagger-step` / `max` | 24 / 144 ms |
 | 弹簧 | `SPRING_PRESETS.snappy` / `gentle` / `bouncy` | 按压回弹 / 页面级 / 确认反馈 |

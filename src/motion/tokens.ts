@@ -60,7 +60,7 @@ export const PANORAMA_MOTION = {
 export type MotionDurationName = keyof typeof MOTION_DURATIONS;
 
 /**
- * Cubic-bezier control points [x1, y1, x2, y2] for the four core curves:
+ * Cubic-bezier control points [x1, y1, x2, y2] for the shared curves:
  * strong ease-out `standard` (WP7 feel), `entrance`, accelerating `exit`,
  * and `emphasis` with a slight overshoot.
  */
@@ -69,6 +69,8 @@ export const MOTION_EASINGS = {
   entrance: [0.18, 0.88, 0.24, 1],
   exit: [0.55, 0.06, 0.68, 0.19],
   emphasis: [0.175, 0.885, 0.32, 1.275],
+  /** Slow, unattended chrome dissolution; user-triggered reveals stay snappy. */
+  dissolve: [0.4, 0, 0.6, 1],
 } as const;
 
 export type MotionEasingName = keyof typeof MOTION_EASINGS;
