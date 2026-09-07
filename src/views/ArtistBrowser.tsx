@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { Play } from "lucide-react";
 import { Cover } from "../components/Cover";
+import { CollectionAlbumTile } from "../components/CollectionAlbumTile";
+import { CollectionTrackList } from "../components/CollectionTrackList";
 import { albumKey, bestAlbumArtist, compareTracksForAlbum } from "../utils/music";
-import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type { ArtistGroup, ContextPayload, Track } from "../types";
 
 export function ArtistBrowser({
@@ -13,6 +14,8 @@ export function ArtistBrowser({
   onPlay,
   onPlayTracks,
   onContextMenu,
+  favoriteTrackIds,
+  onToggleFavorite,
 }: {
   artists: ArtistGroup[];
   initialArtist: string | null;
@@ -20,6 +23,8 @@ export function ArtistBrowser({
   onPlay: (track: Track, sourceTracks?: Track[]) => void;
   onPlayTracks: (tracks: Track[]) => void;
   onContextMenu: (event: MouseEvent, payload: ContextPayload) => void;
+  favoriteTrackIds: ReadonlySet<string>;
+  onToggleFavorite: (track: Track) => void;
 }) {
   const [selectedArtist, setSelectedArtist] = useState<string | null>(initialArtist ?? artists[0]?.artist ?? null);
   const [selectedAlbumKey, setSelectedAlbumKey] = useState<string | null>(null);
@@ -111,6 +116,8 @@ export function ArtistBrowser({
             <button
               key={item.artist}
               className={item.artist === artist?.artist ? "selected" : ""}
+              title={item.artist}
+              aria-pressed={item.artist === artist?.artist}
               onClick={() => setSelectedArtist(item.artist)}
               onContextMenu={(event) =>
                 onContextMenu(event, {
@@ -127,75 +134,53 @@ export function ArtistBrowser({
         </div>
       </section>
 
-      <section className="artist-albums">
-        <p>{artistAlbums.length} 张专辑</p>
-        <div
-          className="artist-album-grid"
-          data-count={artistAlbums.length}
-        >
-          {artistAlbums.map((album, index) => (
+      <div className="artist-content">
+        <h2 className="artist-content-title" title={artist?.artist}>{artist?.artist ?? "艺术家"}</h2>
+        <div className="artist-records" data-sparse={artistAlbums.length === 1 || undefined}>
+          <section className="artist-albums">
+            <p>{artistAlbums.length} 张专辑</p>
             <div
-              key={album.key}
-              className={`artist-album-tile ${album.key === selectedAlbum?.key ? "selected" : ""}`}
-              onClick={() => setSelectedAlbumKey(album.key)}
-              onPointerDown={tiltPressDown}
-              onPointerUp={tiltPressClear}
-              onPointerLeave={tiltPressClear}
-              onPointerCancel={tiltPressClear}
-              onContextMenu={(event) =>
-                onContextMenu(event, {
-                  kind: "album",
-                  title: album.album,
-                  subtitle: album.artist,
-                  tracks: album.tracks,
-                  targetId: album.key,
-                })
-              }
+              className="artist-album-grid"
+              data-count={artistAlbums.length}
             >
-              <div className="album-cover-wrap">
-                <Cover artPath={album.coverPath} label={album.album} size="large" index={index} />
-                <button
-                className="album-play"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onPlayTracks(album.tracks);
-                  }}
-                  title={`播放 ${album.album}`}
-                >
-                  <Play size={20} />
-                </button>
-              </div>
-              <strong>{album.album}</strong>
-              <span>{album.artist}</span>
+              {artistAlbums.map((album, index) => (
+                <CollectionAlbumTile
+                  key={album.key}
+                  className="artist-album-tile"
+                  name={album.album} artist={album.artist} coverPath={album.coverPath} index={index}
+                  selected={album.key === selectedAlbum?.key}
+                  onSelect={() => setSelectedAlbumKey(album.key)}
+                  onPlay={() => onPlayTracks(album.tracks)}
+                  onContextMenu={(event) =>
+                    onContextMenu(event, {
+                      kind: "album",
+                      title: album.album,
+                      subtitle: album.artist,
+                      tracks: album.tracks,
+                      targetId: album.key,
+                    })
+                  }
+                />
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
+          </section>
 
-      <section className="artist-songs">
-        <p>{visibleSongs.length} 首歌曲</p>
-        <div className="artist-song-list">
-          {visibleSongs.map((track, index) => (
-            <button
-              key={track.id}
-              className={track.id === activeTrackId ? "playing" : ""}
-              onDoubleClick={() => onPlay(track, visibleSongs)}
-              onContextMenu={(event) =>
-                onContextMenu(event, {
-                  kind: "track",
-                  title: track.title,
-                  subtitle: `${track.artist} / ${track.album}`,
-                  tracks: [track],
-                  playbackTracks: visibleSongs,
-                })
-              }
-            >
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              <strong>{track.title}</strong>
-            </button>
-          ))}
+          <section className="artist-songs">
+            <div className="album-detail-head">
+              <div><strong title={selectedAlbum?.album}>{selectedAlbum?.album ?? "歌曲"}</strong><span>{visibleSongs.length} 首歌曲</span></div>
+              <button type="button" disabled={visibleSongs.length === 0} onClick={() => onPlayTracks(visibleSongs)} title="播放全部">
+                <Play size={18} fill="currentColor" />
+              </button>
+            </div>
+            <CollectionTrackList key={selectedAlbum?.key ?? artist?.artist} tracks={visibleSongs} activeTrackId={activeTrackId}
+              compact onPlay={onPlay} favoriteTrackIds={favoriteTrackIds} onToggleFavorite={onToggleFavorite}
+              onContextMenu={(event, track) => onContextMenu(event, {
+                kind: "track", title: track.title, subtitle: `${track.artist} / ${track.album}`,
+                tracks: [track], playbackTracks: visibleSongs,
+              })} />
+          </section>
         </div>
-      </section>
+      </div>
     </div>
   );
 }

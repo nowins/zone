@@ -9,14 +9,15 @@ test("artist browser keeps useful density at the default window size", () => {
   const browserRule = cssRule(collectionCss, ".artist-browser");
   const pickerRule = cssRule(collectionCss, ".artist-picker button");
   const albumGridRule = cssRule(collectionCss, ".artist-album-grid");
-  const songRule = cssRule(collectionCss, ".artist-song-list button");
+  const songRule = cssRule(collectionCss, ".collection-track-row");
 
-  assert.ok(browserRule.includes("clamp(220px, 20vw, 300px)"));
+  assert.ok(browserRule.includes("clamp(176px, 17vw, 208px) minmax(0, 1fr)"));
   assert.ok(browserRule.includes("gap: 24px"));
   assert.ok(pickerRule.includes("min-height: 32px"));
-  assert.ok(pickerRule.includes("padding: 0"));
+  assert.ok(pickerRule.includes("padding: 4px 8px"));
   assert.ok(albumGridRule.includes("minmax(112px, 1fr)"));
-  assert.ok(songRule.includes("min-height: 36px"));
+  assert.ok(songRule.includes("min-height: 44px"));
+  assert.ok(cssRule(collectionCss, ".artist-records[data-sparse]").includes("190px minmax(0, 1fr)"));
 });
 
 test("artist album grid scales cover density by album count", () => {

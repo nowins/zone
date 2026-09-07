@@ -8,10 +8,8 @@
 .album-tile,
 .artist-picker button,
 .artist-album-tile,
-.artist-song-list button,
 .playlist-list > button,
-.playlist-rows button,
-.song-list .song-row,
+.collection-track-row,
 .folder-list > div,
 .settings-section-heading,
 .settings-sidebar > section,
@@ -47,52 +45,38 @@
 .album-tile:nth-child(1),
 .artist-album-tile:nth-child(1),
 .artist-picker button:nth-child(1),
-.artist-song-list button:nth-child(1),
 .playlist-list > button:nth-of-type(1),
-.playlist-rows button:nth-child(1),
-.song-list .song-row:nth-child(1) { --stagger: 0ms; }
+.collection-track-row:nth-child(1) { --stagger: 0ms; }
 .album-tile:nth-child(2),
 .artist-album-tile:nth-child(2),
 .artist-picker button:nth-child(2),
-.artist-song-list button:nth-child(2),
 .playlist-list > button:nth-of-type(2),
-.playlist-rows button:nth-child(2),
-.song-list .song-row:nth-child(2) { --stagger: 24ms; }
+.collection-track-row:nth-child(2) { --stagger: 24ms; }
 .album-tile:nth-child(3),
 .artist-album-tile:nth-child(3),
 .artist-picker button:nth-child(3),
-.artist-song-list button:nth-child(3),
 .playlist-list > button:nth-of-type(3),
-.playlist-rows button:nth-child(3),
-.song-list .song-row:nth-child(3) { --stagger: 48ms; }
+.collection-track-row:nth-child(3) { --stagger: 48ms; }
 .album-tile:nth-child(4),
 .artist-album-tile:nth-child(4),
 .artist-picker button:nth-child(4),
-.artist-song-list button:nth-child(4),
 .playlist-list > button:nth-of-type(4),
-.playlist-rows button:nth-child(4),
-.song-list .song-row:nth-child(4) { --stagger: 72ms; }
+.collection-track-row:nth-child(4) { --stagger: 72ms; }
 .album-tile:nth-child(5),
 .artist-album-tile:nth-child(5),
 .artist-picker button:nth-child(5),
-.artist-song-list button:nth-child(5),
 .playlist-list > button:nth-of-type(5),
-.playlist-rows button:nth-child(5),
-.song-list .song-row:nth-child(5) { --stagger: 96ms; }
+.collection-track-row:nth-child(5) { --stagger: 96ms; }
 .album-tile:nth-child(6),
 .artist-album-tile:nth-child(6),
 .artist-picker button:nth-child(6),
-.artist-song-list button:nth-child(6),
 .playlist-list > button:nth-of-type(6),
-.playlist-rows button:nth-child(6),
-.song-list .song-row:nth-child(6) { --stagger: 120ms; }
+.collection-track-row:nth-child(6) { --stagger: 120ms; }
 .album-tile:nth-child(n + 7),
 .artist-album-tile:nth-child(n + 7),
 .artist-picker button:nth-child(n + 7),
-.artist-song-list button:nth-child(n + 7),
 .playlist-list > button:nth-of-type(n + 7),
-.playlist-rows button:nth-child(n + 7),
-.song-list .song-row:nth-child(n + 7) { --stagger: 144ms; }
+.collection-track-row:nth-child(n + 7) { --stagger: 144ms; }
 
 /* Podcast screens feather the same way: coarse per-section cascade plus
    per-item 24ms steps capped at 144ms. Rows keep stable keys across progress
@@ -452,13 +436,12 @@ button.tilt-pressed {
 @media (prefers-reduced-motion: reduce) {
   .quick-group,
   .quick-album,
+  .collection-album-select,
   .album-tile,
   .artist-picker button,
   .artist-album-tile,
-  .artist-song-list button,
   .playlist-list > button,
-  .playlist-rows button,
-  .song-list .song-row,
+  .collection-track-row,
   .folder-list > div,
   .settings-section-heading,
   .settings-sidebar > section,
@@ -536,6 +519,7 @@ button.tilt-pressed {
   .quick-album .cover,
   .quick-panorama-scrollbar,
   .player-cover,
+  .collection-album-select,
   .zune-controls button,
   .podcast-now-back,
   .podcast-now-primary-controls > button,

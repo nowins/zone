@@ -121,9 +121,7 @@
     display: none;
   }
 
-  .settings-layout,
-  .artist-browser,
-  .playlist-browser {
+  .settings-layout {
     grid-template-columns: 1fr;
   }
 
@@ -242,7 +240,7 @@
   }
 
   .album-browser {
-    grid-template-columns: minmax(480px, 1.35fr) minmax(330px, 1fr);
+    grid-template-columns: minmax(0, 1fr) 300px;
   }
 
   .album-rail {
@@ -324,7 +322,7 @@
   }
 
   .album-browser {
-    grid-template-columns: minmax(450px, 1.25fr) minmax(326px, 1fr);
+    grid-template-columns: minmax(0, 1fr) 280px;
   }
 
   .album-rail {
@@ -335,4 +333,15 @@
   .album-detail {
     padding-left: 26px;
   }
+}
+
+@media (max-width: 1040px) {
+  .playlist-browser, .artist-browser { grid-template-columns: 168px minmax(0, 1fr); gap: 20px; }
+  .playlist-content, .artist-content { padding-left: 20px; }
+  .artist-records { grid-template-columns: minmax(160px, 0.8fr) minmax(240px, 1fr); gap: 16px; }
+  .artist-records[data-sparse] { grid-template-columns: 168px minmax(0, 1fr); }
+  .artist-album-grid[data-count="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .artist-songs { padding-left: 12px; }
+  .playlist-content .collection-track-list { --track-columns: 24px minmax(110px, 1.3fr) minmax(70px, 0.8fr) minmax(80px, 1fr) 36px; }
+  .collection-track-main, .collection-track-head { gap: 8px; }
 }

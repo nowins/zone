@@ -16,7 +16,7 @@ test("album play actions share a circular Zune treatment", () => {
 });
 
 test("circular play actions keep immediate press feedback", () => {
-  assert.ok(collectionCss.includes(".album-cover-wrap:hover .album-play:active"));
+  assert.ok(collectionCss.includes(".collection-album-tile .album-play:active"));
   assert.ok(collectionCss.includes(".album-detail-head > button:active"));
   assert.ok(quickplayCss.includes(".quick-cover-button:active .quick-play-cue"));
 });

@@ -59,7 +59,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 `PANORAMA_MOTION` 维护首页视差、拖动惯性和滚动条停留：背景大字和底色当前分别跟随横向滚动的 22% / 8%，最大行程 480 / 240px；底色平面按 token 扩展，平移时不露出边缘。`useQuickplayPanorama` 直接写 DOM transform 与滚动条位置，不用逐帧 React state；返回页面时在同一 layout effect 内恢复位置，不闪现滚动条。普通滚轮与拖动释放共用可打断的 `snappy` 弹簧；触控板横向输入、滑块拖动和键盘定位不叠加惯性。短滚动条在最后一次位移后停留 700ms，再按 micro 档淡出；拖住滑块时不隐藏，键盘焦点由 `:focus-visible` 保持可见。页面隐藏或卸载时取消动画与显隐计时器，reduced-motion 下停止视差、即时定位并收缩淡出；没有持续空闲动画。
 
-其他已登记的当前编排：`.album-play` 900ms 悬停延迟、歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、`TILE_MOTION` 中的 Lumia/Metro 校准组（`FlipTile` peek 600ms 与其 MetroSlideIn 曲线 `(0.22,0,0.05,1)`、flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
+其他已登记的当前编排：歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、`TILE_MOTION` 中的 Lumia/Metro 校准组（`FlipTile` peek 600ms 与其 MetroSlideIn 曲线 `(0.22,0,0.05,1)`、flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。收藏页 `.album-play` 在封面项悬停或键盘聚焦时用 press 档淡入，无额外等待。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
 
 ## 内核 API（`src/motion/`）
 

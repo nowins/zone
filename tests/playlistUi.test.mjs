@@ -26,8 +26,9 @@ test("playlist page presents one total and localized labels", () => {
   assert.ok(browserSource.includes("当前队列"));
   assert.ok(browserSource.includes("首歌曲"));
   assert.ok(browserSource.includes("description: isCustomManual ? `${result.tracks.length} 首歌曲` : playlistDescription"));
-  assert.ok(browserSource.includes("detailDescription: isCustomManual ? null : playlistDescription"));
-  assert.ok(browserSource.includes("{selected.detailDescription && <span>{selected.detailDescription}</span>}"));
+  assert.ok(browserSource.includes('className="playlist-heading"'));
+  assert.equal(browserSource.split("{selected.tracks.length} 首歌曲").length - 1, 1);
+  assert.ok(browserSource.includes("selected.id !== DEFAULT_PLAYLIST_ID && selected.source?.description"));
   assert.ok(!collectionCss.includes(".playlist-list p"));
   // Header count includes the ephemeral "正在播放" row prepended in PlaylistBrowser.
   assert.ok(appSource.includes("formatCollectionPlaylistCount(playlists.length)"));
