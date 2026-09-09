@@ -1,26 +1,22 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import {
   buildCollectionBackdropLayout,
-  buildCollectionBackdropScene,
   collectionParallaxOffset,
   type CollectionBackdropScene,
 } from "../utils/collectionBackdrop";
-import type { Track } from "../types";
 
 const ARTWORK_PRELOAD_TIMEOUT_MS = 1_200;
 const IMAGE_CACHE_LIMIT = 32;
 const imageCache = new Map<string, HTMLImageElement>();
 
 export function CollectionArtworkBackdrop({
-  tracks,
-  activeTrack,
+  scene,
   surfaceKey,
   parallaxEnabled = true,
 }: {
-  tracks: Track[];
-  activeTrack: Track | null;
+  scene: CollectionBackdropScene;
   surfaceKey: string;
   parallaxEnabled?: boolean;
 }) {
@@ -31,12 +27,6 @@ export function CollectionArtworkBackdrop({
   const parallaxOffsetRef = useRef(0);
   const redrawFrameRef = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();
-  const scene = useMemo(() => buildCollectionBackdropScene({
-    tracks,
-    activeTrack,
-    artistImagePath: activeTrack?.artist_image_path,
-    artistImagePaths: activeTrack?.artist_images?.map((image) => image.path),
-  }), [activeTrack, tracks]);
   const sceneSignature = scene
     ? `${scene.sceneKey}\u0000${scene.assetKey}`
     : "";

@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   buildCollectionBackdropLayout,
   buildCollectionBackdropScene,
+  buildCollectionBrowseBackdropScene,
   collectionParallaxOffset,
 } from "../.tmp/visualizer-tests/utils/collectionBackdrop.js";
+import { buildCollectionIndex, artistReference, albumReference } from "../.tmp/visualizer-tests/utils/collectionEntities.js";
 
 function track(id, artist, album, coverPath, overrides = {}) {
   return {
@@ -176,7 +178,26 @@ test("collection parallax stays slower than content and respects reduced motion"
   assert.equal(collectionParallaxOffset(10_000, true), 0);
 });
 
-test("optional decorative canvas stays isolated from the connected collection", () => {
+test("browsing artwork is bounded, deduplicated and independent of track order", () => {
+  const tracks = Array.from({ length: 20 }, (_, i) => track(String(i), `艺术家${i}`, `专辑${i}`, `cover-${i % 12}`));
+  const scene = buildCollectionBrowseBackdropScene(buildCollectionIndex(tracks), null);
+  const reordered = buildCollectionBrowseBackdropScene(buildCollectionIndex([...tracks].reverse()), null);
+  assert.equal(scene.assets.length, 6);
+  assert.equal(new Set(scene.assets.map(asset => asset.path)).size, 6);
+  assert.equal(scene.assetKey, reordered.assetKey);
+  assert.equal(buildCollectionBrowseBackdropScene(buildCollectionIndex([]), null), null);
+});
+
+test("detail artwork belongs to the viewed artist or album and excludes unrelated media", () => {
+  const index = buildCollectionIndex([track("a", "甲", "甲一", "cover-a", { artist_image_path: "portrait-a" }),
+    track("b", "甲", "甲二", "cover-b"), track("c", "乙", "乙一", "cover-c")]);
+  const scene = buildCollectionBrowseBackdropScene(index, artistReference(index.artistsByName.get("甲")));
+  assert.deepEqual(scene.assets.map(asset => asset.path), ["portrait-a", "cover-a", "cover-b"]);
+  assert.deepEqual(buildCollectionBrowseBackdropScene(index, albumReference(index.albumByTrackId.get("b"))).assets.map(asset => asset.path), ["cover-b"]);
+  assert.equal(buildCollectionBrowseBackdropScene(index, { kind: "track", id: "missing" }), null);
+});
+
+test("decorative canvas follows collection browsing and stays outside the content transition", () => {
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const componentSource = readFileSync(
     new URL("../src/components/CollectionArtworkBackdrop.tsx", import.meta.url),
@@ -185,8 +206,11 @@ test("optional decorative canvas stays isolated from the connected collection", 
   const collectionCss = readFileSync(new URL("../src/styles/collection.css", import.meta.url), "utf8");
   const motionCss = readFileSync(new URL("../src/styles/motion.css", import.meta.url), "utf8");
 
-  assert.ok(!appSource.includes("<CollectionArtworkBackdrop"), "connected collection browsing does not compete with a playback collage");
+  assert.ok(!appSource.includes("<CollectionArtworkBackdrop"), "the transport does not own the collection backdrop");
   assert.ok(appSource.includes("<CollectionView"));
+  const viewSource = readFileSync(new URL("../src/views/CollectionView.tsx", import.meta.url), "utf8");
+  assert.match(viewSource, /buildCollectionBrowseBackdropScene\(index, searching \? null : location.entity\)/);
+  assert.ok(viewSource.indexOf("<CollectionArtworkBackdrop") < viewSource.indexOf('className="collection-content"'));
   assert.match(componentSource, /<canvas[\s\S]+className="collection-artwork-canvas"/);
   assert.match(componentSource, /aria-hidden="true"/);
   assert.match(componentSource, /addEventListener\("scroll"[\s\S]+capture: true/);

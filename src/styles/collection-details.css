@@ -1,5 +1,7 @@
 /* Connected collection browsing; geometry follows the compact Zune prototype. */
 .collection-connected { background: var(--app-bg); gap: 0; }
+.collection-connected:is([data-collection-surface="songs"], [data-collection-surface="playlists"], [data-collection-surface="search"]) .collection-artwork-backdrop { opacity: 0.38; }
+.collection-connected[data-collection-surface="detail"] .collection-artwork-backdrop { opacity: 0.32; }
 .collection-toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 50px; gap: 24px; padding: 0 4px 8px; flex: none; }
 .collection-categories { display: flex; align-items: center; gap: 26px; min-width: 0; }
 .collection-categories > button { position: relative; padding: 6px 0 9px; color: var(--muted); font-size: 22px; font-weight: 300; white-space: nowrap; }

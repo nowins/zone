@@ -694,7 +694,7 @@
   overflow: hidden;
   pointer-events: none;
   contain: paint;
-  opacity: 0.28;
+  opacity: 0.65;
   transition: opacity var(--motion-content) var(--motion-ease-standard);
 }
 

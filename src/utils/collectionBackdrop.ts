@@ -1,6 +1,7 @@
 import type { Track } from "../types";
 import { albumKey } from "./music.js";
 import { clamp } from "../motion/math.js";
+import { collectionEntityKey, resolveCollectionEntity, type CollectionEntityRef, type CollectionIndex } from "./collectionEntities.js";
 
 export type CollectionBackdropAssetRole =
   | "artist"
@@ -43,6 +44,29 @@ type BackdropBandSlot = Omit<CollectionBackdropPlacement, "assetIndex" | "x" | "
 };
 
 const DEFAULT_MAX_ASSETS = 6;
+
+/** Browsing artwork follows the library or viewed object, never the transport. */
+export function buildCollectionBrowseBackdropScene(index: CollectionIndex, entity: CollectionEntityRef | null): CollectionBackdropScene | null {
+  const value = entity ? resolveCollectionEntity(index, entity) : null;
+  if (entity && !value) return null;
+  const tracks = value?.kind === "artist" ? value.artist.tracks : value?.kind === "album" ? value.album.tracks
+    : value?.kind === "track" ? index.albumByTrackId.get(value.track.id)?.tracks ?? [value.track] : index.tracks;
+  const sceneKey = entity ? collectionEntityKey(entity) : "collection:library";
+  const assets: CollectionBackdropAsset[] = [];
+  if (value?.kind === "artist" && value.artist.imagePath) {
+    assets.push({ key: sceneKey, path: value.artist.imagePath, role: "artist", label: value.artist.artist });
+  }
+  const covers = [...new Map(tracks.filter(track => track.cover_path?.trim()).map(track => [track.cover_path!.trim(), track])).entries()]
+    .filter(([path]) => !assets.some(asset => asset.path === path))
+    .sort(([a], [b]) => a.localeCompare(b));
+  const count = Math.min(DEFAULT_MAX_ASSETS - assets.length, covers.length);
+  for (let i = 0; i < count; i++) {
+    const [path, track] = covers[Math.floor(i * covers.length / count)];
+    assets.push({ key: path, path, role: "related-album", label: track.album });
+  }
+  return assets.length ? { sceneKey, assetKey: assets.map(asset => asset.path).join("\u0000"),
+    seed: stableStringSeed(sceneKey), label: "收藏", assets } : null;
+}
 const PARALLAX_RATE = 0.15;
 const MIN_BAND_HEIGHT = 340;
 const MAX_BAND_HEIGHT = 580;
