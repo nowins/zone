@@ -102,6 +102,16 @@ export function collectionEntityKey(ref: CollectionEntityRef): string {
   return ref.kind === "album" ? `album:${ref.anchorTrackId}`
     : ref.kind === "artist" ? `artist:${ref.role}:${ref.anchorTrackId}` : `${ref.kind}:${ref.id}`;
 }
+/** Compare resolved identities: links can use different tracks as anchors. */
+export function sameCollectionEntity(index: CollectionIndex, left: CollectionEntityRef | null, right: CollectionEntityRef | null): boolean {
+  if (!left || !right || left.kind !== right.kind) return false;
+  const a = resolveCollectionEntity(index, left), b = resolveCollectionEntity(index, right);
+  if (!a || !b) return false;
+  if (a.kind === "artist" && b.kind === "artist") return a.artist.artist === b.artist.artist;
+  if (a.kind === "album" && b.kind === "album") return a.album.key === b.album.key;
+  if (a.kind === "track" && b.kind === "track") return a.track.id === b.track.id;
+  return left.kind === "playlist" && right.kind === "playlist" && left.id === right.id;
+}
 export function knownDuration(tracks: Track[]): number | null {
   return tracks.length && tracks.every(track => Number.isFinite(track.duration_seconds) && (track.duration_seconds ?? 0) > 0)
     ? tracks.reduce((sum, track) => sum + track.duration_seconds!, 0) : null;

@@ -1,9 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCollectionIndex, artistReference, albumReference, resolveCollectionEntity, knownDuration, referenceForPayload } from "../.tmp/visualizer-tests/utils/collectionEntities.js";
+import { buildCollectionIndex, artistReference, albumReference, resolveCollectionEntity, knownDuration, referenceForPayload, sameCollectionEntity } from "../.tmp/visualizer-tests/utils/collectionEntities.js";
 import { initialCollectionHistory, pushCollectionLocation, travelCollectionHistory, emptyCollectionSurface } from "../.tmp/visualizer-tests/utils/collectionNavigation.js";
 import { normalizePlaylists, reorderPlaylistTrack } from "../.tmp/visualizer-tests/utils/music.js";
 const track = (id, fields = {}) => ({ id, path: id, file_name: `${id}.mp3`, extension: "mp3", title: id, album: "作品", artist: "AC/DC", ...fields });
+
+test("context navigation suppresses the same resolved object across different anchors", () => {
+  const index = buildCollectionIndex([track("a"), track("b"), track("c", { artist: "另一位" })]);
+  const artist = artistReference(index.artistsByName.get("AC/DC"));
+  assert.equal(sameCollectionEntity(index, artist, { ...artist, anchorTrackId: "b" }), true);
+  assert.equal(sameCollectionEntity(index, artist, artistReference(index.artistsByName.get("另一位"))), false);
+  const album = albumReference(index.albumByTrackId.get("a"));
+  assert.equal(sameCollectionEntity(index, album, { ...album, anchorTrackId: "b" }), true);
+  assert.equal(sameCollectionEntity(index, album, artist), false);
+  assert.equal(sameCollectionEntity(index, artist, null), false);
+  assert.equal(sameCollectionEntity(index, artist, { ...artist, anchorTrackId: "missing" }), false);
+  assert.equal(sameCollectionEntity(index, { kind: "playlist", id: "p" }, { kind: "playlist", id: "p" }), true);
+});
 
 test("collection index preserves exact credits and separates album owners from performers", () => {
   const tracks = [track("a", { artist: "A/B", album_artist: "群星", disc_number: 2, track_number: 1, artist_image_path: "portrait-a" }),

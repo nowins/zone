@@ -40,7 +40,7 @@ import { customizeHomePin, homePinStateForPayload, moveHomePin, normalizeHomePin
 import { useSystemMedia } from "./hooks/useSystemMedia";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { CollectionView } from "./views/CollectionView";
-import { referenceForPayload, albumReference, artistReference } from "./utils/collectionEntities";
+import { referenceForPayload, albumReference, artistReference, sameCollectionEntity, type CollectionEntityRef } from "./utils/collectionEntities";
 import { useNavigation, type NowPlayingTargets } from "./hooks/useNavigation";
 import { useMusicLibrary } from "./hooks/useMusicLibrary";
 import { useMetadataEnrichment } from "./hooks/useMetadataEnrichment";
@@ -879,6 +879,12 @@ export default function App() {
     )
   ) : null;
   const contextTrack = contextMenu?.payload.kind === "track" ? collectionIndex.trackById.get(contextMenu.payload.tracks[0]?.id) : undefined;
+  const currentCollectionEntity: CollectionEntityRef | null = page === "collection" && !(collection.location.query.trim() && collection.location.searchMode === "results")
+    ? collection.location.entity ?? (view === "playlists" ? { kind: "playlist", id: selectedPlaylistId } : null) : null;
+  const contextEntity = contextMenu ? referenceForPayload(collectionIndex, contextMenu.payload) : null;
+  const contextArtist = contextTrack && collectionIndex.artistsByName.get(contextTrack.artist);
+  const contextAlbum = contextTrack && collectionIndex.albumByTrackId.get(contextTrack.id);
+  const canVisit = (target: CollectionEntityRef | null) => target && !sameCollectionEntity(collectionIndex, target, currentCollectionEntity);
   const contextPlaylist = contextMenu?.payload.playlistId ? playlists.find(playlist => playlist.id === contextMenu.payload.playlistId) : undefined;
   const editableTrackIds = contextTrack && contextPlaylist && !isSmartPlaylist(contextPlaylist) && contextPlaylist.id !== DEFAULT_PLAYLIST_ID ? contextPlaylist.trackIds : null;
   const editableTrackIndex = contextTrack && editableTrackIds ? editableTrackIds.indexOf(contextTrack.id) : -1;
@@ -899,9 +905,9 @@ export default function App() {
       onExcludeFromSmartPlaylist={(playlistId) => excludeFromSmartPlaylist(playlistId, contextMenu.payload.tracks)}
       homePinState={homePinStateForPayload(homePins, contextMenu.payload)}
       onToggleHomePin={() => toggleHomePin(contextMenu.payload)}
-      onOpenInCollection={() => openPayloadInCollection(contextMenu.payload)}
-      onOpenArtist={contextTrack ? () => openTrackRelation(contextTrack, "artist") : undefined}
-      onOpenAlbum={contextTrack ? () => openTrackRelation(contextTrack, "album") : undefined}
+      onOpenInCollection={canVisit(contextEntity) ? () => openPayloadInCollection(contextMenu.payload) : undefined}
+      onOpenArtist={contextTrack && contextArtist && canVisit(artistReference(contextArtist)) ? () => openTrackRelation(contextTrack, "artist") : undefined}
+      onOpenAlbum={contextTrack && contextAlbum && canVisit(albumReference(contextAlbum)) ? () => openTrackRelation(contextTrack, "album") : undefined}
       onRemoveFromPlaylist={editableTrackIds && contextTrack && contextPlaylist ? () => removeFromPlaylist(contextPlaylist.id, [contextTrack]) : undefined}
       onMoveInPlaylist={editableTrackIds && editableTrackIndex >= 0 && contextTrack && contextPlaylist ? {
         up: editableTrackIndex > 0 ? () => reorderPlaylist(contextPlaylist.id, contextTrack.id, editableTrackIds[editableTrackIndex - 1]) : undefined,
