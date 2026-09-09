@@ -59,7 +59,7 @@ test("settings live in the titlebar; collection owns search", () => {
 
   assert.ok(!appHeader.includes("app-utilities"));
   assert.ok(!titlebar.includes("titlebar-search"));
-  assert.ok(appSource.includes("<CollectionSearchField"));
+  assert.ok(readFileSync("src/views/CollectionView.tsx", "utf8").includes("<CollectionSearchField"));
   assert.ok(!appHeader.includes('onNavigate("settings")'));
   assert.ok(titlebar.includes('className={isSettings ? "titlebar-settings active" : "titlebar-settings"}'));
   assert.ok(appSource.includes('onOpenSettings={() => navigatePage("settings")}'));

@@ -15,6 +15,7 @@ for (const key of ["window", "document", "HTMLElement", "Element", "Node", "Keyb
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 HTMLElement.prototype.scrollIntoView = function () {};
 const h = React.createElement;
+const { buildCollectionIndex } = await import("../.tmp/visualizer-tests/utils/collectionEntities.js");
 const tracks = [
   { id: "a", title: "白日梦蓝", artist: "刺猬", album: "白日梦蓝", duration_seconds: 200 },
   { id: "b", title: "我要如何不想他", artist: "蔡琴", album: "不悔", duration_seconds: null },
@@ -79,15 +80,15 @@ test("all collection views keep their own playback source and right-click contex
   const played = [], contexts = [];
   const albumTracks = [tracks[0], tracks[2]];
   const props = {
-    tracks, libraryTracks: tracks, albums: [{ key: "album", album: "白日梦蓝", artist: "刺猬", tracks: albumTracks }],
+    index: buildCollectionIndex(tracks), tracks, libraryTracks: tracks, albums: [{ key: "album", album: "白日梦蓝", artist: "刺猬", tracks: albumTracks }],
     artists: [{ artist: "刺猬", tracks: albumTracks }], queueIds: ["b", "a"], activeTrackId: "b",
     selectedAlbumKey: "album", selectedArtistName: "刺猬", selectedPlaylistId: "now",
     playlists: [], trackActivity: {}, favoriteTrackIds: new Set(),
-    onSelectAlbum() {}, onSelectPlaylist() {}, onCreatePlaylist() {}, onEditSmartPlaylist() {}, onRefreshSmartPlaylist() {}, onToggleFavorite() {},
+    onOpen() {}, onSelectAlbum() {}, onSelectPlaylist() {}, onCreatePlaylist() {}, onEditSmartPlaylist() {}, onRefreshSmartPlaylist() {}, onToggleFavorite() {},
     onPlay: (...args) => played.push(args), onPlayTracks() {}, onContextMenu: (_, payload) => contexts.push(payload),
   };
   const root = await mount(t, null);
-  for (const [view, expected] of [["songs", tracks], ["albums", albumTracks], ["artists", albumTracks], ["playlists", [tracks[1], tracks[0]]]]) {
+  for (const [view, expected] of [["songs", tracks], ["playlists", [tracks[1], tracks[0]]]]) {
     await act(async () => root.render(h(React.StrictMode, null, h(LibraryView, { ...props, key: view, view }))));
     const before = played.length;
     await click(mainRows()[0]);
@@ -101,7 +102,7 @@ test("all collection views keep their own playback source and right-click contex
 });
 
 test("an empty queue retains its heading, with a disabled play action and no fabricated duration", async t => {
-  await mount(t, h(LibraryView, { view: "playlists", tracks: [], libraryTracks: [], playlists: [], queueIds: [],
+  await mount(t, h(LibraryView, { view: "playlists", index: buildCollectionIndex([]), playlists: [], queueIds: [],
     selectedPlaylistId: "now", activeTrackId: null, favoriteTrackIds: new Set(), trackActivity: {},
     onPlay() {}, onPlayTracks() {}, onContextMenu() {}, onToggleFavorite() {}, onCreatePlaylist() {} }));
   assert.equal(document.querySelector(".playlist-heading h2").textContent, "正在播放");
@@ -117,7 +118,7 @@ test("smart playlist header actions retain the selected rules and resolved playb
     smart: { match: "all", rules: [{ id: "artist", field: "artist", operator: "equals", value: "刺猬" }],
       order: "title", limitKind: "tracks", limitValue: 20, maxPerArtist: 20, maxPerAlbum: 20,
       preferFavorites: false, avoidSkipped: false, rotateDaily: false, rotationSeed: 0 } };
-  await mount(t, h(LibraryView, { view: "playlists", tracks, libraryTracks: tracks, playlists: [playlist], queueIds: [],
+  await mount(t, h(LibraryView, { view: "playlists", index: buildCollectionIndex(tracks), playlists: [playlist], queueIds: [],
     selectedPlaylistId: "smart", activeTrackId: null, favoriteTrackIds: new Set(), trackActivity: {},
     onPlay() {}, onPlayTracks: items => played.push(items), onContextMenu() {}, onToggleFavorite() {}, onCreatePlaylist() {},
     onEditSmartPlaylist: id => edited.push(id), onRefreshSmartPlaylist: id => refreshed.push(id) }));

@@ -12,8 +12,8 @@ test("collection browsers avoid repeating low-value counts on every tile or arti
 });
 
 test("section totals remain where they explain the current selection", () => {
-  assert.ok(artistSource.includes("{artistAlbums.length} 张专辑"));
-  assert.ok(artistSource.includes("{visibleSongs.length} 首歌曲"));
+  assert.ok(artistSource.includes("{artist.albums.length} 张专辑"));
+  assert.ok(artistSource.includes("{artist.tracks.length} 首歌曲"));
   assert.equal(occurrences(playlistSource, "{selected.tracks.length} 首歌曲"), 1);
 });
 

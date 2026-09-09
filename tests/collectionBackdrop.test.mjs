@@ -176,7 +176,7 @@ test("collection parallax stays slower than content and respects reduced motion"
   assert.equal(collectionParallaxOffset(10_000, true), 0);
 });
 
-test("collection backdrop is a decorative canvas below collection content", () => {
+test("optional decorative canvas stays isolated from the connected collection", () => {
   const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const componentSource = readFileSync(
     new URL("../src/components/CollectionArtworkBackdrop.tsx", import.meta.url),
@@ -185,11 +185,8 @@ test("collection backdrop is a decorative canvas below collection content", () =
   const collectionCss = readFileSync(new URL("../src/styles/collection.css", import.meta.url), "utf8");
   const motionCss = readFileSync(new URL("../src/styles/motion.css", import.meta.url), "utf8");
 
-  assert.match(appSource, /<CollectionArtworkBackdrop[\s\S]+activePodcastEpisode \? null : activeTrack/);
-  assert.ok(
-    appSource.indexOf("<CollectionArtworkBackdrop") < appSource.indexOf('className="collection-ghost"'),
-    "artwork should be mounted behind the collection ghost and content",
-  );
+  assert.ok(!appSource.includes("<CollectionArtworkBackdrop"), "connected collection browsing does not compete with a playback collage");
+  assert.ok(appSource.includes("<CollectionView"));
   assert.match(componentSource, /<canvas[\s\S]+className="collection-artwork-canvas"/);
   assert.match(componentSource, /aria-hidden="true"/);
   assert.match(componentSource, /addEventListener\("scroll"[\s\S]+capture: true/);

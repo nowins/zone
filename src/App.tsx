@@ -6,18 +6,14 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Titlebar } from "./components/Titlebar";
 import { AppHeader } from "./components/AppHeader";
-import { CollectionSearchField } from "./components/CollectionSearchField";
-import { EmptyState } from "./components/EmptyState";
 import { PlayerBar } from "./components/PlayerBar";
 import { PodcastPlayerBar } from "./components/PodcastPlayerBar";
 import { ContextMenu } from "./components/ContextMenu";
 import { InfoPanel } from "./components/InfoPanel";
+import { isSmartPlaylist } from "./utils/smartPlaylist";
 import { AddToPlaylistDialog } from "./components/AddToPlaylistDialog";
 import { PlaylistDialog, type PlaylistDialogState } from "./components/PlaylistDialog";
 import { SmartPlaylistDialog } from "./components/SmartPlaylistDialog";
-import { CollectionArtworkBackdrop } from "./components/CollectionArtworkBackdrop";
-import { LibraryView } from "./views/LibraryView";
-import { SearchResultsView } from "./views/SearchResultsView";
 import { QuickplayView } from "./views/QuickplayView";
 import { NowPlayingView } from "./views/NowPlayingView";
 import { PodcastNowPlayingView } from "./views/PodcastNowPlayingView";
@@ -38,12 +34,13 @@ import {
   musicListTrackFeatures,
   musicGetRadioSession,
 } from "./app/musicLibraryApi";
-import { formatCollectionPlaylistCount, normalizePlaylists } from "./utils/music";
+import { normalizePlaylists } from "./utils/music";
 import { seedFromTracks } from "./utils/smartDj";
 import { customizeHomePin, homePinStateForPayload, moveHomePin, normalizeHomePins, setHomePinSize, shiftHomePin } from "./utils/homePins";
-import { resolveSearchSurface } from "./utils/collectionSearch";
 import { useSystemMedia } from "./hooks/useSystemMedia";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
+import { CollectionView } from "./views/CollectionView";
+import { referenceForPayload, albumReference, artistReference } from "./utils/collectionEntities";
 import { useNavigation, type NowPlayingTargets } from "./hooks/useNavigation";
 import { useMusicLibrary } from "./hooks/useMusicLibrary";
 import { useMetadataEnrichment } from "./hooks/useMetadataEnrichment";
@@ -64,7 +61,6 @@ import type {
   PodcastRefreshReport,
   SmartPlaylist,
   Track,
-  ViewMode,
 } from "./types";
 import type { PodcastFeedRequest } from "./views/podcast/types";
 
@@ -88,7 +84,6 @@ export default function App() {
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [queue, setQueue] = useState<string[]>([]);
   const [playHistory, setPlayHistory] = useState<string[]>([]);
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState(DEFAULT_PLAYLIST_ID);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [infoTarget, setInfoTarget] = useState<ContextPayload | null>(null);
   const [addToPlaylistTarget, setAddToPlaylistTarget] = useState<ContextPayload | null>(null);
@@ -110,12 +105,13 @@ export default function App() {
   }
 
   const {
-    query,
-    searchMode,
-    setSearchMode,
+    collection,
+    selectedPlaylistId,
+    setSelectedPlaylistId,
+    openCollectionEntity,
+    travelCollection,
     searchInputRef,
     view,
-    setView,
     page,
     navExit,
     navDir,
@@ -123,18 +119,11 @@ export default function App() {
     navTargetRef,
     navExitTimerRef,
     previousPageRef,
-    selectedAlbumKey,
-    setSelectedAlbumKey,
-    selectedArtistName,
-    setSelectedArtistName,
     requestNavigation,
     clearCollectionSearch,
     setCollectionSearchQuery,
     navigatePage,
     navigateCollection,
-    openSearchArtist,
-    openSearchAlbum,
-    openSearchPlaylist,
     openNowPlaying,
   } = useNavigation({
     contextMenu,
@@ -143,7 +132,6 @@ export default function App() {
     playlistDialog,
     smartPlaylistDialog,
     nowPlayingTargetsRef,
-    setSelectedPlaylistId,
   });
   const {
     folders,
@@ -161,16 +149,12 @@ export default function App() {
     trackActivity,
     setTrackActivity,
     activityMigrationRef,
+    collectionIndex,
     albums,
     artists,
     addFolder,
     rescan,
-  } = useMusicLibrary({
-    view,
-    selectedAlbumKey,
-    setSelectedAlbumKey,
-    setQueue,
-  });
+  } = useMusicLibrary({ setQueue });
   const metadata = useMetadataEnrichment({
     tracks,
     setTracks,
@@ -315,12 +299,13 @@ export default function App() {
     setHomePins,
     favoriteTrackIds,
     addToPlaylist,
+    removeFromPlaylist,
+    reorderPlaylist,
     createPlaylistWithTracks,
   toggleFavorite,
   toggleFavoriteTrack,
   toggleHomePin,
   togglePodcastPin,
-  openPayloadInCollection,
     openCreatePlaylistDialog,
     openCreateSmartPlaylist,
     openSmartPlaylistEditor,
@@ -335,9 +320,6 @@ export default function App() {
     tracks,
     restored,
     navigateCollection,
-    setSelectedAlbumKey,
-    setSelectedArtistName,
-    setView,
     playbackQueueIds,
     activePodcastEpisode,
     activeTrack,
@@ -652,6 +634,9 @@ export default function App() {
   function showContextMenu(event: React.MouseEvent, payload: ContextPayload) {
     event.preventDefault();
     event.stopPropagation();
+    const target = event.target instanceof Element ? event.target.closest<HTMLElement>('button,a[href],[tabindex]') : null;
+    const fallback = event.currentTarget instanceof HTMLElement ? event.currentTarget.querySelector<HTMLElement>('button,a[href]') : null;
+    (target || fallback)?.focus({ preventScroll: true });
     setContextMenu({ x: event.clientX, y: event.clientY, payload });
   }
 
@@ -686,6 +671,28 @@ export default function App() {
     startSmartDj(seed);
     // Acoustic features are produced by the background Rust worker for the
     // whole library; SmartDJ picks them up via the hydrate effect below.
+  }
+
+  function openPayloadInCollection(payload: ContextPayload) {
+    const entity = referenceForPayload(collectionIndex, payload);
+    if (entity) openCollectionEntity(entity);
+    else showActionNotice("此内容已不在曲库中");
+  }
+
+  function openTrackRelation(track: Track, kind: "artist" | "album") {
+    if (kind === "artist") {
+      const artist = collectionIndex.artistsByName.get(track.artist);
+      if (artist) openCollectionEntity(artistReference(artist));
+    } else {
+      const album = collectionIndex.albumByTrackId.get(track.id);
+      if (album) openCollectionEntity(albumReference(album));
+    }
+  }
+
+  function openMetadata(payload: ContextPayload) {
+    // The metadata editor targets performer tags, not album-artist credits.
+    const artist = payload.kind === "artist" ? collectionIndex.artistsByName.get(payload.targetId || payload.title) : undefined;
+    setInfoTarget(artist ? { ...payload, tracks: artist.performedTracks } : payload);
   }
 
   function closeContextMenu() {
@@ -871,8 +878,13 @@ export default function App() {
       />
     )
   ) : null;
+  const contextTrack = contextMenu?.payload.kind === "track" ? collectionIndex.trackById.get(contextMenu.payload.tracks[0]?.id) : undefined;
+  const contextPlaylist = contextMenu?.payload.playlistId ? playlists.find(playlist => playlist.id === contextMenu.payload.playlistId) : undefined;
+  const editableTrackIds = contextTrack && contextPlaylist && !isSmartPlaylist(contextPlaylist) && contextPlaylist.id !== DEFAULT_PLAYLIST_ID ? contextPlaylist.trackIds : null;
+  const editableTrackIndex = contextTrack && editableTrackIds ? editableTrackIds.indexOf(contextTrack.id) : -1;
   const contextMenuElement = contextMenu ? (
     <ContextMenu
+      key={`${contextMenu.x}:${contextMenu.y}:${contextMenu.payload.kind}:${contextMenu.payload.title}`}
       menu={contextMenu}
       onClose={closeContextMenu}
       onPlay={() => playContextPayload(contextMenu.payload)}
@@ -888,7 +900,14 @@ export default function App() {
       homePinState={homePinStateForPayload(homePins, contextMenu.payload)}
       onToggleHomePin={() => toggleHomePin(contextMenu.payload)}
       onOpenInCollection={() => openPayloadInCollection(contextMenu.payload)}
-      onInfo={() => setInfoTarget(contextMenu.payload)}
+      onOpenArtist={contextTrack ? () => openTrackRelation(contextTrack, "artist") : undefined}
+      onOpenAlbum={contextTrack ? () => openTrackRelation(contextTrack, "album") : undefined}
+      onRemoveFromPlaylist={editableTrackIds && contextTrack && contextPlaylist ? () => removeFromPlaylist(contextPlaylist.id, [contextTrack]) : undefined}
+      onMoveInPlaylist={editableTrackIds && editableTrackIndex >= 0 && contextTrack && contextPlaylist ? {
+        up: editableTrackIndex > 0 ? () => reorderPlaylist(contextPlaylist.id, contextTrack.id, editableTrackIds[editableTrackIndex - 1]) : undefined,
+        down: editableTrackIndex < editableTrackIds.length - 1 ? () => reorderPlaylist(contextPlaylist.id, contextTrack.id, editableTrackIds[editableTrackIndex + 1]) : undefined,
+      } : undefined}
+      onInfo={() => openMetadata(contextMenu.payload)}
     />
   ) : null;
   const infoPanelElement = infoTarget ? (
@@ -950,7 +969,6 @@ export default function App() {
   ) : actionNotice ? (
     <div className="action-toast" role="status">{actionNotice}</div>
   ) : null;
-  const showSearchResults = resolveSearchSurface(query, searchMode) === "results";
   const lastAppHeaderElement = useLastNonNull(appHeaderElement);
   const lastPlayerBarElement = useLastNonNull(playerBarElement);
   const lastContextMenuElement = useLastNonNull(contextMenuElement);
@@ -1040,113 +1058,17 @@ export default function App() {
           />
         ) : null}
 
-        {page === "collection" && (
-          <section
-            className={`content-band collection-band${showSearchResults ? " collection-searching" : ""}`}
-          >
-            <CollectionArtworkBackdrop
-              tracks={tracks}
-              activeTrack={activePodcastEpisode ? null : activeTrack}
-              surfaceKey={showSearchResults ? "search" : view}
-              parallaxEnabled={!showSearchResults}
-            />
-            <p className="collection-ghost" aria-hidden="true">
-              collection
-            </p>
-            <div className="collection-header">
-              <div className="collection-chrome">
-                <span className="collection-chrome-label">音乐</span>
-                <CollectionSearchField
-                  ref={searchInputRef}
-                  query={query}
-                  onQuery={setCollectionSearchQuery}
-                  onClear={clearCollectionSearch}
-                  showReturnToResults={query.trim().length > 0 && searchMode === "browse"}
-                  onReturnToResults={() => setSearchMode("results")}
-                />
-              </div>
-              <div className="collection-header-main">
-                <div className="collection-title">
-                  <p>
-                    {tracks.length === 0
-                      ? "选择一个文件夹开始"
-                      : showSearchResults
-                        ? "搜索收藏"
-                        : view === "albums"
-                          ? `${albums.length} 张专辑`
-                          : view === "artists"
-                            ? `${artists.length} 位艺术家`
-                            : view === "playlists"
-                              ? formatCollectionPlaylistCount(playlists.length)
-                              : `${tracks.length} 首歌曲`}
-                    {scanNote ? ` · ${scanNote}` : ""}
-                  </p>
-                </div>
-                {!showSearchResults ? (
-                  <nav className="collection-navigation" aria-label="收藏视图">
-                    <div className="segmented">
-                      {(["artists", "albums", "songs", "playlists"] as ViewMode[]).map((item) => (
-                        <button
-                          key={item}
-                          className={view === item ? "selected" : ""}
-                          onClick={() => setView(item)}
-                        >
-                          {{ artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" }[item]}
-                        </button>
-                      ))}
-                    </div>
-                  </nav>
-                ) : null}
-              </div>
-            </div>
-
-            {showSearchResults ? (
-              <SearchResultsView
-                query={query}
-                tracks={tracks}
-                albums={albums}
-                artists={artists}
-                playlists={playlists}
-                activity={trackActivity}
-                favoriteTrackIds={favoriteTrackIds}
-                activeTrackId={activeTrackId}
-                onPlay={playTrack}
-                onOpenArtist={openSearchArtist}
-                onOpenAlbum={openSearchAlbum}
-                onOpenPlaylist={openSearchPlaylist}
-                onContextMenu={showContextMenu}
-              />
-            ) : tracks.length === 0 ? (
-              <EmptyState onAddFolder={addFolder} isScanning={isScanning} />
-            ) : (
-              <LibraryView
-                key={view}
-                view={view}
-                tracks={tracks}
-                libraryTracks={tracks}
-                albums={albums}
-                artists={artists}
-                queueIds={playbackQueueIds}
-                activeTrackId={activeTrackId}
-                selectedAlbumKey={selectedAlbumKey}
-                onSelectAlbum={setSelectedAlbumKey}
-                selectedArtistName={selectedArtistName}
-                onPlay={playTrack}
-                onPlayTracks={playTracks}
-                onContextMenu={showContextMenu}
-                playlists={playlists}
-                selectedPlaylistId={selectedPlaylistId}
-                onSelectPlaylist={setSelectedPlaylistId}
-                onCreatePlaylist={openCreatePlaylistDialog}
-                onEditSmartPlaylist={openSmartPlaylistEditor}
-                onRefreshSmartPlaylist={refreshSmartPlaylist}
-                trackActivity={trackActivity}
-                favoriteTrackIds={favoriteTrackIds}
-                onToggleFavorite={toggleFavoriteTrack}
-              />
-            )}
-          </section>
-        )}
+        {page === "collection" && <CollectionView view={view} index={collectionIndex} navigation={collection}
+          onTravel={travelCollection} onOpen={openCollectionEntity} searchInputRef={searchInputRef}
+          onQuery={setCollectionSearchQuery} onClearSearch={clearCollectionSearch}
+          queueIds={playbackQueueIds} activeTrackId={activeTrackId} onPlay={playTrack} onPlayTracks={playTracks}
+          onContextMenu={showContextMenu} playlists={playlists} selectedPlaylistId={selectedPlaylistId}
+          onSelectPlaylist={setSelectedPlaylistId} onCreatePlaylist={openCreatePlaylistDialog}
+          onEditSmartPlaylist={openSmartPlaylistEditor} onRefreshSmartPlaylist={refreshSmartPlaylist}
+          trackActivity={trackActivity} favoriteTrackIds={favoriteTrackIds} onToggleFavorite={toggleFavoriteTrack}
+          onAddFolder={addFolder} isScanning={isScanning} scanNote={scanNote}
+          onReorderPlaylist={reorderPlaylist}
+          onAddToQueue={appendToQueue} onInfo={openMetadata} onAddToPlaylist={setAddToPlaylistTarget} />}
 
         {page === "podcasts" && (
           <PodcastView
@@ -1243,6 +1165,8 @@ export default function App() {
               onRepeat={() => setRepeat((value) => (value === "off" ? "all" : value === "all" ? "one" : "off"))}
               onVolume={setVolume}
               onSaveQueueAsPlaylist={saveQueueAsPlaylist}
+              onOpenArtist={activeTrack ? () => openTrackRelation(activeTrack, "artist") : undefined}
+              onOpenAlbum={activeTrack ? () => openTrackRelation(activeTrack, "album") : undefined}
             />
           )
         )}

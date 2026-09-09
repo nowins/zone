@@ -415,6 +415,10 @@ button.tilt-pressed {
 }
 
 /* Reduced-motion exit: opacity only, instant tier, no travel. */
+@keyframes collection-detail-enter {
+  from { opacity: 0.4; transform: translateX(var(--motion-drift-s)); }
+  to { opacity: 1; transform: none; }
+}
 @keyframes motion-exit-reduced {
   from { opacity: 1; }
   to { opacity: 0; }
@@ -434,6 +438,7 @@ button.tilt-pressed {
    an instant-tier opacity-only fade instead of a dead pause: the JS
    lifecycles wait the same 80ms (see resolveExitDurationMs). */
 @media (prefers-reduced-motion: reduce) {
+  .collection-connected .collection-content:not(.is-returning) { animation: none; }
   .quick-group,
   .quick-album,
   .collection-album-select,

@@ -264,7 +264,7 @@ export function QuickplayPinBoard({ items, onOpenCollection, onMovePin, onShiftP
         <div ref={gridRef} className={`quick-pins-grid ${editing ? "editing" : ""}`}
           onPointerMove={pointerDrag.move} onPointerUp={pointerDrag.release}
           onPointerCancel={pointerDrag.cancel} onLostPointerCapture={pointerDrag.cancel}>
-          {ordered.map((item, index) => <article key={item.pin.id} data-pin-id={item.pin.id}
+          {ordered.map((item, index) => <article key={item.pin.id} data-pin-id={item.pin.id} data-collection-focus={`quick-pin:${item.pin.id}`}
             className={`quick-pin ${item.size} ${editing && selectedId === item.pin.id ? "selected" : ""} ${draggedId === item.pin.id ? "dragging" : ""} ${item.pin.tone && item.pin.tone !== "cover" ? "toned" : ""}`}
             style={{ "--tile-stagger-delay": `${Math.min(index * TILE_MOTION.stagger, TILE_MOTION.staggerMax)}ms`,
               "--pin-tone": HOME_PIN_TONES[item.pin.tone ?? "cover"].color } as CSSProperties}

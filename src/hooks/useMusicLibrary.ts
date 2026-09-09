@@ -2,28 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { musicScanLibrary } from "../app/musicLibraryApi";
 import { useLibraryWatcher } from "./useLibraryWatcher";
-import { albumKey, bestAlbumArtist, compareTracksForAlbum } from "../utils/music";
+import { buildCollectionIndex } from "../utils/collectionEntities";
 import { reconcileQueueWithLibrary } from "../utils/playback";
 import { createTrackActivity } from "../utils/smartPlaylist";
 import type {
-  ArtistGroup,
   MusicFolder,
   Track,
   TrackActivityMap,
-  ViewMode,
 } from "../types";
 
 type UseMusicLibraryParams = {
-  view: ViewMode;
-  selectedAlbumKey: string | null;
-  setSelectedAlbumKey: React.Dispatch<React.SetStateAction<string | null>>;
   setQueue: React.Dispatch<React.SetStateAction<string[]>>;
 };
 
 export function useMusicLibrary({
-  view,
-  selectedAlbumKey,
-  setSelectedAlbumKey,
   setQueue,
 }: UseMusicLibraryParams) {
   const activityMigrationRef = useRef(false);
@@ -66,45 +58,8 @@ export function useMusicLibrary({
     activityMigrationRef.current = false;
   }, [needsMetadataRefresh, restored, tracks]);
 
-  const albums = useMemo(() => {
-    const map = new Map<string, Track[]>();
-    for (const track of tracks) {
-      const key = albumKey(track.album, track.album_artist ?? track.artist);
-      map.set(key, [...(map.get(key) ?? []), track]);
-    }
-    return Array.from(map.entries())
-      .map(([key, albumTracks]) => {
-        const sortedTracks = [...albumTracks].sort(compareTracksForAlbum);
-        return {
-          key,
-          artist: bestAlbumArtist(sortedTracks),
-          album: sortedTracks[0]?.album ?? "未知专辑",
-          tracks: sortedTracks,
-          coverPath: sortedTracks.find((track) => track.cover_path)?.cover_path,
-        };
-      })
-      .sort((a, b) => a.album.localeCompare(b.album));
-  }, [tracks]);
-
-  useEffect(() => {
-    if (view !== "albums") return;
-    if (albums.length === 0) {
-      setSelectedAlbumKey(null);
-      return;
-    }
-
-    if (!selectedAlbumKey || !albums.some((album) => album.key === selectedAlbumKey)) {
-      setSelectedAlbumKey(albums[0].key);
-    }
-  }, [albums, selectedAlbumKey, view]);
-
-  const artists = useMemo<ArtistGroup[]>(() => {
-    const map = new Map<string, Track[]>();
-    for (const track of tracks) map.set(track.artist, [...(map.get(track.artist) ?? []), track]);
-    return Array.from(map.entries())
-      .map(([artist, artistTracks]) => ({ artist, tracks: artistTracks }))
-      .sort((a, b) => a.artist.localeCompare(b.artist));
-  }, [tracks]);
+  const collectionIndex = useMemo(() => buildCollectionIndex(tracks), [tracks]);
+  const { albums, artists } = collectionIndex;
 
   async function addFolder() {
     const folder = await invoke<MusicFolder | null>("select_music_folder");
@@ -175,6 +130,7 @@ export function useMusicLibrary({
     trackActivity,
     setTrackActivity,
     activityMigrationRef,
+    collectionIndex,
     albums,
     artists,
     addFolder,

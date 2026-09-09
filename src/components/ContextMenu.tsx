@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { Ban, FolderOpen, Heart, Info, ListMusic, ListPlus, Pencil, Pin, PinOff, Play, Radio, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Ban, Disc3, FolderOpen, Heart, Info, ListMusic, ListPlus, Pencil, Pin, PinOff, Play, Radio, SlidersHorizontal, Trash2, UserRound } from "lucide-react";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import type { ContextMenuState } from "../types";
 
@@ -19,6 +19,10 @@ export function ContextMenu({
   homePinState,
   onToggleHomePin,
   onOpenInCollection,
+  onOpenArtist,
+  onOpenAlbum,
+  onRemoveFromPlaylist,
+  onMoveInPlaylist,
   onInfo,
 }: {
   menu: ContextMenuState;
@@ -36,9 +40,14 @@ export function ContextMenu({
   homePinState: "pinned" | "unpinned" | null;
   onToggleHomePin: () => void;
   onOpenInCollection?: () => void;
+  onOpenArtist?: () => void;
+  onOpenAlbum?: () => void;
+  onRemoveFromPlaylist?: () => void;
+  onMoveInPlaylist?: { up?: () => void; down?: () => void };
   onInfo: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const returnFocus = useRef(document.activeElement as HTMLElement | null);
   const [position, setPosition] = useState({ left: menu.x, top: menu.y, ready: false });
   const sourcePlaylistId = menu.payload.playlistId;
   const isPlaylist = menu.payload.kind === "playlist";
@@ -69,7 +78,12 @@ export function ContextMenu({
     return () => window.removeEventListener("resize", placeMenu);
   }, [menu.x, menu.y, menu.payload]);
 
+  useLayoutEffect(() => {
+    if (position.ready) menuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+  }, [position.ready]);
+
   function run(action: () => void) {
+    returnFocus.current?.focus({ preventScroll: true });
     action();
     onClose();
   }
@@ -82,6 +96,18 @@ export function ContextMenu({
       aria-label={`${menu.payload.title} 的操作`}
       style={{ left: position.left, top: position.top, visibility: position.ready ? "visible" : "hidden" }}
       onClick={(event) => event.stopPropagation()}
+      onKeyDown={event => {
+        const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') || [])];
+        const index = items.indexOf(document.activeElement as HTMLButtonElement);
+        if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+          event.preventDefault();
+          const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+            : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+          items[next]?.focus();
+        } else if (event.key === "Escape" || event.key === "Tab") {
+          event.preventDefault(); event.stopPropagation(); returnFocus.current?.focus({ preventScroll: true }); onClose();
+        }
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -119,7 +145,7 @@ export function ContextMenu({
         {!isPlaylist && (
           <button role="menuitem" onClick={() => run(onAddToFavorites)}>
             <Heart size={17} />
-            <span>添加到收藏</span>
+            <span>添加到喜欢的歌曲</span>
           </button>
         )}
       </div>
@@ -132,6 +158,13 @@ export function ContextMenu({
         </div>
       )}
       <div className="context-actions context-actions-secondary">
+        {onRemoveFromPlaylist && <button role="menuitem" onClick={() => run(onRemoveFromPlaylist)}>
+          <ListMusic size={16} /><span>从播放列表中移除</span>
+        </button>}
+        {onMoveInPlaylist && <>
+          <button role="menuitem" disabled={!onMoveInPlaylist.up} onClick={() => onMoveInPlaylist.up && run(onMoveInPlaylist.up)}><ArrowUp size={16} /><span>在列表中上移</span></button>
+          <button role="menuitem" disabled={!onMoveInPlaylist.down} onClick={() => onMoveInPlaylist.down && run(onMoveInPlaylist.down)}><ArrowDown size={16} /><span>在列表中下移</span></button>
+        </>}
         {!isPlaylist && isSmartSource && sourcePlaylistId && (
           <button role="menuitem" onClick={() => run(() => onExcludeFromSmartPlaylist(sourcePlaylistId))}>
             <Ban size={16} />
@@ -150,16 +183,18 @@ export function ContextMenu({
             </button>
           </>
         )}
-        <button role="menuitem" onClick={() => run(onInfo)}>
+        {!isPlaylist && <button role="menuitem" onClick={() => run(onInfo)}>
           <Info size={16} />
-          <span>查看信息</span>
-        </button>
-        {onOpenInCollection && menu.payload.kind !== "track" && (
+          <span>{menu.payload.kind === "track" ? "文件与资料" : "编辑资料"}</span>
+        </button>}
+        {onOpenInCollection && (
           <button role="menuitem" onClick={() => run(onOpenInCollection)}>
             <FolderOpen size={16} />
-            <span>在收藏中打开</span>
+            <span>查看{{ track: "歌曲", album: "专辑", artist: "艺术家", playlist: "播放列表" }[menu.payload.kind]}</span>
           </button>
         )}
+        {onOpenArtist && <button role="menuitem" onClick={() => run(onOpenArtist)}><UserRound size={16} /><span>前往艺术家</span></button>}
+        {onOpenAlbum && <button role="menuitem" onClick={() => run(onOpenAlbum)}><Disc3 size={16} /><span>前往专辑</span></button>}
       </div>
     </div>
   );

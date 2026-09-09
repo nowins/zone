@@ -1,56 +1,24 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-
-const artistSource = readFileSync("src/views/ArtistBrowser.tsx", "utf8");
-const collectionCss = readFileSync("src/styles/collection.css", "utf8");
-
-test("artist browser keeps useful density at the default window size", () => {
-  const browserRule = cssRule(collectionCss, ".artist-browser");
-  const pickerRule = cssRule(collectionCss, ".artist-picker button");
-  const albumGridRule = cssRule(collectionCss, ".artist-album-grid");
-  const songRule = cssRule(collectionCss, ".collection-track-row");
-
-  assert.ok(browserRule.includes("clamp(176px, 17vw, 208px) minmax(0, 1fr)"));
-  assert.ok(browserRule.includes("gap: 24px"));
-  assert.ok(pickerRule.includes("min-height: 32px"));
-  assert.ok(pickerRule.includes("padding: 4px 8px"));
-  assert.ok(albumGridRule.includes("minmax(112px, 1fr)"));
-  assert.ok(songRule.includes("min-height: 44px"));
-  assert.ok(cssRule(collectionCss, ".artist-records[data-sparse]").includes("190px minmax(0, 1fr)"));
+const css = readFileSync("src/styles/collection-details.css", "utf8");
+const source = readFileSync("src/views/ArtistBrowser.tsx", "utf8");
+test("artist media index keeps two compact columns without permanent card chrome", () => {
+  assert.ok(css.includes("grid-template-columns: repeat(2, minmax(0, 1fr))"));
+  assert.ok(css.includes("min-height: 88px"));
+  assert.ok(css.includes("width: 72px; height: 72px"));
+  assert.ok(css.includes("width: 64px; height: 64px"));
+  const entry = css.split(".collection-artist-entry {")[1].split("}")[0];
+  assert.ok(!entry.includes("background:") && !entry.includes("border:"));
 });
-
-test("artist album grid scales cover density by album count", () => {
-  assert.ok(artistSource.includes("data-count={artistAlbums.length}"));
-  const singleRule = cssRule(collectionCss, '.artist-album-grid[data-count="1"]');
-  const pairRule = cssRule(collectionCss, '.artist-album-grid[data-count="2"]');
-  assert.ok(singleRule.includes("minmax(0, 168px)"));
-  assert.ok(pairRule.includes("repeat(2, minmax(0, 140px))"));
+test("artist artwork shares its browse target and identifies a work-cover fallback", () => {
+  assert.ok(source.includes("onOpen(artistReference(artist))"));
+  assert.ok(source.includes("<Cover artPath={artist.imagePath || cover?.coverPath}"));
+  assert.ok(source.includes("!artist.imagePath && cover?.coverPath && <small>作品封面"));
+  assert.ok(source.includes("data-collection-focus={`artist-index:"));
 });
-
-test("artist rows stay quiet and align with the collection total", () => {
-  assert.ok(!artistSource.includes("artistSummaries"));
-  assert.ok(!artistSource.includes("albumCount"));
-  assert.ok(!artistSource.includes("张 ·"));
-  assert.ok(!collectionCss.includes(".artist-picker button > small"));
+test("sparse indexes and biography previews retain bounded artwork and text", () => {
+  assert.ok(css.includes("minmax(140px, 164px)"));
+  assert.ok(css.includes("-webkit-line-clamp: 3"));
+  assert.ok(css.includes("font-weight: 300"));
 });
-
-test("artist enrichment appears as a compact identity block without reducing every row", () => {
-  assert.ok(artistSource.includes("track.artist_image_path"));
-  assert.ok(artistSource.includes("track.artist_biography"));
-  assert.ok(artistSource.includes("hasArtistIdentity ?"));
-
-  const identityRule = cssRule(collectionCss, ".artist-identity");
-  const biographyRule = cssRule(collectionCss, ".artist-identity-copy p");
-  const pickerRule = cssRule(collectionCss, ".artist-picker");
-  assert.ok(identityRule.includes("74px minmax(0, 1fr)"));
-  assert.ok(biographyRule.includes("-webkit-line-clamp: 4"));
-  assert.ok(pickerRule.includes("flex: 1"));
-});
-
-function cssRule(source, selector) {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = source.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([\\s\\S]*?)\\}`));
-  assert.ok(match, `missing CSS rule ${selector}`);
-  return match[1];
-}

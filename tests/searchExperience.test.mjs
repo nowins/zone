@@ -5,6 +5,8 @@ import test from "node:test";
 const appSource = [
   "src/app/podcastPlaybackSettings.ts",
   "src/hooks/useNavigation.ts",
+  "src/hooks/useCollectionNavigation.ts",
+  "src/views/CollectionView.tsx",
   "src/hooks/useMusicLibrary.ts",
   "src/hooks/usePodcastPlayback.ts",
   "src/hooks/usePlaybackControls.ts",
@@ -21,7 +23,7 @@ const baseCss = readFileSync("src/styles/base.css", "utf8");
 
 test("collection search opens a dedicated grouped result state", () => {
   assert.ok(appSource.includes("<SearchResultsView"));
-  assert.ok(appSource.includes("showSearchResults"));
+  assert.ok(appSource.includes("searching ? <SearchResultsView"));
   assert.ok(appSource.includes('resolveSearchSurface(query, searchMode) === "results"'));
   assert.ok(!appSource.includes("filteredTracks"));
   assert.ok(searchSource.includes('label="艺术家"'));
@@ -33,54 +35,26 @@ test("collection search opens a dedicated grouped result state", () => {
   assert.ok(collectionCss.includes("grid-template-columns: 176px minmax(0, 1fr)"));
 });
 
-test("Zune collection chrome puts music+search above title+view tabs", () => {
-  assert.ok(appSource.includes("<CollectionSearchField"));
-  assert.ok(appSource.includes("collection-chrome"));
-  assert.ok(appSource.includes("collection-chrome-label"));
-  assert.ok(appSource.includes("collection-chrome-label"));
-  assert.ok(appSource.includes("音乐"));
-  assert.ok(appSource.includes("collection-header-main"));
-  assert.ok(appSource.includes('aria-label="收藏视图"'));
-  assert.ok(appSource.includes("collection-band"));
-  assert.ok(collectionCss.includes(".collection-band"));
-  assert.ok(collectionCss.includes("radial-gradient"));
-  assert.ok(collectionCss.includes(".collection-chrome"));
-  assert.ok(collectionCss.includes(".collection-header-main"));
-  // Settings keeps plain content-band without the collection wash class.
-  const settingsSource = readFileSync("src/views/SettingsView.tsx", "utf8");
-  assert.ok(settingsSource.includes('className="content-band settings-page"'));
-  assert.ok(!settingsSource.includes("collection-band"));
-  assert.ok(searchFieldSource.includes('placeholder="搜索音乐、艺术家、专辑…"'));
+test("compact collection chrome shares one category/search row without repeated music headings", () => {
+  const source = readFileSync("src/views/CollectionView.tsx", "utf8");
+  assert.ok(source.includes("collection-toolbar"));
+  assert.ok(source.includes("collection-categories"));
+  assert.ok(source.includes("<CollectionSearchField"));
+  assert.ok(!source.includes("collection-chrome-label"));
+  assert.ok(source.includes('aria-label="收藏视图"'));
   assert.ok(searchFieldSource.includes('aria-label="搜索音乐"'));
   assert.ok(searchFieldSource.includes('aria-label="清除搜索"'));
-  assert.ok(searchFieldSource.includes("返回结果"));
-  assert.ok(searchFieldSource.includes("aria-controls={hasQuery ? resultsId : undefined}"));
-  assert.ok(searchFieldSource.includes('autoComplete="off"'));
-  assert.ok(collectionCss.includes(".collection-search-field"));
-  assert.ok(collectionCss.includes("border-bottom: 1px solid"));
-  assert.ok(!collectionCss.includes("width: clamp(210px"), "collection search must not use titlebar expand widths");
-  assert.ok(!baseCss.includes(".titlebar-search"), "titlebar search chrome is removed");
   assert.ok(!titlebarSource.includes("titlebar-search"));
-  assert.ok(!titlebarSource.includes("onPointerLeave"));
-  assert.ok(!titlebarSource.includes("searchOpen"));
-  assert.ok(!titlebarSource.includes("onQuery"));
   assert.ok(!headerSource.includes("搜索音乐"));
-  assert.ok(!headerSource.includes("app-utilities"));
 });
 
-test("search session supports browse drill-in without clearing the query", () => {
-  assert.ok(appSource.includes('useState<CollectionSearchMode>("results")'));
-  assert.ok(appSource.includes('setSearchMode("browse")'));
-  assert.ok(appSource.includes('setSearchMode("results")'));
-  assert.ok(appSource.includes("showReturnToResults={query.trim().length > 0 && searchMode === \"browse\"}"));
-  assert.ok(!appSource.includes("setQuery(\"\")") || appSource.includes("clearCollectionSearch"));
-  // openSearch* must not clear the query on drill-in
-  const openArtist = appSource.slice(
-    appSource.indexOf("function openSearchArtist"),
-    appSource.indexOf("function openSearchAlbum"),
-  );
-  assert.ok(!openArtist.includes("setQuery"), "artist drill-in must keep the query");
-  assert.ok(openArtist.includes('setSearchMode("browse")'));
+test("all search objects share collection history instead of independent view mutations", () => {
+  const source = readFileSync("src/views/CollectionView.tsx", "utf8");
+  assert.ok(source.includes("props.onOpen(artistReference(artist))"));
+  assert.ok(source.includes("props.onOpen(albumReference(album))"));
+  assert.ok(source.includes('props.onOpen({ kind: "playlist", id })'));
+  assert.ok(searchSource.includes("context.navigation.patch({ filter })"));
+  assert.ok(searchSource.includes("playbackTracks={results.tracks}"));
 });
 
 test("Ctrl/Cmd+F and Esc are owned by App collection search", () => {

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { ChevronRight } from "lucide-react";
 import { Cover } from "../components/Cover";
+import { CollectionTrackList } from "../components/CollectionTrackList";
+import { useCollectionContext } from "../components/CollectionContext";
+import { ArtistBrowser } from "./ArtistBrowser";
 import { isSmartPlaylist } from "../utils/smartPlaylist";
 import { searchLibrary } from "../utils/librarySearch";
 import type {
@@ -36,6 +39,7 @@ export function SearchResultsView({
   onOpenAlbum,
   onOpenPlaylist,
   onContextMenu,
+  onToggleFavorite,
 }: {
   query: string;
   tracks: Track[];
@@ -50,8 +54,12 @@ export function SearchResultsView({
   onOpenAlbum: (albumKey: string) => void;
   onOpenPlaylist: (playlistId: string) => void;
   onContextMenu: (event: MouseEvent, payload: ContextPayload) => void;
+  onToggleFavorite?: (track: Track) => void;
 }) {
-  const [filter, setFilter] = useState<SearchFilter>("all");
+  const context = useCollectionContext();
+  const [localFilter, setLocalFilter] = useState<SearchFilter>("all");
+  const filter = context?.navigation.location.filter || localFilter;
+  const setFilter = (filter: SearchFilter) => context ? context.navigation.patch({ filter }) : setLocalFilter(filter);
   const results = useMemo(() => searchLibrary({
     query,
     tracks,
@@ -63,7 +71,7 @@ export function SearchResultsView({
   }), [activity, albums, artists, favoriteTrackIds, playlists, query, tracks]);
 
   useEffect(() => {
-    setFilter("all");
+    setLocalFilter("all");
   }, [query]);
 
   const counts: Record<SearchFilter, number> = {
@@ -94,6 +102,7 @@ export function SearchResultsView({
           {(Object.keys(FILTER_LABELS) as SearchFilter[]).map((item) => (
             <button
               key={item}
+              data-collection-focus={`search-filter:${item}`}
               className={filter === item ? "selected" : ""}
               onClick={() => setFilter(item)}
               aria-pressed={filter === item}
@@ -104,7 +113,7 @@ export function SearchResultsView({
           ))}
         </aside>
 
-        <div className="search-results-scroll">
+        <div className="search-results-scroll" data-collection-scroll="search">
           {results.total === 0 ? (
             <div className="search-empty">
               <strong>没有找到“{query.trim()}”</strong>
@@ -120,6 +129,8 @@ export function SearchResultsView({
                 canExpand={filter === "all" && results.artists.length > artistResults.length}
                 onExpand={() => setFilter("artists")}
               />
+              {context ? <ArtistBrowser artists={context.index.artists.filter(artist => artistResults.some(result => result.artist === artist.artist))}
+                onOpen={context.open} onContextMenu={onContextMenu} /> : (
               <div className="search-artist-list">
                 {artistResults.map((artist) => (
                   <button
@@ -138,6 +149,7 @@ export function SearchResultsView({
                   </button>
                 ))}
               </div>
+              )}
             </section>
           ) : null}
 
@@ -153,6 +165,7 @@ export function SearchResultsView({
                 {albumResults.map((album, index) => (
                   <button
                     key={album.key}
+                    data-collection-focus={`search-album:${album.key}`} data-collection-anchor={`search-album:${album.key}`}
                     className="search-album-result"
                     onClick={() => onOpenAlbum(album.key)}
                     onContextMenu={(event) => onContextMenu(event, {
@@ -185,33 +198,10 @@ export function SearchResultsView({
                 canExpand={filter === "all" && results.tracks.length > trackResults.length}
                 onExpand={() => setFilter("songs")}
               />
-              <div className="search-song-list">
-                <div className="search-song-head" aria-hidden="true">
-                  <span>#</span>
-                  <span>歌曲</span>
-                  <span>艺术家</span>
-                  <span>专辑</span>
-                </div>
-                {trackResults.map((track, index) => (
-                  <button
-                    key={track.id}
-                    className={`search-song-result ${track.id === activeTrackId ? "active" : ""}`}
-                    onClick={() => onPlay(track, results.tracks)}
-                    onContextMenu={(event) => onContextMenu(event, {
-                      kind: "track",
-                      title: track.title,
-                      subtitle: `${track.artist} · ${track.album}`,
-                      tracks: [track],
-                      playbackTracks: results.tracks,
-                    })}
-                  >
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong title={track.title}>{track.title}</strong>
-                    <span title={track.artist}>{track.artist}</span>
-                    <span title={track.album}>{track.album}</span>
-                  </button>
-                ))}
-              </div>
+              <CollectionTrackList tracks={trackResults} playbackTracks={results.tracks} listKey="search-songs" scrollable={false}
+                activeTrackId={activeTrackId} onPlay={onPlay} favoriteTrackIds={favoriteTrackIds} onToggleFavorite={onToggleFavorite}
+                onContextMenu={(event, track) => onContextMenu(event, { kind: "track", title: track.title,
+                  subtitle: `${track.artist} · ${track.album}`, tracks: [track], playbackTracks: results.tracks })} />
             </section>
           ) : null}
 
@@ -227,6 +217,7 @@ export function SearchResultsView({
                 {playlistResults.map(({ playlist, tracks: playlistTracks }) => (
                   <button
                     key={playlist.id}
+                    data-collection-focus={`search-playlist:${playlist.id}`} data-collection-anchor={`search-playlist:${playlist.id}`}
                     className="search-playlist-result"
                     onClick={() => onOpenPlaylist(playlist.id)}
                     onContextMenu={(event) => onContextMenu(event, {

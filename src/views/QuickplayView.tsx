@@ -343,7 +343,13 @@ export function QuickplayView({
   }
 
   return (
-    <section className={`quickplay ${empty ? "quickplay-empty" : ""}`}>
+    <section className={`quickplay ${empty ? "quickplay-empty" : ""}`} onKeyDown={event => {
+      if (event.defaultPrevented || (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10"))) return;
+      if (!(event.target instanceof HTMLElement) || !event.target.closest("[data-collection-focus]")) return;
+      event.preventDefault();
+      const rect = event.target.getBoundingClientRect();
+      event.target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: rect.left + 12, clientY: rect.bottom }));
+    }}>
       <div className="quickplay-backdrop" ref={panorama.backdropRef} aria-hidden="true" />
       <div className="quickplay-ghost" ref={panorama.titleRef} aria-hidden="true">quickplay</div>
       {empty ? (
@@ -396,6 +402,7 @@ export function QuickplayView({
               >
               <button
                 className="quick-cover-button"
+                data-collection-focus="quick-continue"
                 onClick={handleContinueActivate}
                 title={continueTrack ? `继续播放 ${continueTrack.title}` : `播放 ${continueTitle}`}
               >
@@ -406,7 +413,7 @@ export function QuickplayView({
                 />
                 <span className="quick-play-cue"><Play size={25} fill="currentColor" /></span>
               </button>
-              <button className="quick-caption" onClick={() => handleContinueActivate()}>
+              <button className="quick-caption" data-collection-focus="quick-continue-caption" onClick={() => handleContinueActivate()}>
                 <strong>{continueTitle}</strong>
                 <span>{continueSubtitle}</span>
               </button>
@@ -426,6 +433,7 @@ export function QuickplayView({
                 <div
                   className="quick-album"
                   key={`most-${track.id}`}
+                  data-collection-focus={`quick-most:${track.id}`}
                   onContextMenu={(event) =>
                     onContextMenu(event, {
                       kind: "track",
@@ -466,6 +474,7 @@ export function QuickplayView({
                 <div
                   className="quick-album"
                   key={`forgotten-${track.id}`}
+                  data-collection-focus={`quick-forgotten:${track.id}`}
                   onContextMenu={(event) =>
                     onContextMenu(event, {
                       kind: "track",
@@ -505,6 +514,7 @@ export function QuickplayView({
               <div
                 className="quick-album"
                 key={album.key}
+                data-collection-focus={`quick-recent:${album.key}`}
                 onContextMenu={(event) =>
                   onContextMenu(event, {
                     kind: "album",
@@ -543,6 +553,7 @@ export function QuickplayView({
                 {historyTracks.map((track, index) => (
                   <li key={track.id}>
                   <Button variant="ghost" className="quick-history-row"
+                    data-collection-focus={`quick-history:${track.id}`}
                     onClick={() => onPlay(track, tracks)}
                     aria-label={`播放 ${track.title} · ${track.artist}`}
                     title={`${track.title}\n${track.artist}`}

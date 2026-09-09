@@ -39,7 +39,7 @@ test("legacy favorites playlist is localized when restored", () => {
     { id: "favorites", name: "favorites", description: "saved playlist", trackIds: ["one"] },
   ]);
 
-  assert.equal(playlists[0].name, "收藏");
-  assert.equal(playlists[0].description, "收藏的歌曲");
+  assert.equal(playlists[0].name, "喜欢的歌曲");
+  assert.equal(playlists[0].description, "标记为喜欢的歌曲");
   assert.deepEqual(playlists[0].trackIds, ["one"]);
 });

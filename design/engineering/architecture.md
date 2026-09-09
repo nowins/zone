@@ -23,16 +23,17 @@
 
 ## 模块地图
 
-- `src/App.tsx`：应用组合根。持有唯一的 `<audio ref={audioRef}>` 与跨 hook 共享状态（queue/activeTrackId/playHistory/selectedPlaylistId、浮层与 actionNotice、playbackSessionRef 及三个 late-bound ref），按依赖调用 `useNavigation` → `useMusicLibrary` → `useMetadataEnrichment` → `usePodcastPlayback` → `usePlaybackControls` → `useAudioEngine` → `usePlaylists`，负责音乐数据库快照恢复/写回、旧 localStorage 迁移、卸载清理、`useSystemMedia` 接线与全部 JSX。共享 ref/state 只在 App 层或拥有它的 hook 创建一次，经参数传递；hook 间反向调用经渲染期赋值的 late-bound ref 保持单向传参（播客 → `playbackControlsRef` 的 arm/seek/toggle/intent；播放控制 → `audioEngineRef`；`openNowPlaying` 的媒体目标）。
+- `src/App.tsx`：应用组合根。持有唯一的 `<audio ref={audioRef}>` 与跨 hook 共享状态（queue/activeTrackId/playHistory、浮层与 actionNotice、playbackSessionRef 及三个 late-bound ref），按依赖调用 `useNavigation` → `useMusicLibrary` → `useMetadataEnrichment` → `usePodcastPlayback` → `usePlaybackControls` → `useAudioEngine` → `usePlaylists`，selectedPlaylistId 由导航 hook 唯一持有并传回 App 持久化；负责音乐数据库快照恢复/写回、旧 localStorage 迁移、卸载清理、`useSystemMedia` 接线与全部 JSX。共享 ref/state 只在 App 层或拥有它的 hook 创建一次，经参数传递；hook 间反向调用经渲染期赋值的 late-bound ref 保持单向传参（播客 → `playbackControlsRef` 的 arm/seek/toggle/intent；播放控制 → `audioEngineRef`；`openNowPlaying` 的媒体目标）。
 - `src/app/podcastPlaybackSettings.ts`：播客倍速/活动单集/自动续播偏好（`zone-podcast-playback-v1`）的常量、类型与 read/patch 纯函数，附 `webkitAudioContext` 全局声明。
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
-  - `useNavigation.ts`：page/view/搜索状态、`requestNavigation` 页面过渡、搜索导航与搜索快捷键、`openNowPlaying`。
-  - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、albums/artists 分组与专辑选中、addFolder/rescan 与 `useLibraryWatcher` 接线。
+  - `useNavigation.ts`：顶层 page、`requestNavigation` 页面过渡、对象入口及来源返回、搜索／历史快捷键、`openNowPlaying`；内部调用 `useCollectionNavigation`。
+  - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。
+  - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、只读 `collectionIndex`（albums/artists 等关系集中在 `utils/collectionEntities.ts`）、addFolder/rescan 与 `useLibraryWatcher` 接线。
   - `usePodcastPlayback.ts`：播客会话/队列/进度 domain。对外只返回产品状态与动作（无 ref、无裸 setter），另附 `transport: PodcastTransportBridge` 给播放控制；拥有播客自然结束处理 `handleEpisodeEnded` 与待播消费判定（经 `playbackControlsRef` 的 `hasEpisodeStartedOnDevice` 回查 transport 事实）。
   - `podcastTransport.ts`：`PodcastTransportBridge` 窄接口：零 ref，仅只读值（`activePodcastEpisode`/`podcastPlaybackRate`/`podcastSessionHydrated`）+ 语义方法（`consumePendingPodcastQueueEpisode(episodeId, audioEpisodeId)`、`cancelPendingQueueConsume`、`handleEpisodeEnded` 等）；唯一保留的裸 setter 是 `setPodcastPlaybackStatus`（controls 的 transport 状态上报）。
   - `usePlaybackControls.ts`：拥有 `audioPlayAttemptRef`（唯一递增点在 `beginPlayAttempt`）、autoplay intent、pending start/resume、`podcastAudioEpisodeRef`/`podcastPlaybackStartedEpisodeRef` 等全部 transport ref；`runPlayAttempt` 为唯一 `audio.play()` 成功/失败门闩；音乐 queue/shuffle/repeat/统计、媒体源切换与 audio 事件；onEnded 播客分支委托 `handleEpisodeEnded`；transport 守卫/解析统一走 `src/utils/playbackTransport.ts` 纯函数（`tests/playbackTransport.test.mjs` 行为覆盖）。
   - `useAudioEngine.ts`：Web Audio 图 refs、ensureAudioGraph/resumeAudioGraph、节拍预分析、可视化采样循环与启停、音量应用；以 `AudioEngineHandle` 形式经 ref 交给播放控制。
-  - `usePlaylists.ts`：playlists/homePins/收藏状态与 CRUD、homePins 对账、toggleHomePin/openHomePin。
+  - `usePlaylists.ts`：playlists/homePins/喜欢状态与 CRUD、普通列表移除与顺序、智能规则／轮换／排除、homePins 对账和固定；对象导航由 `useNavigation` 负责。
 - `src/hooks/useMetadataEnrichment.ts` 与 `src-tauri/src/metadata/`：曲目元数据补全与覆盖；结合音乐库状态接线。
 - `src/hooks/useAppHotkeys.ts` / `useModalFocus.ts` / `useMountedRef.ts` / `useEntranceCompletion.ts`：全局播放快捷键、对话框焦点、StrictMode 挂载生命周期与入场清理。
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。
@@ -40,8 +41,9 @@
 - `src/views/`：页面级视图。
   - `QuickplayView.tsx`：Zune quickplay 首页，解析固定内容；`components/tiles/QuickplayPinBoard.tsx` 负责 WP 风格磁贴编辑、重排与外观，`usePinDrag.ts` 通过指针捕获管理拖动、跟随预览与取消，不依赖 WebView2 的 HTML 拖放；`useTileActivity.ts` 管理动态可见性。
   - `src/hooks/useQuickplayPanorama.ts`：首页视口滚动、短滚动条显隐与拖拽、背景视差、鼠标拖动、滚轮／键盘归属与返回位置恢复；`src/utils/quickplayPanorama.ts` 提供键盘分组边界和输入意图的纯函数。背景与滚动条位置由 DOM ref 更新，React 仅接收是否存在横向溢出。
-  - `LibraryView.tsx`：收藏页标签切换（专辑/艺术家/歌曲/播放列表），保持轻薄并向下委托。四个视图统一使用 `components/CollectionTrackList.tsx` 管理歌曲行的选择、键盘定位与播放来源；专辑网格和艺术家专辑区共用 `components/CollectionAlbumTile.tsx` 的独立选择／播放控件。
-  - `ArtistBrowser.tsx`：Zune 风格艺术家导航（艺术家 → 专辑 → 歌曲）。
+  - `CollectionView.tsx` / `CollectionEntityView.tsx`：收藏索引／搜索／详情外壳及歌曲、专辑、艺术家对象详情，关系通过 `CollectionContext` 的统一入口跳转。
+  - `LibraryView.tsx`：歌曲、专辑、艺术家索引与播放列表的展示分派；共享 `CollectionTrackList` 与 `CollectionAlbumTile`。
+  - `ArtistBrowser.tsx`：艺术家的紧凑媒体索引；主动作打开艺术家对象，不自动选中首张专辑。
   - `PlaylistBrowser.tsx`：当前队列与已存播放列表（含智能播放列表）。
   - `PodcastView.tsx`：正式播客页壳。负责分区 chrome、六屏切换与浮层（菜单/确认框）；业务状态与数据加载在 `usePodcastViewModel`，各屏 JSX 在 `screens/*`。默认“收听”聚合继续收听与关注更新；“发现”承载榜单、搜索与辅助 RSS；“资料库”展示已关注、稍后听和已下载；节目/单集详情支持关注、保存、播放状态、即时播放、待播与离线下载；“播放列表”管理当前单集与持久待播队列。
   - `src/views/podcast/`：播客视图模块。`usePodcastViewModel.ts` 持有 screen 状态机、缓存读写与 invoke 编排；`api.ts` 为全部 `podcast_*` 命令的薄封装（屏组件不得直接 `invoke`）；`screens/`（Listen/Discover/Library/Playlist/Show/Episode）为展示层；另有 `types.ts`/`constants.ts`/`cache.ts`（模块级缓存单例，不可拆散）/`episodeModel.ts`/`preferences.ts`/`format.ts` 与 `components/`（EpisodeRows、QueueEpisodeRow、EpisodeDetail、ContinueCard、ShowCards、Dialogs、primitives）。

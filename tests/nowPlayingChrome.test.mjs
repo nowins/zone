@@ -136,3 +136,18 @@ test("visibility suspends the countdown and waking preserves an explicitly hidde
     assert.ok(!document.querySelector('.now-side-panel[aria-hidden="false"]'));
   } finally { await env.close(); }
 });
+
+test("artist and album details are independent browsing actions", async () => {
+  const env = await fixture();
+  try {
+    const opened = [];
+    await env.render({ onOpenArtist: () => opened.push("artist"), onOpenAlbum: () => opened.push("album") });
+    const relations = document.querySelectorAll(".now-entity-link");
+    assert.equal(relations.length, 2);
+    await env.event(relations[0], "click");
+    await env.event(relations[1], "click");
+    assert.deepEqual(opened, ["artist", "album"]);
+    assert.deepEqual(env.played, []);
+    assert.equal(document.querySelector('[aria-current="true"]').textContent.includes(tracks[0].title), true);
+  } finally { await env.close(); }
+});

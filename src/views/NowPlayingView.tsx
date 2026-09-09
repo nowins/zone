@@ -72,6 +72,8 @@ export function NowPlayingView({
   onRepeat,
   onVolume,
   onSaveQueueAsPlaylist,
+  onOpenArtist,
+  onOpenAlbum,
 }: {
   track: Track | null;
   tracks: Track[];
@@ -95,6 +97,8 @@ export function NowPlayingView({
   onRepeat: () => void;
   onVolume: (value: number) => void;
   onSaveQueueAsPlaylist: (name: string) => void;
+  onOpenArtist?: () => void;
+  onOpenAlbum?: () => void;
 }) {
   const [chromeMode, setChromeMode] = useState<"active" | "immersive">("active");
   const [surfaceMode, setSurfaceMode] = useState<"ambient" | "lyrics">("ambient");
@@ -460,8 +464,8 @@ export function NowPlayingView({
       <section ref={trackCardRef} className={`now-track-card ${textFading ? "card-fading" : ""}`}>
         <Cover artPath={track?.cover_path} label={track?.album ?? "正在播放"} size="mini" />
         <div className="now-track-copy">
-          <strong>{track?.artist ?? "Zone"}</strong>
-          <span>{track?.album ?? "请从收藏中选择歌曲"}</span>
+          <strong>{track && onOpenArtist ? <button className="now-entity-link" data-collection-focus="now-artist" onClick={onOpenArtist}>{track.artist}</button> : track?.artist ?? "Zone"}</strong>
+          <span>{track && onOpenAlbum ? <button className="now-entity-link" data-collection-focus="now-album" onClick={onOpenAlbum}>{track.album}</button> : track?.album ?? "请从收藏中选择歌曲"}</span>
           <em>{track?.title ?? "暂无播放"}</em>
           <button
             className={`now-favorite ${isFavorite ? "favorite-active" : ""}`}

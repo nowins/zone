@@ -16,6 +16,7 @@ export function usePinDrag(gridRef: RefObject<HTMLElement | null>, callbacks: {
   onStart: (id: string) => void;
   onMove: (x: number, y: number) => void;
   onEnd: (commit: boolean) => void;
+  ghostClassName?: string;
 }) {
   const session = useRef<DragSession | null>(null);
   const latest = useRef(callbacks);
@@ -67,7 +68,7 @@ export function usePinDrag(gridRef: RefObject<HTMLElement | null>, callbacks: {
       const rect = drag.source.getBoundingClientRect();
       const ghost = drag.source.cloneNode(true) as HTMLElement;
       ghost.classList.remove("selected", "dragging");
-      ghost.classList.add("quick-pin-drag-ghost");
+      ghost.classList.add(latest.current.ghostClassName || "quick-pin-drag-ghost");
       ghost.removeAttribute("data-pin-id");
       ghost.removeAttribute("tabindex");
       ghost.setAttribute("aria-hidden", "true");
@@ -75,6 +76,7 @@ export function usePinDrag(gridRef: RefObject<HTMLElement | null>, callbacks: {
       ghost.querySelector(".quick-pin-edit-tools")?.remove();
       ghost.style.width = `${rect.width}px`;
       ghost.style.height = `${rect.height}px`;
+      if (latest.current.ghostClassName) ghost.style.gridTemplateColumns = getComputedStyle(drag.source).gridTemplateColumns;
       document.body.append(ghost);
       drag.ghost = ghost;
       latest.current.onStart(drag.id);

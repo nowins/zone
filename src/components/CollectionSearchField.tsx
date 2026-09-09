@@ -39,6 +39,7 @@ export const CollectionSearchField = forwardRef<
         <Search size={14} strokeWidth={1.6} aria-hidden="true" />
         <input
           id="collection-search-input"
+          data-collection-focus="search-input"
           ref={ref}
           value={query}
           onChange={(event) => onQuery(event.target.value)}

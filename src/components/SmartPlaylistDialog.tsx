@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useModalFocus } from "../hooks/useModalFocus";
 import { Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import {
   defaultSmartPlaylistConfig,
@@ -52,6 +53,8 @@ export function SmartPlaylistDialog({
   onCancel: () => void;
   onSave: (draft: SmartPlaylistDraft) => void;
 }) {
+  const dialogRef = useRef<HTMLFormElement>(null);
+  useModalFocus(dialogRef);
   const presets = useMemo(smartPlaylistPresets, []);
   const firstPreset = presets[0];
   const [name, setName] = useState(playlist?.name ?? firstPreset.name);
@@ -121,6 +124,8 @@ export function SmartPlaylistDialog({
       role="presentation"
     >
       <form
+        ref={dialogRef}
+        tabIndex={-1}
         className="smart-playlist-dialog"
         role="dialog"
         aria-modal="true"

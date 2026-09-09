@@ -48,6 +48,8 @@
     "src/utils/smartDj.ts",
     "src/utils/librarySearch.ts",
     "src/utils/collectionSearch.ts",
+    "src/utils/collectionEntities.ts",
+    "src/utils/collectionNavigation.ts",
     "src/utils/metadata.ts",
     "src/motion/math.ts",
     "src/motion/tokens.ts",

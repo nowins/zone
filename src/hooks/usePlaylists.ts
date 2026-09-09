@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_PLAYLIST_ID, MAX_HOME_PINS } from "../constants";
-import { albumKey, defaultPlaylists, normalizePlaylists, uniqueIds } from "../utils/music";
+import { defaultPlaylists, normalizePlaylists, reorderPlaylistTrack, uniqueIds } from "../utils/music";
 import { applyHomePinToggle, applyHomePinToggleForPin, homePinId, reconcileHomePins } from "../utils/homePins";
 import { isSmartPlaylist } from "../utils/smartPlaylist";
 import type { PlaylistDialogState } from "../components/PlaylistDialog";
@@ -21,9 +21,6 @@ type UsePlaylistsParams = {
   tracks: Track[];
   restored: boolean;
   navigateCollection: (nextView: ViewMode) => void;
-  setSelectedAlbumKey: React.Dispatch<React.SetStateAction<string | null>>;
-  setSelectedArtistName: React.Dispatch<React.SetStateAction<string | null>>;
-  setView: React.Dispatch<React.SetStateAction<ViewMode>>;
   playbackQueueIds: string[];
   activePodcastEpisode: PodcastPlayback | null;
   activeTrack: Track | null;
@@ -39,9 +36,6 @@ export function usePlaylists({
   tracks,
   restored,
   navigateCollection,
-  setSelectedAlbumKey,
-  setSelectedArtistName,
-  setView,
   playbackQueueIds,
   activePodcastEpisode,
   activeTrack,
@@ -108,6 +102,10 @@ export function usePlaylists({
     toggleFavoriteTrack(activeTrack);
   }
 
+  function reorderPlaylist(playlistId: string, trackId: string, targetId: string) {
+    setPlaylists(items => items.map(playlist => playlist.id === playlistId ? reorderPlaylistTrack(playlist, trackId, targetId) : playlist));
+  }
+
   function toggleFavoriteTrack(track: Track) {
     if (favoriteTrackIds.has(track.id)) {
       removeFromPlaylist(DEFAULT_PLAYLIST_ID, [track]);
@@ -160,25 +158,6 @@ export function usePlaylists({
     }
   }
 
-  // 磁贴/右键菜单的次级动作"在收藏中打开"：按 payload 身份定位到收藏视图。
-  // 专辑优先用创建时写入的稳定 targetId，避免从展示文案反推分组键。
-  function openPayloadInCollection(payload: ContextPayload) {
-    if (payload.kind === "album") {
-      setSelectedAlbumKey(payload.targetId ?? albumKey(payload.title, payload.subtitle));
-      navigateCollection("albums");
-      return;
-    }
-    if (payload.kind === "artist") {
-      setSelectedArtistName(payload.title);
-      navigateCollection("artists");
-      return;
-    }
-    if (payload.kind === "playlist") {
-      if (payload.playlistId) setSelectedPlaylistId(payload.playlistId);
-      navigateCollection("playlists");
-    }
-  }
-
   function createPlaylist(name: string) {
     const cleanName = name.trim();
     if (!cleanName) return;
@@ -193,7 +172,7 @@ export function usePlaylists({
 
     setPlaylists((items) => [...normalizePlaylists(items), playlist]);
     setSelectedPlaylistId(playlist.id);
-    setView("playlists");
+    navigateCollection("playlists");
     showActionNotice(`已创建播放列表“${playlist.name}”`);
   }
 
@@ -259,7 +238,7 @@ export function usePlaylists({
       };
       setPlaylists((items) => [...normalizePlaylists(items), playlist]);
       setSelectedPlaylistId(playlist.id);
-      setView("playlists");
+      navigateCollection("playlists");
       showActionNotice(`已创建智能播放列表“${playlist.name}”`);
     } else if (smartPlaylistDialog) {
       setPlaylists((items) => normalizePlaylists(items).map((playlist) =>
@@ -337,12 +316,13 @@ export function usePlaylists({
     setHomePins,
     favoriteTrackIds,
     addToPlaylist,
+    removeFromPlaylist,
+    reorderPlaylist,
     createPlaylistWithTracks,
     toggleFavorite,
     toggleFavoriteTrack,
     toggleHomePin,
     togglePodcastPin,
-    openPayloadInCollection,
     openCreatePlaylistDialog,
     openCreateSmartPlaylist,
     openSmartPlaylistEditor,

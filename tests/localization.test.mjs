@@ -64,11 +64,11 @@ test("tile editing and appearance use Chinese functional labels", () => {
 
 test("collection totals are shown once and use Chinese units", () => {
   assert.ok(!artistSource.includes("<p>{artists.length}"));
-  assert.ok(artistSource.includes("{artistAlbums.length} 张专辑"));
-  assert.ok(artistSource.includes("{visibleSongs.length} 首歌曲"));
+  assert.ok(artistSource.includes("{artist.albums.length} 张专辑"));
+  assert.ok(artistSource.includes("{artist.tracks.length} 首歌曲"));
   assert.ok(!settingsSource.includes("settings-summary"));
   assert.equal(occurrences(playlistSource, "{selected.tracks.length} 首歌曲"), 1);
-  assert.ok(playlistSource.includes('"收藏的歌曲"'));
+  assert.ok(playlistSource.includes('"喜欢的歌曲"'));
   assert.ok(playlistSource.includes('"自定义播放列表"'));
   assert.ok(playlistSource.includes('name: "正在播放"'));
   assert.ok(!playlistSource.includes('name: "now playing"'));

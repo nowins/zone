@@ -6,8 +6,8 @@ export function defaultPlaylists(): Playlist[] {
   return [
     {
       id: DEFAULT_PLAYLIST_ID,
-      name: "收藏",
-      description: "收藏的歌曲",
+      name: "喜欢的歌曲",
+      description: "标记为喜欢的歌曲",
       trackIds: [],
     },
   ];
@@ -28,8 +28,8 @@ export function normalizePlaylists(playlists: Playlist[] | undefined | null): Pl
     return {
       ...playlist,
       kind: "manual" as const,
-      name: playlist.id === DEFAULT_PLAYLIST_ID ? "收藏" : playlist.name,
-      description: playlist.id === DEFAULT_PLAYLIST_ID ? "收藏的歌曲" : playlist.description,
+      name: playlist.id === DEFAULT_PLAYLIST_ID ? "喜欢的歌曲" : playlist.name,
+      description: playlist.id === DEFAULT_PLAYLIST_ID ? "标记为喜欢的歌曲" : playlist.description,
       trackIds: Array.isArray(playlist.trackIds) ? playlist.trackIds : [],
     };
   });
@@ -52,6 +52,17 @@ export function formatCollectionPlaylistCount(storedPlaylistCount: number): stri
 
 export function uniqueIds(ids: string[]) {
   return Array.from(new Set(ids));
+}
+
+/** Move one manual entry to a known entry's position without touching any other list. */
+export function reorderPlaylistTrack(playlist: Playlist, trackId: string, targetId: string): Playlist {
+  if (isSmartPlaylist(playlist) || playlist.id === DEFAULT_PLAYLIST_ID) return playlist;
+  const from = playlist.trackIds.indexOf(trackId), to = playlist.trackIds.indexOf(targetId);
+  if (from < 0 || to < 0 || from === to) return playlist;
+  const trackIds = [...playlist.trackIds];
+  trackIds.splice(from, 1);
+  trackIds.splice(to, 0, trackId);
+  return { ...playlist, trackIds };
 }
 
 export function albumKey(album: string, albumArtist?: string) {

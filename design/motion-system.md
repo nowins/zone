@@ -150,3 +150,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - `tests/panoramaBehavior.test.mjs`：首页分组与视差边界、滚轮归属，以及真实 hook 在 StrictMode 下的滚轮接力、键盘打断、滚动条显隐／拖拽、滚动恢复、窗口变化、reduced-motion 与隐藏／卸载清理。
 - `tests/uiBehavior.test.mjs` / `tests/canvasLifecycle.test.mjs`：真实 React 组件在 StrictMode 下的焦点、入场清理与 Canvas 停转/唤醒行为。
 - 视觉验收检查真实播放、快速连切可打断、FLIP 连续性、reduced-motion、键盘交互与窄窗口。按根目录的启动授权规则实测；歌词专项场景见 [歌词规范](engineering/lyrics.md)，本地 `docs/lyrics-motion-review.md` 若存在可补充参考。
+
+## 收藏对象浏览
+
+顶层页面仍走 `requestNavigation`；收藏内容区内部的对象前进使用 `collection-detail-enter`，消费 content 时长、entrance 曲线和 s 位移 token。历史返回直接恢复保存的表面，不重播行／封面级联；播放进度更新不改变历史 revision。reduced-motion 下关闭此内容过渡。长简介及资料管理复用 `Dialog`／`Presence`，歌曲列表拖动复用指针捕获的即时反馈，不新增时间驱动位移动画。

@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { MOTION_DRIFT, resolveExitDurationMs } from "../motion/tokens";
 import { resolvePageTransition } from "../motion/pageTransition";
 import { useReducedMotion } from "../motion/useReducedMotion";
-import { resolveSearchSurface, type CollectionSearchMode } from "../utils/collectionSearch";
+import { resolveSearchSurface } from "../utils/collectionSearch";
+import { useCollectionNavigation } from "./useCollectionNavigation";
+import type { CollectionEntityRef } from "../utils/collectionEntities";
+import type { CollectionLocation } from "../utils/collectionNavigation";
 import type { PlaylistDialogState } from "../components/PlaylistDialog";
 import type {
   AppPage,
@@ -26,7 +29,6 @@ type UseNavigationParams = {
   playlistDialog: PlaylistDialogState | null;
   smartPlaylistDialog: SmartPlaylist | "create" | null;
   nowPlayingTargetsRef: React.MutableRefObject<NowPlayingTargets>;
-  setSelectedPlaylistId: React.Dispatch<React.SetStateAction<string>>;
 };
 
 export function useNavigation({
@@ -36,16 +38,15 @@ export function useNavigation({
   playlistDialog,
   smartPlaylistDialog,
   nowPlayingTargetsRef,
-  setSelectedPlaylistId,
 }: UseNavigationParams) {
   const previousPageRef = useRef<"quickplay" | "collection" | "podcasts" | "settings">("quickplay");
   const navExitTimerRef = useRef<number | null>(null);
   const navTargetRef = useRef<AppPage | null>(null);
-  const [query, setQuery] = useState("");
-  const [searchMode, setSearchMode] = useState<CollectionSearchMode>("results");
+  const collection = useCollectionNavigation();
+  const { query, searchMode, view, playlistId: selectedPlaylistId } = collection.location;
+  const pendingReturn = useRef<CollectionLocation["origin"]>();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const focusSearchPendingRef = useRef(false);
-  const [view, setView] = useState<ViewMode>("albums");
   const [page, setPage] = useState<AppPage>("quickplay");
   // Page-transition state: `navExit` is the in-flight exit direction (null when
   // idle), `navDir` persists the latest direction so the incoming page's enter
@@ -60,8 +61,18 @@ export function useNavigation({
     exit: MOTION_DRIFT.s,
   });
   const reducedMotion = useReducedMotion();
-  const [selectedAlbumKey, setSelectedAlbumKey] = useState<string | null>(null);
-  const [selectedArtistName, setSelectedArtistName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pendingReturn.current || page === "collection") return;
+    const { focus, scrolls } = pendingReturn.current;
+    pendingReturn.current = undefined;
+    if (page === "quickplay") document.querySelectorAll<HTMLElement>(".quickplay-viewport,.quick-section-scroll").forEach((area, i) => {
+      if (scrolls?.[i]) { area.scrollTop = scrolls[i].top; area.scrollLeft = scrolls[i].left; }
+    });
+    const target = [...document.querySelectorAll<HTMLElement>("[data-collection-focus]")]
+      .find(node => node.dataset.collectionFocus === focus);
+    (target?.matches('button,a[href],[tabindex]') ? target : target?.querySelector<HTMLElement>('button,a[href]'))?.focus({ preventScroll: true });
+  }, [page]);
 
   useEffect(() => {
     if (page !== "collection" || !focusSearchPendingRef.current) return;
@@ -75,8 +86,9 @@ export function useNavigation({
   // `navTargetRef` records where an in-flight exit is heading so chrome (app
   // header, player bar) can start its own exit together with the old page
   // instead of lingering until the new page flips in.
-  function requestNavigation(next: AppPage) {
+  function requestNavigation(next: AppPage, rememberCollection = true) {
     if (next === page) return;
+    if (page === "collection" && rememberCollection) collection.remember();
     if (navExitTimerRef.current !== null) {
       window.clearTimeout(navExitTimerRef.current);
       navExitTimerRef.current = null;
@@ -105,13 +117,11 @@ export function useNavigation({
   }
 
   function clearCollectionSearch() {
-    setQuery("");
-    setSearchMode("results");
+    collection.patch({ query: "", searchMode: "browse", filter: "all" });
   }
 
   function setCollectionSearchQuery(value: string) {
-    setQuery(value);
-    setSearchMode("results");
+    collection.setQuery(value);
   }
 
   function focusCollectionSearch() {
@@ -124,39 +134,40 @@ export function useNavigation({
   }
 
   function navigatePage(nextPage: "quickplay" | "collection" | "podcasts" | "settings") {
-    if (nextPage !== "collection") {
-      clearCollectionSearch();
-    }
     requestNavigation(nextPage);
   }
 
   function navigateCollection(nextView: ViewMode) {
-    setView(nextView);
+    collection.openIndex(nextView);
     requestNavigation("collection");
   }
 
-  function openSearchArtist(artist: string) {
-    setSelectedArtistName(artist);
-    setView("artists");
-    setSearchMode("browse");
+  function openCollectionEntity(entity: CollectionEntityRef) {
+    const focus = document.activeElement?.closest<HTMLElement>("[data-collection-focus]")?.dataset.collectionFocus;
+    const scrolls = page === "quickplay" ? [...document.querySelectorAll<HTMLElement>(".quickplay-viewport,.quick-section-scroll")]
+      .map(area => ({ top: area.scrollTop, left: area.scrollLeft })) : undefined;
+    collection.open(entity, page === "collection" ? undefined : { page, focus, scrolls });
+    requestNavigation("collection");
   }
 
-  function openSearchAlbum(key: string) {
-    setSelectedAlbumKey(key);
-    setView("albums");
-    setSearchMode("browse");
-  }
-
-  function openSearchPlaylist(playlistId: string) {
-    setSelectedPlaylistId(playlistId);
-    setView("playlists");
-    setSearchMode("browse");
+  function travelCollection(direction: 1 | -1) {
+    const origin = collection.travel(direction);
+    if (origin) {
+      pendingReturn.current = origin;
+      requestNavigation(origin.page, false);
+    }
   }
 
   useEffect(() => {
     function handleCollectionSearchKeys(event: KeyboardEvent) {
       if (event.isComposing || event.defaultPrevented) return;
       if (document.querySelector('[aria-modal="true"]')) return;
+      if (contextMenu || infoTarget || addToPlaylistTarget || playlistDialog || smartPlaylistDialog) return;
+      if (page === "collection" && event.altKey && ["ArrowLeft", "ArrowRight"].includes(event.key)) {
+        event.preventDefault();
+        travelCollection(event.key === "ArrowLeft" ? -1 : 1);
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
         if (page === "podcasts") return;
         event.preventDefault();
@@ -175,7 +186,7 @@ export function useNavigation({
 
       if (query.trim().length > 0 && searchMode === "browse") {
         event.preventDefault();
-        setSearchMode("results");
+        collection.patch({ searchMode: "results" });
       }
     }
 
@@ -193,10 +204,13 @@ export function useNavigation({
   return {
     query,
     searchMode,
-    setSearchMode,
     searchInputRef,
     view,
-    setView,
+    collection,
+    selectedPlaylistId,
+    setSelectedPlaylistId: collection.setPlaylistId,
+    openCollectionEntity,
+    travelCollection,
     page,
     navExit,
     navDir,
@@ -204,18 +218,11 @@ export function useNavigation({
     navTargetRef,
     navExitTimerRef,
     previousPageRef,
-    selectedAlbumKey,
-    setSelectedAlbumKey,
-    selectedArtistName,
-    setSelectedArtistName,
     requestNavigation,
     clearCollectionSearch,
     setCollectionSearchQuery,
     navigatePage,
     navigateCollection,
-    openSearchArtist,
-    openSearchAlbum,
-    openSearchPlaylist,
     openNowPlaying,
   };
 }

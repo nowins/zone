@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { useEffect, useRef, useState } from "react";
 import { Pencil, RotateCcw, Search, X } from "lucide-react";
 import type { MetadataEnrichmentApi } from "../hooks/useMetadataEnrichment";
 import { Presence, useLastNonNull } from "../motion/presence";
@@ -8,6 +7,8 @@ import type { ContextPayload, MetadataCandidateField, MetadataContextRecord } fr
 import { MetadataEditDialog } from "./MetadataEditDialog";
 import { MetadataSearchDialog } from "./MetadataSearchDialog";
 import { Button } from "./Button";
+import { Cover } from "./Cover";
+import { useModalFocus } from "../hooks/useModalFocus";
 
 function artworkPath(fields: MetadataCandidateField[]) {
   return fields.find((field) => (
@@ -19,15 +20,26 @@ function isArtworkField(field: MetadataCandidateField) {
   return field.key === "artist_image_path" || field.key === "album_cover_path";
 }
 
-export function InfoPanel({
-  payload,
-  metadata,
-  onClose,
-}: {
+type InfoPanelProps = {
   payload: ContextPayload;
   metadata: MetadataEnrichmentApi;
   onClose: () => void;
-}) {
+};
+
+export function InfoPanel(props: InfoPanelProps) {
+  const identity = JSON.stringify([props.payload.kind, props.payload.targetId, props.payload.tracks.map(track => track.id)]);
+  return <EntityInfoPanel key={identity} {...props} />;
+}
+
+function EntityInfoPanel({
+  payload,
+  metadata,
+  onClose,
+}: InfoPanelProps) {
+  const panelRef = useRef<HTMLElement | null>(null);
+  const mounted = useRef(false);
+  useModalFocus(panelRef);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const first = payload.tracks[0];
   const supportsMetadata = payload.kind !== "playlist" && payload.tracks.length > 0;
   const [context, setContext] = useState<MetadataContextRecord | null>(null);
@@ -43,6 +55,7 @@ export function InfoPanel({
 
   useEffect(() => {
     setNotice("");
+    setContext(null);
     if (!supportsMetadata) {
       setContext(null);
       return;
@@ -58,19 +71,20 @@ export function InfoPanel({
     return () => {
       cancelled = true;
     };
-  }, [metadata, payload, supportsMetadata]);
+  }, [metadata.getContext, payload, supportsMetadata]);
 
   async function clearMetadata() {
     setStatus("clearing");
     setNotice("");
     try {
       await metadata.clear(payload);
+      if (!mounted.current) return;
       setContext(null);
       setNotice("已恢复文件中的原始信息");
     } catch (error) {
-      setNotice(String(error));
+      if (mounted.current) setNotice(String(error));
     } finally {
-      setStatus("idle");
+      if (mounted.current) setStatus("idle");
     }
   }
 
@@ -104,19 +118,21 @@ export function InfoPanel({
 
   return (
     <div className="info-panel" onClick={onClose}>
-      <section onClick={(event) => event.stopPropagation()}>
+      <section ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="info-panel-title" tabIndex={-1}
+        onKeyDown={event => { if (event.key === "Escape" && !activeDialog) { event.stopPropagation(); onClose(); } }}
+        onClick={(event) => event.stopPropagation()}>
         <button className="info-close" onClick={onClose} aria-label="关闭信息面板">
           <X size={18} />
         </button>
         <div className="info-panel-scroll">
-          <h2>{payload.title}</h2>
+          <h2 id="info-panel-title">{payload.title}</h2>
           <p>{payload.subtitle}</p>
           <dl>
             <dt>类型</dt>
             <dd>{typeLabel}</dd>
-            <dt>歌曲</dt>
+            <dt>{payload.kind === "track" ? "文件数量" : "本地歌曲"}</dt>
             <dd>{payload.tracks.length}</dd>
-            {first && (
+            {first && payload.kind === "track" && (
               <>
                 <dt>专辑</dt>
                 <dd>{first.album}</dd>
@@ -124,8 +140,17 @@ export function InfoPanel({
                 <dd>{first.artist}</dd>
                 <dt>文件</dt>
                 <dd>{first.file_name}</dd>
+                <dt>路径</dt>
+                <dd>{first.path}</dd>
+                <dt>格式</dt>
+                <dd>{first.extension.toUpperCase()}</dd>
               </>
             )}
+            {payload.kind === "album" && first && <>
+              <dt>专辑艺术家</dt><dd>{first.album_artist || first.artist}</dd>
+              <dt>编辑范围</dt><dd>此专辑的 {payload.tracks.length} 首本地歌曲</dd>
+            </>}
+            {payload.kind === "artist" && <><dt>编辑范围</dt><dd>署名为{payload.title}的 {payload.tracks.length} 首本地歌曲</dd></>}
           </dl>
 
           {supportsMetadata && (
@@ -151,11 +176,7 @@ export function InfoPanel({
               {context && (
                 <div className="info-metadata-applied">
                   {artworkPath(context.fields) && (
-                    <img
-                      src={convertFileSrc(artworkPath(context.fields)!)}
-                      alt=""
-                      draggable={false}
-                    />
+                    <Cover artPath={artworkPath(context.fields)} label={payload.title} />
                   )}
                   {context.fields.filter((field) => !isArtworkField(field)).map((field) => (
                     <div key={field.key}>

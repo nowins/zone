@@ -6,7 +6,7 @@
 
 - 音乐主状态存于应用数据目录的 `zone.sqlite`（`src-tauri/src/db/` + `music/`）；`zone-player-state-v1` 仅作为旧版迁移源。只有原生导入提交并返回读取快照、且成功保存 `-backup` 后才删除旧键。恢复失败时保留原始数据，并暂停自动数据库写回。
 - 曲库 schema 版本为 `LIBRARY_SCHEMA_VERSION`（当前 6）。
-- 收藏是 id 为 `DEFAULT_PLAYLIST_ID`（`favorites`）的默认播放列表；读取播放列表状态时必须用 `normalizePlaylists`，让旧状态补齐默认收藏列表。
+- 喜欢的歌曲是 id 为 `DEFAULT_PLAYLIST_ID`（`favorites`）的默认播放列表；读取播放列表状态时必须用 `normalizePlaylists`，补齐默认列表并统一显示名，保留原 ID 和歌曲顺序。分类“收藏”仍指整个本地音乐库。对象浏览历史仅在会话内保存，不建立第二份持久媒体库。
 - home pins 用 `normalizeHomePins`/`reconcileHomePins` 做归一化与对账。`music_home_pins` 保存顺序及可选的 `size`／`live`／`tone`；缺失尺寸按内容类型回退，缺失外观按封面与动态开启处理。数据库原位补列保留旧固定项，替换整组磁贴与 revision 更新在同一事务中，任意插入失败都保留原来的墙。尺寸／颜色枚举在前端归一化并由 Rust 校验。
 
 歌词与播客的数据键、迁移和删除规则分别见 [歌词](lyrics.md) 与 [播客](podcasts.md)，不能把不同类别的状态合并清理。

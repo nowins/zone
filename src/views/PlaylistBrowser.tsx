@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { MouseEvent } from "react";
-import { Heart, ListMusic, Play, Plus, RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Heart, ListMusic, MoreHorizontal, Play, Plus, RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import { Button } from "../components/Button";
 import { Cover } from "../components/Cover";
@@ -24,6 +24,7 @@ export function PlaylistBrowser({
   favoriteTrackIds,
   onToggleFavorite,
   activity,
+  onReorderPlaylist,
 }: {
   playlists: Playlist[];
   selectedPlaylistId: string;
@@ -40,6 +41,7 @@ export function PlaylistBrowser({
   favoriteTrackIds: ReadonlySet<string>;
   onToggleFavorite: (track: Track) => void;
   activity: TrackActivityMap;
+  onReorderPlaylist?: (playlistId: string, trackId: string, targetId: string) => void;
 }) {
   const trackMap = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
   const entries = useMemo(() => {
@@ -51,11 +53,11 @@ export function PlaylistBrowser({
         const smart = isSmartPlaylist(playlist);
         const isCustomManual = !smart && playlist.id !== DEFAULT_PLAYLIST_ID;
         const playlistDescription = playlist.id === DEFAULT_PLAYLIST_ID
-          ? "收藏的歌曲"
+          ? `${result.tracks.length} 首喜欢的歌曲`
           : playlist.description || (smart ? "自动更新的智能播放列表" : "自定义播放列表");
         return {
           id: playlist.id,
-          name: playlist.name,
+          name: playlist.id === DEFAULT_PLAYLIST_ID ? "喜欢的歌曲" : playlist.name,
           description: isCustomManual ? `${result.tracks.length} 首歌曲` : playlistDescription,
           tracks: result.tracks,
           kind: smart ? "smart" as const : "manual" as const,
@@ -65,7 +67,9 @@ export function PlaylistBrowser({
       }),
     ];
   }, [activity, favoriteTrackIds, playlists, queueIds, trackMap, tracks]);
-  const selected = entries.find((item) => item.id === selectedPlaylistId) ?? entries[0];
+  const selected = entries.find((item) => item.id === selectedPlaylistId);
+  if (!selected) return <div className="collection-unavailable"><h2>此播放列表已不存在</h2>
+    <Button onClick={() => onSelectPlaylist(DEFAULT_PLAYLIST_ID)}>查看喜欢的歌曲</Button></div>;
   const artwork = [...new Set(selected.tracks.flatMap((track) => track.cover_path ? [track.cover_path] : []))].slice(0, 4);
   const covers = artwork.length === 4 ? artwork : artwork.slice(0, 1);
   const duration = selected.tracks.reduce((total, track) => total + (track.duration_seconds ?? 0), 0);
@@ -75,13 +79,14 @@ export function PlaylistBrowser({
 
   return (
     <div className="playlist-browser">
-      <section className="playlist-list" aria-label="播放列表">
+      <section className="playlist-list" aria-label="播放列表" data-collection-scroll="playlist-index">
         <div className="playlist-create">
           <Button className="playlist-create-button" variant="ghost" size="sm" icon={<Plus size={16} />} onClick={onCreatePlaylist}>新建播放列表</Button>
         </div>
         {entries.map((playlist) => (
           <button
             key={playlist.id}
+            data-collection-anchor={playlist.id} data-collection-focus={`playlist:${playlist.id}`}
             className={playlist.id === selected.id ? "selected" : ""}
             aria-pressed={playlist.id === selected.id}
             title={playlist.name}
@@ -125,9 +130,14 @@ export function PlaylistBrowser({
               <Button variant="ghost" size="sm" icon={<SlidersHorizontal size={14} />} onClick={() => onEditSmartPlaylist(selected.id)}>编辑规则</Button>
               <Button variant="ghost" size="sm" icon={<RefreshCw size={14} />} onClick={() => onRefreshSmartPlaylist(selected.id)}>换一批</Button>
             </>}
+            <Button size="sm" variant="ghost" icon={<MoreHorizontal size={18} />} aria-label={`${selected.name}的更多操作`}
+              onClick={event => onContextMenu(event, { kind: "playlist", title: selected.name, subtitle: selected.description,
+                tracks: selected.tracks, playlistId: selected.id, playlistKind: selected.kind })}>更多</Button>
           </div>
         </header>
-        <CollectionTrackList key={selected.id} tracks={selected.tracks} activeTrackId={activeTrackId}
+        <CollectionTrackList key={selected.id} listKey={`playlist:${selected.id}`} tracks={selected.tracks} activeTrackId={activeTrackId}
+          onReorder={onReorderPlaylist && selected.source && selected.kind === "manual" && selected.id !== DEFAULT_PLAYLIST_ID
+            ? (trackId, targetId) => onReorderPlaylist(selected.id, trackId, targetId) : undefined}
           onPlay={onPlay} favoriteTrackIds={favoriteTrackIds} onToggleFavorite={onToggleFavorite}
           emptyText={selected.kind === "smart" ? "暂无匹配歌曲" : "暂无歌曲"}
           onContextMenu={(event, track) => onContextMenu(event, {

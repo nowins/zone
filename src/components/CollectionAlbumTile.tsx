@@ -3,20 +3,21 @@ import { Cover } from "./Cover";
 import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type { MouseEvent } from "react";
 
-export function CollectionAlbumTile({ name, artist, coverPath, index, selected, className = "album-tile", onSelect, onPlay, onContextMenu }: {
+export function CollectionAlbumTile({ name, artist, coverPath, index, selected, className = "album-tile", onSelect, onPlay, onContextMenu, focusKey }: {
   name: string;
   artist: string;
   coverPath?: string | null;
   index: number;
-  selected: boolean;
+  selected?: boolean;
   className?: string;
   onSelect: () => void;
   onPlay: () => void;
   onContextMenu: (event: MouseEvent) => void;
+  focusKey?: string;
 }) {
   return (
     <div className={`${className} collection-album-tile${selected ? " selected" : ""}`} onContextMenu={onContextMenu}>
-      <button type="button" className="collection-album-select" aria-pressed={selected}
+      <button type="button" className="collection-album-select" aria-pressed={selected} data-collection-focus={focusKey}
         title={`${name} · ${artist}`} onClick={onSelect}
         onPointerDown={tiltPressDown} onPointerUp={tiltPressClear}
         onPointerLeave={tiltPressClear} onPointerCancel={tiltPressClear}>
