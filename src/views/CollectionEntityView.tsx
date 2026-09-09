@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Heart, Info, ListMusic, MoreHorizontal, Play } from "lucide-react";
 import { Button } from "../components/Button";
 import { Cover } from "../components/Cover";
@@ -7,6 +7,8 @@ import { CollectionLink, useCollectionContext } from "../components/CollectionCo
 import { Dialog } from "../components/Dialog";
 import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
+import { useCollectionPanelMotion } from "../hooks/useCollectionPivot";
+import { COLLECTION_ARTIST_TAB_ORDER } from "../utils/collectionNavigation";
 import { albumReference, artistReference, knownDuration, resolveCollectionEntity } from "../utils/collectionEntities";
 import { formatTime } from "../utils/music";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
@@ -22,6 +24,8 @@ export type CollectionEntityActions = {
 export function CollectionEntityView(props: LibraryViewProps & CollectionEntityActions) {
   const context = useCollectionContext()!;
   const { location } = context.navigation;
+  const tabContent = useRef<HTMLDivElement>(null);
+  useCollectionPanelMotion(tabContent, location.tab, COLLECTION_ARTIST_TAB_ORDER, context.navigation.history.animate);
   const value = location.entity && resolveCollectionEntity(props.index, location.entity);
   const [expandedBio, setExpandedBio] = useState(false);
   const trackId = value?.kind === "track" ? value.track.id : null;
@@ -90,23 +94,23 @@ export function CollectionEntityView(props: LibraryViewProps & CollectionEntityA
       </header>
 
       {value.kind === "artist" && <>
-        <nav className="collection-detail-tabs" aria-label="艺术家内容">{(["overview", "albums", "songs"] as const).map(tab =>
+        <nav className="collection-detail-tabs" aria-label="艺术家内容">{COLLECTION_ARTIST_TAB_ORDER.map(tab =>
           <button key={tab} className={location.tab === tab ? "selected" : ""} aria-current={location.tab === tab ? "page" : undefined}
-            onClick={() => context.navigation.patch({ tab })}>{{ overview: "概览", albums: "专辑", songs: "歌曲" }[tab]}</button>)}</nav>
-        <div className={location.tab === "overview" ? "collection-artist-overview" : ""}>
+            data-collection-focus={`artist-tab:${tab}`} onClick={event => context.navigation.patch({ tab }, event.detail > 0)}>{{ overview: "概览", albums: "专辑", songs: "歌曲" }[tab]}</button>)}</nav>
+        <div ref={tabContent} className={`collection-detail-content${location.tab === "overview" ? " collection-artist-overview" : ""}`}>
           {location.tab !== "songs" && <div>
             {value.artist.albums.length > 0 && <section className="collection-entity-section"><h2>本地专辑 <small>{value.artist.albums.length}</small></h2>
               {artistAlbums(location.tab === "overview" ? value.artist.albums.slice(0, 6) : value.artist.albums)}
-              {location.tab === "overview" && value.artist.albums.length > 6 && <Button variant="ghost" size="sm" onClick={() => context.navigation.patch({ tab: "albums" })}>查看全部专辑</Button>}
+              {location.tab === "overview" && value.artist.albums.length > 6 && <Button variant="ghost" size="sm" onClick={event => context.navigation.patch({ tab: "albums" }, event.detail > 0)}>查看全部专辑</Button>}
             </section>}
             {value.artist.appearances.length > 0 && <section className="collection-entity-section"><h2>参与的专辑 <small>{value.artist.appearances.length}</small></h2>
               {artistAlbums(location.tab === "overview" ? value.artist.appearances.slice(0, 6) : value.artist.appearances)}
-              {location.tab === "overview" && value.artist.appearances.length > 6 && <Button variant="ghost" size="sm" onClick={() => context.navigation.patch({ tab: "albums" })}>查看全部参与专辑</Button>}
+              {location.tab === "overview" && value.artist.appearances.length > 6 && <Button variant="ghost" size="sm" onClick={event => context.navigation.patch({ tab: "albums" }, event.detail > 0)}>查看全部参与专辑</Button>}
             </section>}
           </div>}
           {location.tab !== "albums" && <section className="collection-entity-section"><h2>本地歌曲 <small>{tracks.length}</small></h2>
             {trackList(location.tab === "overview" ? tracks.slice(0, 6) : tracks, `artist:${artist!.artist}:${location.tab}`, location.tab === "overview", tracks)}
-            {location.tab === "overview" && tracks.length > 6 && <Button variant="ghost" size="sm" onClick={() => context.navigation.patch({ tab: "songs" })}>查看全部歌曲</Button>}
+            {location.tab === "overview" && tracks.length > 6 && <Button variant="ghost" size="sm" onClick={event => context.navigation.patch({ tab: "songs" }, event.detail > 0)}>查看全部歌曲</Button>}
           </section>}
         </div>
       </>}

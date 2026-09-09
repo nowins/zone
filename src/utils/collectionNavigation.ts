@@ -20,6 +20,7 @@ export type CollectionLocation = {
   origin?: { page: Exclude<AppPage, "collection">; focus?: string; scrolls?: { top: number; left: number }[] };
 };
 export const COLLECTION_CATEGORY_ORDER: readonly ViewMode[] = ["artists", "albums", "songs", "playlists"];
+export const COLLECTION_ARTIST_TAB_ORDER = ["overview", "albums", "songs"] as const;
 export type CollectionHistory = { entries: CollectionLocation[]; cursor: number; revision: number; direction: 1 | -1; animate: boolean };
 export const emptyCollectionSurface = (): CollectionSurface => ({ scrolls: {}, selections: {} });
 export const initialCollectionLocation = (): CollectionLocation => ({ entity: null, view: "artists", query: "",
@@ -39,5 +40,5 @@ export function travelCollectionHistory(history: CollectionHistory, delta: 1 | -
   const cursor = history.cursor + delta;
   if (cursor < 0 || cursor >= history.entries.length) return history;
   return { entries: history.entries.map((entry, index) => index === history.cursor ? { ...entry, surface: outgoing } : entry),
-    cursor, revision: history.revision + 1, direction: delta, animate: false };
+    cursor, revision: history.revision + 1, direction: delta, animate: true };
 }

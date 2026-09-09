@@ -1,25 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { JSDOM } from "jsdom";
-import React, { act, useRef } from "react";
+import React, { act, useRef, useState } from "react";
+import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 import { collectionPivotDirection, playCollectionPivot } from "../.tmp/visualizer-tests/motion/collectionPivot.js";
 import { initialCollectionHistory, pushCollectionLocation, travelCollectionHistory, emptyCollectionSurface } from "../.tmp/visualizer-tests/utils/collectionNavigation.js";
+import { applyMotionTokens, BROWSE_MOTION, MOTION_STAGGER } from "../.tmp/visualizer-tests/motion/tokens.js";
 
-test("category direction follows visual order, while history travel and keyboard activation restore immediately", () => {
+test("categories, details and history have matching directions; keyboard category activation stays immediate", () => {
   let history = initialCollectionHistory();
   const open = (view, animate = true) => { history = pushCollectionLocation(history,
     { ...history.entries[history.cursor], view, surface: emptyCollectionSurface() }, emptyCollectionSurface(), animate); };
   open("songs"); assert.equal(collectionPivotDirection(history), 1);
   open("albums"); assert.equal(collectionPivotDirection(history), -1);
   history = travelCollectionHistory(history, -1, emptyCollectionSurface());
-  assert.equal(collectionPivotDirection(history), 0);
+  assert.equal(collectionPivotDirection(history), 1, "returning to the category on the right reverses the prior pivot");
   history = travelCollectionHistory(history, 1, emptyCollectionSurface());
-  assert.equal(collectionPivotDirection(history), 0);
+  assert.equal(collectionPivotDirection(history), -1);
   open("playlists", false); assert.equal(collectionPivotDirection(history), 0);
   const same = history; open("playlists"); assert.equal(history, same);
   history = pushCollectionLocation(history, { ...history.entries[history.cursor], entity: { kind: "track", id: "a" } }, emptyCollectionSurface());
-  assert.equal(collectionPivotDirection(history), 0, "details have their own entrance");
+  assert.equal(collectionPivotDirection(history), 1, "details use the same browsing entrance");
+  history = travelCollectionHistory(history, -1, emptyCollectionSurface());
+  assert.equal(collectionPivotDirection(history), -1, "leaving a detail animates back toward its source");
 });
 
 function environment(t) {
@@ -49,10 +53,12 @@ test("visible rows share a stagger by visual row, with bounded work and scroll c
   const { root, animations, rect } = environment(t);
   const stop = playCollectionPivot(root, -1);
   assert.equal(animations.length, 25, "a large library creates at most 24 item animations and one shared movement");
-  assert.equal(animations[0].frames[0].transform, "translate3d(-22px, 0, 0)");
+  assert.equal(animations[0].frames[0].transform, "translate3d(-22px, 0, 0) scale(1)");
   assert.deepEqual(animations.slice(1, 7).map(a => a.options.delay), [0, 0, 24, 24, 48, 48]);
-  assert.ok(animations.every(a => a.options.duration + a.options.delay <= 268));
-  assert.ok(animations.every(a => a.frames.every(frame => !frame.transform.includes("scale"))));
+  assert.ok(animations.every(a => a.options.duration === BROWSE_MOTION.duration && a.options.duration >= 300));
+  assert.ok(animations.every(a => a.options.duration + a.options.delay <= BROWSE_MOTION.duration + MOTION_STAGGER.max));
+  assert.equal(animations.at(-1).options.delay, MOTION_STAGGER.max, "later visible rows keep a capped cascade instead of rushing into the third group");
+  assert.ok(animations.slice(1).every(a => a.frames[0].transform.endsWith(`scale(${BROWSE_MOTION.scale})`)));
   stop(); assert.ok(animations.every(a => a.cancelled));
   animations.length = 0;
   root.firstElementChild.getBoundingClientRect = () => rect(180, 80);
@@ -72,6 +78,7 @@ test("interaction, resize, hiding and cleanup settle an unfinished entrance with
     const stop = playCollectionPivot(root, 1);
     const target = event === "resize" ? window : event === "visibilitychange" ? document : root.firstElementChild;
     const input = new window.Event(event, { bubbles: true, cancelable: true });
+    if (event === "scroll") target.scrollTop += 1;
     target.dispatchEvent(input);
     assert.equal(input.defaultPrevented, false);
     assert.ok(animations.every(a => a.cancelled), event);
@@ -87,8 +94,31 @@ test("interaction, resize, hiding and cleanup settle an unfinished entrance with
   assert.equal(animations.length, 0, "background windows do not start an entrance");
 });
 
+test("queued restoration scroll events do not erase the return animation, while real scrolling still interrupts", t => {
+  const { root, animations, window } = environment(t);
+  const area = root.firstElementChild;
+  area.scrollTop = 120;
+  playCollectionPivot(root, -1);
+  area.dispatchEvent(new window.Event("scroll"));
+  assert.ok(animations.every(a => !a.cancelled));
+  assert.equal(area.scrollTop, 120);
+  area.scrollTop = 160;
+  area.dispatchEvent(new window.Event("scroll"));
+  assert.ok(animations.every(a => a.cancelled));
+});
+
+test("podcast CSS and collection animation consume the same browsing duration and feather scale", t => {
+  const { document } = environment(t);
+  applyMotionTokens(document.documentElement);
+  assert.equal(document.documentElement.style.getPropertyValue("--motion-browse"), `${BROWSE_MOTION.duration}ms`);
+  assert.equal(document.documentElement.style.getPropertyValue("--motion-feather-scale"), `${BROWSE_MOTION.scale}`);
+  const css = readFileSync("src/styles/motion.css", "utf8");
+  assert.match(css, /\.podcast-queue-episode\s*\{\s*animation-duration: var\(--motion-browse\)/);
+  assert.match(css, /@keyframes motion-feather-in\s*\{\s*from\s*\{[^}]*scale\(var\(--motion-feather-scale\)\)/);
+});
+
 await build({ stdin: { contents: `export { useCollectionNavigation } from './src/hooks/useCollectionNavigation';
-export { useCollectionPivot } from './src/hooks/useCollectionPivot';`, resolveDir: process.cwd(), loader: "tsx" },
+export { useCollectionPivot, useCollectionPanelMotion } from './src/hooks/useCollectionPivot';`, resolveDir: process.cwd(), loader: "tsx" },
   outfile: ".tmp/collection-pivot-hooks.js", bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent" });
 
 test("real navigation and Pivot hooks cancel rapid switches, preserve ordinary updates and respect reduced motion", async t => {
@@ -126,13 +156,44 @@ test("real navigation and Pivot hooks cancel rapid switches, preserve ordinary u
   await act(async () => navigation.openIndex("playlists", false));
   assert.equal(animations.length, count, "keyboard category selection is immediate");
   await act(async () => navigation.travel(-1));
-  assert.equal(animations.length, count, "returning restores the surface directly");
+  assert.equal(animations.length, count + 2, "history gets a visible return entrance without changing the restored surface");
   await act(async () => navigation.setQuery("歌曲"));
-  assert.equal(animations.length, count, "typing does not animate the results");
+  assert.equal(animations.length, count + 2, "typing does not animate the results");
   await act(async () => navigation.openIndex("artists"));
   await act(async () => navigation.remember());
   assert.ok(animations.every(a => a.cancelled), "leaving the collection saves a static surface");
   await act(async () => root.unmount());
   assert.equal(listeners.size, 0);
+  assert.ok(animations.every(a => a.cancelled));
+});
+
+test("detail panel changes animate in both directions without replaying the heading or ordinary updates", async t => {
+  const { window, document, animations } = environment(t);
+  for (const key of ["window", "document", "HTMLElement", "Element", "Node"]) globalThis[key] = key === "window" ? window : window[key];
+  window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  const { createRoot } = await import("react-dom/client");
+  const { useCollectionPanelMotion } = await import("../.tmp/collection-pivot-hooks.js");
+  let setTab, refresh;
+  function Fixture() {
+    const [tab, updateTab] = useState("overview"), [, update] = useState(0);
+    setTab = updateTab; refresh = () => update(n => n + 1);
+    const content = useRef(null);
+    useCollectionPanelMotion(content, tab, ["overview", "albums", "songs"]);
+    return React.createElement("section", { className: "collection-connected" }, React.createElement("h1", null, "艺术家"),
+      React.createElement("div", { ref: content }, React.createElement("div", { className: "collection-track-row", "data-row": 0 }, tab)));
+  }
+  const root = createRoot(document.getElementById("mount"));
+  await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Fixture))));
+  assert.equal(animations.length, 0, "the parent page owns initial arrival");
+  await act(async () => setTab("songs"));
+  assert.equal(animations.filter(a => !a.cancelled).length, 2);
+  assert.ok(animations.every(a => a.node.tagName !== "H1"));
+  const count = animations.length;
+  await act(async () => refresh());
+  assert.equal(animations.length, count, "data refreshes do not restart the current panel");
+  await act(async () => setTab("albums"));
+  assert.equal(animations.filter(a => !a.cancelled).length, 2);
+  assert.ok(animations.filter(a => !a.cancelled).every(a => a.frames[0].transform.includes("-22px")));
+  await act(async () => root.unmount());
   assert.ok(animations.every(a => a.cancelled));
 });

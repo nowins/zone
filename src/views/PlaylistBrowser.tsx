@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { MouseEvent } from "react";
 import { Heart, ListMusic, MoreHorizontal, Play, Plus, RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import { Button } from "../components/Button";
 import { Cover } from "../components/Cover";
 import { CollectionTrackList } from "../components/CollectionTrackList";
+import { useCollectionPanelMotion } from "../hooks/useCollectionPivot";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
 import type { ContextPayload, Playlist, Track, TrackActivityMap } from "../types";
 
@@ -68,6 +69,9 @@ export function PlaylistBrowser({
     ];
   }, [activity, favoriteTrackIds, playlists, queueIds, trackMap, tracks]);
   const selected = entries.find((item) => item.id === selectedPlaylistId);
+  const contentRef = useRef<HTMLElement>(null);
+  const animateSelection = useRef(true);
+  useCollectionPanelMotion(contentRef, selectedPlaylistId, undefined, animateSelection.current);
   if (!selected) return <div className="collection-unavailable"><h2>此播放列表已不存在</h2>
     <Button onClick={() => onSelectPlaylist(DEFAULT_PLAYLIST_ID)}>查看喜欢的歌曲</Button></div>;
   const artwork = [...new Set(selected.tracks.flatMap((track) => track.cover_path ? [track.cover_path] : []))].slice(0, 4);
@@ -90,7 +94,7 @@ export function PlaylistBrowser({
             className={playlist.id === selected.id ? "selected" : ""}
             aria-pressed={playlist.id === selected.id}
             title={playlist.name}
-            onClick={() => onSelectPlaylist(playlist.id)}
+            onClick={event => { animateSelection.current = event.detail > 0; onSelectPlaylist(playlist.id); }}
             onContextMenu={(event) =>
               onContextMenu(event, {
                 kind: "playlist",
@@ -111,7 +115,7 @@ export function PlaylistBrowser({
         ))}
       </section>
 
-      <section className="playlist-content" aria-label={selected.name}>
+      <section ref={contentRef} className="playlist-content" aria-label={selected.name}>
         <header className="playlist-heading">
           <div className="playlist-cover-grid" data-count={covers.length === 4 ? 4 : 1} aria-hidden="true">
             {covers.length > 0 ? covers.map((path) => <Cover key={path} artPath={path} label={selected.name} fallback={fallback} />)

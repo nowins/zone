@@ -81,8 +81,10 @@ export const MOTION_DRIFT = { s: 8, m: 22, l: 48 } as const;
 /** Per-item stagger step and total cap, in milliseconds. */
 export const MOTION_STAGGER = { step: 24, max: 144 } as const;
 
-/** Pivot entrance groups are bounded independently of library size. */
-export const COLLECTION_PIVOT_MOTION = { groups: 3, maxItems: 24 } as const;
+/** Shared collection/podcast browsing rhythm; controls retain their shorter tiers. */
+export const BROWSE_MOTION = { duration: 320, scale: 0.96 } as const;
+/** Bound visible-item work independently of library size. */
+export const COLLECTION_PIVOT_MOTION = { maxItems: 24 } as const;
 
 export const SPRING_PRESETS = {
   // High stiffness, near-critical damping: press rebound and FLIP landing.
@@ -129,6 +131,8 @@ function cubicBezierCss(points: readonly [number, number, number, number]): stri
  */
 export function applyMotionTokens(root: HTMLElement = document.documentElement): void {
   const { style } = root;
+  style.setProperty("--motion-browse", `${BROWSE_MOTION.duration}ms`);
+  style.setProperty("--motion-feather-scale", `${BROWSE_MOTION.scale}`);
   style.setProperty("--panorama-backdrop-travel", `${PANORAMA_MOTION.backdropTravel}px`);
   for (const name of Object.keys(MOTION_DURATIONS) as MotionDurationName[]) {
     style.setProperty(cssVarName.duration(name), `${MOTION_DURATIONS[name]}ms`);

@@ -36,8 +36,9 @@ export function useCollectionNavigation() {
     const surface = capture();
     commit(current => ({ ...current, animate: false, entries: current.entries.map((entry, i) => i === current.cursor ? { ...entry, surface } : entry) }));
   }, [capture, commit]);
-  const patch = useCallback((values: Partial<CollectionLocation>) => {
-    commit(current => ({ ...current, entries: current.entries.map((entry, i) => i === current.cursor ? { ...entry, ...values } : entry) }));
+  const patch = useCallback((values: Partial<CollectionLocation>, animate?: boolean) => {
+    commit(current => ({ ...current, animate: animate ?? current.animate,
+      entries: current.entries.map((entry, i) => i === current.cursor ? { ...entry, ...values } : entry) }));
   }, [commit]);
   const push = useCallback((values: Partial<CollectionLocation>, animate = true) => {
     const outgoing = capture();

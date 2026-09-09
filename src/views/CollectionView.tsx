@@ -79,7 +79,7 @@ export function CollectionView(props: Props) {
         <h1 className="collection-visually-hidden" data-collection-heading tabIndex={-1}>{searching ? "搜索结果" : labels[props.view]}</h1>
         {!searching && <p>{count}{props.scanNote ? ` · ${props.scanNote}` : ""}</p>}
       </div>}
-      <div ref={contentRef} key={history.revision} className={`collection-content${detail && history.animate ? " is-detail-entering" : ""}`}>
+      <div ref={contentRef} key={history.revision} className="collection-content">
         {searching ? <SearchResultsView query={location.query} tracks={index.tracks} albums={index.albums} artists={index.artists}
           playlists={props.playlists} activity={props.trackActivity} favoriteTrackIds={props.favoriteTrackIds}
           activeTrackId={props.activeTrackId} onPlay={props.onPlay} onToggleFavorite={props.onToggleFavorite}
