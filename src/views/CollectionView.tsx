@@ -1,5 +1,5 @@
 import { useLayoutEffect, type RefObject } from "react";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { CollectionContext } from "../components/CollectionContext";
 import { CollectionSearchField } from "../components/CollectionSearchField";
 import { EmptyState } from "../components/EmptyState";
@@ -30,11 +30,13 @@ export function CollectionView(props: Props) {
   const detail = Boolean(location.entity) && !searching;
   const previous = history.entries[history.cursor - 1];
   const canBack = history.cursor > 0;
-  const canForward = history.cursor < history.entries.length - 1;
   function locationLabel(value: CollectionLocation | undefined) {
     if (!value) return "收藏";
     if (value.query.trim() && value.searchMode === "results") return "搜索结果";
-    if (!value.entity) return value.view === "playlists" ? props.playlists.find(p => p.id === value.playlistId)?.name || "播放列表" : `${labels[value.view]}列表`;
+    if (!value.entity) {
+      if (value.view !== "playlists") return `${labels[value.view]}列表`;
+      return value.playlistId === "now" ? "正在播放" : props.playlists.find(p => p.id === value.playlistId)?.name || "播放列表";
+    }
     const resolved = resolveCollectionEntity(index, value.entity);
     return resolved?.kind === "artist" ? resolved.artist.artist : resolved?.kind === "album" ? resolved.album.album : resolved?.kind === "track" ? resolved.track.title : "收藏";
   }
@@ -57,14 +59,12 @@ export function CollectionView(props: Props) {
         event.preventDefault(); props.onTravel(event.button === 3 ? -1 : 1);
       }}>
       <div className="collection-toolbar">
-        {detail || searching ? <div className="collection-history-actions">
-          <button data-collection-focus="back" className="collection-back" disabled={!canBack} aria-label={`返回${previousLabel}`} onClick={() => props.onTravel(-1)}>
+        {detail || searching ?
+          <button type="button" data-collection-focus="back" className="collection-back" disabled={!canBack}
+            aria-label={`返回${previousLabel}`} title={`返回${previousLabel}`} onClick={() => props.onTravel(-1)}>
             <ArrowLeft size={18} /><span>返回{previousLabel}</span>
           </button>
-          {canForward && <button aria-label="前进" onClick={() => props.onTravel(1)}><ArrowRight size={17} /></button>}
-        </div> : <nav className="collection-categories" aria-label="收藏视图">
-          {canBack && <button className="collection-inline-back" aria-label={`返回${previousLabel}`} onClick={() => props.onTravel(-1)}><ArrowLeft size={18} /></button>}
-          {canForward && <button className="collection-inline-back" aria-label="前进" onClick={() => props.onTravel(1)}><ArrowRight size={18} /></button>}
+        : <nav className="collection-categories" aria-label="收藏视图">
           {(["artists", "albums", "songs", "playlists"] as const).map(view => <button key={view}
             data-collection-focus={`index:${view}`} aria-current={view === props.view ? "page" : undefined}
             className={view === props.view ? "selected" : ""} onClick={() => navigation.openIndex(view)}>{labels[view]}</button>)}

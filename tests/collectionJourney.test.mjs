@@ -83,11 +83,32 @@ test("playlist → song → album → artist → another album returns focus and
   assert.equal(document.querySelectorAll(".collection-album-select").length, 2);
   await click([...document.querySelectorAll(".collection-album-select")].find(node => node.textContent.includes("生之响往")));
   assert.equal(heading(), "生之响往");
-  for (let i = 0; i < 4; i++) await key(window, "ArrowLeft", { altKey: true });
+  for (const label of ["返回刺猬", "返回白日梦蓝", "返回白日梦蓝", "返回喜欢的歌曲"]) {
+    const back = document.querySelector(".collection-back");
+    assert.equal(back.getAttribute("aria-label"), label);
+    assert.equal(document.querySelector('[aria-label="前进"]'), null);
+    await click(back);
+  }
   assert.equal(api.view, "playlists");
+  assert.deepEqual([...document.querySelectorAll(".collection-categories button")].map(node => node.textContent), ["艺术家", "专辑", "歌曲", "播放列表"]);
+  assert.equal(document.querySelector(".collection-back"), null);
   assert.equal(document.activeElement.getAttribute("aria-label"), "查看歌曲 白日梦蓝");
   assert.equal(document.querySelector('[data-collection-selection]').dataset.collectionSelection, "a");
   assert.equal(document.querySelector(".collection-track-scroll").scrollTop, 58);
+  await key(window, "ArrowRight", { altKey: true });
+  assert.equal(heading(), "白日梦蓝");
+  assert.equal(document.querySelector('[aria-label="前进"]'), null);
+  await act(async () => document.querySelector(".collection-connected").dispatchEvent(new MouseEvent("auxclick", { button: 3, bubbles: true, cancelable: true })));
+  assert.equal(document.activeElement.getAttribute("aria-label"), "查看歌曲 白日梦蓝");
+  assert.equal(document.querySelector(".collection-track-scroll").scrollTop, 58);
+  await act(async () => document.querySelector(".collection-connected").dispatchEvent(new MouseEvent("auxclick", { button: 4, bubbles: true, cancelable: true })));
+  assert.equal(heading(), "白日梦蓝");
+  await key(window, "ArrowLeft", { altKey: true });
+  await act(async () => api.setSelectedPlaylistId("now"));
+  await click(document.querySelector('[aria-label="查看歌曲 白日梦蓝"]'));
+  assert.equal(document.querySelector(".collection-back").textContent, "返回正在播放");
+  await click(document.querySelector(".collection-back"));
+  assert.equal(api.selectedPlaylistId, "now");
   assert.deepEqual(played, []);
 });
 test("search filters, query and row focus survive related-object browsing", async t => {
@@ -96,10 +117,12 @@ test("search filters, query and row focus survive related-object browsing", asyn
   await click([...document.querySelectorAll(".search-filter button")].find(node => node.textContent.startsWith("歌曲")));
   await click(document.querySelector('[aria-label="查看歌曲 生之响往"]'));
   assert.equal(heading(), "生之响往");
-  await key(window, "ArrowLeft", { altKey: true });
+  assert.equal(document.querySelector(".collection-back").textContent, "返回搜索结果");
+  await click(document.querySelector(".collection-back"));
   assert.equal(document.querySelector("input").value, "刺猬");
   assert.equal(api.collection.location.filter, "songs");
   assert.equal(document.activeElement.getAttribute("aria-label"), "查看歌曲 生之响往");
+  assert.equal(document.querySelector('[aria-label="前进"]'), null);
   assert.deepEqual(played, []);
 });
 test("external detail entry returns to its real page and focused source", async t => {
