@@ -1,0 +1,157 @@
+use std::sync::Mutex;
+use tauri::{LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
+
+const COMPACT_SIZE: (f64, f64) = (400.0, 660.0);
+const COMPACT_MIN: (f64, f64) = (340.0, 560.0);
+const COMPACT_MAX: (f64, f64) = (520.0, 860.0);
+
+#[derive(Clone, Copy)]
+struct NormalWindow {
+  size: LogicalSize<f64>,
+  position: PhysicalPosition<i32>,
+  maximized: bool,
+}
+
+#[derive(Default)]
+pub struct CompactWindowState(Mutex<Option<NormalWindow>>);
+
+fn main_window(window: &WebviewWindow) -> Result<(), String> {
+  if window.label() == "main" { Ok(()) } else { Err("仅主窗口支持小屏模式".into()) }
+}
+
+fn restore(window: &WebviewWindow, normal: NormalWindow) -> tauri::Result<()> {
+  let config = window.app_handle().config();
+  let bounds = config.app.windows.iter().find(|item| item.label == "main");
+  window.set_max_size(bounds.and_then(|item| item.max_width.zip(item.max_height)).map(|(w, h)| LogicalSize::new(w, h)))?;
+  window.set_min_size(bounds.and_then(|item| item.min_width.zip(item.min_height)).map(|(w, h)| LogicalSize::new(w, h)))?;
+  window.set_maximizable(true)?;
+  window.set_size(normal.size)?;
+  // A disconnected monitor must not strand the normal window off screen.
+  let monitors = window.available_monitors()?;
+  let visible = monitors.iter().any(|monitor| {
+    let area = monitor.work_area();
+    normal.position.x >= area.position.x && normal.position.x < area.position.x + area.size.width as i32 - 80
+      && normal.position.y >= area.position.y && normal.position.y < area.position.y + area.size.height as i32 - 28
+  });
+  if visible { window.set_position(normal.position)?; } else { window.center()?; }
+  if normal.maximized { window.maximize()?; }
+  Ok(())
+}
+
+// Work in physical pixels for placement, retaining monitor-specific DPI for size.
+fn compact_bounds(
+  position: PhysicalPosition<i32>,
+  previous_width: f64,
+  area_position: PhysicalPosition<i32>,
+  area_size: PhysicalSize<u32>,
+  scale: f64,
+) -> (LogicalSize<f64>, PhysicalPosition<i32>) {
+  let width = COMPACT_SIZE.0.min(area_size.width as f64 / scale);
+  let height = COMPACT_SIZE.1.min(area_size.height as f64 / scale);
+  let max_x = area_position.x + (area_size.width as f64 - width * scale).max(0.0) as i32;
+  let max_y = area_position.y + (area_size.height as f64 - height * scale).max(0.0) as i32;
+  let x = position.x + ((previous_width - width) * scale) as i32;
+  (LogicalSize::new(width, height), PhysicalPosition::new(
+    x.clamp(area_position.x, max_x), position.y.clamp(area_position.y, max_y),
+  ))
+}
+
+fn enter(window: &WebviewWindow, normal: NormalWindow) -> tauri::Result<()> {
+  let monitor = window.current_monitor()?.or(window.primary_monitor()?);
+  let scale = window.scale_factor()?;
+  let (size, position) = if let Some(monitor) = &monitor {
+    let area = monitor.work_area();
+    compact_bounds(normal.position, normal.size.width, area.position, area.size, scale)
+  } else {
+    (LogicalSize::new(COMPACT_SIZE.0, COMPACT_SIZE.1), normal.position)
+  };
+  window.unmaximize()?;
+  window.set_min_size(Some(LogicalSize::new(COMPACT_MIN.0.min(size.width), COMPACT_MIN.1.min(size.height))))?;
+  window.set_max_size(Some(LogicalSize::new(COMPACT_MAX.0, COMPACT_MAX.1)))?;
+  window.set_maximizable(false)?;
+  window.set_size(size)?;
+  window.set_position(position)?;
+  Ok(())
+}
+
+#[tauri::command]
+pub async fn get_compact_mode(window: WebviewWindow, state: tauri::State<'_, CompactWindowState>) -> Result<bool, String> {
+  main_window(&window)?;
+  Ok(state.0.lock().map_err(|_| "窗口状态不可用")?.is_some())
+}
+
+/// Only two predefined layouts are exposed; the webview cannot request arbitrary geometry.
+#[tauri::command]
+pub async fn set_compact_mode(
+  window: WebviewWindow,
+  state: tauri::State<'_, CompactWindowState>,
+  compact: bool,
+) -> Result<bool, String> {
+  main_window(&window)?;
+  let mut current = state.0.lock().map_err(|_| "窗口状态不可用")?;
+  if current.is_some() == compact { return Ok(compact); }
+  if window.is_fullscreen().map_err(|error| error.to_string())? {
+    return Err("请先退出全屏".into());
+  }
+  if compact {
+    let maximized = window.is_maximized().map_err(|error| error.to_string())?;
+    if maximized { window.unmaximize().map_err(|error| error.to_string())?; }
+    let snapshot = (|| -> tauri::Result<NormalWindow> {
+      Ok(NormalWindow {
+        size: window.inner_size()?.to_logical(window.scale_factor()?),
+        position: window.outer_position()?,
+        maximized,
+      })
+    })();
+    let normal = match snapshot {
+      Ok(normal) => normal,
+      Err(error) => {
+        if maximized { let _ = window.maximize(); }
+        return Err(error.to_string());
+      }
+    };
+    if let Err(error) = enter(&window, normal) {
+      // Retain a restoration snapshot if rollback fails, so a later exit can retry.
+      if restore(&window, normal).is_err() { *current = Some(normal); }
+      return Err(error.to_string());
+    }
+    *current = Some(normal);
+  } else if let Some(normal) = *current {
+    if let Err(error) = restore(&window, normal) {
+      let _ = enter(&window, normal);
+      return Err(error.to_string());
+    }
+    *current = None;
+  }
+  Ok(compact)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn compact_keeps_the_right_edge_at_high_dpi() {
+    let (size, position) = compact_bounds(PhysicalPosition::new(100, 70), 1180.0,
+      PhysicalPosition::new(0, 0), PhysicalSize::new(3840, 2080), 2.0);
+    assert_eq!(size, LogicalSize::new(400.0, 660.0));
+    assert_eq!(position, PhysicalPosition::new(1660, 70));
+  }
+
+  #[test]
+  fn compact_stays_inside_negative_origin_work_area() {
+    let (size, position) = compact_bounds(PhysicalPosition::new(-1000, 800), 1180.0,
+      PhysicalPosition::new(-1920, 0), PhysicalSize::new(1920, 1040), 1.5);
+    assert_eq!(size, LogicalSize::new(400.0, 660.0));
+    assert_eq!(position, PhysicalPosition::new(-600, 50));
+  }
+
+  #[test]
+  fn compact_fits_a_short_screen_without_hiding_window_controls() {
+    let (size, position) = compact_bounds(PhysicalPosition::new(60, 100), 920.0,
+      PhysicalPosition::new(0, 40), PhysicalSize::new(1280, 600), 1.25);
+    assert_eq!(size.height, 480.0);
+    assert_eq!(position.y, 40);
+    assert!(position.x >= 0 && position.x + (size.width * 1.25) as i32 <= 1280);
+  }
+}

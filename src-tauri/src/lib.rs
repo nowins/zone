@@ -9,6 +9,7 @@ mod music;
 mod podcast;
 mod qrc;
 mod system_media;
+mod window_mode;
 
 use tauri::http::{header, Response, StatusCode};
 use tauri::{Emitter, Manager};
@@ -134,6 +135,7 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_opener::init())
     .manage(library::LibraryWatcherState::default())
+    .manage(window_mode::CompactWindowState::default())
     .register_uri_scheme_protocol("zone-audio", |_ctx, request| audio_protocol::serve_audio_protocol(request))
     .register_asynchronous_uri_scheme_protocol("zone-podcast-artwork", |_ctx, request, responder| {
       tauri::async_runtime::spawn(async move {
@@ -203,6 +205,8 @@ pub fn run() {
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
+      window_mode::get_compact_mode,
+      window_mode::set_compact_mode,
       diagnostics::export_diagnostics,
       library::select_music_folder,
       lyrics::select_lyrics_file,

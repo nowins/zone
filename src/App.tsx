@@ -5,6 +5,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Titlebar } from "./components/Titlebar";
+import { CompactPlayerView } from "./views/CompactPlayerView";
+import { useCompactMode } from "./hooks/useCompactMode";
 import { AppHeader } from "./components/AppHeader";
 import { PlayerBar } from "./components/PlayerBar";
 import { PodcastPlayerBar } from "./components/PodcastPlayerBar";
@@ -73,6 +75,7 @@ const PODCAST_TILE_REFRESH_INTERVAL_MS = 10 * 60_000;
 let lastPodcastTileRefreshAt = 0;
 
 export default function App() {
+  const compactMode = useCompactMode();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playbackSessionRef = useRef<PlaybackSession | null>(null);
   const playbackControlsRef = useRef<PlaybackControlsHandle | null>(null);
@@ -126,6 +129,7 @@ export default function App() {
     navigateCollection,
     openNowPlaying,
   } = useNavigation({
+    shortcutsEnabled: !compactMode.active,
     contextMenu,
     infoTarget,
     addToPlaylistTarget,
@@ -282,7 +286,7 @@ export default function App() {
     hasEpisodeStartedOnDevice,
   };
   audioEngineRef.current = useAudioEngine({
-    visualizerVisible: page === "nowPlaying",
+    visualizerVisible: page === "nowPlaying" && !compactMode.active,
     audioRef,
     volume,
     progress,
@@ -832,7 +836,7 @@ export default function App() {
   // `useLastNonNull` can freeze the closing snapshot for the exit window.
   // Chrome fades out together with the outgoing page when a navigation targets
   // now playing — not after the page flip, which read as a lingering flash.
-  const chromeVisible = page !== "nowPlaying" && !(navExit !== null && navTargetRef.current === "nowPlaying");
+  const chromeVisible = !compactMode.active && page !== "nowPlaying" && !(navExit !== null && navTargetRef.current === "nowPlaying");
   const appHeaderElement = chromeVisible ? (
     <AppHeader
       page={page}
@@ -972,6 +976,8 @@ export default function App() {
     <div className="action-toast" role="alert">部分资料库状态未保存
       <Button variant="ghost" busy={retryingPersistence} onClick={() => void retryLibraryPersistence()}>重试</Button>
     </div>
+  ) : compactMode.error ? (
+    <div className="action-toast" role="alert">{compactMode.error}</div>
   ) : actionNotice ? (
     <div className="action-toast" role="status">{actionNotice}</div>
   ) : null;
@@ -984,10 +990,18 @@ export default function App() {
   const lastSmartPlaylistDialogElement = useLastNonNull(smartPlaylistDialogElement);
   const lastActionToastElement = useLastNonNull(actionToastElement);
 
+  async function changeCompactMode(value: boolean) {
+    if (document.querySelector('[aria-modal="true"]')) return false;
+    closeContextMenu();
+    if (!await compactMode.setCompact(value)) return false;
+    window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".titlebar-mode")?.focus({ preventScroll: true }));
+    return true;
+  }
+
   return (
     <div
-      className={`shell ${page === "nowPlaying" ? "shell-now-playing" : ""}`}
-      data-nav-state={navExit !== null ? "exiting" : undefined}
+      className={`shell ${compactMode.active ? "shell-compact" : page === "nowPlaying" ? "shell-now-playing" : ""}`}
+      data-nav-state={!compactMode.active && navExit !== null ? "exiting" : undefined}
       style={
         {
           "--motion-dir": navDir,
@@ -1019,13 +1033,33 @@ export default function App() {
         onEnded={onEnded}
       />
       <Titlebar
-        showSettings={page !== "nowPlaying"}
+        showSettings={!compactMode.active && page !== "nowPlaying"}
         isSettings={page === "settings"}
         onOpenSettings={() => navigatePage("settings")}
         closeToTray={closeToTray}
+        compact={compactMode.active}
+        modePending={compactMode.pending || navExit !== null}
+        onToggleCompact={() => void changeCompactMode(!compactMode.active)}
       />
 
-      <main className="workspace">
+      {compactMode.active ? <CompactPlayerView
+        index={collectionIndex} playlists={playlists} activity={trackActivity} favoriteTrackIds={favoriteTrackIds}
+        track={activeTrack} queueIds={playbackQueueIds} episode={activePodcastEpisode} podcastQueue={podcastQueue}
+        podcastStatus={podcastPlaybackStatus} playbackRate={podcastPlaybackRate} isPlaying={isPlaying}
+        ready={restored && podcastSessionHydrated} progress={progress} duration={duration} volume={volume} shuffle={shuffle} repeat={repeat}
+        onPlay={playTrack} onPlayTracks={playTracks} onToggleFavorite={toggleFavoriteTrack} onPlayPause={togglePlay}
+        onPrevious={() => move(-1)} onNext={() => { if (activePodcastEpisode) playNextPodcastEpisode(); else move(1); }}
+        onSeek={seek} onVolume={setVolume} onShuffle={() => setShuffle(value => !value)}
+        onRepeat={() => setRepeat(value => value === "off" ? "all" : value === "all" ? "one" : "off")}
+        onPlaybackRate={setPodcastPlaybackRate} onToggleSaved={() => void toggleActivePodcastSaved()}
+        onPlayEpisode={playPodcastQueueEpisodeById} onRetryPodcast={retryPodcastPlayback}
+        onOpenNormal={async target => {
+          if (await changeCompactMode(false) && target) {
+            if (target === "collection") { setSelectedPlaylistId("now"); navigateCollection("playlists"); }
+            else requestNavigation(target);
+          }
+        }}
+      /> : <main className="workspace">
         <Presence show={appHeaderElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
           {appHeaderElement ?? lastAppHeaderElement ?? <span style={{ display: "none" }} />}
         </Presence>
@@ -1215,11 +1249,11 @@ export default function App() {
             }}
           />
         )}
-      </main>
+      </main>}
 
-      <Presence show={playerBarElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+      {!compactMode.active && <Presence show={playerBarElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
         {playerBarElement ?? lastPlayerBarElement ?? <span style={{ display: "none" }} />}
-      </Presence>
+      </Presence>}
 
       <Presence show={contextMenuElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
         {contextMenuElement ?? lastContextMenuElement ?? <span style={{ display: "none" }} />}

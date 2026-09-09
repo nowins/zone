@@ -535,6 +535,8 @@ button.tilt-pressed {
   .player-cover,
   .collection-album-select,
   .zune-controls button,
+  .compact-player .button,
+  .titlebar-mode,
   .podcast-now-back,
   .podcast-now-primary-controls > button,
   .podcast-now-menu-anchor > button,
@@ -600,6 +602,8 @@ button.tilt-pressed {
   }
 
   .tilt-pressed,
+  .compact-player .button:active,
+  .titlebar-mode:active,
   .quickplay-ghost,
   .quickplay-backdrop,
   .lyrics-settings-toggle:active,

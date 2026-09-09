@@ -1,22 +1,28 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Settings2, Square, X } from "lucide-react";
+import { Maximize2, Minus, Settings2, Smartphone, Square, X } from "lucide-react";
 
 export function Titlebar({
   isSettings,
   onOpenSettings,
   closeToTray = true,
   showSettings = true,
+  compact = false,
+  modePending = false,
+  onToggleCompact,
 }: {
   isSettings: boolean;
   onOpenSettings: () => void;
   closeToTray?: boolean;
   showSettings?: boolean;
+  compact?: boolean;
+  modePending?: boolean;
+  onToggleCompact?: () => void;
 }) {
   const appWindow = getCurrentWindow();
 
   return (
     <header className="titlebar" data-tauri-drag-region>
-      <div data-tauri-drag-region />
+      <div data-tauri-drag-region>{compact ? <span className="compact-wordmark" data-tauri-drag-region>zone</span> : null}</div>
       <div className="window-controls">
         {showSettings ? <button
           className={isSettings ? "titlebar-settings active" : "titlebar-settings"}
@@ -27,12 +33,22 @@ export function Titlebar({
           <Settings2 size={13} aria-hidden="true" />
           <span>设置</span>
         </button> : null}
+        {onToggleCompact ? <button
+          className="titlebar-mode"
+          onClick={onToggleCompact}
+          disabled={modePending}
+          title={compact ? "返回正常模式" : "小屏模式"}
+          aria-label={compact ? "返回正常模式" : "小屏模式"}
+          aria-pressed={compact}
+        >
+          {compact ? <Maximize2 size={14} /> : <Smartphone size={14} />}
+        </button> : null}
         <button onClick={() => appWindow.minimize()} title="最小化">
           <Minus size={15} />
         </button>
-        <button onClick={() => appWindow.toggleMaximize()} title="最大化">
+        {!compact ? <button onClick={() => appWindow.toggleMaximize()} title="最大化">
           <Square size={12} />
-        </button>
+        </button> : null}
         <button
           onClick={() => {
             void (async () => {

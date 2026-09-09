@@ -23,6 +23,7 @@ export type NowPlayingTargets = {
 };
 
 type UseNavigationParams = {
+  shortcutsEnabled?: boolean;
   contextMenu: ContextMenuState | null;
   infoTarget: ContextPayload | null;
   addToPlaylistTarget: ContextPayload | null;
@@ -32,6 +33,7 @@ type UseNavigationParams = {
 };
 
 export function useNavigation({
+  shortcutsEnabled = true,
   contextMenu,
   infoTarget,
   addToPlaylistTarget,
@@ -160,6 +162,7 @@ export function useNavigation({
 
   useEffect(() => {
     function handleCollectionSearchKeys(event: KeyboardEvent) {
+      if (!shortcutsEnabled) return;
       if (event.isComposing || event.defaultPrevented) return;
       if (document.querySelector('[aria-modal="true"]')) return;
       if (contextMenu || infoTarget || addToPlaylistTarget || playlistDialog || smartPlaylistDialog) return;
@@ -192,7 +195,7 @@ export function useNavigation({
 
     window.addEventListener("keydown", handleCollectionSearchKeys, true);
     return () => window.removeEventListener("keydown", handleCollectionSearchKeys, true);
-  }, [addToPlaylistTarget, contextMenu, infoTarget, page, playlistDialog, query, searchMode, smartPlaylistDialog]);
+  }, [addToPlaylistTarget, contextMenu, infoTarget, page, playlistDialog, query, searchMode, smartPlaylistDialog, shortcutsEnabled]);
 
   function openNowPlaying() {
     const { activePodcastEpisode, activeTrack } = nowPlayingTargetsRef.current;

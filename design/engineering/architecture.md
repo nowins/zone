@@ -37,9 +37,11 @@
   - `usePlaylists.ts`：playlists/homePins/喜欢状态与 CRUD、普通列表移除与顺序、智能规则／轮换／排除、homePins 对账和固定；对象导航由 `useNavigation` 负责。
 - `src/hooks/useMetadataEnrichment.ts` 与 `src-tauri/src/metadata/`：曲目元数据补全与覆盖；结合音乐库状态接线。
 - `src/hooks/useAppHotkeys.ts` / `useModalFocus.ts` / `useMountedRef.ts` / `useEntranceCompletion.ts`：全局播放快捷键、对话框焦点、StrictMode 挂载生命周期与入场清理。
+- `src/hooks/useCompactMode.ts`：读取原生窗口模式、串行防重切换及失败恢复；App 只替换视图分支，主音频与播放 hook 保持挂载。小屏期间停用正常收藏导航快捷键与可视化采样。
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。
 - `src/constants.ts`：`STORAGE_KEY = "zone-player-state-v1"`、`LIBRARY_SCHEMA_VERSION = 6`、`DEFAULT_PLAYLIST_ID = "favorites"`、`MAX_HOME_PINS = 12`、`VISUALIZER_SAMPLE_COUNT = 180`。
 - `src/views/`：页面级视图。
+  - `CompactPlayerView.tsx`：Zune HD 风格的小屏界面，消费已有收藏索引、列表解析和音乐／播客播放动作，内部浏览独立于正常页面历史；样式在 `styles/compact-player.css`，功能范围与验证见 [组件规范](../component-guidelines.md)。
   - `QuickplayView.tsx`：Zune quickplay 首页，解析固定内容；`components/tiles/QuickplayPinBoard.tsx` 负责 WP 风格磁贴编辑、重排与外观，`usePinDrag.ts` 通过指针捕获管理拖动、跟随预览与取消，不依赖 WebView2 的 HTML 拖放；`useTileActivity.ts` 管理动态可见性。
   - `src/hooks/useQuickplayPanorama.ts`：首页视口滚动、短滚动条显隐与拖拽、背景视差、鼠标拖动、滚轮／键盘归属与返回位置恢复；`src/utils/quickplayPanorama.ts` 提供键盘分组边界和输入意图的纯函数。背景与滚动条位置由 DOM ref 更新，React 仅接收是否存在横向溢出。
   - `CollectionView.tsx` / `CollectionEntityView.tsx`：收藏索引／搜索／详情外壳及歌曲、专辑、艺术家对象详情，关系通过 `CollectionContext` 的统一入口跳转。
@@ -80,6 +82,7 @@
   - `useReducedMotion.ts`：reduced-motion 统一 hook。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`controls`（Button 原语变体与尺寸）、`collection`、`podcasts`、`podcast-now-playing`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`tiles`（Metro 磁贴系统）、`motion`（动效原语层：feather 入场、页面/浮层出入场、反馈动画、共享 `.tilt-pressed` 倾斜规则、唯一 reduced-motion 块）、`animations-responsive`（正在播放入场编排与响应式）。
 - `src-tauri/src/lib.rs`：应用初始化接线。包含系统托盘、`update_system_media`/`update_system_media_timeline` 薄命令与 `pub fn run()`（协议注册、状态初始化、命令注册）；业务命令按模块注册，例如 `music::music_scan_library`。
+- `src-tauri/src/window_mode.rs`：主窗口专用的 `get_compact_mode` / `set_compact_mode`。仅接受模式布尔值，原生端保存正常窗口快照、应用预设尺寸与工作区边界并处理回滚；不开放任意尺寸／位置参数，不增加通用窗口 capabilities。
 - `src-tauri/src/db/` 与 `src-tauri/src/music/`：音乐 SQLite schema、状态快照/迁移、可取消扫描、特征与电台逻辑；`beat_window.rs` 经 Symphonia 有界解码供前端 Worker 预分析。
 - `src/workers/beatAnalysis.worker.ts`：节拍计算 Worker；由 `useAudioEngine` 管理请求与缓存。
 - `src-tauri/src/diagnostics.rs` 与 `src/utils/diagnostics.ts`：本地诊断和保存对话框导出。
