@@ -111,6 +111,8 @@
 | `PlaylistDialog` / `AddToPlaylistDialog` / `MetadataEditDialog` / `MetadataSearchDialog` / 播客确认框 | 全部建在 `Dialog` 壳上，动作行用 `Button`；遮罩淡入 + 盒体 rotateX 下沉入场由壳的基类继承 |
 
 `Dialog`、资料面板与智能列表编辑器共用 `useModalFocus`：打开后焦点留在浮层内，关闭后返回有效入口。浮层交接或嵌套期间以共享计数维护背景 `inert`，前一浮层退场不能解除后一浮层的隔离。
+
+智能列表编辑器在标题栏与播放条之间居中，最大 1000×560px，窄窗口保留外侧边距并收缩；模板、规则、预览各自滚动，保存／取消固定可见。保留全部规则和预览功能，不通过缩小控件字号或隐藏预览换取空间。几何以 `playlists.css` 为准，`--dialog-offset-y` 设为零，仍复用共用弹窗进退场。
 | `Titlebar` / `AppHeader` | 无边框窗口 chrome 与 pivot 导航；选中态只变色 + 下划线，**不做位移** |
 
 ### 4.2 播放 chrome
