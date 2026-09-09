@@ -78,6 +78,13 @@
 .playlist-list > button:nth-of-type(n + 7),
 .collection-track-row:nth-child(n + 7) { --stagger: 144ms; }
 
+/* Connected collection indexes use a bounded visible-row Pivot controller.
+   Details and restored surfaces must not replay the legacy per-row feather. */
+.collection-connected .collection-track-row,
+.collection-connected .playlist-list > button,
+.collection-connected .album-tile,
+.collection-connected .artist-album-tile { animation: none; }
+
 /* Podcast screens feather the same way: coarse per-section cascade plus
    per-item 24ms steps capped at 144ms. Rows keep stable keys across progress
    refreshes, so the entrance only plays on real insertions. */
@@ -438,7 +445,7 @@ button.tilt-pressed {
    an instant-tier opacity-only fade instead of a dead pause: the JS
    lifecycles wait the same 80ms (see resolveExitDurationMs). */
 @media (prefers-reduced-motion: reduce) {
-  .collection-connected .collection-content:not(.is-returning) { animation: none; }
+  .collection-connected .collection-content.is-detail-entering { animation: none; }
   .quick-group,
   .quick-album,
   .collection-album-select,

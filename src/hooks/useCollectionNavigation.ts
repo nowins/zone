@@ -34,21 +34,21 @@ export function useCollectionNavigation() {
   }, []);
   const remember = useCallback(() => {
     const surface = capture();
-    commit(current => ({ ...current, entries: current.entries.map((entry, i) => i === current.cursor ? { ...entry, surface } : entry) }));
+    commit(current => ({ ...current, animate: false, entries: current.entries.map((entry, i) => i === current.cursor ? { ...entry, surface } : entry) }));
   }, [capture, commit]);
   const patch = useCallback((values: Partial<CollectionLocation>) => {
     commit(current => ({ ...current, entries: current.entries.map((entry, i) => i === current.cursor ? { ...entry, ...values } : entry) }));
   }, [commit]);
-  const push = useCallback((values: Partial<CollectionLocation>) => {
+  const push = useCallback((values: Partial<CollectionLocation>, animate = true) => {
     const outgoing = capture();
     commit(current => pushCollectionLocation(current, { ...current.entries[current.cursor], tab: "overview",
-      surface: emptyCollectionSurface(), origin: undefined, ...values }, outgoing));
+      surface: emptyCollectionSurface(), origin: undefined, ...values }, outgoing, animate));
   }, [capture, commit]);
   const open = useCallback((entity: CollectionEntityRef, origin?: CollectionLocation["origin"]) => {
     push(entity.kind === "playlist" ? { entity: null, view: "playlists", playlistId: entity.id, searchMode: "browse", origin }
       : { entity, searchMode: "browse", origin });
   }, [push]);
-  const openIndex = useCallback((view: ViewMode) => push({ entity: null, view, query: "", searchMode: "results", filter: "all" }), [push]);
+  const openIndex = useCallback((view: ViewMode, animate = true) => push({ entity: null, view, query: "", searchMode: "results", filter: "all" }, animate), [push]);
   const travel = useCallback((direction: 1 | -1) => {
     const before = historyRef.current;
     const origin = direction === -1 ? before.entries[before.cursor].origin : undefined;
@@ -63,7 +63,7 @@ export function useCollectionNavigation() {
   const setQuery = useCallback((query: string) => {
     const current = historyRef.current.entries[historyRef.current.cursor];
     if (query.trim() && (!current.query.trim() || current.searchMode === "browse")) {
-      push({ query, searchMode: "results", filter: "all" });
+      push({ query, searchMode: "results", filter: "all" }, false);
     } else patch({ query, searchMode: "results", filter: "all" });
   }, [patch, push]);
   const restore = useCallback(() => {

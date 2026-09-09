@@ -19,24 +19,25 @@ export type CollectionLocation = {
   surface: CollectionSurface;
   origin?: { page: Exclude<AppPage, "collection">; focus?: string; scrolls?: { top: number; left: number }[] };
 };
-export type CollectionHistory = { entries: CollectionLocation[]; cursor: number; revision: number; direction: 1 | -1 };
+export const COLLECTION_CATEGORY_ORDER: readonly ViewMode[] = ["artists", "albums", "songs", "playlists"];
+export type CollectionHistory = { entries: CollectionLocation[]; cursor: number; revision: number; direction: 1 | -1; animate: boolean };
 export const emptyCollectionSurface = (): CollectionSurface => ({ scrolls: {}, selections: {} });
 export const initialCollectionLocation = (): CollectionLocation => ({ entity: null, view: "artists", query: "",
   searchMode: "results", filter: "all", tab: "overview", playlistId: "favorites", surface: emptyCollectionSurface() });
-export const initialCollectionHistory = (): CollectionHistory => ({ entries: [initialCollectionLocation()], cursor: 0, revision: 0, direction: 1 });
+export const initialCollectionHistory = (): CollectionHistory => ({ entries: [initialCollectionLocation()], cursor: 0, revision: 0, direction: 1, animate: true });
 export function locationKey(location: CollectionLocation): string {
   if (location.query.trim() && location.searchMode === "results") return `search:${location.query}`;
   return location.entity ? collectionEntityKey(location.entity) : `index:${location.view}:${location.view === "playlists" ? location.playlistId : ""}`;
 }
-export function pushCollectionLocation(history: CollectionHistory, next: CollectionLocation, outgoing: CollectionSurface): CollectionHistory {
+export function pushCollectionLocation(history: CollectionHistory, next: CollectionLocation, outgoing: CollectionSurface, animate = true): CollectionHistory {
   const current = history.entries[history.cursor];
   if (!next.origin && locationKey(current) === locationKey(next)) return history;
   const entries = [...history.entries.slice(0, history.cursor), { ...current, surface: outgoing }, next].slice(-60);
-  return { entries, cursor: entries.length - 1, revision: history.revision + 1, direction: 1 };
+  return { entries, cursor: entries.length - 1, revision: history.revision + 1, direction: 1, animate };
 }
 export function travelCollectionHistory(history: CollectionHistory, delta: 1 | -1, outgoing: CollectionSurface): CollectionHistory {
   const cursor = history.cursor + delta;
   if (cursor < 0 || cursor >= history.entries.length) return history;
   return { entries: history.entries.map((entry, index) => index === history.cursor ? { ...entry, surface: outgoing } : entry),
-    cursor, revision: history.revision + 1, direction: delta };
+    cursor, revision: history.revision + 1, direction: delta, animate: false };
 }

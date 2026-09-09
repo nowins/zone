@@ -58,6 +58,7 @@
     "src/motion/animate.ts",
     "src/motion/flip.ts",
     "src/motion/coverFlip.ts",
-    "src/motion/pageTransition.ts"
+    "src/motion/pageTransition.ts",
+    "src/motion/collectionPivot.ts"
   ]
 }

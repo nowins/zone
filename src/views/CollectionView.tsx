@@ -1,4 +1,4 @@
-import { useLayoutEffect, type RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 import { ArrowLeft } from "lucide-react";
 import { CollectionContext } from "../components/CollectionContext";
 import { CollectionSearchField } from "../components/CollectionSearchField";
@@ -7,9 +7,10 @@ import { LibraryView, type LibraryViewProps } from "./LibraryView";
 import { CollectionEntityView, type CollectionEntityActions } from "./CollectionEntityView";
 import { SearchResultsView } from "./SearchResultsView";
 import type { CollectionNavigation } from "../hooks/useCollectionNavigation";
+import { useCollectionPivot } from "../hooks/useCollectionPivot";
 import { resolveCollectionEntity, artistReference, albumReference } from "../utils/collectionEntities";
 import { resolveSearchSurface } from "../utils/collectionSearch";
-import type { CollectionLocation } from "../utils/collectionNavigation";
+import { COLLECTION_CATEGORY_ORDER, type CollectionLocation } from "../utils/collectionNavigation";
 import type { ViewMode } from "../types";
 
 const labels: Record<ViewMode, string> = { artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" };
@@ -42,6 +43,8 @@ export function CollectionView(props: Props) {
   }
   const previousLabel = location.origin ? { quickplay: "quickplay", nowPlaying: "正在播放", podcasts: "播客", settings: "设置" }[location.origin.page] : locationLabel(previous);
   useLayoutEffect(() => navigation.restore(), [history.revision, navigation.restore]);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useCollectionPivot(contentRef, history);
   const count = props.view === "artists" ? `${index.artists.length} 位艺术家` : props.view === "albums" ? `${index.albums.length} 张专辑`
     : props.view === "songs" ? `${index.tracks.length} 首歌曲` : `${props.playlists.length + 1} 个列表`;
   return <CollectionContext.Provider value={{ index, navigation, open: props.onOpen, onContextMenu: props.onContextMenu }}>
@@ -65,9 +68,9 @@ export function CollectionView(props: Props) {
             <ArrowLeft size={18} /><span>返回{previousLabel}</span>
           </button>
         : <nav className="collection-categories" aria-label="收藏视图">
-          {(["artists", "albums", "songs", "playlists"] as const).map(view => <button key={view}
+          {COLLECTION_CATEGORY_ORDER.map(view => <button key={view}
             data-collection-focus={`index:${view}`} aria-current={view === props.view ? "page" : undefined}
-            className={view === props.view ? "selected" : ""} onClick={() => navigation.openIndex(view)}>{labels[view]}</button>)}
+            className={view === props.view ? "selected" : ""} onClick={event => navigation.openIndex(view, event.detail > 0)}>{labels[view]}</button>)}
         </nav>}
         <CollectionSearchField ref={props.searchInputRef} query={location.query} onQuery={props.onQuery} onClear={props.onClearSearch}
           showReturnToResults={false} onReturnToResults={() => navigation.patch({ searchMode: "results" })} />
@@ -76,7 +79,7 @@ export function CollectionView(props: Props) {
         <h1 className="collection-visually-hidden" data-collection-heading tabIndex={-1}>{searching ? "搜索结果" : labels[props.view]}</h1>
         {!searching && <p>{count}{props.scanNote ? ` · ${props.scanNote}` : ""}</p>}
       </div>}
-      <div key={history.revision} className={`collection-content${history.direction === -1 ? " is-returning" : ""}`}>
+      <div ref={contentRef} key={history.revision} className={`collection-content${detail && history.animate ? " is-detail-entering" : ""}`}>
         {searching ? <SearchResultsView query={location.query} tracks={index.tracks} albums={index.albums} artists={index.artists}
           playlists={props.playlists} activity={props.trackActivity} favoriteTrackIds={props.favoriteTrackIds}
           activeTrackId={props.activeTrackId} onPlay={props.onPlay} onToggleFavorite={props.onToggleFavorite}

@@ -71,6 +71,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 - `coverFlip.ts` — 封面共享元素飞行编排：`playCoverFlip({ source, target, imageSrc, holdUntil?, revealTargetWhen?, onDocked? })`。弹簧等 `clone.decode()` 就绪才起飞（400ms 超时兜底），飞行全程每帧重测目标矩形，落地带速度比例动态模糊。仅在「播放条/quickplay 大封面 ↔ 正在播放曲目卡」链路使用；新共享元素场景参考它另建编排，不要直接散写克隆逻辑。
 - `presence.tsx` — `<Presence show exitDurationMs exitClassName?>`：show 转 false 时保留子树、挂退场类、超时卸载；`useLastNonNull(value)` 冻结关闭前快照供退场窗口渲染（退场窗口内 props 冻结不刷新，窗口应保持在 micro 档，不要拉长）。当前歌词设置面板和在线来源搜索面板也采用这条链路。
 - `pageTransition.ts` — `resolvePageTransition(from, to)`：同级 pivot（方向 ±1）、进 nowPlaying = push、返回 = pop。App 的 `requestNavigation` 消费它：direction/exitMs 驱动计时，exitDriftPx/enterDriftPx 由 shell 写成 `--motion-exit-drift`/`--motion-drift`（push/pop 比同级 pivot 走得更远）；`coverFlip` 标记由 FLIP registry 侧链路消费。
+- `collectionPivot.ts` — 收藏分类的方向解析和可见内容分组入场；由 `useCollectionPivot` 连接浏览 revision、reduced-motion 与卸载清理，使用 Web Animations API 执行有限的 transform／opacity 过渡。
 - `useReducedMotion.ts` — `useReducedMotion()` hook，JS/rAF 侧统一入口。
 
 ## 接入指南
@@ -148,9 +149,14 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - CSS/结构守卫（`nowPlayingCss.test.mjs` 等）会因类名/编排变化失败，按新结构同步，不放宽语义。
 - `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、内容停留、隐藏／编辑／reduced-motion 停转与恢复，以及长按、键盘和外观设置行为。
 - `tests/panoramaBehavior.test.mjs`：首页分组与视差边界、滚轮归属，以及真实 hook 在 StrictMode 下的滚轮接力、键盘打断、滚动条显隐／拖拽、滚动恢复、窗口变化、reduced-motion 与隐藏／卸载清理。
+- `tests/collectionPivot.test.mjs`：分类方向、可见行分组与数量上限、操作打断、历史恢复，以及真实导航／动效 hook 的 StrictMode、快速连切和 reduced-motion 清理。
 - `tests/uiBehavior.test.mjs` / `tests/canvasLifecycle.test.mjs`：真实 React 组件在 StrictMode 下的焦点、入场清理与 Canvas 停转/唤醒行为。
 - 视觉验收检查真实播放、快速连切可打断、FLIP 连续性、reduced-motion、键盘交互与窄窗口。按根目录的启动授权规则实测；歌词专项场景见 [歌词规范](engineering/lyrics.md)，本地 `docs/lyrics-motion-review.md` 若存在可补充参考。
 
 ## 收藏对象浏览
 
-顶层页面仍走 `requestNavigation`；收藏内容区内部的对象前进使用 `collection-detail-enter`，消费 content 时长、entrance 曲线和 s 位移 token。历史返回直接恢复保存的表面，不重播行／封面级联；播放进度更新不改变历史 revision。reduced-motion 下关闭此内容过渡。长简介及资料管理复用 `Dialog`／`Presence`，歌曲列表拖动复用指针捕获的即时反馈，不新增时间驱动位移动画。
+顶层页面仍走 `requestNavigation`。收藏分类借鉴 [WP 8.1 Pivot 的分组滑入](https://blogs.windows.com/windowsdeveloper/2014/07/22/tips-and-tricks-for-using-xaml-controls-in-your-universal-windows-apps/)：艺术家 → 专辑 → 歌曲 → 播放列表的顺序由 `COLLECTION_CATEGORY_ORDER` 统一维护，内容按目标分类的左右位置入场，分类标签、搜索和数量保持原位。`useCollectionPivot` 只在新浏览 revision 时启动，父层使用 m 位移，当前可见项叠加 s 位移与淡入；同一视觉行同步，错峰分组及可动画项上限以 `COLLECTION_PIVOT_MOTION` 为准，消费 content／entrance／stagger token，不随曲库长度拉长等待。当前为三组、最多 24 项，完整入场约 268ms。
+
+分类内容不保留旧页面副本，快速连切取消旧效果并呈现最新目标，不排队等待退场。滚动、指针按下、键盘操作、窗口调整、页面隐藏和卸载都取消未完成效果，内容始终可操作；完成后释放动画与事件监听。键盘激活分类、搜索输入、历史前进／返回及离开后重新进入收藏直接显示或恢复表面。播放进度、喜欢状态与当前列表选择更新不重播分类入场。reduced-motion 开启时立即结束效果，关闭时不重播当前页。
+
+收藏内容区内部的新对象使用 `collection-detail-enter`，消费 content 时长、entrance 曲线和 s 位移 token；历史恢复及 reduced-motion 下关闭。连接后的收藏页面不再叠加旧的歌曲行／封面 feather，避免返回时整列重新级联。长简介及资料管理复用 `Dialog`／`Presence`，歌曲列表拖动复用指针捕获的即时反馈，不新增时间驱动位移动画。

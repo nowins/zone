@@ -81,6 +81,9 @@ export const MOTION_DRIFT = { s: 8, m: 22, l: 48 } as const;
 /** Per-item stagger step and total cap, in milliseconds. */
 export const MOTION_STAGGER = { step: 24, max: 144 } as const;
 
+/** Pivot entrance groups are bounded independently of library size. */
+export const COLLECTION_PIVOT_MOTION = { groups: 3, maxItems: 24 } as const;
+
 export const SPRING_PRESETS = {
   // High stiffness, near-critical damping: press rebound and FLIP landing.
   snappy: { stiffness: 500, damping: 40, mass: 1 },
