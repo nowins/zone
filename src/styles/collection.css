@@ -443,6 +443,8 @@
   font-size: 13px;
 }
 
+.playlist-create-button:focus-visible { outline-offset: -2px; }
+
 .playlist-list > button {
   width: 100%;
   min-height: 60px;
