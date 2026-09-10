@@ -6,7 +6,7 @@ import {
   createSilentVisualizerFrame,
   AudioVisualizerAnalyzer,
 } from "../.tmp/visualizer-tests/utils/visualizer.js";
-import { createZuneMountainFrame } from "../.tmp/visualizer-tests/utils/audioGlow.js";
+import { createZuneMountainFrame, zuneGlowRadiance } from "../.tmp/visualizer-tests/utils/audioGlow.js";
 
 const SAMPLE_COUNT = 180;
 const SAMPLE_RATE = 44_100;
@@ -62,6 +62,41 @@ test("high frequency texture alone does not become an equalizer", () => {
 
   assert.equal(frame.active, false);
   assert.ok(maximum < 0.055, `high-frequency-only content should stay nearly flat, got ${maximum}`);
+});
+
+test("moderate voice and acoustic bands remain visible above the floor without bass or invented beats", () => {
+  const frequencies = new Uint8Array(FFT_SIZE / 2);
+  fillFrequencyRange(frequencies, 145, 330, 128);
+  fillFrequencyRange(frequencies, 330, 2200, 85);
+  const input = createAudioVisualizerFrame(frequencies, createWaveform(24), SAMPLE_COUNT, SAMPLE_RATE, FFT_SIZE);
+  const analyzer = new AudioVisualizerAnalyzer();
+  let frame;
+  for (let i = 0; i < 120; i++) frame = analyzer.update(input, i / 60);
+  const glow = createZuneMountainFrame({ ...frame, beatPulse: 0, beatPhase: 1, time: 2 });
+  const light = Math.max(...glow.ridgePoints.map(p => zuneGlowRadiance(p.height, p.heat, 20 / 148)));
+  assert.equal(frame.bass, 0);
+  assert.equal(frame.onsetStrength, 0, "a sustained voice needs no synthetic beat to stay visible");
+  assert.ok(glow.ridgePeak > 0.1 && glow.ridgePeak < 0.24, `moderate sound should create a low glow, got ${glow.ridgePeak}`);
+  assert.ok(light > 0.04, `light must reach 20px above the bottom, not disappear into a thin line: ${light}`);
+});
+
+test("strong bass retains loudness contrast and headroom after moderate-band compensation", () => {
+  const glow = level => createZuneMountainFrame({
+    ...tonalFrame(45, 135, level), beatPulse: 0, beatPhase: 1, time: 0,
+  });
+  const strong = glow(210), loud = glow(245);
+  assert.ok(loud.ridgePeak > strong.ridgePeak + 0.02, "strong levels must not flatten into the same height");
+  assert.ok(loud.ridgePeak < 0.4, "sustained bass leaves room for actual attacks");
+});
+
+test("PCM below the silence gate cannot light up amplified moderate bands", () => {
+  // Sparse one-byte deviations have an RMS below 0.004 despite stale FFT bins.
+  const wave = Uint8Array.from({ length: FFT_SIZE }, (_, i) => i % 16 === 0 ? 129 : 128);
+  const frame = createAudioVisualizerFrame(new Uint8Array(FFT_SIZE / 2).fill(120),
+    wave, SAMPLE_COUNT, SAMPLE_RATE, FFT_SIZE);
+  assert.equal(frame.active, false);
+  assert.equal(frame.energy, 0);
+  assert.ok(frame.samples.every(value => value === 0));
 });
 
 function fillFrequencyRange(data, startFrequency, endFrequency, value) {

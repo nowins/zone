@@ -38,8 +38,11 @@ export function createAudioVisualizerFrame(
   // FFT smoothing can leave frequency bins lit after the media becomes silent.
   // Gate against actual PCM, above its byte quantization noise floor.
   const signal = clamp((rms - 0.004) / 0.026, 0, 1);
+  // Byte magnitudes already span a logarithmic dB range. Cubing them before
+  // the contour's own falloff nearly erased voices and acoustic instruments.
+  // Keep moderate bands visible while retaining headroom for strong bass.
   const bands = BAND_CENTERS.map((_, index) => (
-    averageFrequencyRange(frequencyData, sampleRate, fftSize, BAND_EDGES[index], BAND_EDGES[index + 1]) ** 3 * signal
+    averageFrequencyRange(frequencyData, sampleRate, fftSize, BAND_EDGES[index], BAND_EDGES[index + 1]) ** 1.5 * signal
   ));
   const bass = average(bands.slice(0, 3));
   const ambient = average(bands.slice(3, 8));
