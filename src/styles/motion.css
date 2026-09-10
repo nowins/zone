@@ -170,6 +170,12 @@
   pointer-events: none;
 }
 
+.compact-options {
+  transition: opacity var(--motion-micro) var(--motion-ease-standard);
+  @starting-style { opacity: 0; }
+}
+
+.motion-exit .compact-options,
 .motion-exit .info-panel {
   animation: motion-exit-fade var(--motion-micro) var(--motion-ease-exit) both;
   pointer-events: none;
@@ -496,6 +502,7 @@ button.tilt-pressed {
   .motion-exit,
   .motion-exit .context-menu,
   .motion-exit .podcast-search-history,
+  .motion-exit .compact-options,
   .motion-exit .info-panel,
   .motion-exit .info-panel section,
   .motion-exit .save-playlist-overlay,
@@ -536,6 +543,7 @@ button.tilt-pressed {
   .collection-album-select,
   .zune-controls button,
   .compact-player .button,
+  .compact-options,
   .titlebar-mode,
   .podcast-now-back,
   .podcast-now-primary-controls > button,

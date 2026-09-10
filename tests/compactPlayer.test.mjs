@@ -3,7 +3,13 @@ import test from "node:test";
 import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+
+// React detects input-event support once, when its DOM renderer is imported.
+const bootstrap = new JSDOM('<!doctype html>');
+globalThis.window = bootstrap.window;
+globalThis.document = bootstrap.window.document;
+const { createRoot } = await import("react-dom/client");
+bootstrap.window.close();
 
 await build({ entryPoints: ["src/views/CompactPlayerView.tsx", "src/hooks/useCompactMode.ts", "src/utils/collectionEntities.ts"],
   outdir: ".tmp/compact-tests", bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent" });
@@ -17,6 +23,7 @@ function setup() {
   const dom = new JSDOM('<div id="root"></div>', { pretendToBeVisual: true });
   for (const name of ["window", "document", "HTMLElement", "Element", "HTMLInputElement"]) globalThis[name] = name === "window" ? dom.window : dom.window[name];
   globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
+  globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window);
   window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
   window.HTMLElement.prototype.scrollIntoView = function () {};
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -36,6 +43,11 @@ async function viewFixture(overrides = {}) {
   return { ...env, calls, props };
 }
 const click = async selector => { const node = document.querySelector(selector); assert.ok(node, selector); await act(() => node.click()); };
+const pointer = async (node, type, x, y) => {
+  const event = new window.MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true, cancelable: true });
+  Object.defineProperties(event, { pointerId: { value: 1 }, isPrimary: { value: true } });
+  await act(() => node.dispatchEvent(event));
+};
 
 test("compact queue preserves source order and favorites do not change playback", async () => {
   const env = await viewFixture();
@@ -85,6 +97,65 @@ test("compact tabs use arrow keys and Escape restores the now-playing tab focus"
   } finally { await env.close(); }
 });
 
+test("compact options preserve transport, focus volume and restore focus on Escape", async () => {
+  const env = await viewFixture();
+  try {
+    assert.equal(document.querySelector('[aria-label="音量"]'), null);
+    await click('#compact-options-toggle');
+    await act(() => new Promise(resolve => setTimeout(resolve, 30)));
+    assert.equal(document.activeElement.getAttribute("aria-label"), "音量");
+    assert.equal(document.querySelector('[title="暂停"]').disabled, false);
+    await click('[title="随机播放"]');
+    await click('[title="关闭循环"]');
+    assert.deepEqual(env.calls.map(([name]) => name), ["onShuffle", "onRepeat"]);
+    await act(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    assert.equal(document.activeElement.id, "compact-options-toggle");
+    assert.equal(document.activeElement.getAttribute("aria-expanded"), "false");
+    assert.equal(document.getElementById("compact-options").hasAttribute("inert"), true);
+    await click('#compact-options-toggle');
+    await pointer(document.getElementById('compact-tab-music'), 'pointerdown', 110, 45);
+    await click('#compact-tab-music');
+    await act(() => new Promise(resolve => setTimeout(resolve, 30)));
+    assert.equal(document.getElementById("compact-options-toggle").getAttribute("aria-expanded"), "false");
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').id, "compact-tab-music");
+  } finally { await env.close(); }
+});
+
+test("horizontal gestures switch pivots and go back without activating a dragged item", async () => {
+  const env = await viewFixture();
+  try {
+    const content = document.getElementById('compact-content');
+    content.setPointerCapture = () => {};
+    async function swipe(node, from, to) {
+      await pointer(node, 'pointerdown', ...from);
+      await pointer(node, 'pointermove', ...to);
+      await pointer(node, 'pointerup', ...to);
+      await act(() => node.dispatchEvent(new window.MouseEvent('click', { detail: 1, bubbles: true, cancelable: true })));
+    }
+    await swipe(content, [180, 130], [40, 135]);
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').id, 'compact-tab-music');
+    const album = document.querySelector('.compact-group');
+    await swipe(album, [40, 135], [160, 140]);
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').id, 'compact-tab-now');
+    assert.equal(env.calls.length, 0);
+    await click('#compact-tab-music');
+    await click('.compact-group');
+    await swipe(document.querySelector('.compact-track'), [40, 135], [160, 140]);
+    assert.equal(document.querySelector('.compact-back'), null);
+    assert.ok(document.activeElement.dataset.compactItem);
+    assert.equal(env.calls.length, 0, 'a drag over a song never starts playback');
+    await swipe(content, [100, 100], [110, 190]);
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').id, 'compact-tab-music', 'vertical scrolling keeps the pivot');
+    await swipe(document.querySelector('input'), [180, 100], [40, 100]);
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').id, 'compact-tab-music', 'text selection is not a navigation gesture');
+    await pointer(content, 'pointerdown', 180, 130);
+    await pointer(content, 'pointermove', 40, 135);
+    await pointer(content, 'pointercancel', 40, 135);
+    await pointer(content, 'pointerup', 40, 135);
+    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').id, 'compact-tab-music');
+  } finally { await env.close(); }
+});
+
 test("podcast seek, save, rate and queue stay separate from music actions", async () => {
   const episode = { id: "pod", episodeId: "pod", title: "当前单集", podcastTitle: "节目", saved: false };
   const env = await viewFixture({ episode, podcastQueue: [{ episode: { id: "next", title: "下一单集", feedTitle: "节目" }, position: 0 }], progress: 5, duration: 22 });
@@ -93,6 +164,7 @@ test("podcast seek, save, rate and queue stay separate from music actions", asyn
     await click('[title="后退 15 秒"]');
     await click('[title="前进 30 秒"]');
     await click('[title="稍后听"]');
+    await click('[title="更多播放选项"]');
     await click('[title="播放速度"]');
     await click('#compact-tab-queue');
     await click('.compact-episode:last-of-type');
