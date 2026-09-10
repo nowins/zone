@@ -12,6 +12,8 @@ const playerBarView = readFileSync("src/components/PlayerBar.tsx", "utf8");
 const playbackProgressView = readFileSync("src/components/PlaybackProgress.tsx", "utf8");
 const mosaicCanvasSource = readFileSync("src/components/NowPlayingMosaicCanvas.tsx", "utf8");
 const audioGlowCanvasSource = readFileSync("src/components/AudioGlowCanvas.tsx", "utf8");
+const appSource = readFileSync("src/App.tsx", "utf8");
+const collectionCss = readFileSync("src/styles/collection-details.css", "utf8");
 const lyricsSource = readFileSync("src/components/LyricsStage.tsx", "utf8");
 const lyricsPaintLoopSource = readFileSync("src/components/lyricsStage/useLyricsPaintLoop.ts", "utf8");
 const lyricsSourceBrowserSource = readFileSync("src/components/lyricsStage/LyricsSourceBrowser.tsx", "utf8");
@@ -39,6 +41,18 @@ test("now playing visual layers are canvas based", () => {
   assert.ok(glowRule.includes("mix-blend-mode: screen"));
   assert.ok(!nowPlayingCss.includes(".album-wall"), "old DOM album wall styles should stay out of now playing CSS");
   assert.ok(!nowPlayingCss.includes(".visualizer-wave-svg"), "old SVG visualizer styles should stay out of now playing CSS");
+});
+
+test("browsing shares a live background with its transparent transport", () => {
+  const playerRule = cssRule(playerCss, ".player");
+  const shellGlowRule = cssRule(baseCss, ".shell > .audio-glow-canvas");
+  assert.match(appSource, /visualizerVisible: !compactMode\.active/);
+  assert.match(appSource, /!compactMode\.active && page !== "nowPlaying" && \(\s*<AudioGlowCanvas isPlaying=\{isPlaying && activePlayback\?\.kind === "music"\}/);
+  assert.ok(playerRule.includes("background: transparent"));
+  assert.ok(playerRule.includes("border: 0"));
+  assert.ok(shellGlowRule.includes("z-index: -1"), "glow stays behind page content and controls");
+  assert.ok(cssRule(baseCss, ".shell").includes("isolation: isolate"), "negative glow layer remains above the shell background");
+  assert.ok(cssRule(collectionCss, ".collection-connected").includes("background: transparent"));
 });
 
 test("now playing artwork is full bleed without a recording-frame inset", () => {

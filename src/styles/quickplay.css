@@ -16,6 +16,7 @@
   position: absolute;
   inset: 0 calc(-1 * var(--panorama-backdrop-travel)) 0 0;
   pointer-events: none;
+  mask-image: linear-gradient(#000 60%, transparent);
   background:
     radial-gradient(ellipse 36% 76% at 55% 60%, rgba(112, 14, 61, 0.3) 0%, rgba(74, 8, 43, 0.17) 47%, rgba(11, 7, 12, 0) 82%),
     radial-gradient(ellipse 30% 60% at 78% 64%, rgba(92, 10, 52, 0.14) 0%, rgba(11, 7, 12, 0) 78%);

@@ -35,8 +35,8 @@ test("actual Canvas effects survive StrictMode, sleep when static and wake for c
   globalThis.ResizeObserver = class { constructor(callback) { resize = callback; } observe() {} disconnect() {} };
   const root = createRoot(document.getElementById("root"));
   const tracks = [];
-  const render = async playing => act(async () => root.render(React.createElement(React.StrictMode, null,
-    React.createElement(AudioGlowCanvas, { isPlaying: playing, volume: 0.5 }),
+  const render = async (playing, volume = 0.5) => act(async () => root.render(React.createElement(React.StrictMode, null,
+    React.createElement(AudioGlowCanvas, { isPlaying: playing, volume }),
     React.createElement(NowPlayingMosaicCanvas, { isPlaying: playing, tracks, activeTrack: null }))));
   const step = (ms = 16) => { now += ms; const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(now)); };
   try {
@@ -47,6 +47,12 @@ test("actual Canvas effects survive StrictMode, sleep when static and wake for c
     await render(true);
     step(2000);
     assert.equal(frames.size, 2, "playing keeps both canvases live");
+    await render(true, 0);
+    step(2000);
+    assert.equal(frames.size, 1, "muted glow sleeps while the artwork remains active");
+    await render(true);
+    step(2000);
+    assert.equal(frames.size, 2, "unmuting wakes the glow");
     hidden = true; document.dispatchEvent(new window.Event("visibilitychange"));
     assert.equal(frames.size, 0, "background cancels pending frames");
     hidden = false; document.dispatchEvent(new window.Event("visibilitychange"));

@@ -26,7 +26,7 @@ function createIdleVisualizerFrameData(): VisualizerFrameData {
 }
 
 // Single-slot latest-frame store. The App-level sampler publishes once per
-// frame; the now-playing canvases pull from their own rAF loops, so no
+// frame; the shell glow and now-playing canvases pull from their own rAF loops, so no
 // subscription fan-out is needed.
 let latestFrame: VisualizerFrameData = createIdleVisualizerFrameData();
 

@@ -696,6 +696,7 @@
   overflow: hidden;
   pointer-events: none;
   contain: paint;
+  mask-image: linear-gradient(#000 60%, transparent calc(100% - 80px));
   opacity: 0.65;
   transition: opacity var(--motion-content) var(--motion-ease-standard);
 }

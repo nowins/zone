@@ -12,7 +12,7 @@
 ## 音频分析与 Canvas 生命周期
 
 - 音乐节拍预分析通过 `music_decode_beat_window`：只接受数据库曲目 ID，原生端最多解码前 30 秒、22050 Hz 单声道，传输有版本/文件修改时间/长度头的二进制 PCM；`music_cancel_beat_window` 取消旧请求。节拍计算在 `src/workers/beatAnalysis.worker.ts` 执行，前端只缓存最多 32 个按文件版本区分的节拍结果。失败回退到实时分析，不影响播放；播客不得进入此链路。
-- 可视化采样仅在音乐正在播放、正在播放页可见且窗口文档可见时运行。两个 Canvas 在暂停/减少动态效果后收敛并停止连续 rAF，由封面加载、尺寸、播放状态或可见性变化唤醒。
+- 可视化采样由普通窗口中的音乐播放共享，quickplay、收藏及其他普通页面与正在播放页沿用同一总线；浏览页面切换不重启采样或触发节拍预分析。仅在音乐正在播放、音量非零、窗口文档可见且未开启减少动态效果时采样；小屏与播客播放停用。光焰在暂停、静音或减少动态效果后收敛并停止连续 rAF；拼贴在暂停或减少动态效果后收敛停转，静音时仍保留封面运动。Canvas 由封面加载、尺寸、播放状态或可见性变化唤醒。
 - 当前 DSP 参数（以 `src/hooks/useAudioEngine.ts`、`src/utils/visualizer.ts` 为准）：4096 点 FFT（平滑 0.35、上限 -12 dB）与真实 PCM 静音门限；12 个频段独立包络和瞬态在 `AudioVisualizerAnalyzer` 生成连续轮廓。实例随采样会话创建，seek 时清理旧段落的瞬态；总线传递 samples/transients/bass/texture，Canvas 不再叠加固定中央山形或时钟正弦扰动。无信号发布零帧，预测拍点只有实时瞬态确认后才能驱动光焰。
 - 色彩连续性约束：初始化和换封面时不得产生空间断层。当前用连续 RGB 插值，旧嵌套 HSL 最短弧插值在色相接近 180° 时会跳变；若更换算法，需要覆盖该回归场景。
 
@@ -43,6 +43,8 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 ```
 
 ## 正在播放的视觉方向
+
+普通页面的底部也复用 `AudioGlowCanvas`：由 App 挂在 `.shell` 下，位于页面内容与透明播放条之后，切换 quickplay／收藏时不跟随页面滑动或重新挂载。播放条不设独立底色、边线或阴影；quickplay 底色与收藏封面背景在下沿淡出，保留控件的布局空间和焦点区域。普通页面光焰亮度由 `base.css` 的 `.shell > .audio-glow-canvas` 控制，共用画布尺寸仍在 `now-playing.css`；正在播放页继续在自身拼贴之上绘制光焰。播客播放不展示音乐光焰。
 
 正在播放页应贴近 Zune 4.8：
 
@@ -87,9 +89,9 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 
 ## 验证
 
-- `npm run build`、`npm test`；音频轮廓、静音、seek 与生命周期行为重点看 `tests/visualizer.test.mjs`、`tests/audioGlow.test.mjs`、`tests/beatAnalysis.test.mjs`、`tests/visualizerBus.test.mjs`、`tests/canvasLifecycle.test.mjs`、`tests/nowPlayingCanvas.test.mjs`。
+- `npm run build`、`npm test`；音频轮廓、静音、seek 与生命周期行为重点看 `tests/visualizer.test.mjs`、`tests/audioGlow.test.mjs`、`tests/beatAnalysis.test.mjs`、`tests/visualizerBus.test.mjs`、`tests/audioEngineLifecycle.test.mjs`、`tests/canvasLifecycle.test.mjs`、`tests/nowPlayingCanvas.test.mjs`。
 - 协议或原生解码变化运行 `cargo check` 与相应 Rust 测试；协议/发布路径变化还需 `npx tauri build --no-bundle`。
 - 播放协议和可视化行为必须在真实 Tauri 音乐播放中验证：进入/退出、换曲、seek、静音、暂停/恢复、文档隐藏及 reduced-motion。纯浏览器 Vite 不能证明自定义协议或 CORS 链路正常。
-- 光焰改动比较不同音乐及同一首歌的安静/节奏段落，检查峰位、宽度和局部亮度确实随信号变化；色场改动检查首次入场与换封面过渡。至少检查默认窗口和最小窗口，涉及高分辨率 Canvas 性能时补相应尺寸验证。
+- 光焰改动比较不同音乐及同一首歌的安静/节奏段落，检查峰位、宽度和局部亮度确实随信号变化；检查 quickplay／收藏／正在播放往返时的背景衔接、播放连续性和底部控件焦点。色场改动检查首次入场与换封面过渡。至少检查默认窗口和最小窗口，涉及高分辨率 Canvas 性能时补相应尺寸验证。
 - 队列改动检查单首／少量／长队列高度、点击中间曲目、上一首/下一首、显隐及重新显示时的定位；控件改动检查循环三态、音量滚轮/键盘/边界、原生全屏进入与 Esc 退出。闲置隐藏需检查淡出中唤回、滚动位置保持、键盘焦点、暂停／拖动／对话框阻止隐藏和 reduced-motion。`tests/nowPlayingChrome.test.mjs` 覆盖真实页面的闲置生命周期与队列交互，`tests/transportControls.test.mjs` 覆盖控制组件和全屏 hook 的竞争/失败恢复。封面改动检查慢加载、加载失败、同专辑和连续切歌，过渡不得中途变亮或露出空白。
 - 启动应用遵循根目录授权规则；若必要交互验证无法完成，说明尚未验证的部分，不用静态检查冒充实测通过。

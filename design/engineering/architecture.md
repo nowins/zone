@@ -68,7 +68,7 @@
   - `smartPlaylist.ts`：智能播放列表规则求值与归一化。
   - `homePins.ts`：quickplay 固定项的归一化、移动、外观设置与对账。
   - `visualizer.ts` / `beatAnalysis.ts` / `audioGlow.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格、Zune 光焰与封面拼贴的纯计算部分。
-  - `visualizerBus.ts`：可视化帧的单槽 latest-frame 总线（`publishVisualizerFrame` / `getVisualizerFrame`）。`useAudioEngine` 采样循环发布，正在播放页两个 Canvas 在活动的 rAF 中拉取；暂停/减少动态效果后收敛停转，不经 React state/props。
+  - `visualizerBus.ts`：可视化帧的单槽 latest-frame 总线（`publishVisualizerFrame` / `getVisualizerFrame`）。`useAudioEngine` 采样循环发布，App 普通页面的底部 `AudioGlowCanvas` 或正在播放页两个 Canvas 在活动的 rAF 中拉取；暂停/减少动态效果后收敛停转，静音时光焰停转，不经 React state/props。页面浏览不重启采样，小屏与播客播放停用音乐可视化。
   - `lyrics.ts` / `amllTtml.ts` / `qrc.ts`：plain、LRC、增强 LRC、TTML、AMLL 元数据和 QQ QRC 的解析与归一化。
   - `lyricsProviders.ts` / `lyricsProviderSearch.ts` / `lyricsSearch.ts`：候选打分与多样性裁剪、多来源搜索策略、按曲目保存的搜索信息修正。
   - `lyricsTiming.ts` / `lyricsExport.ts` / `lyricsMotion.ts`：时间校准、TTML/LRC 导出与真实逐词时间驱动的长音包络。

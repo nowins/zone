@@ -86,6 +86,12 @@ input:focus-visible {
   background: linear-gradient(180deg, var(--accent) 0%, #ff198c 42%, var(--accent-orange) 100%);
 }
 
+/* Keep the live glow behind both the page and its transport, outside pivots. */
+.shell > .audio-glow-canvas {
+  z-index: -1;
+  opacity: 0.78;
+}
+
 .fatal-screen {
   width: 100vw;
   height: 100vh;

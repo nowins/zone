@@ -6,8 +6,8 @@
   align-items: center;
   gap: clamp(14px, 1.8vw, 30px);
   padding: 4px 48px 5px;
-  background: rgba(7, 4, 8, 0.96);
-  border-top: 1px solid rgba(247, 242, 246, 0.12);
+  background: transparent;
+  border: 0;
 }
 
 .player-shortcuts {

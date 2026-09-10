@@ -10,6 +10,7 @@ import {
 } from "../utils/beatAnalysis";
 import { AudioVisualizerAnalyzer, createAudioVisualizerFrame, createSilentVisualizerFrame } from "../utils/visualizer";
 import { isDocumentVisible, isVisualizerSurfaceActive, publishVisualizerFrame } from "../utils/visualizerBus";
+import { useReducedMotion } from "../motion/useReducedMotion";
 import type { ActivePlayback } from "./usePlaybackControls";
 import type { Track } from "../types";
 
@@ -46,6 +47,8 @@ export function useAudioEngine({
   activeTrackId,
   visualizerVisible,
 }: UseAudioEngineParams): AudioEngineHandle {
+  const reducedMotion = useReducedMotion();
+  const audible = isPlaying && volume > 0;
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
@@ -78,7 +81,8 @@ export function useAudioEngine({
     };
 
     const syncLoop = () => {
-      const shouldRun = isVisualizerSurfaceActive(isPlaying, visualizerVisible) && activePlayback?.kind === "music";
+      const shouldRun = isVisualizerSurfaceActive(audible && !reducedMotion, visualizerVisible)
+        && activePlayback?.kind === "music";
       if (!shouldRun) {
         stopLoop();
         beatFrameRef.current = createIdleBeatFrame();
@@ -96,7 +100,7 @@ export function useAudioEngine({
       document.removeEventListener("visibilitychange", onVisibility);
       stopLoop();
     };
-  }, [activePlaybackSourceKey, isPlaying, activePlayback?.kind, visualizerVisible]);
+  }, [activePlaybackSourceKey, audible, activePlayback?.kind, visualizerVisible, reducedMotion]);
 
   function ensureAudioGraph() {
     if (visualizerUnavailableRef.current) return;

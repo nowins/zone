@@ -142,7 +142,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 
 ## reduced-motion 约定
 
-全项目只有一个 `@media (prefers-reduced-motion: reduce)` 块：`src/styles/motion.css` 末尾。策略：入场/反馈动画 `animation: none` 落到终态；过渡压到 `--motion-instant`；空间变换（tilt、歌词缩放/模糊、长音拉伸）清零；**退出不留下静止窗口**——退场使用短的纯透明度淡出，JS 生命周期（导航计时器、Presence 卸载）经 `resolveExitDurationMs` 收缩到同一 instant 档。新增带动效的组件时把选择器补进清单；JS/rAF 侧用 `useReducedMotion()` 关闭漂移/FLIP/滚轮惯性等连续运动。两个正在播放 Canvas 收敛后停止连续 rAF；播放中的光焰用固定低亮静帧，暂停后消退清空，不播放伪音频动画。
+全项目只有一个 `@media (prefers-reduced-motion: reduce)` 块：`src/styles/motion.css` 末尾。策略：入场/反馈动画 `animation: none` 落到终态；过渡压到 `--motion-instant`；空间变换（tilt、歌词缩放/模糊、长音拉伸）清零；**退出不留下静止窗口**——退场使用短的纯透明度淡出，JS 生命周期（导航计时器、Presence 卸载）经 `resolveExitDurationMs` 收缩到同一 instant 档。新增带动效的组件时把选择器补进清单；JS/rAF 侧用 `useReducedMotion()` 关闭漂移/FLIP/滚轮惯性等连续运动。普通页面底部光焰与正在播放 Canvas 收敛后停止连续 rAF，音频采样也停用；播放中的光焰用固定低亮静帧，暂停或静音后清空，不播放伪音频动画。
 
 ## 测试与验证
 

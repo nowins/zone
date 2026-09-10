@@ -22,9 +22,9 @@ export function AudioGlowCanvas({
   isPlaying: boolean;
   volume: number;
 }) {
+  const audible = isPlaying && volume > 0;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const isPlayingRef = useRef(isPlaying);
-  const volumeRef = useRef(volume);
+  const isPlayingRef = useRef(audible);
   const reducedMotion = useReducedMotion();
   const reducedMotionRef = useRef(reducedMotion);
   const bodyRef = useRef(0);
@@ -39,14 +39,9 @@ export function AudioGlowCanvas({
   const settleUntilRef = useRef(0);
 
   useEffect(() => {
-    isPlayingRef.current = isPlaying;
+    isPlayingRef.current = audible;
     invalidateRef.current();
-  }, [isPlaying]);
-
-  useEffect(() => {
-    volumeRef.current = volume;
-    invalidateRef.current();
-  }, [volume]);
+  }, [audible]);
 
   useEffect(() => {
     reducedMotionRef.current = reducedMotion;
@@ -122,7 +117,6 @@ export function AudioGlowCanvas({
         sizeRef.current,
         glowFrame,
         playing,
-        volumeRef.current,
         field,
       );
       if (isDocumentVisible() && ((isPlayingRef.current && !reducedMotionRef.current) || time < settleUntilRef.current)) {
@@ -182,7 +176,6 @@ function drawGlow(
   size: { width: number; height: number; dpr: number },
   frame: ZuneMountainFrame,
   isPlaying: boolean,
-  volume: number,
   field: GlowField | null,
 ) {
   const { width, height, dpr } = size;
@@ -193,7 +186,7 @@ function drawGlow(
 
   const { canvas, pixels } = field;
   const points = frame.ridgePoints;
-  const gain = (volume <= 0.01 ? 0.38 : 1) * (0.68 + frame.bodyAlpha * 0.5);
+  const gain = 0.68 + frame.bodyAlpha * 0.5;
   for (let column = 0; column < canvas.width; column += 1) {
     const position = column / (canvas.width - 1) * (points.length - 1);
     const index = Math.floor(position);

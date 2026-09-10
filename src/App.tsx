@@ -9,6 +9,7 @@ import { CompactPlayerView } from "./views/CompactPlayerView";
 import { useCompactMode } from "./hooks/useCompactMode";
 import { AppHeader } from "./components/AppHeader";
 import { PlayerBar } from "./components/PlayerBar";
+import { AudioGlowCanvas } from "./components/AudioGlowCanvas";
 import { PodcastPlayerBar } from "./components/PodcastPlayerBar";
 import { ContextMenu } from "./components/ContextMenu";
 import { InfoPanel } from "./components/InfoPanel";
@@ -286,7 +287,7 @@ export default function App() {
     hasEpisodeStartedOnDevice,
   };
   audioEngineRef.current = useAudioEngine({
-    visualizerVisible: page === "nowPlaying" && !compactMode.active,
+    visualizerVisible: !compactMode.active,
     audioRef,
     volume,
     progress,
@@ -1041,6 +1042,10 @@ export default function App() {
         modePending={compactMode.pending || navExit !== null}
         onToggleCompact={() => void changeCompactMode(!compactMode.active)}
       />
+
+      {!compactMode.active && page !== "nowPlaying" && (
+        <AudioGlowCanvas isPlaying={isPlaying && activePlayback?.kind === "music"} volume={volume} />
+      )}
 
       {compactMode.active ? <CompactPlayerView
         index={collectionIndex} playlists={playlists} activity={trackActivity} favoriteTrackIds={favoriteTrackIds}
