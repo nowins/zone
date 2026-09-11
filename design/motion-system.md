@@ -72,7 +72,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 - `tween.ts` — `cubicBezier(x1,y1,x2,y2)` 求值器；`MOTION_TWEENS` 是与 easing token 同源的预建函数。
 - `animate.ts` — `animateValue({ from, to, spring? | tween?, onUpdate, onComplete })` → `{ cancel, retarget }`。全应用共享一个 rAF 循环，空闲自动停转；测试可注入假时钟（`_setAnimationClockForTesting`）。
 - `flip.ts` — FLIP registry：`registerFlipSource / registerFlipElement(id, ...)`、`takeFlipSource(id)`（取出即删，>1s 过期）、`computeFlipDelta(source, target)`。
-- `coverFlip.ts` — 封面共享元素飞行编排：`playCoverFlip({ source, target, imageSrc, holdUntil?, revealTargetWhen?, onDocked? })`。弹簧等 `clone.decode()` 就绪才起飞（400ms 超时兜底），飞行全程每帧重测目标矩形，落地带速度比例动态模糊。仅在「播放条/quickplay 大封面 ↔ 正在播放曲目卡」链路使用；新共享元素场景参考它另建编排，不要直接散写克隆逻辑。
+- `coverFlip.ts` — 封面共享元素飞行编排：`registerCoverFlipSource` 保存可见矩形与已解码图片；`playCoverFlip({ id, source, target, direction? })` 用 Canvas 快照和 Web Animations API 执行有限的 transform 飞行。入场文字在飞行期间显示，落位仅做短暂的轮廓交接，不等待图片重新解码或弹簧静止。`rememberCoverReturnTarget` 保存底部栏实际位置，`startCoverReturn` 在点击返回时起飞，与页面退场重叠；底部栏挂载后 `attachCoverReturn` 接管终点，不重播返程。仅在「播放条/quickplay 大封面 ↔ 正在播放曲目卡」链路使用；时长由 `NOW_PLAYING_MOTION` 统一管理。
 - `presence.tsx` — `<Presence show exitDurationMs exitClassName?>`：show 转 false 时保留子树、挂退场类、超时卸载；`useLastNonNull(value)` 冻结关闭前快照供退场窗口渲染（退场窗口内 props 冻结不刷新，窗口应保持在 micro 档，不要拉长）。当前歌词设置面板和在线来源搜索面板也采用这条链路。
 - `pageTransition.ts` — `resolvePageTransition(from, to)`：同级 pivot（方向 ±1）、进 nowPlaying = push、返回 = pop。App 的 `requestNavigation` 消费它：direction/exitMs 驱动计时，exitDriftPx/enterDriftPx 由 shell 写成 `--motion-exit-drift`/`--motion-drift`（push/pop 比同级 pivot 走得更远）；`coverFlip` 标记由 FLIP registry 侧链路消费。
 - `collectionPivot.ts` — 收藏分类、对象详情及返回的方向解析和可见内容分组入场；`useCollectionPivot` 连接浏览 revision，`useCollectionPanelMotion` 连接详情标签及播放列表选择，两者共用 reduced-motion 与卸载清理，使用 Web Animations API 执行有限的 transform／opacity 过渡。
@@ -108,6 +108,8 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 1. 源侧在交互触发时（元素仍在布局中）`registerFlipElement(\`kind:{id}\`, element)`。
 2. 目标侧挂载时 `useLayoutEffect` 里 `takeFlipSource(id)`，命中则播飞行编排（参考 `coverFlip.ts`），未命中回退普通入场。
 3. 两侧都要用 `useReducedMotion()` gate；卸载 cleanup 必须 cancel 动画并移除克隆。
+
+封面链路使用 `registerCoverFlipSource` 携带已解码图片，缺图或未加载时回退普通入场。返程由 `coverFlip.ts` 的有限飞行控制器跨页面持有，正在播放页卸载只清理自己的入场，不取消已开始的返程。快速反向从当前克隆矩形接续；底部栏重挂载时仅在布局变化后修正一次终点，不逐帧追踪布局。完成、取消、窗口尺寸变化、文档隐藏或减少动态效果切换时，统一移除克隆并恢复真实封面。
 
 ### 页面导航
 

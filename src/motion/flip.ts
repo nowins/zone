@@ -5,6 +5,11 @@ export interface FlipRect {
   height: number;
 }
 
+/** A decoded image may travel with its rect across an unmounted view. */
+export interface FlipSource extends FlipRect {
+  image?: HTMLImageElement;
+}
+
 export interface FlipDelta {
   dx: number;
   dy: number;
@@ -13,7 +18,7 @@ export interface FlipDelta {
 }
 
 interface FlipEntry {
-  rect: FlipRect;
+  rect: FlipSource;
   capturedAt: number;
 }
 
@@ -21,7 +26,7 @@ interface FlipEntry {
 // element was, the incoming view takes it and animates from there.
 const flipSources = new Map<string, FlipEntry>();
 
-export function registerFlipSource(id: string, rect: FlipRect, now: number = Date.now()): void {
+export function registerFlipSource(id: string, rect: FlipSource, now: number = Date.now()): void {
   flipSources.set(id, { rect, capturedAt: now });
 }
 
@@ -30,7 +35,7 @@ export function takeFlipSource(
   id: string,
   now: number = Date.now(),
   maxAgeMs = 1000,
-): FlipRect | null {
+): FlipSource | null {
   const entry = flipSources.get(id);
   if (!entry) return null;
   flipSources.delete(id);

@@ -21,9 +21,13 @@ export const NOW_PLAYING_MOTION = {
   mosaicReplaceStagger: 240,
   nowQueue: 240,
   nowQueueDelay: 55,
-  nowCard: 320,
-  nowCardDelay: 850,
-  nowDockDelay: 60,
+  nowCard: 220,
+  nowCardDelay: 220,
+  coverEnter: 280,
+  coverExit: 220,
+  coverInfo: 180,
+  coverInfoDelay: 60,
+  coverHandoff: 80,
   nowStage: 1250,
 } as const;
 
@@ -87,7 +91,7 @@ export const BROWSE_MOTION = { duration: 320, scale: 0.96 } as const;
 export const COLLECTION_PIVOT_MOTION = { maxItems: 24 } as const;
 
 export const SPRING_PRESETS = {
-  // High stiffness, near-critical damping: press rebound and FLIP landing.
+  // High stiffness, near-critical damping: press rebound.
   snappy: { stiffness: 500, damping: 40, mass: 1 },
   // Medium stiffness, no visible oscillation: page-level elements.
   gentle: { stiffness: 180, damping: 28, mass: 1 },

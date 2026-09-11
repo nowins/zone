@@ -5,7 +5,7 @@ import { Button } from "../components/Button";
 import { useQuickplayPanorama } from "../hooks/useQuickplayPanorama";
 import { Cover } from "../components/Cover";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
-import { registerFlipElement } from "../motion/flip";
+import { registerCoverFlipSource } from "../motion/coverFlip";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { homePinSize } from "../utils/homePins";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
@@ -334,7 +334,7 @@ export function QuickplayView({
       onResumePlayback();
       if (!reducedMotion && continueTrack.cover_path && event) {
         const cover = event.currentTarget.querySelector<HTMLElement>(".cover");
-        if (cover) registerFlipElement(`cover:${continueTrack.id}`, cover);
+        if (cover) registerCoverFlipSource(`cover:${continueTrack.id}`, cover);
       }
       onOpenNowPlaying();
       return;

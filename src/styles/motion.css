@@ -476,6 +476,7 @@ button.tilt-pressed {
   .now-playing-stage,
   .now-side-panel,
   .now-track-card,
+  .now-track-copy,
   .action-toast,
   .zune-progress-favorite.active svg,
   .track-favorite.active svg,
@@ -519,7 +520,10 @@ button.tilt-pressed {
     animation: motion-exit-reduced var(--motion-instant) var(--motion-ease-standard) both;
   }
 
-  .stage-entering .now-track-card {
+  .now-playing-stage.stage-entering .now-track-card,
+  .now-playing-stage.stage-entering.wall-reveal-started .now-track-card,
+  .now-playing-stage.stage-entering.flip-cover-active .now-track-copy {
+    animation: none;
     opacity: 1;
     transform: none;
   }

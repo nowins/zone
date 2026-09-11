@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   Disc3,
   LibraryBig,
@@ -8,9 +7,9 @@ import {
 import { Cover } from "./Cover";
 import { PlaybackProgress } from "./PlaybackProgress";
 import { TransportControls, VolumeControl } from "./TransportControls";
-import { playCoverFlip } from "../motion/coverFlip";
-import { registerFlipElement, takeFlipSource } from "../motion/flip";
-import type { FlipRect } from "../motion/flip";
+import { attachCoverReturn, playCoverFlip, registerCoverFlipSource, rememberCoverReturnTarget } from "../motion/coverFlip";
+import { takeFlipSource } from "../motion/flip";
+import type { FlipSource } from "../motion/flip";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import type { RepeatMode, Track, ViewMode } from "../types";
 
@@ -57,24 +56,26 @@ export function PlayerBar({
   const reducedMotion = useReducedMotion();
   // StrictMode re-runs mount effects; keep the consumed source on the
   // instance so the second run replays the flight instead of missing.
-  const flipSourceRef = useRef<FlipRect | null>(null);
+  const flipSourceRef = useRef<FlipSource | null>(null);
   const flipConsumedRef = useRef(false);
 
   // Registering side of the push into now playing: remember where the cover
   // was so the track card can fly a clone from here.
   function handleOpenNowPlaying() {
     if (!reducedMotion && track?.cover_path && coverButtonRef.current) {
-      registerFlipElement(`cover:${track.id}`, coverButtonRef.current);
+      registerCoverFlipSource(`cover:${track.id}`, coverButtonRef.current);
     }
     onOpenNowPlaying();
   }
 
-  // Consuming side of the pop back from now playing: the track card
-  // registered its rect on the way out; fly it home and hand off as soon as
-  // it lands (no dock — the bar cover is already in place). Mount-only: the
-  // bar persists across peer pages, so this runs on app start (registry
-  // empty, no-op) and whenever now playing closes.
+  // The return already moves during the page exit. Bind its endpoint to
+  // this mounted cover without replaying it, including StrictMode remounts.
   useLayoutEffect(() => {
+    const target = coverButtonRef.current?.querySelector<HTMLElement>(".mini-cover");
+    if (!target) return;
+    const remember = () => rememberCoverReturnTarget(target);
+    remember();
+    window.addEventListener("resize", remember);
     if (!flipConsumedRef.current) {
       flipConsumedRef.current = true;
       const coverPath = track?.cover_path;
@@ -82,13 +83,10 @@ export function PlayerBar({
         reducedMotion || !track || !coverPath ? null : takeFlipSource(`cover:${track.id}`);
     }
     const source = flipSourceRef.current;
-    const coverPath = track?.cover_path;
-    if (!source || !coverPath) return;
-    const button = coverButtonRef.current;
-    const target = button?.querySelector<HTMLElement>(".mini-cover") ?? button;
-    if (!target) return;
-    const flip = playCoverFlip({ source, target, imageSrc: convertFileSrc(coverPath) });
-    return () => flip.cancel();
+    const attached = track ? attachCoverReturn(`cover:${track.id}`, target) : false;
+    const flip = !attached && source && track
+      ? playCoverFlip({ id: `cover:${track.id}`, source, target, direction: "exit" }) : null;
+    return () => { window.removeEventListener("resize", remember); flip?.cancel(); };
   }, []);
 
   return (

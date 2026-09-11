@@ -7,55 +7,43 @@ const playerBarSource = readFileSync("src/components/PlayerBar.tsx", "utf8");
 const nowPlayingSource = readFileSync("src/views/NowPlayingView.tsx", "utf8");
 const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
 const playlistsCss = readFileSync("src/styles/playlists.css", "utf8");
+const animationCss = readFileSync("src/styles/animations-responsive.css", "utf8");
 
-test("cover flip clone is a fixed image flying above transient chrome", () => {
-  assert.ok(coverFlipSource.includes('document.createElement("img")'));
+test("cover snapshot flies above transient chrome without intercepting input", () => {
   assert.ok(coverFlipSource.includes('style.position = "fixed"'));
   assert.ok(coverFlipSource.includes('style.pointerEvents = "none"'));
-  assert.ok(coverFlipSource.includes("SPRING_PRESETS.snappy"), "landing should use the snappy spring");
-  assert.ok(coverFlipSource.includes("computeFlipDelta(dock, source)"), "clone is laid out at the source and transforms onto the target");
-  assert.ok(coverFlipSource.includes("getComputedStyle(target).borderRadius"));
-
+  assert.ok(coverFlipSource.includes('clone.setAttribute("aria-hidden", "true")'));
   const cloneZ = Number(coverFlipSource.match(/CLONE_Z_INDEX = "(\d+)"/)[1]);
   const menuZ = Number(playlistsCss.match(/\.context-menu\s*\{[^}]*?z-index:\s*(\d+)/s)[1]);
   const toastZ = Number(playlistsCss.match(/\.action-toast\s*\{[^}]*?z-index:\s*(\d+)/s)[1]);
-  assert.ok(cloneZ > menuZ, "clone must fly above the context menu");
-  assert.ok(cloneZ > toastZ, "clone must fly above the action toast");
+  assert.ok(cloneZ > menuZ && cloneZ > toastZ);
 });
 
-test("player bar registers the cover on open and flies it back on mount without a dock", () => {
-  assert.ok(playerBarSource.includes("registerFlipElement(`cover:${track.id}`, coverButtonRef.current)"));
+test("all player bar entry actions capture decoded cover art and mount attaches the ongoing return", () => {
+  assert.ok(playerBarSource.includes("registerCoverFlipSource(`cover:${track.id}`, coverButtonRef.current)"));
   assert.ok(playerBarSource.includes("onClick={handleOpenNowPlaying}"));
   assert.ok(playerBarSource.includes("onLabelClick={handleOpenNowPlaying}"));
   assert.ok(playerBarSource.includes("onQueue={handleOpenNowPlaying}"));
-  assert.ok(playerBarSource.includes("takeFlipSource(`cover:${track.id}`)"));
-  assert.ok(playerBarSource.includes("playCoverFlip({"));
+  assert.ok(playerBarSource.includes("rememberCoverReturnTarget(target)"));
+  assert.ok(playerBarSource.includes("attachCoverReturn(`cover:${track.id}`, target)"));
   assert.ok(playerBarSource.includes("useReducedMotion"));
-  assert.ok(!playerBarSource.includes("holdUntil"), "the return flight hands off as soon as it lands");
 });
 
-test("now playing consumes the flip source and docks through the card entrance", () => {
+test("now playing overlaps the copy reveal with its flight and returns before navigation", () => {
   assert.ok(nowPlayingSource.includes("takeFlipSource(`cover:${track.id}`)"));
-  assert.ok(nowPlayingSource.includes('holdUntil: () => waitForCardAnimation(card, "end")'));
-  assert.ok(nowPlayingSource.includes('revealTargetWhen: () => waitForCardAnimation(card, "start")'));
-  assert.ok(nowPlayingSource.includes('COVER_FLIP_CARD_ANIMATIONS = ["now-track-info-enter", "now-track-card-fade"]'));
-  assert.ok(nowPlayingSource.includes("COVER_FLIP_CARD_ANIMATIONS.includes(event.animationName)"), "the dock wait must accept both the plain entrance and the flip fade");
-  assert.ok(nowPlayingSource.includes("setFlipCoverActive(true)"), "a live flight switches the card to its at-rest flip choreography");
+  assert.ok(nowPlayingSource.includes("setFlipCoverActive(Boolean(flip))"));
   assert.ok(nowPlayingSource.includes('flipCoverActive ? "flip-cover-active" : ""'));
-  assert.ok(nowPlayingSource.includes("COVER_FLIP_WAIT_TIMEOUT_MS = 2_500"), "the dock needs a bounded fallback");
+  const back = nowPlayingSource.match(/function handleBack\(\) \{([\s\S]*?)\n  \}/)[1];
+  const flight = back.indexOf("startCoverReturn(`cover:${track.id}`, target)");
+  assert.ok(flight >= 0 && flight < back.indexOf("onBack()"));
+  assert.ok(animationCss.includes(".stage-entering.flip-cover-active .now-track-copy"));
+  assert.ok(animationCss.includes("var(--motion-coverInfo) var(--motion-coverInfoDelay)"));
+  assert.ok(!animationCss.includes("flip-docked"), "text must not wait for a dock event");
   assert.ok(nowPlayingSource.includes("useReducedMotion"));
 });
 
-test("now playing registers the card cover on the way back", () => {
-  assert.ok(nowPlayingSource.includes("registerFlipElement(`cover:${track.id}`, target)"));
-  assert.ok(nowPlayingSource.includes("onClick={handleBack}"));
-  assert.ok(nowPlayingSource.includes("trackCardRef"));
-});
-
-test("quickplay feature cover registers as a flip source only for the live music track with real art", () => {
-  // Cover and caption share one continue action; only a live music session
-  // (never a podcast) flies the cover into now playing.
+test("quickplay captures only the live music cover with real artwork", () => {
   assert.ok(quickplaySource.includes("handleContinueActivate"));
   assert.ok(quickplaySource.includes("continueTrack.cover_path"));
-  assert.ok(quickplaySource.includes("registerFlipElement(`cover:${continueTrack.id}`, cover)"));
+  assert.ok(quickplaySource.includes("registerCoverFlipSource(`cover:${continueTrack.id}`, cover)"));
 });

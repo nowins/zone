@@ -1,202 +1,182 @@
-import { animateValue } from "./animate.js";
-import type { AnimationHandle } from "./animate.js";
-import { computeFlipDelta } from "./flip.js";
-import type { FlipRect } from "./flip.js";
-import { SPRING_PRESETS } from "./tokens.js";
-
-/**
- * Shared-element cover flight between the player bar / quickplay feature
- * cover and the now-playing track card (the WP7 continuity gesture). The
- * outgoing view registers the cover's viewport rect under `cover:{trackId}`
- * (see `flip.ts`); the incoming view takes that rect and calls
- * `playCoverFlip`, which hides the real cover, flies a fixed-position clone
- * from the registered spot, optionally docks it through the target's own
- * entrance choreography, then hands back. All DOM work lives here; the views
- * only register, take, and invoke.
- */
-
-export interface CoverFlipOptions {
-  /** Where the cover was last seen, in viewport coordinates. */
-  source: FlipRect;
-  /** Real cover element in the incoming view; hidden while the clone flies. */
-  target: HTMLElement;
-  /** Ready-to-render cover URL (already passed through `convertFileSrc`). */
-  imageSrc: string;
-  /**
-   * Optional dock period after landing: the clone stays parked on the target
-   * and follows it (the now-playing card still drifts during its delayed
-   * entrance) until this promise resolves. Must be bounded by the caller.
-   */
-  holdUntil?: () => Promise<void>;
-  /**
-   * Optional early reveal: once this promise resolves, the real cover becomes
-   * visible again underneath the parked clone, so its outline/shadow fade in
-   * with the owning surface instead of popping at the hand-off.
-   */
-  revealTargetWhen?: () => Promise<void>;
-  /**
-   * Called once when the spring has fully settled on the target. Lets the
-   * caller hold the target's own entrance until the cover truly rests, so
-   * the outline/text never appear around a still-moving cover.
-   */
-  onDocked?: () => void;
-}
+import { computeFlipDelta, registerFlipSource, takeFlipSource } from "./flip.js";
+import type { FlipRect, FlipSource } from "./flip.js";
+import { MOTION_EASINGS, NOW_PLAYING_MOTION } from "./tokens.js";
 
 export interface CoverFlipHandle {
-  /** Stops the flight, removes the clone, restores the real cover. Idempotent. */
   cancel(): void;
 }
 
-// Above the context menu (40) and the action toast (55) so the flight never
-// slips under transient chrome.
+interface Flight extends CoverFlipHandle {
+  id: string;
+  clone: HTMLCanvasElement;
+  image: HTMLImageElement;
+  attach(target: HTMLElement): void;
+}
+
+// Return flights outlive the departing view, but only for one bounded tween.
+let activeFlight: Flight | null = null;
+let playerCoverRect: FlipRect | null = null;
+let pendingReturn: { id: string; until: number } | null = null;
 const CLONE_Z_INDEX = "60";
 
 function viewportRect(element: HTMLElement): FlipRect {
-  const rect = element.getBoundingClientRect();
-  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  const { x, y, width, height } = element.getBoundingClientRect();
+  return { x, y, width, height };
 }
 
-/**
- * Flies a cover clone from `source` onto `target` with a snappy spring
- * (restrained overshoot on landing). Returns a handle whose `cancel()` is
- * idempotent and also runs automatically once the flight — and the optional
- * dock period — has finished.
- */
-export function playCoverFlip(options: CoverFlipOptions): CoverFlipHandle {
-  const { source, target, imageSrc } = options;
-  const flightTarget = viewportRect(target);
-  if (
-    source.width <= 0 || source.height <= 0 ||
-    flightTarget.width <= 0 || flightTarget.height <= 0
-  ) {
-    return { cancel() {} };
-  }
+/** Capture the visible cover, including a flight being reversed mid-air. */
+export function registerCoverFlipSource(id: string, element: HTMLElement): FlipSource {
+  const image = element.querySelector<HTMLImageElement>("img");
+  const source: FlipSource = activeFlight?.id === id
+    ? { ...viewportRect(activeFlight.clone), image: activeFlight.image }
+    : { ...viewportRect(element), image: image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0 ? image : undefined };
+  activeFlight?.cancel();
+  pendingReturn = null;
+  registerFlipSource(id, source);
+  return source;
+}
 
-  const previousVisibility = target.style.visibility;
-  target.style.visibility = "hidden";
+/** Remember the actual bar geometry, including responsive layout changes. */
+export function rememberCoverReturnTarget(element: HTMLElement): void {
+  playerCoverRect = viewportRect(element);
+}
 
-  const clone = document.createElement("img");
-  clone.src = imageSrc;
-  clone.alt = "";
-  clone.draggable = false;
+/** Start returning while the old page is still fading, before the bar mounts. */
+export function startCoverReturn(id: string, element: HTMLElement): void {
+  const source = registerCoverFlipSource(id, element);
+  if (!source.image || !playerCoverRect) return;
+  takeFlipSource(id);
+  pendingReturn = { id, until: performance.now() + 1000 };
+  startFlight(id, source, playerCoverRect, "exit", element);
+}
+
+/** Bind the returning clone to the newly mounted bar; never restart its trip. */
+export function attachCoverReturn(id: string, target: HTMLElement): boolean {
+  if (!pendingReturn || pendingReturn.id !== id) return false;
+  const fresh = pendingReturn.until >= performance.now();
+  pendingReturn = null;
+  if (!fresh) return false;
+  if (activeFlight?.id === id) activeFlight.attach(target);
+  return true;
+}
+
+/** A decoded source is required; missing artwork uses the normal page reveal. */
+export function playCoverFlip({ id, source, target, direction = "enter" }: {
+  id: string;
+  source: FlipSource;
+  target: HTMLElement;
+  direction?: "enter" | "exit";
+}): CoverFlipHandle | null {
+  return startFlight(id, source, target, direction);
+}
+
+function startFlight(id: string, source: FlipSource, destination: HTMLElement | FlipRect,
+  direction: "enter" | "exit", outgoing?: HTMLElement): Flight | null {
+  const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+  if (media.matches || document.hidden || !source.image?.complete || source.image.naturalWidth <= 0 ||
+    source.image.naturalHeight <= 0 || source.width <= 0 || source.height <= 0) return null;
+  activeFlight?.cancel();
+  let target = "getBoundingClientRect" in destination ? destination : null;
+  let dock = target ? viewportRect(target) : destination as FlipRect;
+  if (dock.width <= 0 || dock.height <= 0) return null;
+
+  // Paint the image that is already on screen. Re-decoding a new img after
+  // navigation created a visible stationary pause, even with a warm cache.
+  const clone = document.createElement("canvas");
+  const context = clone.getContext("2d");
+  if (!context) return null;
+  clone.width = clone.height = Math.min(512, source.image.naturalWidth);
+  const crop = Math.min(source.image.naturalWidth, source.image.naturalHeight);
+  context.drawImage(source.image, (source.image.naturalWidth - crop) / 2,
+    (source.image.naturalHeight - crop) / 2, crop, crop, 0, 0, clone.width, clone.height);
   clone.setAttribute("aria-hidden", "true");
+  clone.dataset.coverFlight = direction;
   const { style } = clone;
   style.position = "fixed";
   style.left = `${source.x}px`;
   style.top = `${source.y}px`;
   style.width = `${source.width}px`;
   style.height = `${source.height}px`;
-  style.margin = "0";
-  style.objectFit = "cover";
   style.pointerEvents = "none";
   style.zIndex = CLONE_Z_INDEX;
   style.transformOrigin = "center";
-  style.willChange = "transform, filter";
-  style.borderRadius = getComputedStyle(target).borderRadius;
+  style.willChange = "transform";
+  style.borderRadius = target ? getComputedStyle(target).borderRadius : "0";
   document.body.appendChild(clone);
 
-  // The clone is laid out at the source rect, so the transform that carries
-  // it onto the target is computeFlipDelta(dock, source); progress t
-  // interpolates from identity, and the spring may overshoot past 1 for a
-  // restrained landing. The dock rect is re-measured on every write instead
-  // of frozen at call time: a first-frame layout transient (the just-mounted
-  // view can report a stale rect) would otherwise bake into the flight and
-  // snap visibly when the dock loop later re-glued to the live rect. Early
-  // frames weight the correction by a tiny t, so the path simply bends.
-  function writeTransform(t: number, dock: FlipRect) {
-    const delta = computeFlipDelta(dock, source);
-    const scaleX = 1 + (delta.scaleX - 1) * t;
-    const scaleY = 1 + (delta.scaleY - 1) * t;
-    style.transform = `translate3d(${delta.dx * t}px, ${delta.dy * t}px, 0) scale(${scaleX}, ${scaleY})`;
-    writeMotionBlur(delta, t);
-  }
-
-  // Cheap motion blur: the spring's peak stride is tens of px per frame at
-  // 60Hz, which reads as stepping; a velocity-proportional blur smears those
-  // steps and decays to nothing as the cover settles. Computed from the
-  // frame-to-frame center displacement so it also covers the dock follow.
-  let lastCenter: { x: number; y: number; at: number } | null = null;
-  let lastBlur = 0;
-
-  function writeMotionBlur(delta: { dx: number; dy: number }, t: number) {
-    const now = performance.now();
-    const cx = source.x + source.width / 2 + delta.dx * t;
-    const cy = source.y + source.height / 2 + delta.dy * t;
-    if (lastCenter && now > lastCenter.at) {
-      const speed = Math.hypot(cx - lastCenter.x, cy - lastCenter.y) / (now - lastCenter.at);
-      const target = Math.min(12, speed * 4);
-      // Asymmetric decay keeps the release from popping to sharpness.
-      lastBlur = Math.max(target, lastBlur * 0.82);
-      style.filter = lastBlur > 0.4 ? `blur(${lastBlur.toFixed(1)}px)` : "";
-    }
-    lastCenter = { x: cx, y: cy, at: now };
-  }
-
-  let cancelled = false;
-  let followRaf = 0;
-  let animation: AnimationHandle | null = null;
-
-  function restoreTarget() {
-    target.style.visibility = previousVisibility;
-  }
+  const hidden = new Map<HTMLElement, string>();
+  const hide = (element: HTMLElement) => {
+    if (!hidden.has(element)) hidden.set(element, element.style.visibility);
+    element.style.visibility = "hidden";
+  };
+  if (target) hide(target);
+  if (outgoing) hide(outgoing);
+  const duration = direction === "enter" ? NOW_PLAYING_MOTION.coverEnter : NOW_PLAYING_MOTION.coverExit;
+  const startedAt = performance.now();
+  const easing = `cubic-bezier(${MOTION_EASINGS.standard.join(",")})`;
+  let animation: Animation | null = null;
+  let reveal: Animation | null = null;
+  let finished = false;
 
   function finish() {
-    if (cancelled) return;
-    cancelled = true;
-    animation?.cancel();
-    if (followRaf) window.cancelAnimationFrame(followRaf);
+    if (finished) return;
+    finished = true;
+    if (animation) { animation.onfinish = null; animation.cancel(); }
+    if (reveal) { reveal.onfinish = null; reveal.cancel(); }
     clone.remove();
-    restoreTarget();
+    hidden.forEach((visibility, element) => { element.style.visibility = visibility; });
+    document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("resize", finish);
+    media.removeEventListener("change", finish);
+    if (activeFlight === flight) activeFlight = null;
   }
 
-  function startDock() {
-    if (cancelled) return;
-    options.onDocked?.();
-    if (!options.holdUntil) {
-      finish();
-      return;
-    }
-    // The target can keep moving after the landing (the card's delayed
-    // entrance rise), so re-measure every frame to keep the clone glued on.
-    const follow = () => {
-      if (cancelled) return;
-      writeTransform(1, viewportRect(target));
-      followRaf = window.requestAnimationFrame(follow);
-    };
-    followRaf = window.requestAnimationFrame(follow);
+  function onVisibility() { if (document.hidden) finish(); }
+
+  function land() {
+    if (finished) return;
+    if (direction === "enter" && target?.isConnected) {
+      // Only the outline fades in at the endpoint; the opaque clone keeps
+      // the artwork continuous until its real image has taken over.
+      target.style.visibility = hidden.get(target) ?? "";
+      reveal = target.animate([{ opacity: 0 }, { opacity: 1 }], { duration: NOW_PLAYING_MOTION.coverHandoff });
+      reveal.onfinish = finish;
+    } else finish();
   }
 
-  // Don't fly a blank frame: on a cold cache (first app launch) the clone
-  // image can take hundreds of ms to decode, which would render the whole
-  // flight invisible. Hold the spring until the image is ready, bounded by a
-  // timeout so a broken image can never stall the entrance.
-  const flightReady = Promise.race([
-    clone.decode().catch(() => undefined),
-    new Promise<void>((resolve) => {
-      window.setTimeout(resolve, 400);
-    }),
-  ]);
-  void flightReady.then(() => {
-    if (cancelled) return;
-    animation = animateValue({
-      from: 0,
-      to: 1,
-      spring: SPRING_PRESETS.snappy,
-      onUpdate: (t) => writeTransform(t, viewportRect(target)),
-      onComplete: startDock,
-    });
-  });
-
-  if (options.revealTargetWhen) {
-    Promise.resolve()
-      .then(options.revealTargetWhen)
-      .then(() => {
-        if (!cancelled) restoreTarget();
-      });
-  }
-  if (options.holdUntil) {
-    Promise.resolve().then(options.holdUntil).then(finish, finish);
+  function transform(rect: FlipRect) {
+    const delta = computeFlipDelta(rect, source);
+    return `translate3d(${delta.dx}px, ${delta.dy}px, 0) scale(${delta.scaleX}, ${delta.scaleY})`;
   }
 
-  return { cancel: finish };
+  function fly(from: FlipRect, remaining: number) {
+    if (animation) { animation.onfinish = null; animation.cancel(); }
+    animation = clone.animate([{ transform: transform(from) }, { transform: transform(dock) }],
+      { duration: remaining, easing, fill: "forwards" });
+    animation.onfinish = land;
+  }
+
+  const flight: Flight = {
+    id, clone, image: source.image, cancel: finish,
+    attach(element) {
+      if (finished) return;
+      target = element;
+      hide(element);
+      const actual = viewportRect(element);
+      // Usually identical. Correct once if the returning page reflows; do
+      // not chase layout or paint a blur on every animation frame.
+      if (Math.max(Math.abs(actual.x - dock.x), Math.abs(actual.y - dock.y),
+        Math.abs(actual.width - dock.width), Math.abs(actual.height - dock.height)) > 0.5) {
+        const current = viewportRect(clone);
+        dock = actual;
+        fly(current, Math.max(1, duration - (performance.now() - startedAt)));
+      }
+    },
+  };
+  activeFlight = flight;
+  document.addEventListener("visibilitychange", onVisibility);
+  window.addEventListener("resize", finish);
+  media.addEventListener("change", finish);
+  fly(source, duration);
+  return flight;
 }

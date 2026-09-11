@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEntranceCompletion } from "../hooks/useEntranceCompletion";
 import { useNowPlayingFullscreen } from "../hooks/useNowPlayingFullscreen";
 import { ArrowLeft, AudioLines, Heart } from "lucide-react";
@@ -11,43 +10,19 @@ import { NowPlayingMosaicCanvas } from "../components/NowPlayingMosaicCanvas";
 import { PlaybackProgress } from "../components/PlaybackProgress";
 import { TransportControls, VolumeControl } from "../components/TransportControls";
 import { useLyrics } from "../hooks/useLyrics";
-import { playCoverFlip } from "../motion/coverFlip";
-import { registerFlipElement, takeFlipSource } from "../motion/flip";
-import type { FlipRect } from "../motion/flip";
+import { playCoverFlip, startCoverReturn } from "../motion/coverFlip";
+import { takeFlipSource } from "../motion/flip";
+import type { FlipSource } from "../motion/flip";
 import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS, NOW_PLAYING_MOTION } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import type { RepeatMode, Track } from "../types";
 
 const IDLE_CHROME_DELAY = 5_000;
-const COVER_FLIP_CARD_ANIMATIONS = ["now-track-info-enter", "now-track-card-fade"];
-const COVER_FLIP_WAIT_TIMEOUT_MS = 2_500;
 // Total stage-entrance budget: the wall reveal plus the track card's delayed
 // entrance must settle before `stage-entering` clears (see
 // animations-responsive.css for the paired keyframes).
 const STAGE_ENTRANCE_MS = NOW_PLAYING_MOTION.nowStage;
-
-/**
- * Resolves once the track card's entrance animation reaches the given phase
- * (`animationstart` / `animationend`), or after a fallback timeout so a
- * missing entrance can never strand the shared-element clone.
- */
-function waitForCardAnimation(card: HTMLElement, phase: "start" | "end"): Promise<void> {
-  const type = phase === "start" ? "animationstart" : "animationend";
-  return new Promise((resolve) => {
-    const timer = window.setTimeout(done, COVER_FLIP_WAIT_TIMEOUT_MS);
-    function onAnimation(event: AnimationEvent) {
-      if (event.target !== card || !COVER_FLIP_CARD_ANIMATIONS.includes(event.animationName)) return;
-      done();
-    }
-    function done() {
-      window.clearTimeout(timer);
-      card.removeEventListener(type, onAnimation as EventListener);
-      resolve();
-    }
-    card.addEventListener(type, onAnimation as EventListener);
-  });
-}
 
 export function NowPlayingView({
   track,
@@ -106,7 +81,6 @@ export function NowPlayingView({
   const [wallRevealStarted, setWallRevealStarted] = useState(false);
   const isEntering = !useEntranceCompletion(wallRevealStarted, STAGE_ENTRANCE_MS);
   const [flipCoverActive, setFlipCoverActive] = useState(false);
-  const [flipDocked, setFlipDocked] = useState(false);
   const [queueVisible, setQueueVisible] = useState(true);
   const fullscreen = useNowPlayingFullscreen();
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -125,7 +99,7 @@ export function NowPlayingView({
   const trackCardRef = useRef<HTMLElement | null>(null);
   // StrictMode re-runs mount effects; keep the consumed source on the
   // instance so the second run replays the flight instead of missing.
-  const flipSourceRef = useRef<FlipRect | null>(null);
+  const flipSourceRef = useRef<FlipSource | null>(null);
   const flipConsumedRef = useRef(false);
 
   function clearChromeFade() {
@@ -215,13 +189,8 @@ export function NowPlayingView({
     };
   }, [isPlaying, saveDialogOpen, isEntering]);
 
-  // Shared-element cover hand-off (push in): the player bar or the quickplay
-  // feature cover registered where this track's art was; fly a clone from
-  // there, dock it through the card's delayed entrance, then hand off to the
-  // real cover. Mount-only — track changes inside now playing must not fly.
-  // While a flight is live the flight IS the cover's entrance: flipCoverActive
-  // keeps the card at its rest position (no 12px press) so the clone docks on
-  // the final spot, and the card only fades in instead of rising afterwards.
+  // The flight and copy reveal overlap. Only the artwork is hidden until
+  // landing; neither text nor the flight waits for the mosaic's reveal.
   useLayoutEffect(() => {
     if (!flipConsumedRef.current) {
       flipConsumedRef.current = true;
@@ -231,42 +200,20 @@ export function NowPlayingView({
     }
     const source = flipSourceRef.current;
     const coverPath = track?.cover_path;
-    if (!source || !coverPath) return;
+    if (!source?.image || !coverPath || !track) return;
     const card = trackCardRef.current;
     const target = card?.querySelector<HTMLElement>(".mini-cover");
     if (!card || !target) return;
-    // Sync re-render before paint: the card switches to its at-rest flip
-    // choreography (see .flip-cover-active) before the clone is measured.
-    setFlipCoverActive(true);
-    // The card's own entrance (outline + track info) is docked-driven: it
-    // starts only once the clone truly rests (.flip-docked), so the outline
-    // never frames a cover that is still settling. The fallback keeps the
-    // card from being stranded if the spring completion is ever missed; it
-    // must outlast the clone image decode gate plus the flight itself.
-    const dockFallback = window.setTimeout(() => setFlipDocked(true), 1_500);
-    const flip = playCoverFlip({
-      source,
-      target,
-      imageSrc: convertFileSrc(coverPath),
-      holdUntil: () => waitForCardAnimation(card, "end"),
-      revealTargetWhen: () => waitForCardAnimation(card, "start"),
-      onDocked: () => {
-        window.clearTimeout(dockFallback);
-        setFlipDocked(true);
-      },
-    });
-    return () => {
-      window.clearTimeout(dockFallback);
-      flip.cancel();
-    };
+    const flip = playCoverFlip({ id: `cover:${track.id}`, source, target });
+    setFlipCoverActive(Boolean(flip));
+    return () => flip?.cancel();
   }, []);
 
-  // Registering side of the pop back out: remember the card cover's spot so
-  // the player bar can fly a clone from here when it remounts.
+  // Returning starts with the click and overlaps the old page's exit.
   function handleBack() {
     if (!reducedMotion && track?.cover_path) {
       const target = trackCardRef.current?.querySelector<HTMLElement>(".mini-cover");
-      if (target) registerFlipElement(`cover:${track.id}`, target);
+      if (target) startCoverReturn(`cover:${track.id}`, target);
     }
     onBack();
   }
@@ -372,7 +319,7 @@ export function NowPlayingView({
         isPlaying ? "wall-playing" : "wall-paused"
       } ${lyricsOpen ? "lyrics-mode" : "ambient-mode"} ${keyboardSurfaceChange ? "keyboard-surface-change" : ""} ${
         flipCoverActive ? "flip-cover-active" : ""
-      } ${flipDocked ? "flip-docked" : ""} ${fullscreen.active ? "now-fullscreen" : ""}`}
+      } ${fullscreen.active ? "now-fullscreen" : ""}`}
       onMouseMove={wakeChrome}
       onPointerDownCapture={() => { pointerHeld.current = true; wakeChrome(); }}
       onMouseEnter={wakeChrome}

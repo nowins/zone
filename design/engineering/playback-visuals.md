@@ -56,7 +56,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
   - 换曲保留磁贴几何与已解码图像；新图解码完成后逐片交叉淡化，连续切歌接续当前过渡。同专辑不重建墙；缺失或失败封面保留旧图，首次加载使用其他已就绪封面补位。缓存淘汰不得清空仍被磁贴引用的画布。
 - 入场：
   - 页面以 `now-stage-dissolve`（纯透明度溶解）进入，无位移/缩放。
-  - 队列面板先淡入，拼贴墙磁贴非顺序错峰显现，曲目卡随后淡入；FLIP 飞行时等待落位再接续。时长与延迟由 `src/motion/tokens.ts` 的 `NOW_PLAYING_MOTION` 及 `src/styles/animations-responsive.css` 编排，不在本文固定毫秒值。
+  - 队列面板先淡入，拼贴墙磁贴非顺序错峰显现，普通曲目卡随后淡入。共享封面飞行使用已解码的真实封面快照，文字在飞行期间出现，落位仅做短暂轮廓交接；返回时封面与页面同时退场，不等底部栏重挂载后起飞。时长与延迟由 `src/motion/tokens.ts` 的 `NOW_PLAYING_MOTION` 及 `src/styles/animations-responsive.css` 编排，不在本文固定毫秒值。
 - 排版：
   - 允许大号、部分裁切的幽灵文字。
   - 功能性文字保持可读且克制。
@@ -95,3 +95,4 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 - 光焰改动比较不同音乐及同一首歌的安静/节奏段落，检查峰位、宽度和局部亮度确实随信号变化；检查 quickplay／收藏／正在播放往返时的背景衔接、播放连续性和底部控件焦点。色场改动检查首次入场与换封面过渡。至少检查默认窗口和最小窗口，涉及高分辨率 Canvas 性能时补相应尺寸验证。
 - 队列改动检查单首／少量／长队列高度、点击中间曲目、上一首/下一首、显隐及重新显示时的定位；控件改动检查循环三态、音量滚轮/键盘/边界、原生全屏进入与 Esc 退出。闲置隐藏需检查淡出中唤回、滚动位置保持、键盘焦点、暂停／拖动／对话框阻止隐藏和 reduced-motion。`tests/nowPlayingChrome.test.mjs` 覆盖真实页面的闲置生命周期与队列交互，`tests/transportControls.test.mjs` 覆盖控制组件和全屏 hook 的竞争/失败恢复。封面改动检查慢加载、加载失败、同专辑和连续切歌，过渡不得中途变亮或露出空白。
 - 启动应用遵循根目录授权规则；若必要交互验证无法完成，说明尚未验证的部分，不用静态检查冒充实测通过。
+- 共享封面需检查底部栏与 quickplay 大封面入场、返回、飞行中反向、底部栏重挂载、窗口尺寸变化和 reduced-motion 切换，文字不等待飞行停稳，返程不二次起飞，最后不得残留克隆或隐藏的真实封面。`tests/coverFlipBehavior.test.mjs` 用可控 WAAPI 完成时钟验证交接、取消和返程生命周期；实际插值、布局及 CSS 编排另做浏览器交互验证。
