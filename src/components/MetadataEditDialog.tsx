@@ -138,6 +138,12 @@ export function MetadataEditDialog({
   const fields = useMemo(() => toFields(draft), [draft]);
   const first = payload.tracks[0];
   const label = payload.kind === "track" ? "歌曲" : payload.kind === "album" ? "专辑" : "艺术家";
+  const contextArt = context?.fields.find((field) => (
+    field.key === (payload.kind === "artist" ? "artist_image_path" : "album_cover_path")
+  ))?.value;
+  const editArtPath = payload.kind === "artist"
+    ? first?.artist_image_path ?? contextArt ?? null
+    : first?.cover_path ?? contextArt ?? null;
 
   function updateField(field: string, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -169,7 +175,7 @@ export function MetadataEditDialog({
     >
       <div className="metadata-edit-body">
           <div className="metadata-edit-art">
-            <Cover artPath={first?.cover_path} label={payload.title} size="large" />
+            <Cover artPath={editArtPath} label={payload.title} size="large" />
             <small>信息保存在 Zone，不会写入音乐文件</small>
           </div>
           <div className="metadata-edit-grid">

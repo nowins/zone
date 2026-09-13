@@ -181,7 +181,7 @@
   pointer-events: none;
 }
 
-.motion-exit .info-panel section {
+.motion-exit .info-panel > section {
   animation: motion-exit-info-section var(--motion-micro) var(--motion-ease-exit) both;
 }
 
@@ -246,7 +246,7 @@
   @starting-style { opacity: 0; }
 }
 
-.info-panel section {
+.info-panel > section {
   transform: perspective(1200px) rotateY(0deg) translate3d(0, 0, 0);
   transform-origin: right center;
   transition: transform var(--motion-content) var(--motion-ease-standard);
@@ -505,7 +505,7 @@ button.tilt-pressed {
   .motion-exit .podcast-search-history,
   .motion-exit .compact-options,
   .motion-exit .info-panel,
-  .motion-exit .info-panel section,
+  .motion-exit .info-panel > section,
   .motion-exit .save-playlist-overlay,
   .motion-exit .playlist-dialog-overlay,
   .motion-exit .smart-playlist-overlay,
@@ -531,7 +531,7 @@ button.tilt-pressed {
   .context-menu,
   .podcast-search-history,
   .info-panel,
-  .info-panel section,
+  .info-panel > section,
   .save-playlist-overlay,
   .save-playlist-dialog,
   .playlist-dialog-overlay,
@@ -598,7 +598,7 @@ button.tilt-pressed {
 
   .context-menu,
   .podcast-search-history,
-  .info-panel section,
+  .info-panel > section,
   .save-playlist-dialog,
   .playlist-dialog,
   .smart-playlist-dialog,

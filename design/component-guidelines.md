@@ -107,7 +107,7 @@
 | `MetroLoader` | 唯一加载指示（见 §3.5） |
 | `EmptyState` | 页面级空态（空曲库：字标 + `Button` solid xl 动作）；区块级空态/加载用播客 `primitives.tsx` 的 `PodcastEmpty` / `PodcastLoading`（`MetroLoader` + 延迟淡入）。不写解释段落 |
 | `ContextMenu` / `PodcastEpisodeContextMenu` | 右键菜单；swivel 入场；系统右键全局抑制 |
-| `InfoPanel` | 按实体范围管理文件与补充资料；独立焦点隔离，右缘 swivel 入场 |
+| `InfoPanel` | 按实体范围管理文件与补充资料；头部为封面／艺术家图与类型标识，正文按实体种类给出归属、年份、流派、时长等可用字段，歌曲另有“文件”分组，缺失字段省略；补充资料的长文本（介绍／歌手简介）整行展示，艺术家不借用歌曲专辑封面；独立焦点隔离，右缘 swivel 入场；面板内部不得再使用 `<section>`（外壳选择器限定直接子元素） |
 | `PlaylistDialog` / `AddToPlaylistDialog` / `MetadataEditDialog` / `MetadataSearchDialog` / 播客确认框 | 全部建在 `Dialog` 壳上，动作行用 `Button`；遮罩淡入 + 盒体 rotateX 下沉入场由壳的基类继承 |
 
 `Dialog`、资料面板与智能列表编辑器共用 `useModalFocus`：打开后焦点留在浮层内，关闭后返回有效入口。浮层交接或嵌套期间以共享计数维护背景 `inert`，前一浮层退场不能解除后一浮层的隔离。
