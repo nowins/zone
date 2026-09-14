@@ -5,6 +5,7 @@ import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
 import type { ContextPayload, MetadataCandidateField, MetadataContextRecord, Track } from "../types";
 import { knownDuration } from "../utils/collectionEntities";
+import { appliedArtistProviderIds, selectAutomaticArtistCandidate } from "../utils/metadata";
 import { bestAlbumArtist, formatTime } from "../utils/music";
 import { MetadataEditDialog } from "./MetadataEditDialog";
 import { MetadataSearchDialog } from "./MetadataSearchDialog";
@@ -132,6 +133,7 @@ function EntityInfoPanel({
   const first = payload.tracks[0];
   const supportsMetadata = payload.kind !== "playlist" && payload.tracks.length > 0;
   const [context, setContext] = useState<MetadataContextRecord | null>(null);
+  const [contextLoaded, setContextLoaded] = useState(false);
   const [activeDialog, setActiveDialog] = useState<"search" | "edit" | null>(null);
   const [status, setStatus] = useState<"idle" | "clearing">("idle");
   const [notice, setNotice] = useState("");
@@ -145,6 +147,7 @@ function EntityInfoPanel({
   useEffect(() => {
     setNotice("");
     setContext(null);
+    setContextLoaded(false);
     if (!supportsMetadata) {
       setContext(null);
       return;
@@ -152,15 +155,47 @@ function EntityInfoPanel({
     let cancelled = false;
     void metadata.getContext(payload)
       .then((result) => {
-        if (!cancelled) setContext(result);
+        if (cancelled) return;
+        setContext(result);
+        setContextLoaded(true);
       })
       .catch((error) => {
-        if (!cancelled) setNotice(String(error));
+        if (cancelled) return;
+        setNotice(String(error));
+        setContextLoaded(true);
       });
     return () => {
       cancelled = true;
     };
   }, [metadata.getContext, payload, supportsMetadata]);
+
+  // Artists without any local imagery get one automatic online lookup per panel
+  // mount; only exact-match candidates are applied, failures stay silent so the
+  // manual 查找补充信息 flow remains the fallback.
+  const autoArtistFetchRef = useRef(false);
+  useEffect(() => {
+    if (autoArtistFetchRef.current) return;
+    if (payload.kind !== "artist" || !supportsMetadata || !contextLoaded || context || !first) return;
+    if (first.artist_image_path) return;
+    autoArtistFetchRef.current = true;
+    void (async () => {
+      try {
+        const candidate = selectAutomaticArtistCandidate(
+          await metadata.search(payload),
+          appliedArtistProviderIds(first),
+        );
+        if (!candidate) return;
+        const nextContext = await metadata.apply(payload, candidate);
+        if (!mounted.current) return;
+        setContext(nextContext);
+        if (nextContext && artworkPath(nextContext.fields)) {
+          setNotice("已自动补充艺术家照片");
+        }
+      } catch {
+        // Automatic enrichment is best-effort; the manual search stays available.
+      }
+    })();
+  }, [payload, supportsMetadata, contextLoaded, context, first, metadata]);
 
   async function clearMetadata() {
     setStatus("clearing");
