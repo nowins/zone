@@ -7,6 +7,7 @@ import {
   artistNeedsAutomaticEnrichment,
   automaticArtistTrackScope,
   metadataTrackInput,
+  selectArtistsForAutomaticBackfill,
   selectAutomaticArtistCandidate,
 } from "../.tmp/visualizer-tests/utils/metadata.js";
 
@@ -221,6 +222,65 @@ test("playback enrichment is silent, provider-aware, and excludes podcast playba
   assert.match(hookSource, /selectAutomaticArtistCandidate\([\s\S]+await search\(payload\),[\s\S]+appliedProviderIds/);
   assert.match(appSource, /!restored \|\| !isPlaying \|\| activePodcastEpisode \|\| !activeTrack/);
   assert.match(appSource, /metadata\.enrichArtistForPlayback\(activeTrack\)/);
+});
+
+test("artist backfill selection groups performers, respects provider state, and stays bounded", () => {
+  const first = track({ id: "b", artist: "比莉" });
+  const sameArtist = track({ id: "a", artist: " 比莉 " });
+  const enriched = track({
+    id: "c",
+    artist: "蔡琴",
+    artist_images: [
+      { path: "one", providerId: "netease-music" },
+      { path: "two", providerId: "netease-music" },
+    ],
+    artist_biography: "已有简介",
+  });
+  const unknown = track({ id: "d", artist: "未知艺术家" });
+
+  const targets = selectArtistsForAutomaticBackfill(
+    [first, sameArtist, enriched, unknown],
+    ["local-sidecar", "netease-music"],
+  );
+  assert.equal(targets.length, 1);
+  assert.equal(targets[0].name, "比莉");
+  assert.deepEqual(targets[0].tracks.map((item) => item.id), ["a", "b"]);
+  assert.equal(targets[0].profile.id, "a");
+  assert.equal(
+    selectArtistsForAutomaticBackfill([first, sameArtist], ["netease-music"], 1)[0].tracks.length,
+    1,
+  );
+  assert.deepEqual(selectArtistsForAutomaticBackfill([first], []), []);
+
+  const partiallyApplied = track({
+    id: "e",
+    artist: "陈粒",
+    metadata_enrichment: {
+      sources: [{
+        field: "artist_image_path",
+        providerId: "local-sidecar",
+        providerName: "本地补充文件",
+        sourcePath: "D:\\artist.zone.json",
+        confidence: 100,
+        updatedAt: 1,
+      }],
+    },
+  });
+  assert.deepEqual(selectArtistsForAutomaticBackfill([partiallyApplied], ["local-sidecar"]), []);
+  assert.equal(
+    selectArtistsForAutomaticBackfill([partiallyApplied], ["local-sidecar", "netease-music"]).length,
+    1,
+  );
+});
+
+test("artist backfill runs silently in the background with throttling and a shared attempt log", () => {
+  const hookSource = readFileSync(new URL("../src/hooks/useMetadataEnrichment.ts", import.meta.url), "utf8");
+
+  assert.match(hookSource, /ARTIST_BACKFILL_START_DELAY_MS = 12_000/);
+  assert.match(hookSource, /ARTIST_BACKFILL_ARTIST_DELAY_MS = 2_000/);
+  assert.match(hookSource, /selectArtistsForAutomaticBackfill\(tracksRef\.current, automaticProviders\)/);
+  assert.match(hookSource, /automaticArtistAttemptsRef\.current\.get\(attemptKey\)/);
+  assert.match(hookSource, /if \(candidate\) await apply\(payload, candidate\)/);
 });
 
 test("metadata enrichment stays behind native commands and an explicit confirmation", () => {

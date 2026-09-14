@@ -35,7 +35,7 @@
   - `usePlaybackControls.ts`：拥有 `audioPlayAttemptRef`（唯一递增点在 `beginPlayAttempt`）、autoplay intent、pending start/resume、`podcastAudioEpisodeRef`/`podcastPlaybackStartedEpisodeRef` 等全部 transport ref；`runPlayAttempt` 为唯一 `audio.play()` 成功/失败门闩；音乐 queue/shuffle/repeat/统计、媒体源切换与 audio 事件；onEnded 播客分支委托 `handleEpisodeEnded`；transport 守卫/解析统一走 `src/utils/playbackTransport.ts` 纯函数（`tests/playbackTransport.test.mjs` 行为覆盖）。
   - `useAudioEngine.ts`：Web Audio 图 refs、ensureAudioGraph/resumeAudioGraph、节拍预分析、可视化采样循环与启停、音量应用；以 `AudioEngineHandle` 形式经 ref 交给播放控制。
   - `usePlaylists.ts`：playlists/homePins/喜欢状态与 CRUD、普通列表移除与顺序、智能规则／轮换／排除、homePins 对账和固定；对象导航由 `useNavigation` 负责。
-- `src/hooks/useMetadataEnrichment.ts` 与 `src-tauri/src/metadata/`：曲目元数据补全与覆盖；结合音乐库状态接线。
+- `src/hooks/useMetadataEnrichment.ts` 与 `src-tauri/src/metadata/`：曲目元数据补全与覆盖；结合音乐库状态接线。无图艺术家在三个入口做精确匹配的自动补充（播放时、信息面板打开时、曲库恢复后的后台顺序批量补齐），共用 30 分钟尝试记录，批量筛选纯函数在 `utils/metadata.ts` 的 `selectArtistsForAutomaticBackfill`。
 - `src/hooks/useAppHotkeys.ts` / `useModalFocus.ts` / `useMountedRef.ts` / `useEntranceCompletion.ts`：全局播放快捷键、对话框焦点、StrictMode 挂载生命周期与入场清理。
 - `src/hooks/useCompactMode.ts`：读取原生窗口模式、串行防重切换及失败恢复；App 只替换视图分支，主音频与播放 hook 保持挂载。小屏期间停用正常收藏导航快捷键与可视化采样。
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。

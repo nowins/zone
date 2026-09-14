@@ -160,3 +160,51 @@ export function normalizeArtistIdentity(value: string | null | undefined) {
     .toLocaleLowerCase()
     .replace(/[\s\p{P}\p{S}]+/gu, "") ?? "";
 }
+
+export type ArtistBackfillTarget = {
+  /** Display name taken from the track tag, never the normalized identity. */
+  name: string;
+  /** Performed tracks capped to the automatic scope limit. */
+  tracks: Track[];
+  /** Track whose enrichment state speaks for the whole artist. */
+  profile: Track;
+};
+
+/**
+ * Artists worth one automatic online lookup: performer-tagged, still missing
+ * imagery or biography, and not yet enriched by every enabled provider.
+ * Grouping and profile adoption mirror buildCollectionIndex so the batch pass,
+ * playback enrichment and the artist index all agree on identities.
+ */
+export function selectArtistsForAutomaticBackfill(
+  tracks: Track[],
+  enabledProviderIds: Iterable<string>,
+  limit = AUTOMATIC_ARTIST_TRACK_LIMIT,
+): ArtistBackfillTarget[] {
+  const providers = new Set(enabledProviderIds);
+  if (providers.size === 0) return [];
+  const safeLimit = Math.max(1, Math.min(AUTOMATIC_ARTIST_TRACK_LIMIT, Math.floor(limit)));
+  const groups = new Map<string, { name: string; tracks: Track[] }>();
+  for (const track of tracks) {
+    const identity = normalizeArtistIdentity(track.artist);
+    if (!identity || UNKNOWN_ARTIST_LABELS.has(identity)) continue;
+    let group = groups.get(identity);
+    if (!group) {
+      group = { name: track.artist.trim(), tracks: [] };
+      groups.set(identity, group);
+    }
+    group.tracks.push(track);
+  }
+  const targets: ArtistBackfillTarget[] = [];
+  for (const group of groups.values()) {
+    const sorted = [...group.tracks].sort((a, b) => a.id.localeCompare(b.id));
+    const profile = sorted.find((track) => (
+      track.artist_image_path || track.artist_images?.length || track.artist_biography
+    )) ?? sorted[0];
+    if (!artistNeedsAutomaticEnrichment(profile)) continue;
+    const applied = appliedArtistProviderIds(profile);
+    if ([...providers].every((id) => applied.has(id))) continue;
+    targets.push({ name: group.name, tracks: sorted.slice(0, safeLimit), profile });
+  }
+  return targets.sort((a, b) => a.name.localeCompare(b.name));
+}

@@ -7,6 +7,7 @@ import {
   automaticArtistTrackScope,
   metadataTrackInput,
   normalizeArtistIdentity,
+  selectArtistsForAutomaticBackfill,
   selectAutomaticArtistCandidate,
 } from "../utils/metadata";
 import type {
@@ -26,6 +27,8 @@ const METADATA_PROVIDER_STORAGE_KEY = "zone-metadata-providers-v1";
 const NETEASE_MUSIC_PROVIDER_ID = "netease-music";
 const LEGACY_NETEASE_ARTIST_PROVIDER_ID = "netease-artist";
 const AUTO_ARTIST_RETRY_MS = 30 * 60 * 1_000;
+const ARTIST_BACKFILL_START_DELAY_MS = 12_000;
+const ARTIST_BACKFILL_ARTIST_DELAY_MS = 2_000;
 
 export type MetadataEnrichmentApi = {
   providers: MetadataProviderDescriptor[];
@@ -283,6 +286,63 @@ export function useMetadataEnrichment({
       return false;
     }
   }, [apply, providers, search, tracks]);
+
+  const tracksRef = useRef(tracks);
+  useEffect(() => {
+    tracksRef.current = tracks;
+  }, [tracks]);
+
+  // Library backfill: once per restored library snapshot, walk every performer
+  // artist that still lacks imagery/biography and try one exact-match lookup
+  // each — sequential, throttled and silent. Shares the attempt log with
+  // playback enrichment so neither path duplicates the other's network work.
+  useEffect(() => {
+    if (!restored || !trackIdsKey) return;
+    const automaticProviders = providers
+      .filter((provider) => (
+        provider.enabled
+        && (provider.id === "local-sidecar" || provider.id === NETEASE_MUSIC_PROVIDER_ID)
+      ))
+      .map((provider) => provider.id)
+      .sort();
+    if (automaticProviders.length === 0) return;
+    let cancelled = false;
+    const sleep = (ms: number) => new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
+    });
+    void (async () => {
+      await sleep(ARTIST_BACKFILL_START_DELAY_MS);
+      const targets = selectArtistsForAutomaticBackfill(tracksRef.current, automaticProviders);
+      for (const target of targets) {
+        if (cancelled) return;
+        const appliedProviderIds = appliedArtistProviderIds(target.profile);
+        const attemptKey = `${normalizeArtistIdentity(target.name)} ${automaticProviders.join(",")} ${[...appliedProviderIds].sort().join(",")}`;
+        const now = Date.now();
+        const previousAttempt = automaticArtistAttemptsRef.current.get(attemptKey) ?? 0;
+        if (now - previousAttempt < AUTO_ARTIST_RETRY_MS) continue;
+        automaticArtistAttemptsRef.current.set(attemptKey, now);
+        const payload: ContextPayload = {
+          kind: "artist",
+          title: target.name,
+          subtitle: `${target.tracks.length} 首歌曲`,
+          tracks: target.tracks,
+        };
+        try {
+          const candidate = selectAutomaticArtistCandidate(
+            await search(payload),
+            appliedProviderIds,
+          );
+          if (candidate) await apply(payload, candidate);
+        } catch (error) {
+          if (import.meta.env.DEV) console.warn("[metadata] artist backfill failed", error);
+        }
+        await sleep(ARTIST_BACKFILL_ARTIST_DELAY_MS);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apply, providers, restored, search, trackIdsKey]);
 
   return useMemo(() => ({
     providers,
