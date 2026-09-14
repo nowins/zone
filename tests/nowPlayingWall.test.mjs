@@ -73,3 +73,45 @@ test("an active song without cover art never inserts blank albums into a covered
   const wall = buildNowPlayingWall([missing, covered], missing);
   assert.ok(wall.every(album => album.coverPath === "cover.jpg"));
 });
+
+test("now playing wall mixes in enriched artist photos for the active artist only", () => {
+  const active = makeTrack("1", "蔡琴", "不悔", "buhui.jpg");
+  active.artist_image_path = "D:\\art\\tsai.zone.jpg";
+  active.artist_images = [
+    { path: "D:\\art\\tsai.zone.jpg", providerId: "netease-music" },
+    { path: "D:\\art\\tsai-2.zone.jpg", providerId: "netease-music" },
+  ];
+  const sameArtist = makeTrack("2", "蔡琴", "机遇", null);
+  sameArtist.artist_image_path = "D:\\art\\tsai-3.zone.jpg";
+  const other = makeTrack("3", "方大同", "橙月", "orange.jpg");
+  other.artist_image_path = "D:\\art\\khalil.zone.jpg";
+
+  const wall = buildNowPlayingWall([active, sameArtist, other], active);
+  const paths = new Set(wall.map((album) => album.coverPath));
+  assert.ok(paths.has("D:\\art\\tsai.zone.jpg"), "active track artist image should appear");
+  assert.ok(paths.has("D:\\art\\tsai-2.zone.jpg"), "secondary artist image should appear");
+  assert.ok(paths.has("D:\\art\\tsai-3.zone.jpg"), "same-artist track image should appear");
+  assert.ok(!paths.has("D:\\art\\khalil.zone.jpg"), "other artists' photos stay out");
+
+  const artistKeys = new Set(
+    wall.filter((album) => album.key.startsWith("artist-image:")).map((album) => album.key),
+  );
+  assert.equal(artistKeys.size, 3, "duplicated artist image paths collapse into one entry");
+});
+
+test("artist photos are capped and keep the wall alive without any covers", () => {
+  const active = makeTrack("1", "蔡琴", "不悔", null);
+  active.artist_image_path = "D:\\art\\tsai-0.zone.jpg";
+  active.artist_images = [1, 2, 3, 4, 5].map((n) => ({
+    path: `D:\\art\\tsai-${n}.zone.jpg`,
+    providerId: "netease-music",
+  }));
+
+  const wall = buildNowPlayingWall([active], active);
+  assert.ok(wall.some((album) => album.coverPath === "D:\\art\\tsai-0.zone.jpg"));
+  assert.ok(wall.every((album) => album.album !== "Zone"), "artist photos prevent the Zone fallback");
+  const artistKeys = new Set(
+    wall.filter((album) => album.key.startsWith("artist-image:")).map((album) => album.key),
+  );
+  assert.ok(artistKeys.size <= 4, `artist photos should be capped, got ${artistKeys.size}`);
+});

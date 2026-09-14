@@ -50,7 +50,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 
 - 背景：
   - 视觉层为 Canvas 实现（`NowPlayingMosaicCanvas` + `AudioGlowCanvas`，测试 `tests/nowPlayingCss.test.mjs` 断言其为 canvas 而非旧 SVG 分层）。
-  - 用本地专辑/艺术家封面做拼贴，优先当前艺术家的专辑。
+  - 用本地专辑/艺术家封面做拼贴，优先当前艺术家的专辑；已补充的艺术家照片（`artist_image_path`/`artist_images`，去重后上限 4 张）以四份权重（当前艺术家专辑的两倍）混入拼贴，大封面与共享封面仍只用专辑封面。
   - 从当前封面派生柔和色彩罩染；另有动态色彩场（`createMosaicColorFieldSampler`，`globalCompositeOperation = "color"`）沿多角度慢变轨迹漂移，色相随位置变化。
   - 只做缓慢的平移/缩放，动效像呼吸而不是幻灯片；磁贴随机翻面稀少且缓慢。
   - 换曲保留磁贴几何与已解码图像；新图解码完成后逐片交叉淡化，连续切歌接续当前过渡。同专辑不重建墙；缺失或失败封面保留旧图，首次加载使用其他已就绪封面补位。缓存淘汰不得清空仍被磁贴引用的画布。

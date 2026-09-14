@@ -62,11 +62,52 @@ export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
     ? albums.filter((album) => album.artist.trim().toLocaleLowerCase() !== activeArtist)
     : albums;
 
-  // Prefer active artist covers, then fill with other albums that actually have art.
+  // Enriched artist photos join the collage next to album covers; the active
+  // track's own images lead, then other tracks credited to the same artist.
+  const artistImagePaths: string[] = [];
+  const seenArtistImages = new Set<string>();
+  if (activeArtist) {
+    const relatedFirst = active
+      ? [active, ...tracks.filter((track) => track.id !== active.id)]
+      : tracks;
+    for (const track of relatedFirst) {
+      const credited = [track.artist, track.album_artist]
+        .some((name) => name?.trim().toLocaleLowerCase() === activeArtist);
+      if (!credited) continue;
+      const paths = [
+        track.artist_image_path,
+        ...(track.artist_images?.map((image) => image.path) ?? []),
+      ];
+      for (const path of paths) {
+        const clean = path?.trim();
+        if (!clean || seenArtistImages.has(clean)) continue;
+        seenArtistImages.add(clean);
+        artistImagePaths.push(clean);
+        if (artistImagePaths.length >= 4) break;
+      }
+      if (artistImagePaths.length >= 4) break;
+    }
+  }
+  const artistName = (active?.album_artist ?? active?.artist)?.trim() || "艺术家";
+  const artistEntries: AlbumGroup[] = artistImagePaths.map((path, index) => ({
+    key: `artist-image:${activeArtist ?? "unknown"}:${index}`,
+    album: artistName,
+    artist: artistName,
+    tracks: [],
+    coverPath: path,
+  }));
+
+  // Prefer active artist covers and photos, then fill with other albums that
+  // actually have art. Photos carry a quadruple weight (double the artist
+  // albums') so they stay visible in large libraries instead of drowning out.
   const coveredOthers = otherAlbums.filter((album) => Boolean(album.coverPath));
   const weightedAlbums = [
     ...artistAlbums,
     ...artistAlbums,
+    ...artistEntries,
+    ...artistEntries,
+    ...artistEntries,
+    ...artistEntries,
     ...coveredOthers,
   ];
 
