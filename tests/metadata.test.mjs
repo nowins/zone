@@ -2,12 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  appliedAlbumCoverProviderIds,
   applyMetadataOverlays,
   appliedArtistProviderIds,
   artistNeedsAutomaticEnrichment,
   automaticArtistTrackScope,
   metadataTrackInput,
+  selectAlbumsForAutomaticBackfill,
   selectArtistsForAutomaticBackfill,
+  selectAutomaticAlbumCandidate,
   selectAutomaticArtistCandidate,
 } from "../.tmp/visualizer-tests/utils/metadata.js";
 
@@ -281,6 +284,94 @@ test("artist backfill runs silently in the background with throttling and a shar
   assert.match(hookSource, /selectArtistsForAutomaticBackfill\(tracksRef\.current, automaticProviders\)/);
   assert.match(hookSource, /automaticArtistAttemptsRef\.current\.get\(attemptKey\)/);
   assert.match(hookSource, /if \(candidate\) await apply\(payload, candidate\)/);
+});
+
+test("album backfill selection groups like the collection index and skips covered albums", () => {
+  const discOne = track({ id: "a1", album: "不悔", album_artist: "蔡琴", artist: "蔡琴", cover_path: null });
+  const discTwo = track({ id: "a2", album: " 不悔 ", album_artist: "蔡琴", artist: "蔡琴", disc_number: 2, cover_path: null });
+  const covered = track({ id: "b1", album: "橙月", artist: "方大同", album_artist: "方大同" });
+  const unknown = track({ id: "c1", album: "未知专辑", artist: "佚名", cover_path: null });
+
+  const targets = selectAlbumsForAutomaticBackfill(
+    [discTwo, covered, discOne, unknown],
+    ["netease-music", "apple-music-cn"],
+  );
+  assert.equal(targets.length, 1);
+  assert.equal(targets[0].name, "不悔");
+  assert.equal(targets[0].artist, "蔡琴");
+  assert.deepEqual(targets[0].tracks.map((item) => item.id), ["a1", "a2"]);
+  assert.deepEqual(selectAlbumsForAutomaticBackfill([discOne], []), []);
+
+  const partiallyApplied = track({
+    id: "d1",
+    album: "不悔",
+    artist: "蔡琴",
+    album_artist: "蔡琴",
+    cover_path: null,
+    metadata_enrichment: {
+      sources: [{
+        field: "album_cover_path",
+        providerId: "netease-music",
+        providerName: "网易云音乐",
+        sourcePath: "https://music.163.com/album?id=1",
+        confidence: 100,
+        updatedAt: 1,
+      }],
+    },
+  });
+  assert.deepEqual([...appliedAlbumCoverProviderIds(partiallyApplied)], ["netease-music"]);
+  assert.deepEqual(selectAlbumsForAutomaticBackfill([partiallyApplied], ["netease-music"]), []);
+  assert.equal(
+    selectAlbumsForAutomaticBackfill([partiallyApplied], ["netease-music", "apple-music-cn"]).length,
+    1,
+  );
+});
+
+test("automatic album selection requires one unambiguous artwork candidate at 95+", () => {
+  const candidate = (overrides = {}) => ({
+    id: "netease:album:1",
+    kind: "album",
+    providerId: "netease-music",
+    providerName: "网易云音乐",
+    title: "不悔",
+    subtitle: "蔡琴",
+    sourcePath: "https://music.163.com/album?id=1",
+    confidence: 100,
+    fields: [{ key: "album_cover_path", label: "专辑封面", value: "D:\\cover.zone.jpg" }],
+    ...overrides,
+  });
+  const exact = candidate();
+
+  assert.equal(selectAutomaticAlbumCandidate([exact]), exact);
+  assert.equal(selectAutomaticAlbumCandidate([candidate({ confidence: 94 })]), null);
+  const borderline = candidate({ confidence: 95 });
+  assert.equal(selectAutomaticAlbumCandidate([borderline]), borderline);
+  assert.equal(selectAutomaticAlbumCandidate([candidate({ fields: [] })]), null);
+  assert.equal(selectAutomaticAlbumCandidate([candidate({ kind: "track" })]), null);
+  assert.equal(selectAutomaticAlbumCandidate([
+    exact,
+    candidate({ id: "netease:album:2" }),
+  ]), null);
+  assert.equal(
+    selectAutomaticAlbumCandidate([exact], ["netease-music"]),
+    null,
+  );
+
+  const apple = candidate({ id: "apple:album:1", providerId: "apple-music-cn", confidence: 97 });
+  assert.equal(selectAutomaticAlbumCandidate([apple]), apple);
+  assert.equal(selectAutomaticAlbumCandidate([exact, apple]), exact);
+
+  const local = candidate({ id: "sidecar:album", providerId: "local-sidecar" });
+  assert.equal(selectAutomaticAlbumCandidate([exact, local]), local);
+});
+
+test("album cover backfill shares the silent throttled background pass", () => {
+  const hookSource = readFileSync(new URL("../src/hooks/useMetadataEnrichment.ts", import.meta.url), "utf8");
+
+  assert.match(hookSource, /selectAlbumsForAutomaticBackfill\(tracksRef\.current, albumProviders\)/);
+  assert.match(hookSource, /provider\.id === "apple-music-cn"/);
+  assert.match(hookSource, /selectAutomaticAlbumCandidate\(/);
+  assert.match(hookSource, /`album \$\{normalizeArtistIdentity\(target\.artist\)\}/);
 });
 
 test("metadata enrichment stays behind native commands and an explicit confirmation", () => {

@@ -5,6 +5,7 @@ import type {
   Track,
   TrackLocalMetadata,
 } from "../types.js";
+import { albumKey, bestAlbumArtist } from "./music.js";
 
 const AUTOMATIC_ARTIST_TRACK_LIMIT = 500;
 const UNKNOWN_ARTIST_LABELS = new Set(["未知艺术家", "unknownartist", "unknown"]);
@@ -207,4 +208,82 @@ export function selectArtistsForAutomaticBackfill(
     targets.push({ name: group.name, tracks: sorted.slice(0, safeLimit), profile });
   }
   return targets.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export type AlbumBackfillTarget = {
+  /** Album title taken from the track tags. */
+  name: string;
+  /** Album artist used for matching (album-artist tag or performer fallback). */
+  artist: string;
+  tracks: Track[];
+};
+
+export function appliedAlbumCoverProviderIds(track: Track) {
+  return new Set(
+    track.metadata_enrichment?.sources
+      .filter((source) => source.field === "album_cover_path")
+      .map((source) => source.providerId) ?? [],
+  );
+}
+
+const UNKNOWN_ALBUM_LABELS = new Set(["未知专辑", "unknownalbum", "unknown"]);
+
+/**
+ * Albums worth one automatic cover lookup: grouped exactly like the collection
+ * index, no track carries any cover yet, and not every enabled provider has
+ * already contributed one. Covers are album-level artwork, so a single covered
+ * track disqualifies the whole group.
+ */
+export function selectAlbumsForAutomaticBackfill(
+  tracks: Track[],
+  enabledProviderIds: Iterable<string>,
+): AlbumBackfillTarget[] {
+  const providers = new Set(enabledProviderIds);
+  if (providers.size === 0) return [];
+  const groups = new Map<string, Track[]>();
+  for (const track of tracks) {
+    const identity = normalizeArtistIdentity(track.album);
+    if (!identity || UNKNOWN_ALBUM_LABELS.has(identity)) continue;
+    const key = albumKey(track.album, track.album_artist || track.artist);
+    let group = groups.get(key);
+    if (!group) {
+      group = [];
+      groups.set(key, group);
+    }
+    group.push(track);
+  }
+  const targets: AlbumBackfillTarget[] = [];
+  for (const group of groups.values()) {
+    const sorted = [...group].sort((a, b) => a.id.localeCompare(b.id));
+    if (sorted.some((track) => track.cover_path)) continue;
+    const applied = new Set(sorted.flatMap((track) => [...appliedAlbumCoverProviderIds(track)]));
+    if ([...providers].every((id) => applied.has(id))) continue;
+    targets.push({ name: sorted[0].album.trim(), artist: bestAlbumArtist(sorted), tracks: sorted });
+  }
+  return targets.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Automatic album adoption is stricter than the manual flow: providers score
+ * album+artist exact matches at 95+ (year exact or untagged), the candidate
+ * must actually carry artwork, and more than one eligible candidate from the
+ * preferred provider means ambiguous editions — skip silently.
+ */
+export function selectAutomaticAlbumCandidate(
+  candidates: MetadataCandidate[],
+  excludedProviderIds: Iterable<string> = [],
+): MetadataCandidate | null {
+  const excluded = new Set(excludedProviderIds);
+  const eligible = candidates.filter((candidate) => (
+    candidate.kind === "album"
+    && candidate.confidence >= 95
+    && !excluded.has(candidate.providerId)
+    && candidate.fields.some((field) => field.key === "album_cover_path")
+  ));
+  for (const providerId of ["local-sidecar", "netease-music", "apple-music-cn"]) {
+    const fromProvider = eligible.filter((candidate) => candidate.providerId === providerId);
+    if (fromProvider.length === 1) return fromProvider[0];
+    if (fromProvider.length > 1) return null;
+  }
+  return null;
 }

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  appliedAlbumCoverProviderIds,
   applyMetadataOverlays,
   appliedArtistProviderIds,
   artistNeedsAutomaticEnrichment,
   automaticArtistTrackScope,
   metadataTrackInput,
   normalizeArtistIdentity,
+  selectAlbumsForAutomaticBackfill,
   selectArtistsForAutomaticBackfill,
+  selectAutomaticAlbumCandidate,
   selectAutomaticArtistCandidate,
 } from "../utils/metadata";
 import type {
@@ -335,6 +338,47 @@ export function useMetadataEnrichment({
           if (candidate) await apply(payload, candidate);
         } catch (error) {
           if (import.meta.env.DEV) console.warn("[metadata] artist backfill failed", error);
+        }
+        await sleep(ARTIST_BACKFILL_ARTIST_DELAY_MS);
+      }
+
+      // Album covers follow the same pass: album-capable providers, one exact
+      // artwork candidate per album, same throttle and shared attempt log.
+      const albumProviders = providers
+        .filter((provider) => (
+          provider.enabled
+          && (provider.id === "local-sidecar"
+            || provider.id === NETEASE_MUSIC_PROVIDER_ID
+            || provider.id === "apple-music-cn")
+        ))
+        .map((provider) => provider.id)
+        .sort();
+      if (albumProviders.length === 0) return;
+      const albums = selectAlbumsForAutomaticBackfill(tracksRef.current, albumProviders);
+      for (const target of albums) {
+        if (cancelled) return;
+        const appliedProviderIds = new Set(
+          target.tracks.flatMap((track) => [...appliedAlbumCoverProviderIds(track)]),
+        );
+        const attemptKey = `album ${normalizeArtistIdentity(target.artist)}:${normalizeArtistIdentity(target.name)} ${albumProviders.join(",")} ${[...appliedProviderIds].sort().join(",")}`;
+        const now = Date.now();
+        const previousAttempt = automaticArtistAttemptsRef.current.get(attemptKey) ?? 0;
+        if (now - previousAttempt < AUTO_ARTIST_RETRY_MS) continue;
+        automaticArtistAttemptsRef.current.set(attemptKey, now);
+        const payload: ContextPayload = {
+          kind: "album",
+          title: target.name,
+          subtitle: target.artist,
+          tracks: target.tracks,
+        };
+        try {
+          const candidate = selectAutomaticAlbumCandidate(
+            await search(payload),
+            appliedProviderIds,
+          );
+          if (candidate) await apply(payload, candidate);
+        } catch (error) {
+          if (import.meta.env.DEV) console.warn("[metadata] album backfill failed", error);
         }
         await sleep(ARTIST_BACKFILL_ARTIST_DELAY_MS);
       }
