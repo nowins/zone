@@ -54,6 +54,11 @@ test("adopted profile fields stay together and unknown durations stay unknown", 
   assert.equal(knownDuration([track("a", { duration_seconds: 60 }), track("b")]), null);
   assert.equal(knownDuration([track("a", { duration_seconds: 60 }), track("b", { duration_seconds: 90 })]), 150);
 });
+test("album groups adopt a shared description from any member track", () => {
+  const index = buildCollectionIndex([track("a", { album: "专辑X", album_description: "专辑介绍" }), track("b")]);
+  assert.equal(index.albums.find(album => album.album === "专辑X").biography, "专辑介绍");
+  assert.equal(index.albums.find(album => album.album === "作品").biography, undefined);
+});
 test("history retains source state through cycles, deduplicates repeats and drops stale forward branches", () => {
   let history = initialCollectionHistory();
   const source = { focus: "row:b", scrolls: { songs: { top: 90, left: 0, anchor: "b", offset: -4 } }, selections: { songs: "b" } };

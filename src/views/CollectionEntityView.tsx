@@ -32,9 +32,10 @@ export function CollectionEntityView(props: LibraryViewProps & CollectionEntityA
   const containingPlaylists = useMemo(() => trackId ? props.playlists.filter(playlist =>
     resolvePlaylistTracks(playlist, props.index.tracks, { favoriteTrackIds: props.favoriteTrackIds, activity: props.trackActivity })
       .tracks.some(track => track.id === trackId)) : [], [trackId, props.playlists, props.index, props.favoriteTrackIds, props.trackActivity]);
-  const bio = value?.kind === "artist" ? value.artist.biography : null;
-  const dialog = expandedBio && bio && value?.kind === "artist" ? <Dialog titleId="artist-biography-title"
-    title={value.artist.artist} kicker="艺术家简介" className="biography-dialog" onCancel={() => setExpandedBio(false)} onSubmit={event => event.preventDefault()}
+  const bio = value?.kind === "artist" ? value.artist.biography : value?.kind === "album" ? value.album.biography : null;
+  const dialog = expandedBio && bio && (value?.kind === "artist" || value?.kind === "album") ? <Dialog titleId="artist-biography-title"
+    title={value.kind === "artist" ? value.artist.artist : value.album.album} kicker={value.kind === "album" ? "专辑简介" : "艺术家简介"} className="biography-dialog"
+    onCancel={() => setExpandedBio(false)} onSubmit={event => event.preventDefault()}
     actions={<Button onClick={() => setExpandedBio(false)}>关闭</Button>}>
     <p className="collection-biography-full">{bio}</p>
   </Dialog> : null;
@@ -66,7 +67,7 @@ export function CollectionEntityView(props: LibraryViewProps & CollectionEntityA
 
   return <>
     <div className="collection-entity-scroll" data-collection-scroll="entity">
-      <header className={`collection-entity-heading${value.kind === "artist" ? " is-artist" : ""}`}>
+      <header className={`collection-entity-heading${value.kind === "artist" ? " is-artist" : ""}${bio ? " has-bio" : ""}`}>
         {(value.kind !== "artist" || artist?.imagePath) && <div className="collection-entity-art" aria-hidden="true">
           <Cover artPath={value.kind === "artist" ? artist?.imagePath : album?.coverPath || tracks[0].cover_path} label={title} />
         </div>}

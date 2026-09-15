@@ -36,7 +36,8 @@ export function buildCollectionIndex(tracks: Track[]) {
   const albums: AlbumGroup[] = [...grouped].map(([key, items]) => {
     const sorted = [...items].sort(compareTracksForAlbum);
     return { key, album: sorted[0].album, artist: bestAlbumArtist(sorted), tracks: sorted,
-      coverPath: sorted.find(track => track.cover_path)?.cover_path };
+      coverPath: sorted.find(track => track.cover_path)?.cover_path,
+      biography: sorted.find(track => track.album_description)?.album_description };
   }).sort((a, b) => a.album.localeCompare(b.album));
   const albumByKey = new Map(albums.map(album => [album.key, album]));
   const albumByTrackId = new Map<string, AlbumGroup>();

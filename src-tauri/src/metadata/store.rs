@@ -412,6 +412,7 @@ fn effective_track_field<'a>(kind: &str, field_name: &'a str) -> Option<&'a str>
     ("album", "year") => Some("year"),
     ("album", "genres") => Some("genres"),
     ("album", "album_cover_path") => Some("album_cover_path"),
+    ("album", "description") => Some("album_description"),
     ("artist", "name") => Some("artist"),
     ("artist", "artist_image_path") | ("artist", "artist_image_paths") => {
       Some("artist_image_path")
@@ -471,6 +472,7 @@ fn apply_overlay_value(
     "album_cover_path" => set_string(&mut overlay.cover_path, value),
     "artist_image_path" => set_string(&mut overlay.artist_image_path, value),
     "artist_biography" => set_string(&mut overlay.artist_biography, value),
+    "album_description" => set_string(&mut overlay.album_description, value),
     _ => false,
   }
 }

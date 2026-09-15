@@ -61,6 +61,7 @@ test("metadata overlays preserve the original file values", () => {
       updatedAt: 2,
     }],
     artistBiography: "补全歌手简介",
+    albumDescription: "补全专辑介绍",
     sources: [{
       field: "title",
       providerId: "local-sidecar",
@@ -79,6 +80,7 @@ test("metadata overlays preserve the original file values", () => {
     ["D:\\Music\\artist.zone.jpg", "D:\\Music\\artist-portrait.jpg"],
   );
   assert.equal(enriched.artist_biography, "补全歌手简介");
+  assert.equal(enriched.album_description, "补全专辑介绍");
   assert.equal(enriched.local_metadata.title, "文件标题");
   assert.equal(enriched.local_metadata.cover_path, "D:\\Music\\embedded.jpg");
   assert.equal(enriched.metadata_enrichment.sources[0].providerId, "local-sidecar");
@@ -115,6 +117,7 @@ test("clearing metadata restores the original file values", () => {
     artistImagePath: "D:\\Music\\artist.zone.jpg",
     artistImages: [],
     artistBiography: "补全歌手简介",
+    albumDescription: "补全专辑介绍",
     sources: [],
   }]);
   const [restored] = applyMetadataOverlays([enriched], []);
@@ -125,6 +128,7 @@ test("clearing metadata restores the original file values", () => {
   assert.equal("artist_image_path" in restored, false);
   assert.equal("artist_images" in restored, false);
   assert.equal("artist_biography" in restored, false);
+  assert.equal("album_description" in restored, false);
   assert.equal("local_metadata" in restored, false);
   assert.equal("metadata_enrichment" in restored, false);
 });

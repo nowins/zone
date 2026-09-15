@@ -95,7 +95,7 @@
   .collection-artist-image { width: 64px; height: 64px; }
   .collection-artist-entry { min-height: 80px; gap: 14px; }
   .collection-entity-heading { gap: 22px; }
-  .collection-entity-heading.is-artist { flex-wrap: wrap; }
+  .collection-entity-heading.has-bio { flex-wrap: wrap; }
   .collection-artist-biography { width: 100%; max-width: none; flex-basis: 100%; }
   .collection-entity-art { width: 150px; height: 150px; }
   .collection-entity-heading.is-artist .collection-entity-art { width: 112px; height: 112px; }

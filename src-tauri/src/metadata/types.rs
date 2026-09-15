@@ -122,6 +122,7 @@ pub(crate) struct MetadataTrackOverlay {
   pub(crate) artist_image_path: Option<String>,
   pub(crate) artist_images: Vec<MetadataImageAsset>,
   pub(crate) artist_biography: Option<String>,
+  pub(crate) album_description: Option<String>,
   pub(crate) sources: Vec<MetadataFieldSource>,
 }
 

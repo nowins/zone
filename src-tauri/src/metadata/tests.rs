@@ -168,6 +168,7 @@ fn sidecar_candidate_can_be_applied_and_cleared() {
     overlays[0].genres.as_deref(),
     Some(["流行".to_string(), "电子".to_string()].as_slice())
   );
+  assert_eq!(overlays[0].album_description.as_deref(), Some("专辑介绍"));
 
   let context = read_context_metadata(
     &state,

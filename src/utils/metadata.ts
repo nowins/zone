@@ -57,6 +57,7 @@ export function applyMetadataOverlays(
         && !track.artist_image_path
         && !track.artist_images?.length
         && !track.artist_biography
+        && !track.album_description
       ) return track;
       const restored: Track = {
         ...track,
@@ -73,6 +74,7 @@ export function applyMetadataOverlays(
       delete restored.artist_image_path;
       delete restored.artist_images;
       delete restored.artist_biography;
+      delete restored.album_description;
       delete restored.local_metadata;
       delete restored.metadata_enrichment;
       return restored;
@@ -92,6 +94,7 @@ export function applyMetadataOverlays(
       artist_image_path: overlay.artistImagePath ?? null,
       artist_images: overlay.artistImages,
       artist_biography: overlay.artistBiography ?? null,
+      album_description: overlay.albumDescription ?? null,
       local_metadata: local,
       metadata_enrichment: {
         sources: overlay.sources,

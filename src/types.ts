@@ -56,6 +56,7 @@ export type Track = {
   artist_image_path?: string | null;
   artist_images?: MetadataImageAsset[];
   artist_biography?: string | null;
+  album_description?: string | null;
   local_metadata?: TrackLocalMetadata;
   metadata_enrichment?: TrackMetadataEnrichment;
 };
@@ -123,6 +124,7 @@ export type MetadataTrackOverlay = {
   artistImagePath?: string;
   artistImages: MetadataImageAsset[];
   artistBiography?: string;
+  albumDescription?: string;
   sources: MetadataFieldSource[];
 };
 
@@ -144,6 +146,7 @@ export type AlbumGroup = {
   album: string;
   tracks: Track[];
   coverPath?: string | null;
+  biography?: string | null;
 };
 
 export type ArtistGroup = {
