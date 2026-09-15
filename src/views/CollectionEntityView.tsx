@@ -34,7 +34,7 @@ export function CollectionEntityView(props: LibraryViewProps & CollectionEntityA
       .tracks.some(track => track.id === trackId)) : [], [trackId, props.playlists, props.index, props.favoriteTrackIds, props.trackActivity]);
   const bio = value?.kind === "artist" ? value.artist.biography : null;
   const dialog = expandedBio && bio && value?.kind === "artist" ? <Dialog titleId="artist-biography-title"
-    title={value.artist.artist} kicker="艺术家简介" onCancel={() => setExpandedBio(false)} onSubmit={event => event.preventDefault()}
+    title={value.artist.artist} kicker="艺术家简介" className="biography-dialog" onCancel={() => setExpandedBio(false)} onSubmit={event => event.preventDefault()}
     actions={<Button onClick={() => setExpandedBio(false)}>关闭</Button>}>
     <p className="collection-biography-full">{bio}</p>
   </Dialog> : null;
@@ -90,7 +90,11 @@ export function CollectionEntityView(props: LibraryViewProps & CollectionEntityA
               onClick={event => props.onContextMenu(event, payload)}>更多</Button>
           </div>
         </div>
-        {bio && <aside className="collection-artist-biography"><p>{bio}</p><button onClick={() => setExpandedBio(true)}>展开简介</button></aside>}
+        {bio && <aside className="collection-artist-biography">
+          <span className="collection-artist-biography-kicker">简介</span>
+          <p>{bio}</p>
+          <button onClick={() => setExpandedBio(true)}>展开简介</button>
+        </aside>}
       </header>
 
       {value.kind === "artist" && <>

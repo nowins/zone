@@ -19,6 +19,6 @@ test("artist artwork shares its browse target and identifies a work-cover fallba
 });
 test("sparse indexes and biography previews retain bounded artwork and text", () => {
   assert.ok(css.includes("minmax(140px, 164px)"));
-  assert.ok(css.includes("-webkit-line-clamp: 3"));
+  assert.ok(css.includes("-webkit-line-clamp: 5"));
   assert.ok(css.includes("font-weight: 300"));
 });

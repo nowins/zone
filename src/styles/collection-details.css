@@ -53,10 +53,15 @@
 .collection-entity-meta { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 0; }
 .collection-entity-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
 .collection-entity-actions .button { min-height: 32px; font-size: 12px; }
-.collection-artist-biography { width: 30%; max-width: 340px; flex: none; color: var(--muted); font-size: 12px; line-height: 1.8; }
-.collection-artist-biography p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 8px; }
-.collection-artist-biography button { color: var(--text); font-size: 12px; }
+.collection-artist-biography { width: 32%; max-width: 360px; flex: none; color: var(--muted); font-size: 14px; font-weight: 300; line-height: 1.9; }
+.collection-artist-biography-kicker { display: block; color: var(--quiet); font-size: 11px; font-weight: 400; letter-spacing: 0.14em; margin-bottom: 10px; }
+.collection-artist-biography p { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; margin: 0 0 8px; max-width: 72ch; }
+.collection-artist-biography button { color: var(--muted); font-size: 12px; padding: 0; }
+.collection-artist-biography button:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .collection-biography-full { font-size: 14px; color: var(--muted); line-height: 1.9; white-space: pre-wrap; }
+.playlist-dialog.biography-dialog { max-height: 100%; display: flex; flex-direction: column; }
+.biography-dialog .collection-biography-full { flex: 1; min-height: 0; margin: 0; overflow-y: auto; scrollbar-width: thin; }
+.biography-dialog .playlist-dialog-actions { flex: none; }
 .collection-detail-tabs { display: flex; gap: 28px; margin-top: 24px; border-bottom: 1px solid var(--faint); }
 .collection-detail-tabs > button { color: var(--muted); padding: 0 0 9px; font-size: 20px; font-weight: 300; }
 .collection-detail-tabs > .selected { color: var(--text); box-shadow: 0 2px var(--accent); }
@@ -90,6 +95,8 @@
   .collection-artist-image { width: 64px; height: 64px; }
   .collection-artist-entry { min-height: 80px; gap: 14px; }
   .collection-entity-heading { gap: 22px; }
+  .collection-entity-heading.is-artist { flex-wrap: wrap; }
+  .collection-artist-biography { width: 100%; max-width: none; flex-basis: 100%; }
   .collection-entity-art { width: 150px; height: 150px; }
   .collection-entity-heading.is-artist .collection-entity-art { width: 112px; height: 112px; }
   .collection-entity-copy h1 { font-size: 31px; }
