@@ -73,8 +73,10 @@ export function CompactPlayerView(props: Props) {
   const suppressClick = useRef(false);
   const animate = useRef(false);
   const restoreFocus = useRef<string | null>(null);
+  const focusScreen = useRef(false);
   const title = episode?.title || track?.title || "尚未播放";
   const available = ready && Boolean(episode || track);
+  const focusedNow = screen === "now" && available;
   const favorite = episode ? Boolean(episode.saved) : Boolean(track && favoriteTrackIds.has(track.id));
   const busy = Boolean(episode && ["loading", "buffering"].includes(podcastStatus));
   const playlistEntries = useMemo(() => playlists.map(playlist => ({
@@ -108,12 +110,16 @@ export function CompactPlayerView(props: Props) {
       const target = [...content.querySelectorAll<HTMLElement>("[data-compact-item]")].find(node => node.dataset.compactItem === focusKey);
       target?.focus({ preventScroll: true });
       target?.scrollIntoView({ block: "nearest" });
+    } else if (focusScreen.current) {
+      focusScreen.current = false;
+      (document.getElementById(`compact-tab-${screen}`) ?? content).focus({ preventScroll: true });
     } else if (detail) content.querySelector<HTMLElement>(".compact-back")?.focus({ preventScroll: true });
     if (screen === "queue") content.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
   }, [revision]);
 
   function navigate(next: Screen, keyboard = false) {
     animate.current = !keyboard;
+    focusScreen.current = next !== screen;
     setControlsOpen(false);
     setScreen(next);
   }
@@ -157,10 +163,7 @@ export function CompactPlayerView(props: Props) {
         if (controlsOpen) { closeControls(); document.getElementById("compact-options-toggle")?.focus(); }
         else if (query) setQuery("");
         else if (detail) goBack();
-        else if (screen !== "now") {
-          setScreen("now");
-          document.getElementById("compact-tab-now")?.focus();
-        }
+        else if (screen !== "now") navigate("now", true);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -214,8 +217,8 @@ export function CompactPlayerView(props: Props) {
     </div>)}</div>;
   }
 
-  return <main className="compact-player" aria-label="小屏播放器">
-    <nav className="compact-tabs" aria-label="小屏导航" role="tablist">
+  return <main className={`compact-player${focusedNow ? " is-focused" : ""}`} aria-label="小屏播放器">
+    {!focusedNow ? <nav className="compact-tabs" aria-label="小屏导航" role="tablist">
       {screens.map(([value, label], i) => <button key={value} id={`compact-tab-${value}`} role="tab"
         aria-label={label} aria-selected={screen === value} aria-controls="compact-content" tabIndex={screen === value ? 0 : -1}
         onClick={event => navigate(value, event.detail === 0)}
@@ -225,21 +228,20 @@ export function CompactPlayerView(props: Props) {
           if (next < 0) return;
           event.preventDefault();
           navigate(screens[next][0], true);
-          document.getElementById(`compact-tab-${screens[next][0]}`)?.focus();
         }}>{value === "now" ? "播放" : label}</button>)}
-    </nav>
+    </nav> : null}
 
-    <div ref={contentRef} className="compact-content" id="compact-content" role="tabpanel" aria-labelledby={`compact-tab-${screen}`} tabIndex={-1}
+    <div ref={contentRef} className="compact-content" id="compact-content" role={focusedNow ? "region" : "tabpanel"}
+      aria-label={focusedNow ? "正在播放" : undefined} aria-labelledby={focusedNow ? undefined : `compact-tab-${screen}`} tabIndex={-1}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
       onPointerCancel={() => { gesture.current = null; }} onLostPointerCapture={() => { gesture.current = null; }}
       onClickCapture={event => { if (suppressClick.current && event.detail > 0) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}
       onDragStart={event => event.preventDefault()}>
       {screen === "now" ? available ? <section className="compact-now">
-        <div className="compact-artist" title={episode?.podcastTitle || track?.artist}>{episode?.podcastTitle || track?.artist}</div>
-        <div className="compact-album" title={episode ? "播客" : track?.album}>{episode ? "播客" : track?.album}</div>
         <Cover className="compact-artwork" artPath={episode ? undefined : track?.cover_path}
           src={episode ? podcastArtworkSrc(episode.artworkUrl || episode.feedArtworkUrl) : undefined} label={title} />
         <div className="compact-song-heading"><h1 title={title}>{title}</h1></div>
+        <div className="compact-artist" title={episode?.podcastTitle || track?.artist}>{episode?.podcastTitle || track?.artist}</div>
       </section> : <div className="compact-empty"><ListMusic size={34} strokeWidth={1} /><h1>听点音乐</h1>
         <Button variant="ghost" onClick={() => navigate("music")}>浏览音乐</Button></div> : null}
 
@@ -289,8 +291,13 @@ export function CompactPlayerView(props: Props) {
           id="compact-options" className="compact-options" role="group" aria-label="播放选项" aria-hidden={!controlsOpen}>
           <VolumeControl volume={props.volume} onVolume={props.onVolume} />
           <div className="compact-options-actions">
+            <Button variant="ghost" disabled={!available} aria-pressed={favorite}
+              title={episode ? favorite ? "移出稍后听" : "稍后听" : favorite ? "取消收藏" : "收藏"}
+              icon={episode ? <Bookmark size={14} fill={favorite ? "currentColor" : "none"} /> : <Heart size={14} fill={favorite ? "currentColor" : "none"} />}
+              onClick={() => { if (episode) props.onToggleSaved(); else if (track) props.onToggleFavorite(track); }}>
+              {episode ? "稍后听" : "收藏"}</Button>
             {episode ? <>
-              <Button variant="ghost" title="播放速度" aria-label="播放速度" onClick={() => props.onPlaybackRate(props.playbackRate >= 2 ? 1 : props.playbackRate + 0.25)}>{props.playbackRate}× 倍速</Button>
+              <Button variant="ghost" title="播放速度" aria-label="播放速度" onClick={() => props.onPlaybackRate(props.playbackRate >= 2 ? 1 : props.playbackRate + 0.25)}>{props.playbackRate}×</Button>
               <Button variant="ghost" icon={<SkipForward size={14} />} disabled={!podcastQueue.some(item => item.episode.id !== episode.episodeId)} onClick={props.onNext}>下一集</Button>
             </> : <>
               <Button variant="ghost" title="随机播放" icon={<Shuffle size={14} />} aria-pressed={props.shuffle} disabled={!available} onClick={props.onShuffle}>随机</Button>
@@ -299,6 +306,10 @@ export function CompactPlayerView(props: Props) {
                 {props.repeat === "one" ? "单曲" : props.repeat === "all" ? "列表" : "循环"}</Button>
             </>}
           </div>
+          <div className="compact-options-navigation" aria-label="浏览">
+            <Button variant="ghost" onClick={event => navigate("music", event.detail === 0)}>音乐</Button>
+            <Button variant="ghost" onClick={event => navigate("queue", event.detail === 0)}>队列</Button>
+          </div>
         </div>
       </Presence>
       {episode && podcastStatus === "error" ? <div className="compact-playback-status" role="alert"><span>播放失败</span><Button variant="ghost" size="sm" onClick={props.onRetryPodcast}>重试</Button></div>
@@ -306,10 +317,6 @@ export function CompactPlayerView(props: Props) {
       <PlaybackProgress label={title} progress={props.progress} duration={props.duration} disabled={!available || props.duration <= 0}
         onSeek={props.onSeek} onLabelClick={() => navigate("now")} />
       <div className="compact-transport">
-        <Button variant="ghost" className="compact-favorite" disabled={!available} aria-pressed={favorite}
-          title={episode ? favorite ? "移出稍后听" : "稍后听" : favorite ? "取消收藏" : "收藏"}
-          onClick={() => { if (episode) props.onToggleSaved(); else if (track) props.onToggleFavorite(track); }}>
-          {episode ? <Bookmark size={15} fill={favorite ? "currentColor" : "none"} /> : <Heart size={15} fill={favorite ? "currentColor" : "none"} />}</Button>
         <Button variant="ghost" title={episode ? "后退 15 秒" : "上一首"} disabled={!available}
           onClick={episode ? () => props.onSeek(Math.max(0, props.progress - 15)) : props.onPrevious}>{episode ? <RotateCcw size={20} /> : <SkipBack size={20} fill="currentColor" />}</Button>
         <Button variant="ghost" className="compact-play" title={isPlaying ? "暂停" : "播放"} disabled={!available} onClick={props.onPlayPause}>

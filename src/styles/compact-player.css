@@ -10,6 +10,7 @@
 .shell-compact .window-controls button { width: 30px; }
 .shell-compact .titlebar-mode { color: var(--accent); }
 .compact-player { min-width: 0; min-height: 0; display: grid; grid-template-rows: 44px minmax(0, 1fr) auto; }
+.compact-player.is-focused { grid-template-rows: minmax(0, 1fr) auto; }
 .compact-tabs { display: flex; align-items: center; gap: 18px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; }
 .compact-tabs > button { flex: 0 0 auto; padding: 3px 0 7px; color: var(--quiet); font-size: 24px; font-weight: 250; line-height: 1.3; letter-spacing: -0.065em; }
 .compact-tabs > button[aria-selected="true"] { color: var(--text); }
@@ -17,13 +18,12 @@
 .compact-content { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 2px 12px 6px; scrollbar-width: thin; scrollbar-color: #353035 transparent; touch-action: pan-y; user-select: none; }
 .compact-content input { user-select: text; }
 .compact-now { min-width: 0; }
-.compact-artist { color: var(--text); font-size: clamp(22px, 10vw, 30px); font-weight: 250; line-height: 1.2; letter-spacing: -0.045em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.compact-album { margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 1.3; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.compact-artwork { width: min(100%, max(96px, calc(100dvh - 246px)));
-  aspect-ratio: 1; margin: 8px auto 0; background: #171417; display: grid; place-items: center; overflow: hidden; }
+.compact-artist { margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.compact-artwork { width: min(100%, max(96px, calc(100dvh - 180px)));
+  aspect-ratio: 1; margin: 6px auto 0; background: #171417; display: grid; place-items: center; overflow: hidden; }
 .compact-artwork img, .compact-group-art img { width: 100%; height: 100%; object-fit: cover; }
 .compact-artwork > span { color: var(--quiet); font-size: 64px; font-weight: 200; }
-.compact-song-heading { min-width: 0; margin-top: 8px; }
+.compact-song-heading { min-width: 0; margin-top: 10px; }
 .compact-song-heading h1 { margin: 0; font-size: 17px; font-weight: 300; line-height: 1.35; overflow-wrap: anywhere; }
 .compact-player .compact-favorite { flex: 0 0 28px; min-width: 28px; height: 34px; padding: 0; color: var(--quiet); }
 .compact-player [aria-pressed="true"], .compact-player [aria-current="true"] { color: var(--accent); }
@@ -34,17 +34,19 @@
 .compact-footer .zune-progress-heading > button:first-child { line-height: 1.4; font-size: 12px; }
 .compact-footer .zune-progress-time { font-size: 10px; }
 .compact-footer .zune-progress input { height: 14px; }
-.compact-transport { display: grid; grid-template-columns: 28px 1fr 44px 1fr 28px; gap: 2px; align-items: center; margin-top: 4px; }
+.compact-transport { position: relative; display: grid; grid-template-columns: 1fr 44px 1fr; padding-inline: 28px; gap: 2px; align-items: center; margin-top: 4px; }
 .compact-transport .button { min-width: 0; height: 40px; padding: 0; justify-content: center; color: var(--muted); }
 .compact-transport .button:hover { color: #fff; }
 .compact-transport .button[aria-pressed="true"] { color: var(--accent); }
 .compact-transport .compact-play { height: 42px; width: 42px; justify-self: center; border: 1px solid rgba(255,255,255,0.72); border-radius: 50%; color: #fff; }
 .compact-transport .compact-play:hover { background: rgba(255,255,255,0.08); }
-.compact-transport #compact-options-toggle { color: var(--quiet); }
+.compact-transport #compact-options-toggle { position: absolute; right: 0; width: 28px; color: var(--quiet); }
 .compact-transport #compact-options-toggle[aria-expanded="true"] { color: var(--accent); }
 .compact-options { position: absolute; bottom: calc(100% + 4px); left: 8px; right: 8px; z-index: 2; padding: 10px 12px 4px; background: #171417; border-top: 1px solid #443c43; }
 .compact-options-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
 .compact-options-actions .button { min-width: 0; min-height: 32px; padding: 3px 0; gap: 6px; font-size: 12px; }
+.compact-options-navigation { display: flex; gap: 20px; padding-top: 4px; margin-top: 4px; border-top: 1px solid var(--faint); }
+.compact-options-navigation .button { min-height: 32px; padding: 3px 0; font-size: 13px; }
 .compact-footer .zune-volume { display: flex; justify-content: center; width: 100%; height: 28px; gap: 7px; }
 .compact-footer .zune-volume-icon { display: block; width: 13px; flex: 0 0 auto; opacity: 0.65; }
 .compact-footer .zune-volume input { display: block; flex: 1; min-width: 0; width: 80px; height: 28px; opacity: 1; pointer-events: auto; }

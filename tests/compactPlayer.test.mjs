@@ -43,6 +43,11 @@ async function viewFixture(overrides = {}) {
   return { ...env, calls, props };
 }
 const click = async selector => { const node = document.querySelector(selector); assert.ok(node, selector); await act(() => node.click()); };
+const openScreen = async screen => {
+  if (document.getElementById(`compact-tab-${screen}`)) return click(`#compact-tab-${screen}`);
+  if (document.getElementById('compact-options-toggle').getAttribute('aria-expanded') !== 'true') await click('#compact-options-toggle');
+  await click(`.compact-options-navigation button:${screen === 'music' ? 'first' : 'last'}-child`);
+};
 const pointer = async (node, type, x, y) => {
   const event = new window.MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true, cancelable: true });
   Object.defineProperties(event, { pointerId: { value: 1 }, isPrimary: { value: true } });
@@ -52,7 +57,7 @@ const pointer = async (node, type, x, y) => {
 test("compact queue preserves source order and favorites do not change playback", async () => {
   const env = await viewFixture();
   try {
-    await click("#compact-tab-queue");
+    await openScreen("queue");
     assert.deepEqual([...document.querySelectorAll(".compact-track strong")].map(node => node.textContent), ["歌曲 3", "歌曲 2", "歌曲 1"]);
     assert.match(document.querySelector('.compact-track[aria-current="true"]').textContent, /歌曲 2/);
     await click('.compact-track-row:last-child .compact-track');
@@ -69,7 +74,7 @@ test("compact queue preserves source order and favorites do not change playback"
 test("compact library browses without playing and resolves saved-list order", async () => {
   const env = await viewFixture();
   try {
-    await click("#compact-tab-music");
+    await openScreen("music");
     await click('.compact-categories button:last-child');
     await click('.compact-group');
     assert.equal(document.activeElement.textContent, "返回");
@@ -83,16 +88,45 @@ test("compact library browses without playing and resolves saved-list order", as
   } finally { await env.close(); }
 });
 
-test("compact tabs use arrow keys and Escape restores the now-playing tab focus", async () => {
+test("compact playback stays quiet when paused and keeps secondary actions in options", async () => {
   const env = await viewFixture();
   try {
-    const tab = document.getElementById("compact-tab-now");
+    assert.equal(document.querySelector('[role="tablist"]'), null);
+    assert.equal(document.querySelector('.compact-album'), null);
+    assert.equal(document.querySelector('.compact-now h1').textContent, '歌曲 2');
+    assert.equal(document.querySelector('.compact-artist').textContent, '艺术家');
+    assert.equal(document.querySelector('.compact-transport .compact-favorite'), null);
+    assert.equal(document.querySelectorAll('.compact-transport button').length, 4);
+    await click('[title="暂停"]');
+    assert.deepEqual(env.calls.map(([name]) => name), ['onPlayPause']);
+    await act(() => env.root.render(React.createElement(React.StrictMode, null, React.createElement(CompactPlayerView, { ...env.props, isPlaying: false }))));
+    assert.equal(document.querySelector('[role="tablist"]'), null, 'pausing does not change the layout');
+    assert.equal(document.querySelector('[title="播放"]').disabled, false);
+    await click('#compact-options-toggle');
+    await click('.compact-options [title="取消收藏"]');
+    assert.equal(env.calls[1][0], 'onToggleFavorite');
+    assert.equal(env.calls[1][1].id, '2');
+    assert.equal(env.calls.length, 2);
+    assert.equal(document.querySelector('audio'), null);
+  } finally { await env.close(); }
+});
+
+test("compact browse tabs use arrow keys and returning to playback restores a visible focus target", async () => {
+  const env = await viewFixture();
+  try {
+    await openScreen('music');
+    const tab = document.getElementById("compact-tab-music");
     tab.focus();
     await act(() => tab.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true })));
-    assert.equal(document.activeElement.id, "compact-tab-music");
+    assert.equal(document.activeElement.id, "compact-tab-queue");
     assert.equal(document.activeElement.getAttribute("aria-selected"), "true");
     await act(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
-    assert.equal(document.activeElement.id, "compact-tab-now");
+    assert.equal(document.activeElement.id, "compact-content");
+    assert.equal(document.activeElement.getAttribute('aria-label'), '正在播放');
+    assert.equal(document.querySelector('[role="tablist"]'), null);
+    await openScreen('music');
+    await act(() => document.activeElement.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true })));
+    assert.equal(document.activeElement.id, "compact-content");
     assert.equal(env.calls.length, 0);
   } finally { await env.close(); }
 });
@@ -113,10 +147,10 @@ test("compact options preserve transport, focus volume and restore focus on Esca
     assert.equal(document.activeElement.getAttribute("aria-expanded"), "false");
     assert.equal(document.getElementById("compact-options").hasAttribute("inert"), true);
     await click('#compact-options-toggle');
-    await pointer(document.getElementById('compact-tab-music'), 'pointerdown', 110, 45);
-    await click('#compact-tab-music');
+    await pointer(document.getElementById('compact-content'), 'pointerdown', 110, 45);
     await act(() => new Promise(resolve => setTimeout(resolve, 30)));
     assert.equal(document.getElementById("compact-options-toggle").getAttribute("aria-expanded"), "false");
+    await openScreen('music');
     assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').id, "compact-tab-music");
   } finally { await env.close(); }
 });
@@ -136,9 +170,9 @@ test("horizontal gestures switch pivots and go back without activating a dragged
     assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').id, 'compact-tab-music');
     const album = document.querySelector('.compact-group');
     await swipe(album, [40, 135], [160, 140]);
-    assert.equal(document.querySelector('[role="tab"][aria-selected="true"]').id, 'compact-tab-now');
+    assert.ok(document.querySelector('.compact-player.is-focused'));
     assert.equal(env.calls.length, 0);
-    await click('#compact-tab-music');
+    await openScreen('music');
     await click('.compact-group');
     await swipe(document.querySelector('.compact-track'), [40, 135], [160, 140]);
     assert.equal(document.querySelector('.compact-back'), null);
@@ -163,10 +197,10 @@ test("podcast seek, save, rate and queue stay separate from music actions", asyn
     assert.equal(document.querySelector('[title="随机播放"]'), null);
     await click('[title="后退 15 秒"]');
     await click('[title="前进 30 秒"]');
-    await click('[title="稍后听"]');
     await click('[title="更多播放选项"]');
+    await click('[title="稍后听"]');
     await click('[title="播放速度"]');
-    await click('#compact-tab-queue');
+    await openScreen('queue');
     await click('.compact-episode:last-of-type');
     assert.deepEqual(env.calls, [["onSeek", 0], ["onSeek", 22], ["onToggleSaved"], ["onPlaybackRate", 1.25], ["onPlayEpisode", "next"]]);
   } finally { await env.close(); }

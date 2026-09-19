@@ -1,8 +1,8 @@
 use std::sync::Mutex;
 use tauri::{LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
-const COMPACT_SIZE: (f64, f64) = (240.0, 420.0);
 const COMPACT_MIN: (f64, f64) = (220.0, 360.0);
+const COMPACT_SIZE: (f64, f64) = COMPACT_MIN;
 const COMPACT_MAX: (f64, f64) = (360.0, 600.0);
 
 #[derive(Clone, Copy)]
@@ -134,16 +134,16 @@ mod tests {
   fn compact_keeps_the_right_edge_at_high_dpi() {
     let (size, position) = compact_bounds(PhysicalPosition::new(100, 70), 1180.0,
       PhysicalPosition::new(0, 0), PhysicalSize::new(3840, 2080), 2.0);
-    assert_eq!(size, LogicalSize::new(240.0, 420.0));
-    assert_eq!(position, PhysicalPosition::new(1980, 70));
+    assert_eq!(size, LogicalSize::new(220.0, 360.0));
+    assert_eq!(position, PhysicalPosition::new(2020, 70));
   }
 
   #[test]
   fn compact_stays_inside_negative_origin_work_area() {
     let (size, position) = compact_bounds(PhysicalPosition::new(-1000, 800), 1180.0,
       PhysicalPosition::new(-1920, 0), PhysicalSize::new(1920, 1040), 1.5);
-    assert_eq!(size, LogicalSize::new(240.0, 420.0));
-    assert_eq!(position, PhysicalPosition::new(-360, 410));
+    assert_eq!(size, LogicalSize::new(220.0, 360.0));
+    assert_eq!(position, PhysicalPosition::new(-330, 500));
   }
 
   #[test]
