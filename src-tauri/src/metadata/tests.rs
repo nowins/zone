@@ -158,7 +158,7 @@ fn sidecar_candidate_can_be_applied_and_cleared() {
   assert_eq!(candidates.len(), 1);
   assert_eq!(candidates[0].candidate.title, "补全专辑");
 
-  persist_metadata_candidate(&state, &candidates[0], &tracks).unwrap();
+  persist_metadata_candidate(&state, &candidates[0], &tracks, &[]).unwrap();
   let overlays = read_track_overlays(&state, &["track-1".to_string()]).unwrap();
   assert_eq!(overlays.len(), 1);
   assert_eq!(overlays[0].album.as_deref(), Some("补全专辑"));
@@ -192,6 +192,57 @@ fn sidecar_candidate_can_be_applied_and_cleared() {
   assert!(read_track_overlays(&state, &["track-1".to_string()])
     .unwrap()
     .is_empty());
+
+  fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn excluded_fields_survive_re_adoption() {
+  let root = fixture_dir("exclude-fields");
+  let artist_dir = root.join("艺术家");
+  let album_dir = artist_dir.join("专辑");
+  fs::create_dir_all(&album_dir).unwrap();
+  let audio_path = album_dir.join("01 - 歌曲.mp3");
+  write_audio(&audio_path);
+  fs::write(
+    album_dir.join("album.zone.json"),
+    r#"{
+      "kind": "album",
+      "title": "补全专辑",
+      "albumArtist": "补全艺术家",
+      "year": 2024,
+      "description": "本地介绍"
+    }"#,
+  )
+  .unwrap();
+
+  let state = MetadataState::initialize_at(&root.join("data")).unwrap();
+  let tracks = vec![track(&audio_path, "track-1")];
+  let candidate = find_sidecar_candidates(MetadataEntityKind::Album, &tracks)
+    .unwrap()
+    .remove(0);
+  persist_metadata_candidate(&state, &candidate, &tracks, &[]).unwrap();
+
+  // Re-adopting the same entity refreshes title and year, while the vetoed
+  // description keeps the previously stored value instead of the new one.
+  let mut re_adopted = candidate.clone();
+  re_adopted.values = re_adopted
+    .values
+    .iter()
+    .map(|(key, value)| match key.as_str() {
+      "title" => ("title".to_string(), serde_json::json!("新专辑名")),
+      "year" => ("year".to_string(), serde_json::json!(2026)),
+      "description" => ("description".to_string(), serde_json::json!("服务端介绍")),
+      _ => (key.clone(), value.clone()),
+    })
+    .collect();
+  persist_metadata_candidate(&state, &re_adopted, &tracks, &["description"]).unwrap();
+
+  let overlays = read_track_overlays(&state, &["track-1".to_string()]).unwrap();
+  assert_eq!(overlays.len(), 1);
+  assert_eq!(overlays[0].album.as_deref(), Some("新专辑名"));
+  assert_eq!(overlays[0].year, Some(2026));
+  assert_eq!(overlays[0].album_description.as_deref(), Some("本地介绍"));
 
   fs::remove_dir_all(root).unwrap();
 }
@@ -238,7 +289,7 @@ fn artist_sidecar_is_discovered_from_artist_folder() {
 
   let state = MetadataState::initialize_at(&root.join("data")).unwrap();
   let tracks = vec![track(&audio_path, "track-1")];
-  persist_metadata_candidate(&state, &candidates[0], &tracks).unwrap();
+  persist_metadata_candidate(&state, &candidates[0], &tracks, &[]).unwrap();
   let overlays = read_track_overlays(&state, &["track-1".to_string()]).unwrap();
   assert_eq!(overlays.len(), 1);
   assert!(overlays[0]

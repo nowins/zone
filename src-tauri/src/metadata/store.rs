@@ -14,6 +14,7 @@ pub(crate) fn persist_metadata_candidate(
   state: &MetadataState,
   resolved: &ResolvedMetadataCandidate,
   tracks: &[MetadataTrackInput],
+  exclude_fields: &[&str],
 ) -> Result<(), String> {
   state.ensure_ready()?;
   if tracks.is_empty() || tracks.len() > 500 {
@@ -53,14 +54,32 @@ pub(crate) fn persist_metadata_candidate(
       ],
     )
     .map_err(|error| format!("无法保存音乐信息实体：{error}"))?;
+  // Excluded fields survive re-adoption: keep their existing rows instead of
+  // clearing them with the provider's other fields.
+  let mut delete_sql =
+    "DELETE FROM metadata_fields WHERE entity_id = ?1 AND provider_id = ?2".to_string();
+  for index in 0..exclude_fields.len() {
+    delete_sql.push_str(&format!(" AND field_name != ?{}", index + 3));
+  }
+  let mut delete_params: Vec<Box<dyn rusqlite::ToSql>> = vec![
+    Box::new(candidate.id.clone()),
+    Box::new(candidate.provider_id.clone()),
+  ];
+  for field in exclude_fields {
+    delete_params.push(Box::new(field.to_string()));
+  }
+  let delete_params_ref: Vec<&dyn rusqlite::ToSql> =
+    delete_params.iter().map(|param| param.as_ref()).collect();
   transaction
-    .execute(
-      "DELETE FROM metadata_fields WHERE entity_id = ?1 AND provider_id = ?2",
-      params![candidate.id, candidate.provider_id],
-    )
+    .execute(&delete_sql, delete_params_ref.as_slice())
     .map_err(|error| format!("无法更新音乐信息字段：{error}"))?;
 
   for (field_name, value) in &resolved.values {
+    // Automatic passes may veto fields that would clobber good local data
+    // (e.g. description backfill must not replace an embedded album cover).
+    if exclude_fields.contains(&field_name.as_str()) {
+      continue;
+    }
     let value_json =
       serde_json::to_string(value).map_err(|error| format!("无法编码音乐信息字段：{error}"))?;
     transaction

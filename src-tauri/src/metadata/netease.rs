@@ -160,6 +160,7 @@ pub(crate) async fn apply_netease_music_candidate(
   candidate_id: &str,
   kind: MetadataEntityKind,
   tracks: &[MetadataTrackInput],
+  exclude_fields: &[&str],
 ) -> Result<(), String> {
   state.ensure_ready()?;
   validate_metadata_tracks(tracks)?;
@@ -236,7 +237,7 @@ pub(crate) async fn apply_netease_music_candidate(
     ));
   }
 
-  persist_metadata_candidate(state, &candidate.resolved, tracks)
+  persist_metadata_candidate(state, &candidate.resolved, tracks, exclude_fields)
 }
 
 async fn search_track_candidates(
@@ -1457,6 +1458,7 @@ mod tests {
       &track_candidate_id,
       MetadataEntityKind::Track,
       &[track.clone()],
+      &[],
     )
     .await
     .expect("apply NetEase track candidate");
@@ -1497,6 +1499,7 @@ mod tests {
       &album_candidate_id,
       MetadataEntityKind::Album,
       &[album_track],
+      &[],
     )
     .await
     .expect("apply NetEase album candidate");
@@ -1533,6 +1536,7 @@ mod tests {
       &candidate_id,
       MetadataEntityKind::Artist,
       &[track],
+      &[],
     )
     .await
     .expect("apply NetEase artist candidate");

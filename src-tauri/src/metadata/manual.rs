@@ -57,7 +57,7 @@ pub(crate) fn apply_manual_metadata(
     values,
     external_ids: Vec::new(),
   };
-  persist_metadata_candidate(state, &resolved, tracks)
+  persist_metadata_candidate(state, &resolved, tracks, &[])
 }
 
 fn normalize_manual_fields(

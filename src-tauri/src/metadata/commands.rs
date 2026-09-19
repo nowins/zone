@@ -77,13 +77,16 @@ pub(crate) fn metadata_apply_sidecar(
   candidate_id: String,
   kind: MetadataEntityKind,
   tracks: Vec<MetadataTrackInput>,
+  exclude_fields: Option<Vec<String>>,
 ) -> Result<(), String> {
   let candidates = find_sidecar_candidates(kind, &tracks)?;
   let resolved = candidates
     .iter()
     .find(|candidate| candidate.candidate.id == candidate_id)
     .ok_or_else(|| "本地补充候选已不存在，请重新查找".to_string())?;
-  persist_metadata_candidate(&state, resolved, &tracks)
+  let exclude_fields = exclude_fields.unwrap_or_default();
+  let exclude_fields: Vec<&str> = exclude_fields.iter().map(String::as_str).collect();
+  persist_metadata_candidate(&state, resolved, &tracks, &exclude_fields)
 }
 
 #[tauri::command]
@@ -106,8 +109,11 @@ pub(crate) async fn metadata_apply_apple_music(
   candidate_id: String,
   kind: MetadataEntityKind,
   tracks: Vec<MetadataTrackInput>,
+  exclude_fields: Option<Vec<String>>,
 ) -> Result<(), String> {
-  apply_apple_music_candidate(&state, &candidate_id, kind, &tracks).await
+  let exclude_fields = exclude_fields.unwrap_or_default();
+  let exclude_fields: Vec<&str> = exclude_fields.iter().map(String::as_str).collect();
+  apply_apple_music_candidate(&state, &candidate_id, kind, &tracks, &exclude_fields).await
 }
 
 #[tauri::command]
@@ -130,8 +136,11 @@ pub(crate) async fn metadata_apply_netease_music(
   candidate_id: String,
   kind: MetadataEntityKind,
   tracks: Vec<MetadataTrackInput>,
+  exclude_fields: Option<Vec<String>>,
 ) -> Result<(), String> {
-  apply_netease_music_candidate(&state, &candidate_id, kind, &tracks).await
+  let exclude_fields = exclude_fields.unwrap_or_default();
+  let exclude_fields: Vec<&str> = exclude_fields.iter().map(String::as_str).collect();
+  apply_netease_music_candidate(&state, &candidate_id, kind, &tracks, &exclude_fields).await
 }
 
 #[tauri::command]

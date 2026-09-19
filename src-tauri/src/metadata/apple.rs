@@ -69,6 +69,7 @@ pub(crate) async fn apply_apple_music_candidate(
   candidate_id: &str,
   kind: MetadataEntityKind,
   tracks: &[MetadataTrackInput],
+  exclude_fields: &[&str],
 ) -> Result<(), String> {
   state.ensure_ready()?;
   let candidates = search_apple_music_candidates(kind, tracks).await?;
@@ -94,7 +95,7 @@ pub(crate) async fn apply_apple_music_candidate(
     }
   }
 
-  persist_metadata_candidate(state, &candidate.resolved, tracks)
+  persist_metadata_candidate(state, &candidate.resolved, tracks, exclude_fields)
 }
 
 async fn search_track_candidates(
@@ -733,6 +734,7 @@ mod tests {
       &candidate_id,
       MetadataEntityKind::Track,
       &[track],
+      &[],
     )
     .await
     .expect("apply Apple music candidate");
