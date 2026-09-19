@@ -37,7 +37,7 @@
   - `usePlaylists.ts`：playlists/homePins/喜欢状态与 CRUD、普通列表移除与顺序、智能规则／轮换／排除、homePins 对账和固定；对象导航由 `useNavigation` 负责。
 - `src/hooks/useMetadataEnrichment.ts` 与 `src-tauri/src/metadata/`：曲目元数据补全与覆盖；结合音乐库状态接线。无图艺术家在三个入口做精确匹配的自动补充（播放时、信息面板打开时、曲库恢复后的后台顺序批量补齐），共用 30 分钟尝试记录；同一后台遍历随后为无封面专辑补图（仅采用带封面且 ≥95 分的唯一候选），批量筛选纯函数在 `utils/metadata.ts` 的 `selectArtistsForAutomaticBackfill` / `selectAlbumsForAutomaticBackfill`。
 - `src/hooks/useAppHotkeys.ts` / `useModalFocus.ts` / `useMountedRef.ts` / `useEntranceCompletion.ts`：全局播放快捷键、对话框焦点、StrictMode 挂载生命周期与入场清理。
-- `src/hooks/useCompactMode.ts`：读取原生窗口模式、串行防重切换及失败恢复；App 只替换视图分支，主音频与播放 hook 保持挂载。小屏期间停用正常收藏导航快捷键与可视化采样。
+- `src/hooks/useCompactMode.ts`：读取原生窗口模式与小屏置顶状态，两种操作共用串行防重锁，失败后回读原生状态；App 只替换视图分支，主音频与播放 hook 保持挂载。小屏期间停用正常收藏导航快捷键与可视化采样。
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。
 - `src/constants.ts`：`STORAGE_KEY = "zone-player-state-v1"`、`LIBRARY_SCHEMA_VERSION = 6`、`DEFAULT_PLAYLIST_ID = "favorites"`、`MAX_HOME_PINS = 12`、`VISUALIZER_SAMPLE_COUNT = 180`。
 - `src/views/`：页面级视图。
@@ -82,7 +82,7 @@
   - `useReducedMotion.ts`：reduced-motion 统一 hook。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`controls`（Button 原语变体与尺寸）、`collection`、`podcasts`、`podcast-now-playing`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`tiles`（Metro 磁贴系统）、`motion`（动效原语层：feather 入场、页面/浮层出入场、反馈动画、共享 `.tilt-pressed` 倾斜规则、唯一 reduced-motion 块）、`animations-responsive`（正在播放入场编排与响应式）。
 - `src-tauri/src/lib.rs`：应用初始化接线。包含系统托盘、`update_system_media`/`update_system_media_timeline` 薄命令与 `pub fn run()`（协议注册、状态初始化、命令注册）；业务命令按模块注册，例如 `music::music_scan_library`。
-- `src-tauri/src/window_mode.rs`：主窗口专用的 `get_compact_mode` / `set_compact_mode`。仅接受模式布尔值，原生端保存正常窗口快照、应用预设尺寸与工作区边界并处理回滚；不开放任意尺寸／位置参数，不增加通用窗口 capabilities。
+- `src-tauri/src/window_mode.rs`：主窗口专用的 `get_compact_mode` / `set_compact_mode` / `set_compact_pinned`，统一返回模式与实际置顶状态。仅接受模式或置顶布尔值，置顶操作限小屏期间；原生端保存正常窗口几何、最大化与置顶快照，应用预设尺寸与工作区边界并处理回滚。不开放任意尺寸／位置参数，不增加通用窗口 capabilities。
 - `src-tauri/src/db/` 与 `src-tauri/src/music/`：音乐 SQLite schema、状态快照/迁移、可取消扫描、特征与电台逻辑；`beat_window.rs` 经 Symphonia 有界解码供前端 Worker 预分析。
 - `src/workers/beatAnalysis.worker.ts`：节拍计算 Worker；由 `useAudioEngine` 管理请求与缓存。
 - `src-tauri/src/diagnostics.rs` 与 `src/utils/diagnostics.ts`：本地诊断和保存对话框导出。

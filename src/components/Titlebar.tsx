@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Maximize2, Minus, Settings2, Smartphone, Square, X } from "lucide-react";
+import { Maximize2, Minus, Pin, Settings2, Smartphone, Square, X } from "lucide-react";
 
 export function Titlebar({
   isSettings,
@@ -9,6 +9,8 @@ export function Titlebar({
   compact = false,
   modePending = false,
   onToggleCompact,
+  pinned = false,
+  onTogglePinned,
 }: {
   isSettings: boolean;
   onOpenSettings: () => void;
@@ -17,6 +19,8 @@ export function Titlebar({
   compact?: boolean;
   modePending?: boolean;
   onToggleCompact?: () => void;
+  pinned?: boolean;
+  onTogglePinned?: () => void;
 }) {
   const appWindow = getCurrentWindow();
 
@@ -32,6 +36,16 @@ export function Titlebar({
         >
           <Settings2 size={13} aria-hidden="true" />
           <span>设置</span>
+        </button> : null}
+        {compact && onTogglePinned ? <button
+          className="titlebar-pin"
+          onClick={onTogglePinned}
+          disabled={modePending}
+          title={pinned ? "取消置顶" : "置顶窗口"}
+          aria-label="置顶窗口"
+          aria-pressed={pinned}
+        >
+          <Pin size={13} fill={pinned ? "currentColor" : "none"} aria-hidden="true" />
         </button> : null}
         {onToggleCompact ? <button
           className="titlebar-mode"

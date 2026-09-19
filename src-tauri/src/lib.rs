@@ -207,6 +207,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       window_mode::get_compact_mode,
       window_mode::set_compact_mode,
+      window_mode::set_compact_pinned,
       diagnostics::export_diagnostics,
       library::select_music_folder,
       lyrics::select_lyrics_file,

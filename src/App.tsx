@@ -1041,6 +1041,12 @@ export default function App() {
         compact={compactMode.active}
         modePending={compactMode.pending || navExit !== null}
         onToggleCompact={() => void changeCompactMode(!compactMode.active)}
+        pinned={compactMode.pinned}
+        onTogglePinned={() => {
+          void compactMode.setPinned(!compactMode.pinned).then(() => {
+            window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".titlebar-pin")?.focus({ preventScroll: true }));
+          });
+        }}
       />
 
       {!compactMode.active && page !== "nowPlaying" && (

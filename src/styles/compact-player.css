@@ -9,6 +9,7 @@
 .compact-wordmark { padding-left: 12px; color: var(--quiet); font-size: 14px; font-weight: 250; letter-spacing: -0.06em; }
 .shell-compact .window-controls button { width: 30px; }
 .shell-compact .titlebar-mode { color: var(--accent); }
+.shell-compact .titlebar-pin[aria-pressed="true"] { color: var(--accent); }
 .compact-player { min-width: 0; min-height: 0; display: grid; grid-template-rows: 44px minmax(0, 1fr) auto; }
 .compact-player.is-focused { grid-template-rows: minmax(0, 1fr) auto; }
 .compact-tabs { display: flex; align-items: center; gap: 18px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; }

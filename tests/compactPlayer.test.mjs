@@ -11,10 +11,11 @@ globalThis.document = bootstrap.window.document;
 const { createRoot } = await import("react-dom/client");
 bootstrap.window.close();
 
-await build({ entryPoints: ["src/views/CompactPlayerView.tsx", "src/hooks/useCompactMode.ts", "src/utils/collectionEntities.ts"],
+await build({ entryPoints: ["src/views/CompactPlayerView.tsx", "src/components/Titlebar.tsx", "src/hooks/useCompactMode.ts", "src/utils/collectionEntities.ts"],
   outdir: ".tmp/compact-tests", bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent" });
 const { CompactPlayerView } = await import("../.tmp/compact-tests/views/CompactPlayerView.js");
 const { useCompactMode } = await import("../.tmp/compact-tests/hooks/useCompactMode.js");
+const { Titlebar } = await import("../.tmp/compact-tests/components/Titlebar.js");
 const { buildCollectionIndex } = await import("../.tmp/compact-tests/utils/collectionEntities.js");
 const tracks = [1, 2, 3].map(i => ({ id: String(i), path: `${i}.mp3`, file_name: `${i}.mp3`, title: `歌曲 ${i}`,
   artist: "艺术家", album: "专辑", track_number: i, extension: "mp3", duration_seconds: 180 }));
@@ -230,18 +231,20 @@ async function modeFixture(invoke) {
 test("native mode hydrates after reload and serializes repeated clicks", async () => {
   let finish; const commands = [];
   const env = await modeFixture(async (command, args) => {
-    if (command === "get_compact_mode") return true;
+    if (command === "get_compact_mode") return { active: true, pinned: true };
     commands.push(args.compact);
-    return await new Promise(resolve => { finish = () => resolve(args.compact); });
+    return await new Promise(resolve => { finish = () => resolve({ active: args.compact, pinned: false }); });
   });
   try {
     assert.equal(env.mode().active, true);
+    assert.equal(env.mode().pinned, true, "reload reads the native pin state");
     await act(() => { void env.mode().setCompact(false); void env.mode().setCompact(false); });
     assert.equal(env.mode().pending, true);
     assert.equal(env.mode().active, true, "keep current surface while native mutation is pending");
     assert.deepEqual(commands, [false]);
     await act(async () => finish());
     assert.equal(env.mode().active, false);
+    assert.equal(env.mode().pinned, false, "returning to normal mode clears the compact pin indicator");
     assert.equal(env.mode().pending, false);
   } finally { await env.close(); }
 });
@@ -249,9 +252,9 @@ test("native mode hydrates after reload and serializes repeated clicks", async (
 test("failed native transition remains retryable and keeps current mode", async () => {
   let fail = true;
   const env = await modeFixture(async (command, args) => {
-    if (command === "get_compact_mode") return false;
+    if (command === "get_compact_mode") return { active: false, pinned: false };
     if (fail) throw new Error("window unavailable");
-    return args.compact;
+    return { active: args.compact, pinned: false };
   });
   try {
     await act(() => env.mode().setCompact(true));
@@ -262,5 +265,81 @@ test("failed native transition remains retryable and keeps current mode", async 
     await act(() => env.mode().setCompact(true));
     assert.equal(env.mode().active, true);
     assert.equal(env.mode().error, null);
+  } finally { await env.close(); }
+});
+
+test("pinning and mode changes share a lock and normal mode cannot pin", async () => {
+  let finish; const commands = [];
+  const env = await modeFixture(async (command, args) => {
+    if (command === "get_compact_mode") return { active: true, pinned: false };
+    commands.push([command, args]);
+    return await new Promise(resolve => {
+      finish = () => resolve(command === "set_compact_pinned"
+        ? { active: true, pinned: args.pinned } : { active: args.compact, pinned: false });
+    });
+  });
+  try {
+    await act(() => {
+      void env.mode().setPinned(true);
+      void env.mode().setPinned(true);
+      void env.mode().setCompact(false);
+    });
+    assert.equal(env.mode().pending, true);
+    assert.equal(env.mode().pinned, false, "do not claim success before native confirmation");
+    assert.deepEqual(commands, [["set_compact_pinned", { pinned: true }]]);
+    await act(async () => finish());
+    assert.equal(env.mode().pinned, true);
+    await act(() => { void env.mode().setCompact(false); void env.mode().setPinned(false); });
+    assert.equal(commands.length, 2);
+    await act(async () => finish());
+    assert.equal(env.mode().active, false);
+    assert.equal(env.mode().pinned, false);
+    await act(() => env.mode().setPinned(true));
+    assert.equal(commands.length, 2, "normal mode never sends a pin command");
+  } finally { await env.close(); }
+});
+
+test("pin failure reconciles actual native status and permits a retry", async () => {
+  let pinned = false, fail = true;
+  const env = await modeFixture(async (command, args) => {
+    if (command === "get_compact_mode") return { active: true, pinned };
+    pinned = args.pinned;
+    if (fail) throw new Error("native status read failed after applying pin");
+    return { active: true, pinned };
+  });
+  try {
+    await act(() => env.mode().setPinned(true));
+    assert.equal(env.mode().active, true);
+    assert.equal(env.mode().pinned, true, "failed IPC is reconciled with the actual native flag");
+    assert.equal(env.mode().pending, false);
+    assert.match(env.mode().error, /无法置顶窗口/);
+    fail = false;
+    await act(() => env.mode().setPinned(false));
+    assert.equal(env.mode().pinned, false);
+    assert.equal(env.mode().error, null);
+  } finally { await env.close(); }
+});
+
+test("titlebar exposes a compact-only pin toggle with native status and pending feedback", async () => {
+  const env = setup(); let clicks = 0;
+  window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: "main" } } };
+  const props = { isSettings: false, onOpenSettings() {}, showSettings: false, compact: true,
+    onToggleCompact() {}, onTogglePinned() { clicks++; } };
+  const render = patch => act(() => env.root.render(React.createElement(Titlebar, { ...props, ...patch })));
+  try {
+    await render({ pinned: false });
+    const pin = document.querySelector('[aria-label="置顶窗口"]');
+    assert.equal(pin.getAttribute("aria-pressed"), "false");
+    assert.equal(pin.nextElementSibling.title, "返回正常模式");
+    await click('[aria-label="置顶窗口"]');
+    assert.equal(clicks, 1);
+    await render({ pinned: true, modePending: true });
+    assert.equal(pin.getAttribute("aria-pressed"), "true");
+    assert.equal(pin.title, "取消置顶");
+    await click('[aria-label="置顶窗口"]');
+    assert.equal(clicks, 1, "pending native requests cannot be repeated");
+    assert.equal(document.querySelector('.titlebar-mode').disabled, true);
+    await render({ compact: false, pinned: true });
+    assert.equal(document.querySelector('.titlebar-pin'), null);
   } finally { await env.close(); }
 });
