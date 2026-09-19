@@ -44,8 +44,8 @@ MSIX 版行为差异：应用数据（localStorage、podcasts.sqlite、封面缓
 
 ## 图标与商店资产
 
-- 唯一图标源：仓库根 `app-icon.png`（1024×1024，RGBA）。改动后运行 `npx tauri icon` 重新生成 `src-tauri/icons/` 全套（含 Square44/150/310 与 StoreLogo）。
-- MSIX 额外资产在 `packaging/Assets/`：方形磁贴来自 `src-tauri/icons/`，`Wide310x150Logo.png` 与 `SplashScreen.png` 由 `.tmp` 里的 PIL 脚本按品牌底色 #1B1A19 合成（源也是 `app-icon.png`）。
+- 唯一图标源：仓库根 `app-icon.png`（1024×1024，RGBA）。图形为粉橙渐变的平面几何 Z，中央融入播放三角负形，背景透明；与界面的 Metro 风格和强调色保持一致。
+- 改动后在 Windows 运行 `powershell -ExecutionPolicy Bypass -File packaging/generate-icons.ps1`：先调用 `npx tauri icon` 重新生成 `src-tauri/icons/` 全套，再同步 `packaging/Assets/` 的方形磁贴与 StoreLogo。`Wide310x150Logo.png`（310×150）与 `SplashScreen.png`（620×300）由同一图标源居中缩放，合成到清单指定底色 #1B1A19 上。
 - 商店列表还需要：至少 1 张 1280×720 截图（建议 3–5 张：quickplay、正在播放、歌词模式、播客）、简短的商店描述与搜索关键词。截图可在验收时从 `npm run tauri:dev` 或安装后的应用里截取。
 
 ## 代码签名
