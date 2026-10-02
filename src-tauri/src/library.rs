@@ -57,11 +57,11 @@ pub(crate) struct LibraryFilesChanged {
 
 #[tauri::command]
 pub(crate) fn select_music_folder() -> Option<MusicFolder> {
-  let folder = rfd::FileDialog::new().set_title("Choose music folder").pick_folder()?;
+  let folder = rfd::FileDialog::new().set_title("选择音乐文件夹").pick_folder()?;
   let name = folder
     .file_name()
     .and_then(|value| value.to_str())
-    .unwrap_or("music")
+    .unwrap_or("音乐")
     .to_string();
 
   Some(MusicFolder {
@@ -226,7 +226,7 @@ fn track_from_path(path: &Path) -> Track {
   let file_stem = path
     .file_stem()
     .and_then(|value| value.to_str())
-    .unwrap_or("Untitled")
+    .unwrap_or("未命名歌曲")
     .trim();
   let file_name = path
     .file_name()
@@ -249,13 +249,13 @@ fn track_from_path(path: &Path) -> Track {
     .unwrap_or(fallback_artist);
   let album = primary_tag
     .and_then(|tag| tag.album())
-    .map(|value| fallback_text(&value, "Unknown album"))
+    .map(|value| fallback_text(&value, "未知专辑"))
     .unwrap_or_else(|| {
       path
         .parent()
         .and_then(|value| value.file_name())
         .and_then(|value| value.to_str())
-        .unwrap_or("Unknown album")
+        .unwrap_or("未知专辑")
         .to_string()
     });
   let album_artist = primary_tag
@@ -397,10 +397,10 @@ fn split_artist_title(file_stem: &str) -> (String, String) {
     .trim();
 
   if let Some((artist, title)) = cleaned.split_once(" - ") {
-    return (fallback_text(artist, "Unknown artist"), fallback_text(title, cleaned));
+    return (fallback_text(artist, "未知艺术家"), fallback_text(title, cleaned));
   }
 
-  ("Unknown artist".to_string(), fallback_text(cleaned, "Untitled"))
+  ("未知艺术家".to_string(), fallback_text(cleaned, "未命名歌曲"))
 }
 
 fn fallback_text(value: &str, fallback: &str) -> String {
@@ -487,6 +487,13 @@ pub(crate) fn stable_track_id(path: &Path) -> String {
 #[cfg(test)]
 mod library_tests {
   use super::*;
+
+  #[test]
+  fn untagged_files_use_chinese_fallbacks_without_losing_the_file_title() {
+    assert_eq!(split_artist_title(""), ("未知艺术家".into(), "未命名歌曲".into()));
+    assert_eq!(split_artist_title("歌曲"), ("未知艺术家".into(), "歌曲".into()));
+    assert_eq!(split_artist_title("歌手 - 歌曲"), ("歌手".into(), "歌曲".into()));
+  }
 
   #[test]
   fn library_watcher_refreshes_only_for_audio_or_directory_changes() {
