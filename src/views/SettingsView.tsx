@@ -12,6 +12,8 @@ import { Dialog } from "../components/Dialog";
 import { Presence } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
 import { createPortal } from "react-dom";
+import { APP_VERSION, RELEASE_LINKS } from "../app/releaseInfo";
+import { PRIVACY_SECTIONS } from "../app/privacy";
 
 export function SettingsView({
   folders,
@@ -54,6 +56,7 @@ export function SettingsView({
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
   const [clearError, setClearError] = useState("");
+  const [showPrivacy, setShowPrivacy] = useState(false);
   async function clearLibrary() {
     if (clearBusy || isScanning) return;
     setClearBusy(true);
@@ -263,7 +266,7 @@ export function SettingsView({
               <div>
                 <span className="settings-kicker">音乐信息</span>
                 <h2 id="metadata-providers-heading">补充来源</h2>
-                <p>补充内容保存在独立数据库中，不会改写音乐文件。在线查找会向对应来源发送曲名、歌手、专辑和时长。</p>
+                <p>补充内容保存在本地数据库中，不会改写音乐文件。在线查找会向对应来源发送曲名、歌手、专辑和时长。</p>
               </div>
             </header>
             <div className="metadata-provider-list">
@@ -388,6 +391,12 @@ export function SettingsView({
             <Button variant="ghost" onClick={() => void saveDiagnostics()} icon={<FileJson2 size={16} />}>导出诊断记录</Button>
             {diagnosticNotice && <p role="status">{diagnosticNotice}</p>}
           </section>
+          <section className="settings-about" aria-label="关于 Zone">
+            <span className="settings-kicker">关于</span><h2>Zone {APP_VERSION}</h2>
+            <Button variant="ghost" onClick={() => setShowPrivacy(true)}>隐私说明</Button>
+            {RELEASE_LINKS.support && <Button variant="ghost" onClick={() => void invoke("plugin:opener|open_url", { url: RELEASE_LINKS.support }).catch(() => setDiagnosticNotice("无法打开帮助页面，请重试"))}>反馈与帮助</Button>}
+            {RELEASE_LINKS.download && <Button variant="ghost" onClick={() => void invoke("plugin:opener|open_url", { url: RELEASE_LINKS.download }).catch(() => setDiagnosticNotice("无法打开下载页面，请重试"))}>获取新版</Button>}
+          </section>
           <section className="settings-danger-zone">
             <span className="settings-kicker">维护</span>
             <h2>清理资料库</h2>
@@ -404,6 +413,13 @@ export function SettingsView({
           actions={<><Button variant="ghost" disabled={clearBusy} onClick={() => setConfirmClear(false)}>取消</Button><Button variant="danger" type="submit" busy={clearBusy} disabled={isScanning}>确认清空</Button></>}>
           <p>音乐文件与播客资料会保留。音乐歌单、喜欢、固定内容和播放统计将被清除。</p>
           {clearError && <p role="alert">{clearError}</p>}
+        </Dialog>
+      </Presence>, document.body)}
+      {createPortal(<Presence show={showPrivacy} exitDurationMs={MOTION_DURATIONS.micro}>
+        <Dialog titleId="privacy-title" kicker="Zone" title="隐私说明" className="settings-info-dialog"
+          onCancel={() => setShowPrivacy(false)} onSubmit={event => event.preventDefault()}
+          actions={<Button variant="ghost" onClick={() => setShowPrivacy(false)}>关闭</Button>}>
+          <div className="settings-info-copy" tabIndex={0}>{PRIVACY_SECTIONS.map(section => <section key={section.title}><h3>{section.title}</h3><p>{section.text}</p></section>)}</div>
         </Dialog>
       </Presence>, document.body)}
     </section>

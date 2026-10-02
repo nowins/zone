@@ -45,6 +45,13 @@ test("library maintenance requires confirmation, preserves failure feedback and 
     assert.equal(document.activeElement, trigger);
     await act(() => root.render(React.createElement(SettingsView, { ...props, isScanning: true })));
     assert.equal(button("清空资料库").disabled, true);
+    const privacy = button("隐私说明"); privacy.focus();
+    await act(() => privacy.click());
+    assert.match(document.querySelector('[role="dialog"]').textContent, /不自动发送诊断记录/);
+    await act(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" })));
+    await act(() => new Promise(resolve => setTimeout(resolve, 100)));
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(document.activeElement, privacy);
   } finally {
     await act(() => root.unmount());
     dom.window.close();

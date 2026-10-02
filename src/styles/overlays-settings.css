@@ -157,6 +157,16 @@ h2 {
   flex: 0 0 auto;
 }
 
+.settings-about h2 { margin: 7px 0 14px; font-size: 25px; font-weight: 300; }
+.settings-about { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.playlist-dialog.settings-info-dialog { width: min(600px, calc(100vw - 64px)); background: var(--app-bg-raised); }
+.settings-info-copy { max-height: min(430px, 52vh); overflow-y: auto; padding-right: 12px; scrollbar-width: thin; scrollbar-color: var(--quiet) transparent; }
+.settings-info-copy::-webkit-scrollbar { width: 6px; }
+.settings-info-copy::-webkit-scrollbar-thumb { background: var(--quiet); }
+.settings-info-copy::-webkit-scrollbar-track { background: transparent; }
+.settings-info-copy h3 { margin: 20px 0 8px; font-size: 17px; font-weight: 400; }
+.settings-info-copy p { line-height: 1.65; font-size: 13px; color: var(--muted); }
+
 .folder-list {
   flex: 1 1 auto;
   min-height: 0;
