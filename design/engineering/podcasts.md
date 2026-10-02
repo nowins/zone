@@ -42,3 +42,13 @@
 - Rust 数据库、网络、协议与下载变化：`cargo check`，补充并运行对应模块测试。真实网络 smoke 默认忽略，仅在显式设置 `ZONE_PODCAST_LIVE=1` 后运行。
 - 播放交互变化实测音乐与播客切换、播放失败/缓冲、暂停后恢复、自然结束续播及待播仅在实际开始后消费；进度相关改动检查 seek 回退、重启暂停恢复与失败重试。列表改动检查加载更多和非活动单集不会随进度无谓重绘。
 - 启动应用沿用根目录的会话授权规则；协议/打包相关改动还需 `npx tauri build --no-bundle`。
+
+### 原生稳定性测试
+
+- Windows 上先运行 `npm run build`，确保 Cargo 依赖已缓存，再运行 `npm run test:podcast:stability`。默认执行 200 次在线／离线切源、暂停恢复、10 次网络失败重试、截断下载续传、播放／下载期间强制退出并重启，以及真实时间的 120 分钟连续播放。`-- --minutes=30 --cycles=200` 可调整时长；时长上限 240 分钟，切源上限 2000 次。
+- 测试入口为 `tests/run-podcast-stability.mjs`，原生与前端夹具在 `tests/native/`。夹具调用正式播放 hook、SQLite、下载与媒体协议实现，只有源码副本允许访问本地故障服务器；正式网络校验、CSP、capabilities 与用户资料不改变。每轮使用独立数据库、WebView 资料目录及测试音频，进程树只监测本轮启动的播放器及其子进程。测试报告、隔离数据库与媒体产物位于 `.tmp/podcast-stability/`，Cargo 编译缓存可用 `--target-dir` 单独指定。
+- 连续播放每 30 秒检查真实音频时钟、持久化进度和唯一 AudioContext；每 10 秒采样私有内存、句柄和进程数量。报告给出暖机后的趋势与首尾中位数，资源数据需要结合缓存及进程变化判断，不能仅用一次峰值宣称泄漏或无泄漏。下载完成后校验 SHA-256，恢复场景检查 SQLite `integrity_check`。
+- 快速复测使用 `npm run test:podcast:stability -- --phase=short --minutes=1`；`--switch-rounds=3 --cycles=2000` 可连续测三轮，每轮后暂停 30 秒观察资源回落，轮数上限为 5。`--phase=crash-playback` 和 `--phase=crash-download` 各自包含一次强制终止与重启。默认播放 10 秒后终止；`--crash-delay-ms=1000` 专门探测新单集设置尚未落盘的窗口。SQLite 进度和 WebView `localStorage` 是不同持久化链路，不能把数据库完整等同于当前单集设置在突发终止时已保存。
+- 磁盘空间与虚拟机暂停测试另用 `tests/run-podcast-stability-hyperv.ps1`，参数为 `-VMName`、`-CredentialFile`、`-PreparedReport`。先运行 `npm run test:podcast:stability -- --prepare-only --minutes=1`，再把返回的报告目录传入 `-PreparedReport`。只接受备注包含 `Zone MSIX disposable test VM` 的专用 Hyper-V 测试机，凭据沿用 [发布测试配置](../../packaging/README.md) 的 DPAPI 文件，客体需有已登录的测试用户和 WebView2。
+- Hyper-V 夹具创建全新的 64 MiB VHDX，只在核实新增磁盘身份、大小与 RAW 分区状态后格式化，要求客体 `R:` 未占用。填充同时需要显式开关与测试卷标记，最多写入 128 MiB；WebView 资料留在客体系统盘。真实写满后验证进度和下载失败、释放空间后的恢复，结束时卸载测试卷并恢复原本关闭的虚拟机。
+- 虚拟机保存／恢复覆盖暂停后定时器收敛和媒体继续播放；它不等同于 Windows S3/S4，客体时钟也可能暂时冻结。真实待机、休眠、蓝牙设备切换与真实运营商网络仍需在支持这些条件的机器上补测，报告必须区分实际覆盖范围。

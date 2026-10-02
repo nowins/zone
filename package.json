@@ -12,6 +12,7 @@
     "version:set": "node packaging/check-version.mjs --set",
     "test": "npm run test:visualizer",
     "test:visualizer": "node packaging/check-version.mjs && tsc -p tsconfig.test.json && node --test tests/*.test.mjs",
+    "test:podcast:stability": "node tests/run-podcast-stability.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
