@@ -221,6 +221,7 @@ pub fn run() {
     })
     .invoke_handler(tauri::generate_handler![
       window_mode::get_compact_mode,
+      window_mode::get_main_window_visibility,
       window_mode::set_compact_mode,
       window_mode::set_compact_pinned,
       diagnostics::export_diagnostics,

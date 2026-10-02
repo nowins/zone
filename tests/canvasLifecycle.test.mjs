@@ -53,6 +53,12 @@ test("actual Canvas effects survive StrictMode, sleep when static and wake for c
     await render(true);
     step(2000);
     assert.equal(frames.size, 2, "unmuting wakes the glow");
+    document.documentElement.dataset.zoneWindowVisible = "false";
+    document.dispatchEvent(new window.Event("zone-window-visibility"));
+    assert.equal(frames.size, 0, "a hidden native window stops both loops while WebView2 still reports visible");
+    delete document.documentElement.dataset.zoneWindowVisible;
+    document.dispatchEvent(new window.Event("zone-window-visibility"));
+    assert.equal(frames.size, 2, "restoring the native window wakes both loops");
     hidden = true; document.dispatchEvent(new window.Event("visibilitychange"));
     assert.equal(frames.size, 0, "background cancels pending frames");
     hidden = false; document.dispatchEvent(new window.Event("visibilitychange"));

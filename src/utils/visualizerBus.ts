@@ -41,8 +41,10 @@ export function getVisualizerFrame(): VisualizerFrameData {
 
 export function isDocumentVisible() {
   if (typeof document === "undefined") return true;
-  return document.visibilityState !== "hidden";
+  return !document.hidden && document.visibilityState !== "hidden" && document.documentElement?.dataset.zoneWindowVisible !== "false";
 }
+
+export const WINDOW_VISIBILITY_EVENT = "zone-window-visibility";
 
 export function isVisualizerSurfaceActive(isPlaying: boolean, surfaceVisible = true) {
   return isPlaying && surfaceVisible && isDocumentVisible();

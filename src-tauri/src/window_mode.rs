@@ -23,6 +23,14 @@ pub struct CompactMode {
   pinned: bool,
 }
 
+#[tauri::command]
+pub fn get_main_window_visibility(window: WebviewWindow) -> Result<bool, String> {
+  main_window(&window)?;
+  let visible = window.is_visible().map_err(|error| error.to_string())?;
+  let minimized = window.is_minimized().map_err(|error| error.to_string())?;
+  Ok(visible && !minimized)
+}
+
 fn mode_snapshot(window: &WebviewWindow, active: bool) -> Result<CompactMode, String> {
   Ok(CompactMode {
     active,

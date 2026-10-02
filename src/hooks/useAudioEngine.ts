@@ -9,7 +9,7 @@ import {
   type BeatGrid,
 } from "../utils/beatAnalysis";
 import { AudioVisualizerAnalyzer, createAudioVisualizerFrame, createSilentVisualizerFrame } from "../utils/visualizer";
-import { isDocumentVisible, isVisualizerSurfaceActive, publishVisualizerFrame } from "../utils/visualizerBus";
+import { isDocumentVisible, isVisualizerSurfaceActive, publishVisualizerFrame, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import type { ActivePlayback } from "./usePlaybackControls";
 import type { Track } from "../types";
@@ -96,8 +96,10 @@ export function useAudioEngine({
     syncLoop();
     const onVisibility = () => syncLoop();
     document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener(WINDOW_VISIBILITY_EVENT, onVisibility);
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener(WINDOW_VISIBILITY_EVENT, onVisibility);
       stopLoop();
     };
   }, [activePlaybackSourceKey, audible, activePlayback?.kind, visualizerVisible, reducedMotion]);

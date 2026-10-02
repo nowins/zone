@@ -39,6 +39,7 @@
 - `src/hooks/useMetadataEnrichment.ts` 与 `src-tauri/src/metadata/`：曲目元数据补全与覆盖；结合音乐库状态接线。无图艺术家在三个入口做精确匹配的自动补充（播放时、信息面板打开时、曲库恢复后的后台顺序批量补齐），共用 30 分钟尝试记录；同一后台遍历随后为无封面专辑补图（仅采用带封面且 ≥95 分的唯一候选），批量筛选纯函数在 `utils/metadata.ts` 的 `selectArtistsForAutomaticBackfill` / `selectAlbumsForAutomaticBackfill`。
 - `src/hooks/useAppHotkeys.ts` / `useModalFocus.ts` / `useMountedRef.ts` / `useEntranceCompletion.ts`：全局播放快捷键、对话框焦点、StrictMode 挂载生命周期与入场清理。
 - `src/hooks/useCompactMode.ts`：读取原生窗口模式与小屏置顶状态，两种操作共用串行防重锁，失败后回读原生状态；App 只替换视图分支，主音频与播放 hook 保持挂载。小屏期间停用正常收藏导航快捷键与可视化采样。
+- `src/hooks/useNativeWindowVisibility.ts`：同步主窗口实际可见/最小化状态，处理 WebView2 隐藏窗口仍报告文档可见的情况；无重叠查询，卸载清理计时与监听，驱动可视化停转和恢复。
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。
 - `src/constants.ts`：`STORAGE_KEY = "zone-player-state-v1"`、`LIBRARY_SCHEMA_VERSION = 6`、`DEFAULT_PLAYLIST_ID = "favorites"`、`MAX_HOME_PINS = 12`、`VISUALIZER_SAMPLE_COUNT = 180`。
 - `src/views/`：页面级视图。

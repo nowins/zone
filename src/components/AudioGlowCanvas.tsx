@@ -6,7 +6,7 @@ import {
   zuneGlowRadiance,
 } from "../utils/audioGlow";
 import { createIdleVisualizerFrame } from "../utils/visualizer";
-import { getVisualizerFrame, isDocumentVisible } from "../utils/visualizerBus";
+import { getVisualizerFrame, isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { VISUALIZER_SAMPLE_COUNT } from "../constants";
 
@@ -145,8 +145,10 @@ export function AudioGlowCanvas({
     frameRef.current = null;
     invalidate();
     document.addEventListener("visibilitychange", invalidate);
+    document.addEventListener(WINDOW_VISIBILITY_EVENT, invalidate);
     return () => {
       document.removeEventListener("visibilitychange", invalidate);
+      document.removeEventListener(WINDOW_VISIBILITY_EVENT, invalidate);
       invalidateRef.current = () => {};
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
       frameRef.current = null;

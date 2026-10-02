@@ -20,6 +20,8 @@
 
 可视化必须使用真实音频分析，播放音乐时不允许用空闲动画冒充。
 
+WebView2 隐藏原生窗口时可能仍报告 `document.visibilityState = visible`。`useNativeWindowVisibility` 在焦点/文档可见性变化时及每秒读取一次主窗口可见/最小化状态，不允许重叠请求；状态变化通过 DOM 信号停用音频采样与 Canvas，显示窗口后重新唤醒。它只查询当前主窗口，不增加通用窗口权限。
+
 关键约束：
 
 - Tauri `convertFileSrc(path)` 默认走 `asset` 协议（通常是 `http://asset.localhost/...`）。

@@ -1,4 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
+import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../../utils/visualizerBus";
 
 /** Ambient work belongs only to visible tiles that the user is not handling. */
 export function useTileActivity(ref: RefObject<HTMLElement | null>, ownerKey?: unknown) {
@@ -9,7 +10,7 @@ export function useTileActivity(ref: RefObject<HTMLElement | null>, ownerKey?: u
     let visible = typeof IntersectionObserver === "undefined";
     let hovered = element.matches(":hover");
     let focused = element.contains(document.activeElement);
-    const update = () => setActive(visible && !document.hidden && !hovered && !focused);
+    const update = () => setActive(visible && isDocumentVisible() && !hovered && !focused);
     const enter = () => { hovered = true; update(); };
     const leave = () => { hovered = false; update(); };
     const focus = () => { focused = true; update(); };
@@ -27,6 +28,7 @@ export function useTileActivity(ref: RefObject<HTMLElement | null>, ownerKey?: u
     element.addEventListener("focusin", focus);
     element.addEventListener("focusout", blur);
     document.addEventListener("visibilitychange", update);
+    document.addEventListener(WINDOW_VISIBILITY_EVENT, update);
     update();
     return () => {
       observer?.disconnect();
@@ -35,6 +37,7 @@ export function useTileActivity(ref: RefObject<HTMLElement | null>, ownerKey?: u
       element.removeEventListener("focusin", focus);
       element.removeEventListener("focusout", blur);
       document.removeEventListener("visibilitychange", update);
+      document.removeEventListener(WINDOW_VISIBILITY_EVENT, update);
     };
   }, [ref, ownerKey]);
   return active;

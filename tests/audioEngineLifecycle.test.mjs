@@ -32,6 +32,7 @@ test("shared music sampler keeps one loop across browsing and sleeps on mute, hi
   window.matchMedia = () => media;
   window.__TAURI_INTERNALS__ = { invoke: async command => { commands.push(command); } };
   Object.defineProperty(document, "visibilityState", { get: () => hidden ? "hidden" : "visible" });
+  Object.defineProperty(document, "hidden", { get: () => hidden });
   globalThis.requestAnimationFrame = window.requestAnimationFrame = callback => { frames.set(++nextId, callback); return nextId; };
   globalThis.cancelAnimationFrame = window.cancelAnimationFrame = id => frames.delete(id);
   window.AudioContext = class {
@@ -74,6 +75,13 @@ test("shared music sampler keeps one loop across browsing and sleeps on mute, hi
     assertSilent();
     await render();
     assert.equal(frames.size, 1, "unmute resumes");
+    document.documentElement.dataset.zoneWindowVisible = "false";
+    document.dispatchEvent(new window.Event("zone-window-visibility"));
+    assert.equal(frames.size, 0, "native hiding stops sampling even with a visible document");
+    assertSilent();
+    delete document.documentElement.dataset.zoneWindowVisible;
+    document.dispatchEvent(new window.Event("zone-window-visibility"));
+    assert.equal(frames.size, 1, "native showing restarts the sampler");
     hidden = true;
     document.dispatchEvent(new window.Event("visibilitychange"));
     assert.equal(frames.size, 0);

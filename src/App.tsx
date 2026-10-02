@@ -8,6 +8,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Titlebar } from "./components/Titlebar";
 import { CompactPlayerView } from "./views/CompactPlayerView";
 import { useCompactMode } from "./hooks/useCompactMode";
+import { useNativeWindowVisibility } from "./hooks/useNativeWindowVisibility";
 import { AppHeader } from "./components/AppHeader";
 import { PlayerBar } from "./components/PlayerBar";
 import { AudioGlowCanvas } from "./components/AudioGlowCanvas";
@@ -79,6 +80,7 @@ const PodcastView = lazy(() => import("./views/PodcastView").then(module => ({ d
 const loadingPage = <div role="status" aria-label="正在加载"><MetroLoader /></div>;
 
 export default function App() {
+  useNativeWindowVisibility();
   const compactMode = useCompactMode();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playbackSessionRef = useRef<PlaybackSession | null>(null);

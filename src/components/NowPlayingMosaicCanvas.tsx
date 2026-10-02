@@ -4,7 +4,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { AlbumGroup, Track } from "../types";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { buildNowPlayingWall } from "../utils/nowPlayingWall";
-import { getVisualizerFrame, isDocumentVisible } from "../utils/visualizerBus";
+import { getVisualizerFrame, isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
 import {
   buildCanvasMosaicTiles,
   advanceMosaicArtwork,
@@ -221,8 +221,10 @@ export function NowPlayingMosaicCanvas({
     imageReadyListeners.add(invalidate);
     invalidate();
     document.addEventListener("visibilitychange", invalidate);
+    document.addEventListener(WINDOW_VISIBILITY_EVENT, invalidate);
     return () => {
       document.removeEventListener("visibilitychange", invalidate);
+      document.removeEventListener(WINDOW_VISIBILITY_EVENT, invalidate);
       invalidateRef.current = () => {};
       imageReadyListeners.delete(invalidate);
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
