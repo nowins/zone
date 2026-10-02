@@ -62,7 +62,7 @@ Zone 是受 Microsoft Zune 4.8 启发的本地音乐播放器，使用 Tauri 2 +
 - `npm run build`：TypeScript 检查后由 Vite 构建。
 - `npm test`（`test:visualizer`）：`tsc -p tsconfig.test.json` 后执行 `node --test tests/*.test.mjs`。纯函数和选定 hook 从 `.tmp/visualizer-tests/` 导入，新被测模块需维护编译清单；源码/CSS 守卫读取源码；React 运行时测试另用 esbuild、JSDOM、StrictMode 和可控动画时钟。
 - `cargo test --lib`：Rust 各模块内的单元测试。真实播客网络 smoke 默认忽略，仅在显式设置 `ZONE_PODCAST_LIVE=1` 后运行。
-- `npm run tauri:build` / `npm run tauri:build:store` / `npm run package:msix`：标准 NSIS、商店 NSIS 与 MSIX。两种 NSIS 输出同名会覆盖，详见发布文档。
+- `npm run tauri:build` / `npm run tauri:build:store` / `npm run package:msix`：标准 NSIS、商店 NSIS 与 MSIX。正式商店脚本检查签名和地址并单独留存版本产物；缺少条件时仅能显式生成验证包。`npm run release:check` 检查发布配置，`npm run audit:release` 检查实际 Win32 依赖，详见发布文档。
 
 ## 文档与维护
 

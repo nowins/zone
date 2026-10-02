@@ -30,7 +30,12 @@ if (-not (Get-Command winapp -ErrorAction SilentlyContinue)) {
 # 1. 构建 release exe（无安装器，MSIX 直接收 exe）
 if (-not $SkipBuild) {
   Push-Location $root
-  try { npx tauri build --no-bundle } finally { Pop-Location }
+  try {
+    node packaging/check-version.mjs
+    if ($LASTEXITCODE -ne 0) { throw "版本校验失败" }
+    npx tauri build --no-bundle
+    if ($LASTEXITCODE -ne 0) { throw "release 构建失败，停止打包，不能复用旧 exe" }
+  } finally { Pop-Location }
 }
 
 $exe = Join-Path $root "src-tauri\target\release\zone-player.exe"
@@ -44,9 +49,13 @@ if ($v.Count -gt 2) { $patch = $v[2] }
 $msixVersion = "$($v[0]).$($v[1]).$patch.0"
 
 # 3. 组装 staging 目录（exe + 盖章后的清单 + Assets）
-if (Test-Path $staging) { Remove-Item -Recurse -Force $staging }
+$resolvedStaging = [IO.Path]::GetFullPath($staging)
+$expectedStaging = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '.staging'))
+if ($resolvedStaging -ne $expectedStaging -or (Test-Path -LiteralPath $staging) -and (Get-Item -LiteralPath $staging).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) { throw "不安全的 staging 路径" }
+if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $resolvedStaging -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $staging | Out-Null
 Copy-Item $exe (Join-Path $staging "zone-player.exe")
+Copy-Item -LiteralPath (Join-Path $pkgDir "THIRD_PARTY_NOTICES.txt") -Destination (Join-Path $staging "THIRD_PARTY_NOTICES.txt")
 Copy-Item -Recurse (Join-Path $pkgDir "Assets") (Join-Path $staging "Assets")
 
 $manifestText = [System.IO.File]::ReadAllText((Join-Path $pkgDir "Package.appxmanifest"), [System.Text.Encoding]::UTF8)

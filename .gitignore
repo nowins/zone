@@ -61,6 +61,7 @@ packaging/devcert.cer
 .cache/
 .temp/
 .tmp/
+.playwright-cli/
 tmp/
 # Agent design specs / plans (local only)
 docs/

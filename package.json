@@ -14,7 +14,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "tauri:build:store": "tauri build --config src-tauri/tauri.microsoftstore.conf.json --bundles nsis",
+    "tauri:build:store": "powershell -ExecutionPolicy Bypass -File packaging/build-store.ps1",
+    "release:check": "powershell -ExecutionPolicy Bypass -File packaging/build-store.ps1 -ValidateOnly",
     "audit:release": "npm audit && node packaging/check-rust-audit.mjs",
     "notices:generate": "node packaging/generate-notices.mjs",
     "package:msix": "powershell -ExecutionPolicy Bypass -File packaging/build-msix.ps1"
