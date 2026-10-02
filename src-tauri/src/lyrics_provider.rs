@@ -17,6 +17,7 @@ pub(crate) async fn request_lyrics_provider(
   body: Option<String>,
 ) -> Result<String, String> {
   let url = validate_lyrics_provider_url(&provider_id, &url)?;
+  if provider_id == "netease" { crate::provider_health::check_netease()?; }
   let body = validate_lyrics_provider_request_body(&provider_id, &url, body)?;
   let response_limit = lyrics_provider_response_limit(&provider_id, &url);
   let timeout = Duration::from_millis(timeout_ms.clamp(1_500, 20_000));
@@ -95,6 +96,7 @@ pub(crate) async fn request_lyrics_provider(
     break response;
   };
 
+  if provider_id == "netease" { crate::provider_health::note_netease_code(response.status().as_u16() as u64)?; }
   if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
     return Err("在线歌词来源请求过于频繁，请稍后重试".to_string());
   }
@@ -135,7 +137,13 @@ pub(crate) async fn request_lyrics_provider(
     bytes.len(),
     started_at.elapsed().as_millis(),
   );
-  String::from_utf8(bytes).map_err(|_| "在线歌词响应编码无效".to_string())
+  let text = String::from_utf8(bytes).map_err(|_| "在线歌词响应编码无效".to_string())?;
+  if provider_id == "netease" {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+      crate::provider_health::note_netease_code(value.get("code").and_then(serde_json::Value::as_u64).unwrap_or(200))?;
+    }
+  }
+  Ok(text)
 }
 
 #[tauri::command]

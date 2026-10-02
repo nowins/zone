@@ -523,9 +523,11 @@ async fn request_netease_json_once<T>(
 where
   T: for<'de> Deserialize<'de>,
 {
+  crate::provider_health::check_netease()?;
   let public_response = send_public_get(url, Duration::from_secs(15), None)
     .await
     .map_err(netease_network_error)?;
+  crate::provider_health::note_netease_code(public_response.response.status().as_u16() as u64)?;
   if public_response.final_url.scheme() != "https"
     || !public_response
       .final_url
@@ -536,6 +538,9 @@ where
     return Err(format!("{label}返回了不受支持的地址"));
   }
   let bytes = read_limited(public_response.response, NETEASE_RESPONSE_LIMIT, label).await?;
+  if let Ok(value) = serde_json::from_slice::<Value>(&bytes) {
+    crate::provider_health::note_netease_code(value.get("code").and_then(Value::as_u64).unwrap_or(200))?;
+  }
   serde_json::from_slice::<T>(&bytes).map_err(|_| format!("{label}结果格式无效"))
 }
 

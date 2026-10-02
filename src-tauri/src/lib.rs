@@ -8,6 +8,7 @@ mod lyrics_provider;
 mod metadata;
 mod music;
 mod podcast;
+mod provider_health;
 mod qrc;
 mod system_media;
 mod window_mode;

@@ -59,6 +59,7 @@
 - 在线歌词请求一律经 Rust 命令 `request_lyrics_provider` 中转，前端不直接 fetch：
   - URL 白名单校验（`validate_lyrics_provider_url`）：只允许已注册的 LRCLIB、AMLL TTML DB、网易云音乐和 QQ 音乐 HTTPS 主机与固定 API 路径，无端口、禁重定向；QQ 回退搜索的查询参数也逐项校验。新增 provider 必须同时注册允许规则。
   - 超时钳制在 1.5s–20s；响应体大小有上限（`LYRICS_PROVIDER_RESPONSE_LIMIT`）；仅对 502/503/504 重试一次。
+- 网易歌词与资料补充共享原生来源冷却：HTTP 或 JSON 状态 403/405/406/429 后暂停请求 5 分钟，再允许重试；不把限制请求误记为无结果。后台资料补充同时跳过冷却来源，其他来源和本地补充继续工作。
 
 `src-tauri/src/qrc.rs` 的解密/解压必须保持输入与输出大小限制。
 

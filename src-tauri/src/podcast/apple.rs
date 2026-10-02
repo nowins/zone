@@ -122,17 +122,9 @@ fn normalize_apple_search_genres(genres: Vec<String>, primary_genre_name: Option
 }
 pub(crate) async fn browse_apple_cn(requested_limit: u8) -> Result<Vec<PodcastDiscoveryShow>, String> {
   let limit = requested_limit.clamp(1, APPLE_DISCOVERY_MAX_RESULTS);
-  let chart_url = Url::parse(&format!(
-    "https://rss.marketingtools.apple.com/api/v2/cn/podcasts/top/{limit}/podcasts.json"
-  ))
+  let chart_url = Url::parse(&apple_chart_url(limit))
   .map_err(|_| "无法构造 Apple 播客榜单地址".to_string())?;
-  let chart_response = send_public_get(chart_url, Duration::from_secs(15), None).await?;
-  let chart_bytes = read_limited(
-    chart_response.response,
-    APPLE_DISCOVERY_RESPONSE_LIMIT,
-    "Apple 播客榜单",
-  )
-  .await?;
+  let chart_bytes = request_apple_json(chart_url, APPLE_DISCOVERY_RESPONSE_LIMIT, "Apple 播客榜单").await?;
   let chart = serde_json::from_slice::<AppleDiscoveryResponse>(&chart_bytes)
     .map_err(|_| "Apple 播客榜单格式无效".to_string())?;
   let ids = chart
@@ -152,14 +144,30 @@ pub(crate) async fn browse_apple_cn(requested_limit: u8) -> Result<Vec<PodcastDi
     .query_pairs_mut()
     .append_pair("country", "CN")
     .append_pair("id", &ids.join(","));
-  let lookup_response = send_public_get(lookup_url, Duration::from_secs(15), None).await?;
-  let lookup_bytes = read_limited(
-    lookup_response.response,
-    APPLE_SEARCH_RESPONSE_LIMIT,
-    "Apple 播客目录查询",
-  )
-  .await?;
+  let lookup_bytes = request_apple_json(lookup_url, APPLE_SEARCH_RESPONSE_LIMIT, "Apple 播客目录查询").await?;
   parse_apple_discovery(chart, &lookup_bytes, limit)
+}
+
+fn apple_chart_url(limit: u8) -> String {
+  let feed_limit = if limit <= 25 { 25 } else { 50 };
+  format!("https://rss.marketingtools.apple.com/api/v2/cn/podcasts/top/{feed_limit}/podcasts.json")
+}
+
+async fn request_apple_json(url: Url, limit: usize, label: &str) -> Result<Vec<u8>, String> {
+  for attempt in 0..2 {
+    match send_public_get(url.clone(), Duration::from_secs(15), None).await {
+      Ok(response) => {
+        if attempt == 0 && matches!(response.response.status().as_u16(), 502 | 503 | 504) {
+          tokio::time::sleep(Duration::from_millis(300)).await;
+          continue;
+        }
+        return read_limited(response.response, limit, label).await;
+      }
+      Err(_) if attempt == 0 => tokio::time::sleep(Duration::from_millis(300)).await,
+      Err(error) => return Err(error),
+    }
+  }
+  Err(format!("{label}暂不可用"))
 }
 
 fn parse_apple_discovery(
@@ -241,6 +249,17 @@ fn valid_apple_catalog_id(value: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn discovery_always_uses_a_supported_upstream_limit() {
+    for limit in 1..=APPLE_DISCOVERY_MAX_RESULTS {
+      let url = apple_chart_url(limit);
+      assert!(url.ends_with("/25/podcasts.json") || url.ends_with("/50/podcasts.json"));
+      assert!(url.contains("/cn/podcasts/top/"));
+    }
+    assert!(apple_chart_url(24).ends_with("/25/podcasts.json"));
+    assert!(apple_chart_url(26).ends_with("/50/podcasts.json"));
+  }
 
   #[test]
   fn apple_discovery_keeps_chart_order_and_joins_lookup_feed_urls() {

@@ -156,7 +156,8 @@ export function useMetadataEnrichment({
     });
   }, []);
 
-  const search = useCallback(async (payload: ContextPayload, query?: string) => {
+  const providerRetryAtRef = useRef(new Map<string, number>());
+  const search = useCallback(async (payload: ContextPayload, query?: string, automatic = false) => {
     const kind = metadataKind(payload);
     const cleanQuery = query?.trim();
     const tracks = metadataInputs(payload).map((track) => {
@@ -179,9 +180,12 @@ export function useMetadataEnrichment({
         invoke<MetadataCandidate[]>("metadata_search_apple_music", { kind, tracks }),
       );
     }
-    if (enabled.has(NETEASE_MUSIC_PROVIDER_ID)) {
+    if (enabled.has(NETEASE_MUSIC_PROVIDER_ID) && (!automatic || Date.now() >= (providerRetryAtRef.current.get(NETEASE_MUSIC_PROVIDER_ID) ?? 0))) {
       requests.push(
-        invoke<MetadataCandidate[]>("metadata_search_netease_music", { kind, tracks }),
+        invoke<MetadataCandidate[]>("metadata_search_netease_music", { kind, tracks }).catch(error => {
+          if (/暂不可用|响应超时|无法连接|返回错误/.test(String(error))) providerRetryAtRef.current.set(NETEASE_MUSIC_PROVIDER_ID, Date.now() + 5 * 60 * 1000);
+          throw error;
+        }),
       );
     }
     if (requests.length === 0) {
@@ -278,7 +282,7 @@ export function useMetadataEnrichment({
     };
     try {
       const candidate = selectAutomaticArtistCandidate(
-        await search(payload),
+        await search(payload, undefined, true),
         appliedProviderIds,
       );
       if (!candidate) return false;
@@ -319,7 +323,7 @@ export function useMetadataEnrichment({
       for (const target of targets) {
         if (cancelled) return;
         const appliedProviderIds = appliedArtistProviderIds(target.profile);
-        const attemptKey = `${normalizeArtistIdentity(target.name)} ${automaticProviders.join(",")} ${[...appliedProviderIds].sort().join(",")}`;
+        const attemptKey = `${normalizeArtistIdentity(target.name)}\u0000${automaticProviders.join(",")}\u0000${[...appliedProviderIds].sort().join(",")}`;
         const now = Date.now();
         const previousAttempt = automaticArtistAttemptsRef.current.get(attemptKey) ?? 0;
         if (now - previousAttempt < AUTO_ARTIST_RETRY_MS) continue;
@@ -332,7 +336,7 @@ export function useMetadataEnrichment({
         };
         try {
           const candidate = selectAutomaticArtistCandidate(
-            await search(payload),
+            await search(payload, undefined, true),
             appliedProviderIds,
           );
           if (candidate) await apply(payload, candidate);
@@ -373,7 +377,7 @@ export function useMetadataEnrichment({
         };
         try {
           const candidate = selectAutomaticAlbumCandidate(
-            await search(payload),
+            await search(payload, undefined, true),
             appliedProviderIds,
           );
           if (candidate) await apply(payload, candidate);
