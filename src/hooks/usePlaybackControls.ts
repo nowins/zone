@@ -944,7 +944,7 @@ export function usePlaybackControls({
     setIsPlaying(false);
     if (activePodcastEpisodeRef.current) {
       setPodcastPlaybackStatus(
-        podcastStatusForPause(podcastPlaybackIntentRef.current),
+        audioRef.current?.error ? "error" : podcastStatusForPause(podcastPlaybackIntentRef.current),
       );
     }
   }
@@ -961,13 +961,13 @@ export function usePlaybackControls({
   }
 
   function handleAudioLoadStart() {
-    if (activePodcastEpisodeRef.current) setPodcastPlaybackStatus("loading");
+    if (activePodcastEpisodeRef.current) setPodcastPlaybackStatus(audioRef.current?.error ? "error" : "loading");
   }
 
   function handleAudioWaiting() {
     if (activePodcastEpisodeRef.current) {
       setPodcastPlaybackStatus(
-        podcastStatusForWaiting(podcastPlaybackIntentRef.current),
+        audioRef.current?.error ? "error" : podcastStatusForWaiting(podcastPlaybackIntentRef.current),
       );
     }
   }
@@ -975,7 +975,7 @@ export function usePlaybackControls({
   function handleAudioCanPlay() {
     if (!activePodcastEpisodeRef.current) return;
     setPodcastPlaybackStatus(
-      podcastStatusForCanPlay(
+      audioRef.current?.error ? "error" : podcastStatusForCanPlay(
         podcastPlaybackIntentRef.current,
         Boolean(audioRef.current?.paused),
       ),

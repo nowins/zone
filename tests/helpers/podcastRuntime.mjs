@@ -7,6 +7,7 @@ const runtimePath = `.tmp/podcast-runtime-${process.pid}/runtime.mjs`;
 await build({
   stdin: { contents: `
     export { usePodcastPlayback } from "./src/hooks/usePodcastPlayback";
+    export { usePlaybackControls } from "./src/hooks/usePlaybackControls";
     export { usePodcastViewModel } from "./src/views/podcast/usePodcastViewModel";
     export { setPodcastSessionSnapshot } from "./src/views/podcast/cache";
   `, resolveDir: process.cwd(), loader: "ts" },
@@ -40,6 +41,7 @@ export async function mountPodcastHook(hook, props, invoke, settings = {}, rende
   window.requestAnimationFrame = () => 1;
   window.cancelAnimationFrame = () => {};
   window.__TAURI_INTERNALS__ = { invoke };
+  window.__TAURI_INTERNALS__.convertFileSrc = (file, protocol = "asset") => `http://${protocol}.localhost/${file}`;
   localStorage.setItem("zone-podcast-playback-v1", JSON.stringify(settings));
   runtime.setPodcastSessionSnapshot(null);
   let value;
