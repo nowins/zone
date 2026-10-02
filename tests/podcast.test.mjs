@@ -1111,7 +1111,7 @@ test("podcast episodes remain outside the music queue, Track, and beat analysis"
   );
   includes(
     playPodcastSource,
-    /setActivePodcastEpisode\(\s*episode\s*\)/,
+    /setActivePodcastEpisode\(latestProgress[\s\S]*?savedProgressSeconds:\s*latestProgress\.progressSeconds/,
     "podcast playback must use its separate active state",
   );
   includes(

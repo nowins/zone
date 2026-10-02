@@ -62,6 +62,9 @@ export function usePodcastPlayback({
   const podcastProgressSaveFailedRef = useRef(false);
   const podcastProgressWriteGateRef = useRef(createPodcastProgressWriteGate());
   const podcastProgressStartedRef = useRef(new Set<string>());
+  const podcastSessionProgressRef = useRef(new Map<string, Pick<
+    PodcastEpisode, "progressSeconds" | "durationSeconds" | "completed"
+  >>());
   const podcastAutoQueueAttemptRef = useRef(0);
   const podcastSessionHydratedRef = useRef(false);
   const podcastSessionRestoreCancelledRef = useRef(false);
@@ -295,7 +298,11 @@ export function usePodcastPlayback({
       episodeId: episode.episodeId,
       positionSeconds: requestedPosition,
     });
-    setActivePodcastEpisode(episode);
+    const latestProgress = podcastSessionProgressRef.current.get(episode.episodeId);
+    setActivePodcastEpisode(latestProgress
+      ? { ...episode, ...latestProgress, savedProgressSeconds: latestProgress.progressSeconds }
+      : episode
+    );
   }
 
   function applyPodcastQueue(items: PodcastQueueItem[]) {
@@ -638,6 +645,7 @@ export function usePodcastPlayback({
         episodeId,
         played,
       });
+      rememberPodcastEpisodeProgress(detail.episode);
       updatePodcastEpisode(detail.episode);
       return detail;
     });
@@ -674,6 +682,7 @@ export function usePodcastPlayback({
         "podcast_set_episodes_played",
         { episodeIds: uniqueEpisodeIds, played },
       );
+      details.forEach((detail) => rememberPodcastEpisodeProgress(detail.episode));
       updatePodcastEpisodes(details.map((detail) => detail.episode));
     });
     podcastProgressMutationRef.current = operation.then(
@@ -871,6 +880,14 @@ export function usePodcastPlayback({
     });
   }
 
+  function rememberPodcastEpisodeProgress(episode: PodcastEpisode) {
+    podcastSessionProgressRef.current.set(episode.id, {
+      progressSeconds: episode.progressSeconds,
+      durationSeconds: episode.durationSeconds,
+      completed: episode.completed,
+    });
+  }
+
   function persistPodcastProgress(currentTime: number, trackDuration: number, force = false) {
     const episode = activePodcastEpisodeRef.current;
     if (!episode) return Promise.resolve();
@@ -879,6 +896,20 @@ export function usePodcastPlayback({
     }
     const positionSeconds = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
     const durationSeconds = Number.isFinite(trackDuration) ? Math.max(0, trackDuration) : 0;
+    // Keep every clock update, including throttled writes, independent of the
+    // view's older list snapshots. Explicit rewinds and played markers supersede it.
+    const lastSessionProgress = podcastSessionProgressRef.current.get(episode.episodeId);
+    const clampedPosition = durationSeconds > 0
+      ? Math.min(positionSeconds, durationSeconds)
+      : positionSeconds;
+    podcastSessionProgressRef.current.set(episode.episodeId, {
+      progressSeconds: !force && lastSessionProgress
+        ? Math.max(lastSessionProgress.progressSeconds, clampedPosition)
+        : clampedPosition,
+      durationSeconds: durationSeconds || lastSessionProgress?.durationSeconds || episode.durationSeconds,
+      completed: episode.completed || Boolean(lastSessionProgress?.completed)
+        || (durationSeconds > 0 && clampedPosition / durationSeconds >= 0.95),
+    });
     const now = Date.now();
     const previous = podcastProgressSaveRef.current;
     if (
