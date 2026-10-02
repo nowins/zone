@@ -34,5 +34,7 @@ export type PodcastTransportBridge = {
     audioEpisodeId: string | null,
   ) => void;
   cancelPendingQueueConsume: () => void;
+  /** Invalidate deferred continuation without discarding committed queue items. */
+  cancelPendingPodcastAutofill: () => void;
   handleEpisodeEnded: (audioDuration: number) => void;
 };

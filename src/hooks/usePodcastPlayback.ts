@@ -194,6 +194,7 @@ export function usePodcastPlayback({
   }, [activePodcastEpisode, podcastSleepTimer]);
 
   useEffect(() => () => {
+    cancelPendingPodcastAutofill();
     if (podcastSleepTimerRef.current !== null) window.clearTimeout(podcastSleepTimerRef.current);
   }, []);
 
@@ -206,6 +207,7 @@ export function usePodcastPlayback({
     const remaining = Math.max(0, podcastSleepTimer.deadlineAt - Date.now());
     podcastSleepTimerRef.current = window.setTimeout(() => {
       podcastSleepTimerRef.current = null;
+      cancelPendingPodcastAutofill();
       flushPodcastProgress();
       playbackControlsRef.current?.clearPlaybackIntent();
       audioRef.current?.pause();
@@ -229,7 +231,12 @@ export function usePodcastPlayback({
   }
 
   function clearActivePodcast() {
+    cancelPendingPodcastAutofill();
     setActivePodcastEpisode(null);
+  }
+
+  function cancelPendingPodcastAutofill() {
+    podcastAutoQueueAttemptRef.current += 1;
   }
 
   function markEpisodeCompletedOnEnd(endedDuration: number) {
@@ -1002,6 +1009,7 @@ export function usePodcastPlayback({
     flushPodcastProgress,
     consumePendingPodcastQueueEpisode,
     cancelPendingQueueConsume,
+    cancelPendingPodcastAutofill,
     handleEpisodeEnded,
   };
 

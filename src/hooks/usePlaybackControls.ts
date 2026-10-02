@@ -292,10 +292,12 @@ export function usePlaybackControls({
   }
 
   function setPlaybackIntent(value: boolean) {
+    if (!value) podcast.cancelPendingPodcastAutofill();
     podcastPlaybackIntentRef.current = value;
   }
 
   function clearPlaybackIntent() {
+    podcast.cancelPendingPodcastAutofill();
     podcastPlaybackIntentRef.current = false;
     musicPlaybackIntentRef.current = false;
     beginPlayAttempt();
@@ -981,6 +983,7 @@ export function usePlaybackControls({
   }
 
   function togglePlay() {
+    podcast.cancelPendingPodcastAutofill();
     const audio = audioRef.current;
     if (!audio || !activePlayback) return;
 

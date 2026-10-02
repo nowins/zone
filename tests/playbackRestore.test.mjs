@@ -28,7 +28,7 @@ test("restored music stays paused, restores position and explicit actions still 
     state = usePlaybackControls({ audioRef, playbackSessionRef: sessionRef, audioEngineRef: { current: engine }, showActionNotice: noop,
       tracks: library, restored: true, setTrackActivity: noop, activeTrackId, setActiveTrackId, queue, setQueue, playHistory, setPlayHistory,
       podcast: { activePodcastEpisode: null, podcastPlaybackRate: 1, podcastSessionHydrated: true, setPodcastPlaybackStatus: noop,
-        cancelPendingQueueConsume: noop, cancelPodcastSessionRestore: noop, clearActivePodcast: noop, flushPodcastProgress: noop,
+        cancelPendingQueueConsume: noop, cancelPendingPodcastAutofill: noop, cancelPodcastSessionRestore: noop, clearActivePodcast: noop, flushPodcastProgress: noop,
         persistPodcastProgress: noop, resumePodcastProgressWrites: noop, consumePendingPodcastQueueEpisode: noop, handleEpisodeEnded: noop } });
     hydrate = () => { state.restoreMusicPosition("one", 42); setLibrary(tracks); setQueue(["one", "two"]); setActiveTrackId("one"); };
     return null;
