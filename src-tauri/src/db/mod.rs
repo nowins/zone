@@ -128,35 +128,34 @@ fn import_legacy_sqlite_if_needed(
   migration_key: &str,
   tables: &[&str],
 ) -> Result<(), String> {
+  let legacy_path = paths.app_data_dir.join(legacy_file_name);
   if migration_flag_is_done(connection, migration_key)? {
-    return Ok(());
+    return archive_legacy_file(&legacy_path, &paths.legacy_dir);
   }
 
-  let legacy_path = paths.app_data_dir.join(legacy_file_name);
   if !legacy_path.exists() {
     set_migration_flag(connection, migration_key, "skipped")?;
     return Ok(());
   }
 
-  // Avoid re-importing if the unified DB already owns rows for the first table.
-  if table_has_rows(connection, tables[0])? {
-    set_migration_flag(connection, migration_key, "done")?;
-    archive_legacy_file(&legacy_path, &paths.legacy_dir)?;
-    return Ok(());
-  }
-
-  let legacy_uri = sqlite_path_uri(&legacy_path);
   connection
     .execute(
       "ATTACH DATABASE ?1 AS legacy_db",
-      rusqlite::params![legacy_uri],
+      rusqlite::params![legacy_path.to_string_lossy()],
     )
     .map_err(|error| format!("无法挂载旧数据库 {legacy_file_name}：{error}"))?;
 
   let attach_result = (|| -> Result<(), String> {
+    let transaction = connection.unchecked_transaction()
+      .map_err(|error| format!("无法开始旧数据库迁移：{error}"))?;
     for table in tables {
-      copy_table_rows(connection, table)?;
+      copy_table_rows(&transaction, table)?;
     }
+    if migration_key == "migration.podcasts_sqlite" {
+      crate::db::schema::ensure_podcast_schema(&transaction)?;
+    }
+    set_migration_flag(&transaction, migration_key, "done")?;
+    transaction.commit().map_err(|error| format!("无法提交旧数据库迁移：{error}"))?;
     Ok(())
   })();
 
@@ -167,12 +166,6 @@ fn import_legacy_sqlite_if_needed(
   attach_result?;
   detach_result?;
 
-  if migration_key == "migration.podcasts_sqlite" {
-    // Ensure newly added compatibility columns receive defaults for older rows.
-    crate::db::schema::ensure_podcast_schema(connection)?;
-  }
-
-  set_migration_flag(connection, migration_key, "done")?;
   archive_legacy_file(&legacy_path, &paths.legacy_dir)?;
   Ok(())
 }
@@ -200,7 +193,7 @@ fn copy_table_rows(connection: &Connection, table: &str) -> Result<(), String> {
     .collect::<Vec<_>>()
     .join(", ");
   let sql = format!(
-    "INSERT OR IGNORE INTO {table} ({column_list}) SELECT {column_list} FROM legacy_db.{table}"
+    "INSERT INTO {table} ({column_list}) SELECT {column_list} FROM legacy_db.{table} WHERE 1 ON CONFLICT DO NOTHING"
   );
   connection
     .execute(&sql, [])
@@ -244,14 +237,6 @@ fn table_columns(
   Ok(columns)
 }
 
-fn table_has_rows(connection: &Connection, table: &str) -> Result<bool, String> {
-  let sql = format!("SELECT EXISTS(SELECT 1 FROM {table} LIMIT 1)");
-  connection
-    .query_row(&sql, [], |row| row.get::<_, i64>(0))
-    .map(|value| value == 1)
-    .map_err(|error| format!("无法检查表 {table}：{error}"))
-}
-
 fn migration_flag_is_done(connection: &Connection, key: &str) -> Result<bool, String> {
   let value = connection
     .query_row(
@@ -292,17 +277,20 @@ fn archive_legacy_file(legacy_path: &Path, legacy_dir: &Path) -> Result<(), Stri
     .file_name()
     .and_then(|value| value.to_str())
     .unwrap_or("legacy.sqlite");
-  let destination = legacy_dir.join(format!("{file_name}.bak"));
-  if destination.exists() {
-    let _ = fs::remove_file(&destination);
+  let mut destination = legacy_dir.join(format!("{file_name}.bak"));
+  let mut suffix = 0;
+  while destination.exists() {
+    suffix += 1;
+    destination = legacy_dir.join(format!("{file_name}.{suffix}.bak"));
   }
-  fs::rename(legacy_path, &destination)
-    .or_else(|_| {
-      fs::copy(legacy_path, &destination)
-        .map(|_| ())
-        .and_then(|_| fs::remove_file(legacy_path))
-    })
+  // SQLite reads a consistent snapshot including any committed WAL pages.
+  // Never overwrite an earlier recovery backup or remove the source first.
+  let source = Connection::open_with_flags(legacy_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+    .map_err(|error| format!("无法读取旧数据库备份源：{error}"))?;
+  source.execute("VACUUM INTO ?1", rusqlite::params![destination.to_string_lossy()])
     .map_err(|error| format!("无法备份旧数据库 {file_name}：{error}"))?;
+  drop(source);
+  fs::remove_file(legacy_path).map_err(|error| format!("无法归档旧数据库 {file_name}：{error}"))?;
 
   // Best-effort cleanup of sidecar journal files.
   for suffix in ["-wal", "-shm"] {
@@ -312,15 +300,6 @@ fn archive_legacy_file(legacy_path: &Path, legacy_dir: &Path) -> Result<(), Stri
     }
   }
   Ok(())
-}
-
-fn sqlite_path_uri(path: &Path) -> String {
-  let normalized = path.to_string_lossy().replace('\\', "/");
-  if normalized.starts_with('/') {
-    format!("file:{normalized}")
-  } else {
-    format!("file:/{normalized}")
-  }
 }
 
 pub(crate) fn unix_millis() -> i64 {
@@ -348,6 +327,72 @@ impl<T> OptionalQuery<T> for Result<T, rusqlite::Error> {
 mod tests {
   use super::*;
   use rusqlite::params;
+
+  fn seed_interrupted_migration(root: &Path) -> PathBuf {
+    let path = root.join(LEGACY_PODCAST_DB_FILE_NAME);
+    let source = Connection::open(&path).unwrap();
+    source.execute_batch("CREATE TABLE podcast_feeds (id TEXT PRIMARY KEY, feed_url TEXT, title TEXT, last_fetched_at INTEGER);
+      INSERT INTO podcast_feeds VALUES ('feed-one', 'https://example.test/feed', '旧节目', 1);
+      CREATE TABLE podcast_episodes (id TEXT PRIMARY KEY, feed_id TEXT, identity_key TEXT, title TEXT, enclosure_url TEXT);
+      INSERT INTO podcast_episodes VALUES ('episode-one', 'feed-one', 'ep1', '旧单集', 'https://example.test/a.mp3');").unwrap();
+    path
+  }
+
+  #[test]
+  fn interrupted_import_rolls_back_and_retries_all_tables() {
+    let root = test_root("atomic-import");
+    let source = seed_interrupted_migration(&root);
+    let target = open_zone_database(&root.join(ZONE_DB_FILE_NAME)).unwrap();
+    target.execute_batch("CREATE TRIGGER fail_import BEFORE INSERT ON podcast_episodes BEGIN SELECT RAISE(ABORT, 'injected failure'); END;").unwrap();
+    assert!(initialize_zone_database(&root).is_err());
+    assert!(source.exists());
+    assert!(!migration_flag_is_done(&target, "migration.podcasts_sqlite").unwrap());
+    assert_eq!(target.query_row("SELECT COUNT(*) FROM podcast_feeds", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    target.execute_batch("DROP TRIGGER fail_import").unwrap();
+    // Recover partial writes made by an earlier version; first-table rows are
+    // not evidence that all later tables have already migrated.
+    target.execute_batch("INSERT INTO podcast_feeds (id, feed_url, title, last_fetched_at) VALUES ('feed-one', 'https://example.test/feed', '已更新节目', 1);").unwrap();
+    initialize_zone_database(&root).unwrap();
+    assert_eq!(target.query_row("SELECT COUNT(*) FROM podcast_episodes", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+    assert_eq!(target.query_row("SELECT title FROM podcast_feeds", [], |r| r.get::<_, String>(0)).unwrap(), "已更新节目");
+    assert!(migration_flag_is_done(&target, "migration.podcasts_sqlite").unwrap());
+    assert!(!source.exists());
+    let backup = Connection::open(root.join("legacy/podcasts.sqlite.bak")).unwrap();
+    assert_eq!(backup.query_row("SELECT COUNT(*) FROM podcast_episodes", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+  }
+
+  #[test]
+  fn committed_import_retries_archival_and_keeps_previous_backups() {
+    let root = test_root("archive-retry");
+    let source = seed_interrupted_migration(&root);
+    let paths = ZoneDbPaths::from_app_data_dir(&root);
+    fs::write(&paths.legacy_dir, b"injected directory failure").unwrap();
+    let target = open_zone_database(&paths.db_path).unwrap();
+    let tables = ["podcast_feeds", "podcast_episodes"];
+    assert!(import_legacy_sqlite_if_needed(&target, &paths, LEGACY_PODCAST_DB_FILE_NAME, "migration.podcasts_sqlite", &tables).is_err());
+    assert!(source.exists());
+    assert!(migration_flag_is_done(&target, "migration.podcasts_sqlite").unwrap());
+    fs::remove_file(&paths.legacy_dir).unwrap();
+    fs::create_dir(&paths.legacy_dir).unwrap();
+    fs::write(paths.legacy_dir.join("podcasts.sqlite.bak"), b"previous recovery backup").unwrap();
+    import_legacy_sqlite_if_needed(&target, &paths, LEGACY_PODCAST_DB_FILE_NAME, "migration.podcasts_sqlite", &tables).unwrap();
+    assert!(!source.exists());
+    assert_eq!(fs::read(paths.legacy_dir.join("podcasts.sqlite.bak")).unwrap(), b"previous recovery backup");
+    let backup = Connection::open(paths.legacy_dir.join("podcasts.sqlite.1.bak")).unwrap();
+    assert_eq!(backup.query_row("SELECT COUNT(*) FROM podcast_episodes", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+  }
+
+  #[test]
+  fn archival_snapshot_includes_committed_wal_pages() {
+    let root = test_root("wal-archive");
+    let source_path = root.join(LEGACY_PODCAST_DB_FILE_NAME);
+    let source = Connection::open(&source_path).unwrap();
+    source.execute_batch("PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;
+      CREATE TABLE wal_test (value TEXT); INSERT INTO wal_test VALUES ('committed');").unwrap();
+    let _ = archive_legacy_file(&source_path, &root.join("legacy"));
+    let backup = Connection::open(root.join("legacy/podcasts.sqlite.bak")).unwrap();
+    assert_eq!(backup.query_row("SELECT value FROM wal_test", [], |r| r.get::<_, String>(0)).unwrap(), "committed");
+  }
 
   fn test_root(name: &str) -> PathBuf {
     let stamp = SystemTime::now()
