@@ -9,6 +9,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Import-Module Hyper-V -ErrorAction Stop
+. (Join-Path $PSScriptRoot 'hyperv-vm-state.ps1')
 $root = Split-Path -Parent $PSScriptRoot
 if ($Inventory) {
   Get-VM | Select-Object Name,Id,State,Generation,Notes | ConvertTo-Json -Depth 4
@@ -64,7 +65,7 @@ foreach ($target in $targets) {
   try {
     # All matrix members have passed preflight before the first mutation.
     Restore-VMSnapshot -VMSnapshot $target.checkpoint -Confirm:$false
-    if ((Get-VM -Id $target.vm.Id).State -eq 'Off') { Start-VM -VM $target.vm | Out-Null }
+    Start-MsixTestVM $target.vm
     $deadline = (Get-Date).AddMinutes(5)
     do {
       try { $session = New-PSSession -VMId $target.vm.Id -Credential $target.credential -ErrorAction Stop } catch { Start-Sleep -Seconds 3 }

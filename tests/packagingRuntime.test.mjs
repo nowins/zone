@@ -162,3 +162,24 @@ test('offline WebView2 staging rejects arbitrary destinations before downloading
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /Rejected arbitrary destination/);
 });
+
+test('restored test VMs start from saved state, resume paused state and reject unrelated VMs', { skip: process.platform !== 'win32' }, () => {
+  const helper = resolve('packaging/hyperv-vm-state.ps1').replaceAll("'", "''");
+  const result = powershell(`
+    . '${helper}'
+    $global:started = 0; $global:resumed = 0
+    $fixture = [pscustomobject]@{ Id = [Guid]::NewGuid(); Notes = 'Zone MSIX disposable test VM'; State = 'Saved' }
+    function Get-VM { $fixture }
+    function Start-VM { $global:started++ }
+    function Resume-VM { $global:resumed++ }
+    foreach ($state in @('Saved','Off','Paused','Running')) { $fixture.State = $state; Start-MsixTestVM $fixture }
+    if ($started -ne 2 -or $resumed -ne 1) { throw 'Restore state was not handled correctly' }
+    $fixture.Notes = 'Unrelated VM'; $fixture.State = 'Saved'
+    try { Start-MsixTestVM $fixture; throw 'Unrelated VM accepted' }
+    catch { if ($_.Exception.Message -notmatch '专用测试标记') { throw } }
+    if ($started -ne 2 -or $resumed -ne 1) { throw 'Unrelated VM was changed' }
+    Write-Output 'Restored saved and paused states handled; unrelated VM rejected'
+  `);
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /Restored saved and paused states handled/);
+});
