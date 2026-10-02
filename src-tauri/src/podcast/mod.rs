@@ -14,6 +14,7 @@ mod feed_parse;
 mod network;
 mod query;
 mod queue;
+mod session;
 mod store;
 mod stream_protocol;
 mod types;
@@ -24,6 +25,7 @@ pub(crate) mod test_support;
 pub use artwork_protocol::serve_podcast_artwork_protocol;
 pub(crate) use artwork_protocol::cache_podcast_artwork_file;
 pub use commands::*;
+pub use session::*;
 pub use stream_protocol::serve_podcast_stream_protocol;
 pub use types::*;
 

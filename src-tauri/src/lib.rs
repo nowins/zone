@@ -313,6 +313,8 @@ pub fn run() {
       podcast::podcast_clear_completed_downloads,
       podcast::podcast_cache_artwork,
       podcast::podcast_save_progress,
+      podcast::podcast_load_active_episode,
+      podcast::podcast_save_active_episode,
     ])
     .run(tauri::generate_context!())
     .expect("error while running Zone");

@@ -68,6 +68,11 @@ export function usePodcastPlayback({
   const podcastAutoQueueAttemptRef = useRef(0);
   const podcastSessionHydratedRef = useRef(false);
   const podcastSessionRestoreCancelledRef = useRef(false);
+  const podcastActiveSessionMutationRef = useRef<Promise<void>>(Promise.resolve());
+  const podcastActiveSessionRevisionRef = useRef(0);
+  const podcastActiveSessionSaveFailedRef = useRef(false);
+  const podcastActiveSessionRetryRef = useRef<number | null>(null);
+  const podcastActiveSessionMountedRef = useRef(false);
   const podcastSleepTimerRef = useRef<number | null>(null);
   const [activePodcastEpisode, setActivePodcastEpisode] = useState<PodcastPlayback | null>(null);
   const [podcastQueue, setPodcastQueue] = useState<PodcastQueueItem[]>([]);
@@ -84,9 +89,19 @@ export function usePodcastPlayback({
   const [podcastSleepTimer, setPodcastSleepTimer] = useState<PodcastSleepTimer>(null);
   const [podcastPlaybackStatus, setPodcastPlaybackStatus] = useState<PodcastPlaybackStatus>("idle");
   const [podcastSessionHydrated, setPodcastSessionHydrated] = useState(false);
+  const [podcastActiveSessionReady, setPodcastActiveSessionReady] = useState(false);
   activePodcastEpisodeRef.current = activePodcastEpisode;
   podcastQueueRef.current = podcastQueue;
   podcastAutoQueueModeRef.current = podcastAutoQueueMode;
+
+  useEffect(() => {
+    podcastActiveSessionMountedRef.current = true;
+    return () => {
+      podcastActiveSessionMountedRef.current = false;
+      if (podcastActiveSessionRetryRef.current !== null) window.clearTimeout(podcastActiveSessionRetryRef.current);
+      podcastActiveSessionRetryRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -107,13 +122,22 @@ export function usePodcastPlayback({
 
   useEffect(() => {
     let disposed = false;
-    const episodeId = readPodcastActiveEpisodeId();
-    if (!episodeId) {
-      podcastSessionHydratedRef.current = true;
-      setPodcastSessionHydrated(true);
-      return;
-    }
-    void invoke<PodcastEpisodeDetail>("podcast_get_episode_detail", { episodeId })
+    const loadEpisode = async () => {
+      let episodeId = readPodcastActiveEpisodeId();
+      try {
+        const session = await invoke<{ activeEpisodeId: string | null } | null>("podcast_load_active_episode");
+        if (disposed) return null;
+        setPodcastActiveSessionReady(true);
+        if (session) episodeId = session.activeEpisodeId;
+      } catch {
+        if (disposed) return null;
+        // Preserve the native record and disable automatic writes on failed recovery.
+        recordDiagnostic({ domain: "podcast", event: "session_restore", outcome: "error" });
+      }
+      if (disposed || podcastSessionRestoreCancelledRef.current || activePodcastEpisodeRef.current) return null;
+      return episodeId ? invoke<PodcastEpisodeDetail>("podcast_get_episode_detail", { episodeId }) : null;
+    };
+    void loadEpisode()
       .then((detail) => {
         if (disposed) return;
         podcastSessionHydratedRef.current = true;
@@ -125,8 +149,10 @@ export function usePodcastPlayback({
           return;
         }
         // Restore paused: transport intent defaults false; do not arm play.
-        setActivePodcastEpisode(podcastPlaybackForEpisode(detail.episode));
-        setPodcastPlaybackStatus("paused");
+        if (detail) {
+          setActivePodcastEpisode(podcastPlaybackForEpisode(detail.episode));
+          setPodcastPlaybackStatus("paused");
+        }
         setPodcastSessionHydrated(true);
       })
       .catch((reason) => {
@@ -139,6 +165,7 @@ export function usePodcastPlayback({
           });
           return;
         }
+        setPodcastActiveSessionReady(false);
         patchPodcastPlaybackSettings({ activeEpisodeId: null });
         if (import.meta.env.DEV) {
           console.warn("[podcast] playback session restore failed", reason);
@@ -163,7 +190,38 @@ export function usePodcastPlayback({
     activePodcastEpisode?.episodeId,
     podcastAutoQueueMode,
     podcastPlaybackRate,
+    podcastSessionHydrated,
   ]);
+
+  useEffect(() => {
+    if (podcastActiveSessionReady && podcastSessionHydrated) {
+      persistPodcastActiveSession(activePodcastEpisode?.episodeId ?? null);
+    }
+  }, [activePodcastEpisode?.episodeId, podcastActiveSessionReady, podcastSessionHydrated]);
+
+  function persistPodcastActiveSession(episodeId: string | null) {
+    const revision = ++podcastActiveSessionRevisionRef.current;
+    podcastActiveSessionMutationRef.current = podcastActiveSessionMutationRef.current.then(async () => {
+      if (revision !== podcastActiveSessionRevisionRef.current) return;
+      await invoke("podcast_save_active_episode", { episodeId });
+      podcastActiveSessionSaveFailedRef.current = false;
+      if (podcastActiveSessionRetryRef.current !== null) window.clearTimeout(podcastActiveSessionRetryRef.current);
+      podcastActiveSessionRetryRef.current = null;
+    }).catch(() => {
+      recordDiagnostic({ domain: "podcast", event: "session_save", outcome: "error" });
+      if (!podcastActiveSessionMountedRef.current) return;
+      if (!podcastActiveSessionSaveFailedRef.current) showActionNotice("当前单集保存失败，将自动重试");
+      podcastActiveSessionSaveFailedRef.current = true;
+      if (podcastActiveSessionRetryRef.current === null) {
+        podcastActiveSessionRetryRef.current = window.setTimeout(() => {
+          podcastActiveSessionRetryRef.current = null;
+          if (podcastActiveSessionMountedRef.current && podcastActiveSessionSaveFailedRef.current) {
+            persistPodcastActiveSession(activePodcastEpisodeRef.current?.episodeId ?? null);
+          }
+        }, PODCAST_PROGRESS_SAVE_INTERVAL_MS);
+      }
+    });
+  }
 
   useEffect(() => {
     const episodeId = activePodcastEpisode?.episodeId;
@@ -956,6 +1014,9 @@ export function usePodcastPlayback({
         durationSeconds,
         force,
       });
+      if (podcastActiveSessionReady && podcastActiveSessionSaveFailedRef.current) {
+        persistPodcastActiveSession(activePodcastEpisodeRef.current?.episodeId ?? null);
+      }
       if (
         positionSeconds > 0
         && episode.progressSeconds <= 0

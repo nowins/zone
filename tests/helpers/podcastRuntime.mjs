@@ -57,7 +57,7 @@ export async function mountPodcastHook(hook, props, invoke, settings = {}, rende
   };
 }
 
-export async function mountPodcastPlayback(invoke, settings = {}) {
+export async function mountPodcastPlayback(invoke, settings = {}, session = {}) {
   const audioRef = { current: { currentTime: 0, duration: 1000, paused: true, ended: false,
     pause() { this.paused = true; } } };
   const armed = [];
@@ -73,7 +73,11 @@ export async function mountPodcastPlayback(invoke, settings = {}) {
   const mounted = await mountPodcastHook(runtime.usePodcastPlayback, {
     audioRef, playbackControlsRef, playbackSessionRef: { current: null }, requestNavigation() {},
     showActionNotice: (message) => notices.push(message),
-  }, invoke, settings);
+  }, async (command, args) => {
+    if (command === "podcast_load_active_episode") return session.load ? session.load() : null;
+    if (command === "podcast_save_active_episode") return session.save?.(args.episodeId);
+    return invoke(command, args);
+  }, settings);
   return { ...mounted, get api() { return mounted.api; }, audioRef, playbackControlsRef,
     armed, notices, get intent() { return intent; } };
 }

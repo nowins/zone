@@ -728,8 +728,13 @@ test("podcast playback handles speed, sleep, buffering, and errors on the shared
   );
   includes(
     appSource,
-    /const episodeId\s*=\s*readPodcastActiveEpisodeId\(\)/,
-    "the last active episode must restore paused across app restarts",
+    /let episodeId\s*=\s*readPodcastActiveEpisodeId\(\)/,
+    "older WebView active episode settings remain a migration fallback",
+  );
+  includes(
+    appSource,
+    /podcast_load_active_episode[\s\S]{0,400}if\s*\(session\)\s*episodeId\s*=\s*session\.activeEpisodeId/,
+    "the durable native current episode must take precedence during paused restore",
   );
   includes(
     appSource,
