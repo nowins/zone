@@ -691,6 +691,15 @@ export function usePodcastViewModel({
     [onEpisodeUpdated],
   );
 
+  function applyEpisodeDetailUpdate(nextDetail: PodcastEpisodeDetail) {
+    // A mutation can finish after navigation to another episode. Keep its
+    // shared library update, but only replace a detail that still owns this ID.
+    setSelectedEpisodeDetail((current) =>
+      current?.episode.id === nextDetail.episode.id ? nextDetail : current
+    );
+    applyEpisodeUpdate(nextDetail.episode);
+  }
+
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
@@ -1716,8 +1725,7 @@ export function usePodcastViewModel({
     setError(null);
     try {
       const nextDetail = await podcastApi.deleteEpisodeDownload(detail.episode.id);
-      setSelectedEpisodeDetail(nextDetail);
-      applyEpisodeUpdate(nextDetail.episode);
+      applyEpisodeDetailUpdate(nextDetail);
       setNotice("已删除离线文件");
       await loadHome();
     } catch (reason) {
@@ -1734,8 +1742,7 @@ export function usePodcastViewModel({
     setError(null);
     try {
       const nextDetail = await podcastApi.setEpisodeSaved(detail.episode.id, nextSaved);
-      setSelectedEpisodeDetail(nextDetail);
-      applyEpisodeUpdate(nextDetail.episode);
+      applyEpisodeDetailUpdate(nextDetail);
       setNotice(nextSaved ? "已加入稍后听" : "已从稍后听移除");
       await loadHome();
     } catch (reason) {
@@ -1755,8 +1762,7 @@ export function usePodcastViewModel({
         detail.episode.id,
         nextPlayed,
       );
-      setSelectedEpisodeDetail(nextDetail);
-      applyEpisodeUpdate(nextDetail.episode);
+      applyEpisodeDetailUpdate(nextDetail);
       setNotice(nextPlayed ? "已标记为已播放" : "已标记为未播放");
       await loadHome();
     } catch (reason) {

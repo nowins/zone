@@ -31,7 +31,7 @@ export const podcastPlayback = (episode) => ({ ...episode, episodeId: episode.id
 export const podcastDetail = (episode) => ({ episode, feed: podcastFeed, saved: episode.saved,
   hasChapters: false, transcriptCount: 0 });
 
-export async function mountPodcastHook(hook, props, invoke, settings = {}) {
+export async function mountPodcastHook(hook, props, invoke, settings = {}, renderView = () => null) {
   const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost" });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -43,7 +43,7 @@ export async function mountPodcastHook(hook, props, invoke, settings = {}) {
   localStorage.setItem("zone-podcast-playback-v1", JSON.stringify(settings));
   runtime.setPodcastSessionSnapshot(null);
   let value;
-  function Harness() { value = hook(props); return null; }
+  function Harness() { value = hook(props); return renderView(value); }
   const root = createRoot(document.getElementById("root"));
   await step(() => root.render(React.createElement(React.StrictMode, null, React.createElement(Harness))));
   return { get api() { return value; }, dom,
