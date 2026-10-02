@@ -1,6 +1,6 @@
 [package]
 name = "zone-player"
-version = "0.1.1"
+version = "1.0.0"
 description = "A Zune-inspired local music player"
 authors = ["Zone"]
 edition = "2021"

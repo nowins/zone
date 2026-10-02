@@ -19,10 +19,10 @@ cargo test --lib
 
 ## 安装与发布
 
-当前版本为 0.1.1，首发准备使用 Microsoft Store 的 Win32 NSIS 安装包。版本更新使用 `npm run version:set -- <版本号>`。
+当前版本为 1.0.0，首发优先使用 Microsoft Store 的 MSIX 包。版本更新使用 `npm run version:set -- <版本号>`。
 
 正式构建、签名、安装包托管、验证包与 MSIX 的步骤见 [安装与发布](packaging/README.md)。正式提交前运行 `npm run release:check`；完整依赖扫描使用 `npm run audit:release`，需要预先安装 `cargo-audit`（`cargo install cargo-audit --locked`）。第三方许可通过 `npm run notices:generate` 维护并随应用分发。
 
-没有正式签名与发布地址时，只能生成验证包。当前没有后台自动升级服务，设置中的反馈与新版下载入口由发布配置提供。
+MSIX 商店负责正式签名、托管和更新分发。当前缺少 Partner Center 产品标识时，`npm run package:msix` 生成独立身份的本地验证包；`npm run package:msix:store` 用于商店上传。Hyper-V 生命周期测试入口为 `npm run test:msix:hyperv`，需要专用 Windows 10/11 测试系统，见发布文档。
 
 项目规则见 [AGENTS.md](AGENTS.md)，架构入口见 [代码导航](design/engineering/architecture.md)，版本变化见 [更新记录](CHANGELOG.md)。

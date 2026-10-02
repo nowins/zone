@@ -16,7 +16,7 @@
 
   <Identity
     Name="ZonePlayer"
-    Version="0.1.0.0"
+    Version="1.0.0.0"
     Publisher="CN=Zone Project"
     ProcessorArchitecture="x64" />
 

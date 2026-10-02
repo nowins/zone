@@ -1,98 +1,135 @@
-﻿# Zone MSIX 打包脚本（Windows 商店路线 B / 旁加载测试）。
-#
-# 用法：
-#   npm run package:msix                      # 完整构建并打包，自动生成开发证书签名
-#   .\packaging\build-msix.ps1 -SkipBuild     # 复用已有 release exe 重新打包
-#   .\packaging\build-msix.ps1 -Cert my.pfx -CertPassword ****   # 用指定证书签名
-#
-# 前置：winget install --id Microsoft.WinAppCli -e（winapp CLI 0.6+）
-# 上架商店前：把 packaging/Package.appxmanifest 里的 Identity Name/Publisher
-# 改成 Partner Center 分配的值（或用 -PackageName / -Publisher 参数覆盖）。
-
+﻿# Build unsigned Store-upload packages or signed development packages for isolated testing.
 param(
-  [string]$Cert = "",
-  [string]$CertPassword = "password",
-  [string]$PackageName = "",
-  [string]$Publisher = "",
+  [string]$Cert = '',
+  [string]$CertPassword = 'password',
+  [string]$PackageName = $env:ZONE_MSIX_PACKAGE_NAME,
+  [string]$Publisher = $env:ZONE_MSIX_PUBLISHER,
+  [string]$PublisherDisplayName = $env:ZONE_MSIX_PUBLISHER_DISPLAY_NAME,
+  [switch]$ForStore,
+  [switch]$ValidateOnly,
   [switch]$SkipBuild
 )
-
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$pkgDir = $PSScriptRoot
-$staging = Join-Path $pkgDir ".staging"
-$distDir = Join-Path $pkgDir "dist"
-
-if (-not (Get-Command winapp -ErrorAction SilentlyContinue)) {
-  throw "未找到 winapp CLI。请先安装：winget install --id Microsoft.WinAppCli -e"
+$conf = Get-Content -LiteralPath (Join-Path $root 'src-tauri/tauri.conf.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+[xml]$manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Package.appxmanifest') -Raw -Encoding UTF8
+$missing = [Collections.Generic.List[string]]::new()
+if ($ForStore) {
+  if (-not $PackageName) { $missing.Add('ZONE_MSIX_PACKAGE_NAME') }
+  if (-not $Publisher) { $missing.Add('ZONE_MSIX_PUBLISHER') }
+  if (-not $PublisherDisplayName) { $missing.Add('ZONE_MSIX_PUBLISHER_DISPLAY_NAME') }
+  if ($Cert) { throw '商店 MSIX 由微软签名；不要传入本机开发证书。' }
+  if ($SkipBuild) { throw '商店 MSIX 必须完整构建，不能使用 SkipBuild。' }
+} elseif (-not $PackageName -and -not $Publisher -and -not $PublisherDisplayName) {
+  $PackageName = 'ZonePlayer.Validation'
+  $Publisher = 'CN=Zone MSIX Validation'
+  $PublisherDisplayName = 'Zone 本地测试'
 }
-
-# 1. 构建 release exe（无安装器，MSIX 直接收 exe）
-if (-not $SkipBuild) {
-  Push-Location $root
-  try {
-    node packaging/check-version.mjs
-    if ($LASTEXITCODE -ne 0) { throw "版本校验失败" }
-    npx tauri build --no-bundle
-    if ($LASTEXITCODE -ne 0) { throw "release 构建失败，停止打包，不能复用旧 exe" }
-  } finally { Pop-Location }
+if (-not $ForStore -and (-not $PackageName -or -not $Publisher -or -not $PublisherDisplayName)) {
+  throw '自定义 MSIX 标识时必须同时指定 PackageName、Publisher 和 PublisherDisplayName。'
 }
-
-$exe = Join-Path $root "src-tauri\target\release\zone-player.exe"
-if (-not (Test-Path $exe)) { throw "未找到 $exe，请先去掉 -SkipBuild 完整构建。" }
-
-# 2. 版本号：tauri.conf.json 的三段式转 MSIX 要求的四段式
-$conf = [System.IO.File]::ReadAllText((Join-Path $root "src-tauri\tauri.conf.json"), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
-$v = $conf.version.Split(".")
-$patch = "0"
-if ($v.Count -gt 2) { $patch = $v[2] }
-$msixVersion = "$($v[0]).$($v[1]).$patch.0"
-
-# 3. 组装 staging 目录（exe + 盖章后的清单 + Assets）
-$resolvedStaging = [IO.Path]::GetFullPath($staging)
-$expectedStaging = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '.staging'))
-if ($resolvedStaging -ne $expectedStaging -or (Test-Path -LiteralPath $staging) -and (Get-Item -LiteralPath $staging).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) { throw "不安全的 staging 路径" }
-if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $resolvedStaging -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $staging | Out-Null
-Copy-Item $exe (Join-Path $staging "zone-player.exe")
-Copy-Item -LiteralPath (Join-Path $pkgDir "THIRD_PARTY_NOTICES.txt") -Destination (Join-Path $staging "THIRD_PARTY_NOTICES.txt")
-Copy-Item -Recurse (Join-Path $pkgDir "Assets") (Join-Path $staging "Assets")
-
-$manifestText = [System.IO.File]::ReadAllText((Join-Path $pkgDir "Package.appxmanifest"), [System.Text.Encoding]::UTF8)
-# 只在 <Identity> 标签内盖章，避免误伤 XML 声明、TargetDeviceFamily 与 Capability
-$identity = [regex]::Match($manifestText, '<Identity[^>]*>')
-$newIdentity = $identity.Value -replace 'Version="[0-9.]+"', "Version=`"$msixVersion`""
-if ($PackageName) {
-  $newIdentity = $newIdentity -replace 'Name="[^"]+"', "Name=`"$PackageName`""
-}
-if ($Publisher) {
-  $newIdentity = $newIdentity -replace 'Publisher="[^"]+"', "Publisher=`"$Publisher`""
-}
-$manifestText = $manifestText.Replace($identity.Value, $newIdentity)
-$stagingManifest = Join-Path $staging "Package.appxmanifest"
-[System.IO.File]::WriteAllText($stagingManifest, $manifestText, (New-Object System.Text.UTF8Encoding($false)))
-
-$publisherDn = ([regex]::Match($manifestText, 'Publisher="([^"]+)"')).Groups[1].Value
-if (-not $publisherDn) { throw "清单中未找到 Identity Publisher。" }
-
-# 4. 签名证书：默认按清单 Publisher 生成/复用开发证书
-if (-not $Cert) {
-  $Cert = Join-Path $pkgDir "devcert.pfx"
-  if (-not (Test-Path $Cert)) {
-    winapp cert generate --publisher $publisherDn --output $Cert --password $CertPassword --export-cer
-    if ($LASTEXITCODE -ne 0) { throw "winapp cert generate 失败" }
-    Write-Host "已生成开发证书 $Cert（默认密码 password，仅用于本机测试）"
-    Write-Host "旁加载安装前需信任证书（管理员）：winapp cert install `"$Cert`""
+$links = @{}
+foreach ($key in @('PRIVACY', 'SUPPORT', 'DOWNLOAD', 'WEBSITE')) {
+  $value = [Environment]::GetEnvironmentVariable('ZONE_' + $key + '_URL')
+  if (-not $value) {
+    if ($ForStore -and $key -in @('PRIVACY', 'SUPPORT')) { $missing.Add("ZONE_$($key)_URL") }
+    continue
   }
+  $uri = $null
+  if (-not [Uri]::TryCreate($value, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne 'https' -or $uri.UserInfo -or $uri.IsLoopback -or $uri.HostNameType -eq 'Unknown') {
+    throw "ZONE_$($key)_URL 必须是无账户信息的公开 HTTPS 地址。"
+  }
+  $links[$key] = $uri.AbsoluteUri
 }
-
-# 5. 打包
-New-Item -ItemType Directory -Force -Path $distDir | Out-Null
-$out = Join-Path $distDir "Zone_${msixVersion}_x64.msix"
-winapp package $staging --manifest $stagingManifest --cert $Cert --cert-password $CertPassword --skip-pri --output $out
-if ($LASTEXITCODE -ne 0) { throw "winapp package 失败" }
-
-Write-Host ""
-Write-Host "MSIX 已生成：$out"
-Write-Host "本机旁加载：Add-AppxPackage `"$out`"（需先信任签名证书）"
-
+if ($missing.Count) { throw "商店 MSIX 配置尚未齐备：" + [Environment]::NewLine + ($missing -join [Environment]::NewLine) }
+if ($PackageName -notmatch '^[A-Za-z0-9][A-Za-z0-9.-]{2,49}$') { throw 'MSIX PackageName 格式无效。' }
+try { $dn = [Security.Cryptography.X509Certificates.X500DistinguishedName]::new($Publisher) }
+catch { throw 'MSIX Publisher 必须是 Partner Center 提供的 X.500 发布者标识。' }
+if ($Publisher -notmatch '(^|,\s*)CN=') { throw 'MSIX Publisher 必须包含 CN。' }
+if ($ForStore -and ($PackageName -in @('ZonePlayer', 'ZonePlayer.Validation') -or $Publisher -in @('CN=Zone Project', 'CN=Zone MSIX Validation'))) {
+  throw '商店 MSIX 不能使用占位或本地测试标识；请复制 Partner Center 产品标识。'
+}
+$parts = $conf.version.Split('.')
+if ($parts.Count -ne 3 -or @($parts | Where-Object { $_ -notmatch '^\d+$' -or [decimal]$_ -gt 65535 }).Count) { throw 'MSIX 版本必须为三段 0–65535 整数。' }
+if ($ForStore -and [int]$parts[0] -eq 0) { throw '商店 MSIX 版本第一段必须非零。' }
+$msixVersion = "$($conf.version).0"
+Push-Location $root
+try {
+  node packaging/check-version.mjs
+  if ($LASTEXITCODE -ne 0) { throw '版本校验失败。' }
+  if ($ValidateOnly) { Write-Host "MSIX 配置校验完成：$PackageName / $msixVersion"; return }
+  if (-not (Get-Command winapp -ErrorAction SilentlyContinue)) { throw '未找到 winapp CLI。请安装 Microsoft.WinAppCLI（0.6 或更新版）。' }
+  if ($ForStore) {
+    npm run audit:release
+    if ($LASTEXITCODE -ne 0) { throw '发布依赖安全检查失败。' }
+  }
+  if (-not $SkipBuild) {
+    $previousLinks = @{}
+    try {
+      foreach ($key in $links.Keys) {
+        $name = "VITE_ZONE_$($key)_URL"
+        $previousLinks[$name] = [Environment]::GetEnvironmentVariable($name)
+        [Environment]::SetEnvironmentVariable($name, $links[$key])
+      }
+      npx tauri build --no-bundle
+      if ($LASTEXITCODE -ne 0) { throw 'release 构建失败，停止打包，不能复用旧 exe。' }
+    } finally { foreach ($name in $previousLinks.Keys) { [Environment]::SetEnvironmentVariable($name, $previousLinks[$name]) } }
+  }
+  $exe = Join-Path $root 'src-tauri/target/release/zone-player.exe'
+  if (-not (Test-Path -LiteralPath $exe)) { throw '缺少 release exe。' }
+  if ([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion -ne $conf.version) { throw 'release exe 版本与配置不符，不能复用旧 exe。' }
+  $runId = [Guid]::NewGuid().ToString('N')
+  $staging = Join-Path $root ".tmp/msix-build/$runId"
+  New-Item -ItemType Directory -Path $staging -Force | Out-Null
+  Copy-Item -LiteralPath $exe -Destination (Join-Path $staging 'zone-player.exe')
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'THIRD_PARTY_NOTICES.txt') -Destination $staging
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Assets') -Destination $staging -Recurse
+  $manifest.Package.Identity.SetAttribute('Name', $PackageName)
+  $manifest.Package.Identity.SetAttribute('Publisher', $Publisher)
+  $manifest.Package.Identity.SetAttribute('Version', $msixVersion)
+  $manifest.Package.Properties.PublisherDisplayName = $PublisherDisplayName
+  $stagingManifest = Join-Path $staging 'Package.appxmanifest'
+  $manifest.Save($stagingManifest)
+  $mode = if ($ForStore) { 'store' } else { 'development' }
+  $outDir = Join-Path $PSScriptRoot "dist/msix/$mode/$msixVersion/$runId"
+  New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+  $out = Join-Path $outDir "Zone_$($msixVersion)_x64.msix"
+  $arguments = @('package', $staging, '--manifest', $stagingManifest, '--skip-pri', '--output', $out)
+  if (-not $ForStore) {
+    if (-not $Cert) {
+      $certDir = Join-Path $root '.tmp/msix-certificates'
+      New-Item -ItemType Directory -Path $certDir -Force | Out-Null
+      $sha = [Security.Cryptography.SHA256]::Create()
+      try { $certId = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Publisher))).Replace('-', '').Substring(0, 16) }
+      finally { $sha.Dispose() }
+      $Cert = Join-Path $certDir "$certId.pfx"
+      if (-not (Test-Path -LiteralPath $Cert)) {
+        winapp cert generate --publisher $Publisher --output $Cert --password $CertPassword --export-cer
+        if ($LASTEXITCODE -ne 0) { throw '开发证书生成失败。' }
+      }
+    }
+    $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new([IO.File]::ReadAllBytes($Cert), $CertPassword)
+    try {
+      if (-not $certificate.HasPrivateKey -or $certificate.Subject -ne $dn.Name -or $certificate.NotAfter -le (Get-Date) -or $certificate.NotBefore -gt (Get-Date)) { throw '开发证书私钥、有效期或发布者与清单不符。' }
+      [IO.File]::WriteAllBytes((Join-Path $outDir 'development.cer'), $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+    } finally { $certificate.Dispose() }
+    $arguments += @('--cert', $Cert, '--cert-password', $CertPassword)
+  }
+  winapp @arguments
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $out)) { throw 'MSIX 打包失败。' }
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $zip = [IO.Compression.ZipFile]::OpenRead($out)
+  try {
+    $signed = $null -ne $zip.GetEntry('AppxSignature.p7x')
+    if (($ForStore -and $signed) -or (-not $ForStore -and -not $signed)) { throw 'MSIX 签名模式与构建用途不符。' }
+    foreach ($file in @('AppxManifest.xml', 'zone-player.exe', 'THIRD_PARTY_NOTICES.txt')) { if (-not $zip.GetEntry($file)) { throw "MSIX 缺少文件：$file" } }
+  } finally { $zip.Dispose() }
+  $stream = [IO.File]::OpenRead($out); $hasher = [Security.Cryptography.SHA256]::Create()
+  try { $hash = [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '') }
+  finally { $hasher.Dispose(); $stream.Dispose() }
+  $report = @{ version = $conf.version; packageVersion = $msixVersion; packageName = $PackageName; publisher = $Publisher; publisherDisplayName = $PublisherDisplayName; package = (Split-Path -Leaf $out); sha256 = $hash; sizeBytes = (Get-Item -LiteralPath $out).Length; signed = $signed; validationOnly = -not [bool]$ForStore; releaseReady = $false; links = $links; webview2 = 'Evergreen 系统运行时，缺失环境尚待干净系统验证'; pending = @('Windows 10/11 干净系统安装、启动、升级与卸载', 'Partner Center 标识、商店认证与发布') }
+  [IO.File]::WriteAllText((Join-Path $outDir 'release-report.json'), ($report | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+  Write-Host "MSIX 已保存：$out"
+  if ($ForStore) { Write-Host '此包供商店上传，由微软签名；不能直接旁加载。' }
+  else { Write-Host '开发包仅供隔离系统测试；只在测试虚拟机信任同目录 development.cer。' }
+} finally { Pop-Location }

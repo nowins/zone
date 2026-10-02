@@ -1,9 +1,11 @@
 {
   "name": "zone-player",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": "^22.22.2 || ^24.15.0 || >=26.0.0" },
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "node packaging/check-version.mjs && tsc && vite build",
@@ -15,10 +17,13 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:build:store": "powershell -ExecutionPolicy Bypass -File packaging/build-store.ps1",
-    "release:check": "powershell -ExecutionPolicy Bypass -File packaging/build-store.ps1 -ValidateOnly",
+    "release:check": "powershell -ExecutionPolicy Bypass -File packaging/build-msix.ps1 -ForStore -ValidateOnly",
+    "release:check:nsis": "powershell -ExecutionPolicy Bypass -File packaging/build-store.ps1 -ValidateOnly",
     "audit:release": "npm audit && node packaging/check-rust-audit.mjs",
     "notices:generate": "node packaging/generate-notices.mjs",
-    "package:msix": "powershell -ExecutionPolicy Bypass -File packaging/build-msix.ps1"
+    "package:msix": "powershell -ExecutionPolicy Bypass -File packaging/build-msix.ps1",
+    "package:msix:store": "powershell -ExecutionPolicy Bypass -File packaging/build-msix.ps1 -ForStore",
+    "test:msix:hyperv": "powershell -ExecutionPolicy Bypass -File packaging/test-msix-hyperv.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.0",

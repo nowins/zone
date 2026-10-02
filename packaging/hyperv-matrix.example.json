@@ -1,0 +1,16 @@
+{
+  "machines": [
+    {
+      "os": "Windows10",
+      "vmId": "填写专用 Windows 10 虚拟机 GUID",
+      "checkpointId": "填写干净快照 GUID",
+      "credentialFile": "win10.credential.xml"
+    },
+    {
+      "os": "Windows11",
+      "vmId": "填写专用 Windows 11 虚拟机 GUID",
+      "checkpointId": "填写干净快照 GUID",
+      "credentialFile": "win11.credential.xml"
+    }
+  ]
+}
