@@ -112,6 +112,7 @@ input:focus-visible {
   color: var(--muted);
   font-size: 18px;
 }
+.fatal-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 
 .shell-now-playing {
   position: relative;
