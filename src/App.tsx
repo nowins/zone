@@ -1,6 +1,7 @@
 import { recordDiagnostic } from "./utils/diagnostics";
 import { Button } from "./components/Button";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { MetroLoader } from "./components/MetroLoader";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -20,8 +21,6 @@ import { SmartPlaylistDialog } from "./components/SmartPlaylistDialog";
 import { QuickplayView } from "./views/QuickplayView";
 import { NowPlayingView } from "./views/NowPlayingView";
 import { PodcastNowPlayingView } from "./views/PodcastNowPlayingView";
-import { SettingsView } from "./views/SettingsView";
-import { PodcastView } from "./views/PodcastView";
 import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
 import { migrateLegacyState } from "./utils/legacyMigration";
 import { useMountedRef } from "./hooks/useMountedRef";
@@ -74,6 +73,10 @@ import type { PodcastFeedRequest } from "./views/podcast/types";
 const PODCAST_TILE_REFRESH_MIN_GAP_MS = 2 * 60_000;
 const PODCAST_TILE_REFRESH_INTERVAL_MS = 10 * 60_000;
 let lastPodcastTileRefreshAt = 0;
+
+const SettingsView = lazy(() => import("./views/SettingsView").then(module => ({ default: module.SettingsView })));
+const PodcastView = lazy(() => import("./views/PodcastView").then(module => ({ default: module.PodcastView })));
+const loadingPage = <div role="status" aria-label="正在加载"><MetroLoader /></div>;
 
 export default function App() {
   const compactMode = useCompactMode();
@@ -1138,6 +1141,7 @@ export default function App() {
           onAddToQueue={appendToQueue} onInfo={openMetadata} onAddToPlaylist={setAddToPlaylistTarget} />}
 
         {page === "podcasts" && (
+          <Suspense fallback={loadingPage}>
           <PodcastView
             activeEpisode={activePodcastEpisode}
             activeEpisodeId={activePodcastEpisode?.episodeId ?? null}
@@ -1176,6 +1180,7 @@ export default function App() {
             onDownloadsDeleted={reconcileDeletedPodcastDownloads}
             onReturnToNowPlaying={() => requestNavigation("nowPlaying")}
           />
+          </Suspense>
         )}
 
         {page === "nowPlaying" && (
@@ -1239,6 +1244,7 @@ export default function App() {
         )}
 
         {page === "settings" && (
+          <Suspense fallback={loadingPage}>
           <SettingsView
             folders={folders}
             trackCount={tracks.length}
@@ -1281,6 +1287,7 @@ export default function App() {
               }
             }}
           />
+          </Suspense>
         )}
       </main>}
 

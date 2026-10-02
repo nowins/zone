@@ -6,8 +6,8 @@
 
 ## 技术栈
 
-- 前端：React 18、TypeScript（strict）、Vite 5（`@vitejs/plugin-react`）、`lucide-react` 图标、`@tauri-apps/api`。
-- 桌面壳：Tauri 2.9。窗口 1180×760（最小 920×620），无边框（`decorations: false`），自带 `Titlebar` 组件。
+- 前端：React 18、TypeScript（strict）、Vite（`@vitejs/plugin-react`）、`lucide-react` 图标、`@tauri-apps/api`。构建和测试使用 Node.js 24 LTS 或更新版本；版本以依赖清单为准。
+- 桌面壳：Tauri 2。窗口 1180×760（最小 920×620），无边框（`decorations: false`），自带 `Titlebar` 组件。
 - Rust 端（`src-tauri/`）：
   - `lofty` 0.22：音频标签与内嵌封面/歌词读取。
   - `encoding_rs`：修复老旧中文元数据的 GBK 乱码。
@@ -42,6 +42,7 @@
 - `src/types.ts`：所有共享类型定义（Track、Playlist/SmartPlaylist、HomePin、PodcastFeed/Episode、LyricsDocument/LyricsProvider 等）。`AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings"`。
 - `src/constants.ts`：`STORAGE_KEY = "zone-player-state-v1"`、`LIBRARY_SCHEMA_VERSION = 6`、`DEFAULT_PLAYLIST_ID = "favorites"`、`MAX_HOME_PINS = 12`、`VISUALIZER_SAMPLE_COUNT = 180`。
 - `src/views/`：页面级视图。
+  - 播客页与设置页通过 React `lazy` / `Suspense` 按需加载，等待时使用 `MetroLoader`；React 运行时独立分块。主音频、播放 hook 和音乐正在播放页保持挂载与同步入口，避免加载边界打断播放或共享封面动效。
   - `CompactPlayerView.tsx`：Zune HD 风格的小屏界面，消费已有收藏索引、列表解析和音乐／播客播放动作，内部浏览独立于正常页面历史；样式在 `styles/compact-player.css`，功能范围与验证见 [组件规范](../component-guidelines.md)。
   - `QuickplayView.tsx`：Zune quickplay 首页，解析固定内容；`components/tiles/QuickplayPinBoard.tsx` 负责 WP 风格磁贴编辑、重排与外观，`usePinDrag.ts` 通过指针捕获管理拖动、跟随预览与取消，不依赖 WebView2 的 HTML 拖放；`useTileActivity.ts` 管理动态可见性。
   - `src/hooks/useQuickplayPanorama.ts`：首页视口滚动、短滚动条显隐与拖拽、背景视差、鼠标拖动、滚轮／键盘归属与返回位置恢复；`src/utils/quickplayPanorama.ts` 提供键盘分组边界和输入意图的纯函数。背景与滚动条位置由 DOM ref 更新，React 仅接收是否存在横向溢出。
