@@ -12,6 +12,7 @@ import type {
 import { createDemoLyrics } from "../utils/demoLyrics";
 import { parseLyricsSource } from "../utils/lyrics";
 import { clampLyricsTimingOffset } from "../utils/lyricsTiming";
+import { isLyricsRemoteCacheFresh } from "../utils/lyricsCache";
 import {
   lyricsExportFileName,
   serializeLyricsDocument,
@@ -169,6 +170,7 @@ export function useLyrics(track: Track | null, duration: number) {
     const remoteEntry = store.remoteCache[track.id];
     const remoteCacheMatchesQuery = remoteEntry?.queryKey === lyricsQueryKey(query)
       && remoteEntry?.providerKey === providerConfigKey;
+    const remoteCacheFresh = remoteCacheMatchesQuery && isLyricsRemoteCacheFresh(remoteEntry);
     const forceRemote = forceRemoteTrackRef.current === track.id;
     if (forceRemote) forceRemoteTrackRef.current = null;
     setState((current) => ({ ...current, status: "loading", document: null, error: undefined }));
@@ -263,16 +265,19 @@ export function useLyrics(track: Track | null, duration: number) {
           return;
         }
 
-        const cachedAuto = !forceRemote && remoteCacheMatchesQuery && remoteEntry?.candidates.find(
+        const cachedAuto = !forceRemote && remoteCacheFresh && remoteEntry?.candidates.find(
           (candidate) => sourceId(candidate) === remoteEntry.autoSourceId
             && providerConfigs.some((config) => config.id === candidate.providerId && config.enabled),
         );
         if (cachedAuto) {
-          const source = await getLyricsCandidateSource(cachedAuto, controller.signal);
-          presentSource(source);
-          return;
+          try {
+            const source = await getLyricsCandidateSource(cachedAuto, controller.signal);
+            if (presentSource(source)) return;
+          } catch (error) {
+            if (controller.signal.aborted) throw error;
+          }
         }
-        if (!forceRemote && remoteCacheMatchesQuery && remoteEntry) {
+        if (!forceRemote && remoteCacheFresh && remoteEntry && !cachedAuto) {
           showFallback();
           return;
         }
@@ -301,20 +306,17 @@ export function useLyrics(track: Track | null, duration: number) {
           providers: result.outcomes,
           attempt: 1,
         });
-        setStore((current) => persistLyricsStore(cacheRemoteCandidates(
-          current,
-          track.id,
-          query,
-          providerConfigKey,
-          candidates,
-          best ? sourceId(best) : undefined,
-        )));
         if (!best) {
+          if (errors.length === 0) setStore((current) => persistLyricsStore(cacheRemoteCandidates(
+            current, track.id, query, providerConfigKey, candidates,
+          )));
           showFallback(errors.length > 0 ? errors.join("；") : undefined);
           return;
         }
         const source = await getLyricsCandidateSource(best, controller.signal);
-        presentSource(source);
+        if (presentSource(source)) setStore((current) => persistLyricsStore(cacheRemoteCandidates(
+          current, track.id, query, providerConfigKey, candidates, sourceId(best),
+        )));
       } catch (error) {
         if (stale || controller.signal.aborted) return;
         setState({
@@ -406,7 +408,7 @@ export function useLyrics(track: Track | null, duration: number) {
         providers: result.outcomes,
         attempt: current.attempt,
       }));
-      setStore((current) => persistLyricsStore(cacheRemoteCandidates(
+      if (candidates.length > 0 || errors.length === 0) setStore((current) => persistLyricsStore(cacheRemoteCandidates(
         current,
         track.id,
         activeQuery,

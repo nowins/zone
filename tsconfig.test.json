@@ -32,6 +32,7 @@
     "src/utils/podcastChapters.ts",
     "src/utils/music.ts",
     "src/utils/lyrics.ts",
+    "src/utils/lyricsCache.ts",
     "src/utils/lyricsDisplay.ts",
     "src/utils/lyricsTiming.ts",
     "src/utils/lyricsSearch.ts",
