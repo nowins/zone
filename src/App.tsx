@@ -530,7 +530,7 @@ export default function App() {
     const timer = window.setTimeout(savePlayback, 250);
     const checkpoint = isPlaying && !activePodcastEpisode ? window.setInterval(savePlayback, 5000) : null;
     return () => { window.clearTimeout(timer); if (checkpoint !== null) window.clearInterval(checkpoint); };
-  }, [restored, clearingLibrary, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId, isPlaying, activePodcastEpisode?.episodeId]);
+  }, [restored, clearingLibrary, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId, isPlaying, activePodcastEpisode?.episodeId, isPlaying || activePodcastEpisode ? null : progress]);
 
   useEffect(() => {
     if (!restored || tracks.length === 0) return;
