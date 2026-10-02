@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MOTION_DRIFT, resolveExitDurationMs } from "../motion/tokens";
+import { MOTION_DRIFT, MOTION_DURATIONS } from "../motion/tokens";
 import { resolvePageTransition } from "../motion/pageTransition";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { resolveSearchSurface } from "../utils/collectionSearch";
@@ -42,26 +42,18 @@ export function useNavigation({
   nowPlayingTargetsRef,
 }: UseNavigationParams) {
   const previousPageRef = useRef<"quickplay" | "collection" | "podcasts" | "settings">("quickplay");
-  const navExitTimerRef = useRef<number | null>(null);
-  const navTargetRef = useRef<AppPage | null>(null);
+  const pageRef = useRef<AppPage>("quickplay");
+  const lastNavigationAt = useRef(-Infinity);
   const collection = useCollectionNavigation();
   const { query, searchMode, view, playlistId: selectedPlaylistId } = collection.location;
   const pendingReturn = useRef<CollectionLocation["origin"]>();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const focusSearchPendingRef = useRef(false);
   const [page, setPage] = useState<AppPage>("quickplay");
-  // Page-transition state: `navExit` is the in-flight exit direction (null when
-  // idle), `navDir` persists the latest direction so the incoming page's enter
-  // keyframe reads the same `--motion-dir` after the exit window ends. `navDrift`
-  // carries the table's per-pair amplitudes onto the shell (`--motion-drift` for
-  // the enter keyframe, `--motion-exit-drift` for the exit one), so push/pop
-  // travel further than a peer pivot instead of sharing one hardcoded distance.
-  const [navExit, setNavExit] = useState<1 | -1 | null>(null);
   const [navDir, setNavDir] = useState<1 | -1>(1);
-  const [navDrift, setNavDrift] = useState<{ enter: number; exit: number }>({
-    enter: MOTION_DRIFT.m,
-    exit: MOTION_DRIFT.s,
-  });
+  const [navDrift, setNavDrift] = useState<number>(MOTION_DRIFT.m);
+  const [navigationAnimated, setNavigationAnimated] = useState(true);
+  const [quickplayEntrance, setQuickplayEntrance] = useState(true);
   const reducedMotion = useReducedMotion();
 
   useEffect(() => {
@@ -79,43 +71,26 @@ export function useNavigation({
   useEffect(() => {
     if (page !== "collection" || !focusSearchPendingRef.current) return;
     focusSearchPendingRef.current = false;
-    window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
   }, [page]);
 
-  // Page transitions play a short exit on the outgoing page before the new one
-  // mounts (WP7 pivot/push/pop from `resolvePageTransition`). Navigating again
-  // inside the exit window jumps straight to the latest target — no queueing.
-  // `navTargetRef` records where an in-flight exit is heading so chrome (app
-  // header, player bar) can start its own exit together with the old page
-  // instead of lingering until the new page flips in.
-  function requestNavigation(next: AppPage, rememberCollection = true) {
-    if (next === page) return;
-    if (page === "collection" && rememberCollection) collection.remember();
-    if (navExitTimerRef.current !== null) {
-      window.clearTimeout(navExitTimerRef.current);
-      navExitTimerRef.current = null;
-      setNavExit(null);
-      const interrupted = resolvePageTransition(page, next);
-      setNavDir(interrupted.direction);
-      setNavDrift({ enter: interrupted.enterDriftPx, exit: interrupted.exitDriftPx });
-      navTargetRef.current = next;
-      setPage(next);
-      return;
-    }
-    const transition = resolvePageTransition(page, next);
+  // Commit the intent synchronously, including reversals in one React batch.
+  // Frequent input settles immediately rather than restarting an entrance.
+  function requestNavigation(next: AppPage, rememberCollection = true, animate = true) {
+    const from = pageRef.current;
+    if (next === from) return;
+    if (next !== "collection") focusSearchPendingRef.current = false;
+    if (from === "collection" && rememberCollection) collection.remember();
+    const transition = resolvePageTransition(from, next);
+    const now = performance.now();
+    setNavigationAnimated(animate && !reducedMotion && now - lastNavigationAt.current >= MOTION_DURATIONS.page);
+    lastNavigationAt.current = now;
     setNavDir(transition.direction);
-    setNavDrift({ enter: transition.enterDriftPx, exit: transition.exitDriftPx });
-    navTargetRef.current = next;
-    if (transition.exitMs === 0) {
-      setPage(next);
-      return;
-    }
-    setNavExit(transition.direction);
-    navExitTimerRef.current = window.setTimeout(() => {
-      navExitTimerRef.current = null;
-      setNavExit(null);
-      setPage(next);
-    }, resolveExitDurationMs(transition.exitMs, reducedMotion));
+    setNavDrift(transition.enterDriftPx);
+    if (next === "quickplay") setQuickplayEntrance(false);
+    pageRef.current = next;
+    setPage(next);
   }
 
   function clearCollectionSearch() {
@@ -127,16 +102,16 @@ export function useNavigation({
   }
 
   function focusCollectionSearch() {
-    if (page === "collection") {
+    if (pageRef.current === "collection") {
       window.requestAnimationFrame(() => searchInputRef.current?.focus());
       return;
     }
     focusSearchPendingRef.current = true;
-    requestNavigation("collection");
+    requestNavigation("collection", true, false);
   }
 
-  function navigatePage(nextPage: "quickplay" | "collection" | "podcasts" | "settings") {
-    requestNavigation(nextPage);
+  function navigatePage(nextPage: "quickplay" | "collection" | "podcasts" | "settings", animate = true) {
+    requestNavigation(nextPage, true, animate);
   }
 
   function navigateCollection(nextView: ViewMode) {
@@ -152,11 +127,11 @@ export function useNavigation({
     requestNavigation("collection");
   }
 
-  function travelCollection(direction: 1 | -1) {
-    const origin = collection.travel(direction);
+  function travelCollection(direction: 1 | -1, animate = true) {
+    const origin = collection.travel(direction, animate);
     if (origin) {
       pendingReturn.current = origin;
-      requestNavigation(origin.page, false);
+      requestNavigation(origin.page, false, animate);
     }
   }
 
@@ -168,7 +143,7 @@ export function useNavigation({
       if (contextMenu || infoTarget || addToPlaylistTarget || playlistDialog || smartPlaylistDialog) return;
       if (page === "collection" && event.altKey && ["ArrowLeft", "ArrowRight"].includes(event.key)) {
         event.preventDefault();
-        travelCollection(event.key === "ArrowLeft" ? -1 : 1);
+        travelCollection(event.key === "ArrowLeft" ? -1 : 1, false);
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
@@ -200,7 +175,7 @@ export function useNavigation({
   function openNowPlaying() {
     const { activePodcastEpisode, activeTrack } = nowPlayingTargetsRef.current;
     if (!activePodcastEpisode && !activeTrack) return;
-    if (page !== "nowPlaying") previousPageRef.current = page;
+    if (pageRef.current !== "nowPlaying") previousPageRef.current = pageRef.current;
     requestNavigation("nowPlaying");
   }
 
@@ -215,11 +190,10 @@ export function useNavigation({
     openCollectionEntity,
     travelCollection,
     page,
-    navExit,
     navDir,
     navDrift,
-    navTargetRef,
-    navExitTimerRef,
+    navigationAnimated,
+    quickplayEntrance,
     previousPageRef,
     requestNavigation,
     clearCollectionSearch,

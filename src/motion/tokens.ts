@@ -85,10 +85,12 @@ export const MOTION_DRIFT = { s: 8, m: 22, l: 48 } as const;
 /** Per-item stagger step and total cap, in milliseconds. */
 export const MOTION_STAGGER = { step: 24, max: 144 } as const;
 
-/** Shared collection/podcast browsing rhythm; controls retain their shorter tiers. */
+/** Podcast feather entrance; collection uses flat semantic groups. */
 export const BROWSE_MOTION = { duration: 320, scale: 0.96 } as const;
-/** Bound visible-item work independently of library size. */
-export const COLLECTION_PIVOT_MOTION = { maxItems: 24 } as const;
+/** At most three timing groups, without translating both a parent and its rows. */
+export const COLLECTION_PIVOT_MOTION = { duration: MOTION_DURATIONS.content, settle: MOTION_DURATIONS.press, maxGroups: 12, staggerGroups: 3 } as const;
+/** Coarse vertical wheel signals only; fine gestures retain native momentum. */
+export const SCROLL_MOTION = { coarseDelta: 50, linePixels: 32 } as const;
 
 export const SPRING_PRESETS = {
   // High stiffness, near-critical damping: press rebound.
@@ -110,7 +112,7 @@ export const cssVarName = {
 };
 
 /**
- * How long JS-side lifecycles (navigation exit window, Presence unmount)
+ * How long JS-side lifecycles (Presence unmount)
  * should wait while an exit plays. Under reduced motion the CSS side swaps
  * spatial exit animations for an 80ms opacity-only fade, so the JS wait
  * must shrink to the same instant tier instead of leaving a dead pause.

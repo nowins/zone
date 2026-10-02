@@ -148,16 +148,16 @@
   pointer-events: none;
 }
 
-/* Navigation exits: while the shell carries `data-nav-state="exiting"`, the
-   outgoing page root plays the shared exit; `--motion-dir` on the shell picks
-   the travel side. Settings shares `.content-band` with collection, and
-   `.now-playing-stage` keeps its opacity-only dissolve on entry but still
-   travels on exit. */
-.shell[data-nav-state="exiting"] .quickplay,
-.shell[data-nav-state="exiting"] .content-band,
-.shell[data-nav-state="exiting"] .now-playing-stage {
-  animation: motion-page-exit var(--motion-micro) var(--motion-ease-exit) both;
-  pointer-events: none;
+/* Frequent navigation and keyboard activation show content immediately. */
+.shell[data-nav-motion="instant"] :is(.quickplay, .content-band, .now-playing-stage,
+  .quick-group, .quick-album, .folder-list > div, .settings-section-heading,
+  .settings-sidebar > section, .podcast-content-section, .podcast-episode,
+  .podcast-show-card, .podcast-continue-card, .podcast-queue-episode),
+.quickplay[data-entrance="restored"],
+.quickplay[data-entrance="restored"] .quick-group,
+.quickplay[data-entrance="restored"] .quick-album,
+.collection-connected[data-collection-motion="content"] {
+  animation: none;
 }
 
 /* Overlay and chrome exits: faster and lighter than their entrances, each
@@ -497,9 +497,6 @@ button.tilt-pressed {
     opacity: 1;
   }
 
-  .shell[data-nav-state="exiting"] .quickplay,
-  .shell[data-nav-state="exiting"] .content-band,
-  .shell[data-nav-state="exiting"] .now-playing-stage,
   .motion-exit,
   .motion-exit .context-menu,
   .motion-exit .podcast-search-history,

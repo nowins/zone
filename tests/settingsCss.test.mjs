@@ -62,7 +62,8 @@ test("settings live in the titlebar; collection owns search", () => {
   assert.ok(readFileSync("src/views/CollectionView.tsx", "utf8").includes("<CollectionSearchField"));
   assert.ok(!appHeader.includes('onNavigate("settings")'));
   assert.ok(titlebar.includes('className={isSettings ? "titlebar-settings active" : "titlebar-settings"}'));
-  assert.ok(appSource.includes('onOpenSettings={() => navigatePage("settings")}'));
+  assert.ok(appSource.includes('onOpenSettings={animate => navigatePage("settings", animate)}'));
+  assert.ok(titlebar.includes('onOpenSettings(event.detail > 0)'), "settings keyboard activation stays immediate");
   assert.ok(settingsControlRule.includes("border-right: 1px solid"));
 });
 

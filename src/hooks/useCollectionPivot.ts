@@ -20,7 +20,9 @@ function useCollectionEntrance(root: RefObject<HTMLElement>, key: string | numbe
 }
 
 export function useCollectionPivot(root: RefObject<HTMLElement>, history: CollectionHistory) {
-  useCollectionEntrance(root, history.revision, collectionPivotDirection(history), history.animate);
+  const initialRevision = useRef(history.revision);
+  // The top-level page owns the first entrance; category changes own later ones.
+  useCollectionEntrance(root, history.revision, history.revision === initialRevision.current ? 0 : collectionPivotDirection(history), history.animate);
 }
 
 /** Only a changed panel moves; its persistent heading, tabs and scroll owner stay put. */

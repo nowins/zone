@@ -352,7 +352,8 @@ test("pageTransition: peer pages pivot along the navigation order", () => {
   assert.equal(skip.kind, "pivot");
   assert.equal(skip.direction, 1);
 
-  assert.ok(forward.exitMs > 0 && forward.enterMs > forward.exitMs);
+  assert.equal(forward.enterMs, MOTION_DURATIONS.page);
+  assert.equal("exitMs" in forward, false, "navigation has no delayed exit window");
 });
 
 test("pageTransition: entering nowPlaying pushes with a cover flip", () => {
@@ -371,7 +372,6 @@ test("pageTransition: leaving nowPlaying pops with a cover flip", () => {
 
 test("pageTransition: same page resolves to a zero-length transition", () => {
   const transition = resolvePageTransition("settings", "settings");
-  assert.equal(transition.exitMs, 0);
   assert.equal(transition.enterMs, 0);
   assert.equal(transition.coverFlip, false);
 });

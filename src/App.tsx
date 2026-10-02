@@ -117,11 +117,10 @@ export default function App() {
     searchInputRef,
     view,
     page,
-    navExit,
     navDir,
     navDrift,
-    navTargetRef,
-    navExitTimerRef,
+    navigationAnimated,
+    quickplayEntrance,
     previousPageRef,
     requestNavigation,
     clearCollectionSearch,
@@ -413,7 +412,6 @@ export default function App() {
 
   useEffect(() => () => {
     if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
-    if (navExitTimerRef.current !== null) window.clearTimeout(navExitTimerRef.current);
     void flushPodcastProgress();
   }, []);
 
@@ -837,7 +835,7 @@ export default function App() {
   // `useLastNonNull` can freeze the closing snapshot for the exit window.
   // Chrome fades out together with the outgoing page when a navigation targets
   // now playing — not after the page flip, which read as a lingering flash.
-  const chromeVisible = !compactMode.active && page !== "nowPlaying" && !(navExit !== null && navTargetRef.current === "nowPlaying");
+  const chromeVisible = !compactMode.active && page !== "nowPlaying";
   const appHeaderElement = chromeVisible ? (
     <AppHeader
       page={page}
@@ -1002,12 +1000,11 @@ export default function App() {
   return (
     <div
       className={`shell ${compactMode.active ? "shell-compact" : page === "nowPlaying" ? "shell-now-playing" : ""}`}
-      data-nav-state={!compactMode.active && navExit !== null ? "exiting" : undefined}
+      data-nav-motion={navigationAnimated ? undefined : "instant"}
       style={
         {
           "--motion-dir": navDir,
-          "--motion-drift": `${navDrift.enter}px`,
-          "--motion-exit-drift": `${navDrift.exit}px`,
+          "--motion-drift": `${navDrift}px`,
         } as CSSProperties
       }
       onClick={closeContextMenu}
@@ -1036,10 +1033,10 @@ export default function App() {
       <Titlebar
         showSettings={!compactMode.active && page !== "nowPlaying"}
         isSettings={page === "settings"}
-        onOpenSettings={() => navigatePage("settings")}
+        onOpenSettings={animate => navigatePage("settings", animate)}
         closeToTray={closeToTray}
         compact={compactMode.active}
-        modePending={compactMode.pending || navExit !== null}
+        modePending={compactMode.pending}
         onToggleCompact={() => void changeCompactMode(!compactMode.active)}
         pinned={compactMode.pinned}
         onTogglePinned={() => {
@@ -1077,6 +1074,7 @@ export default function App() {
 
         {page === "quickplay" ? (
           <QuickplayView
+            animateEntrance={quickplayEntrance && navigationAnimated}
             tracks={tracks}
             albums={albums}
             artists={artists}

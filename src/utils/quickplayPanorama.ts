@@ -1,5 +1,6 @@
 import { PANORAMA_MOTION } from "../motion/tokens.js";
 import { clamp } from "../motion/math.js";
+import { isCoarseVerticalWheel } from "../motion/wheelScroll.js";
 
 export type PanoramaMetric = { id: string; left: number; width: number };
 export const clampPanorama = (value: number, max: number) => clamp(value, 0, Math.max(0, max));
@@ -28,5 +29,5 @@ export function panoramaWheel(input: {
   if (vertical && !input.shiftKey && input.verticalOverflow) return null;
   const unit = input.deltaMode === 1 ? 32 : input.deltaMode === 2 ? input.viewportWidth : 1;
   const delta = (vertical ? input.deltaY : input.deltaX) * unit;
-  return delta ? { delta, smooth: vertical } : null;
+  return delta ? { delta, smooth: isCoarseVerticalWheel(input) } : null;
 }

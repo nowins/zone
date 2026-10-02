@@ -106,7 +106,10 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
     Object.defineProperty(nested, "scrollHeight", { value: 900 });
     Object.defineProperty(nested, "clientHeight", { value: 200 });
     nested.scrollTop = 700;
-    assert.equal(await wheel(nested, {}), false, "list edge must not jump to another section");
+    const beforeNestedWheel = viewport.scrollLeft;
+    assert.equal(await wheel(nested, {}), true, "the vertical scroll handler contains a coarse wheel at the list edge");
+    await advance(32);
+    assert.equal(viewport.scrollLeft, beforeNestedWheel, "list edge must not jump to another section");
     assert.equal(await wheel(nested, { shiftKey: true }), true);
     await key(viewport, "Home"); await advance(1200);
     assert.equal(viewport.scrollLeft, 0, "keyboard input cancels old inertia");

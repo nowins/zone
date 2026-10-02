@@ -5,7 +5,7 @@ export function AppHeader({
   onNavigate,
 }: {
   page: Exclude<AppPage, "nowPlaying">;
-  onNavigate: (page: "quickplay" | "collection" | "podcasts" | "settings") => void;
+  onNavigate: (page: "quickplay" | "collection" | "podcasts" | "settings", animate?: boolean) => void;
 }) {
   return (
     <header className="app-header">
@@ -14,19 +14,19 @@ export function AppHeader({
         <nav className="primary-pivot" aria-label="主要导航">
           <button
             className={page === "quickplay" ? "active" : ""}
-            onClick={() => onNavigate("quickplay")}
+            onClick={event => onNavigate("quickplay", event.detail > 0)}
           >
             quickplay
           </button>
           <button
             className={page === "collection" ? "active" : ""}
-            onClick={() => onNavigate("collection")}
+            onClick={event => onNavigate("collection", event.detail > 0)}
           >
             收藏
           </button>
           <button
             className={page === "podcasts" ? "active" : ""}
-            onClick={() => onNavigate("podcasts")}
+            onClick={event => onNavigate("podcasts", event.detail > 0)}
           >
             播客
           </button>

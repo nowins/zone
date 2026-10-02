@@ -100,6 +100,27 @@ test("mosaic cells stop in edit mode, offscreen and under reduced motion", async
   } finally { await env.cleanup(); }
 });
 
+test("tile arrival runs only for first entry and never replays after restoration or reduced motion", async () => {
+  const env = environment();
+  const items = [{ pin: { id: "one", kind: "track", targetId: "one", createdAt: 0 }, title: "歌曲",
+    subtitle: "艺术家", tracks: [], artPaths: [], payload: null, size: "medium", isSmart: false, liveLine: "" }];
+  const props = { items, onActivate() {}, onOpenCollection() {}, onContextMenu() {}, onUnpin() {}, onMovePin() {},
+    onResizePin() {}, onShiftPin() {}, onCustomizePin() {} };
+  const render = animateEntrance => env.render(React.createElement(QuickplayPinBoard, { ...props, animateEntrance }));
+  try {
+    await render(true);
+    assert.ok(document.querySelector(".tiles-enter"), "StrictMode retains one initial arrival");
+    await env.reduce(true);
+    assert.equal(document.querySelector(".tiles-enter"), null);
+    await env.reduce(false);
+    assert.equal(document.querySelector(".tiles-enter"), null, "disabling reduced motion does not replay arrival");
+    await render(false);
+    assert.equal(document.querySelector(".tiles-enter"), null);
+    await env.advance(1000);
+    assert.equal(env.timers.size, 0, "a restored board schedules no entrance timer");
+  } finally { await env.cleanup(); }
+});
+
 test("long press selects a tile without playing, keyboard editing and appearance keep their meaning", async () => {
   const env = environment();
   let activated = 0, resized, shifted, saved;

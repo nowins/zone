@@ -46,6 +46,7 @@ function coverPathsForTracks(tracks: Track[], limit: number, preferredArtist?: s
 }
 
 export function QuickplayView({
+  animateEntrance = true,
   tracks,
   albums,
   artists,
@@ -71,6 +72,7 @@ export function QuickplayView({
   onOpenPodcastFeed,
   onTogglePodcastPin,
 }: {
+  animateEntrance?: boolean;
   tracks: Track[];
   albums: AlbumGroup[];
   artists: ArtistGroup[];
@@ -343,7 +345,7 @@ export function QuickplayView({
   }
 
   return (
-    <section className={`quickplay ${empty ? "quickplay-empty" : ""}`} onKeyDown={event => {
+    <section className={`quickplay ${empty ? "quickplay-empty" : ""}`} data-entrance={animateEntrance ? "first" : "restored"} onKeyDown={event => {
       if (event.defaultPrevented || (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10"))) return;
       if (!(event.target instanceof HTMLElement) || !event.target.closest("[data-collection-focus]")) return;
       event.preventDefault();
@@ -367,6 +369,7 @@ export function QuickplayView({
         >
           <div className="quickplay-track">
         <QuickplayPinBoard
+          animateEntrance={animateEntrance}
           items={resolvedPins}
           onOpenCollection={() => onOpenCollection("albums")}
           onMovePin={onMovePin}

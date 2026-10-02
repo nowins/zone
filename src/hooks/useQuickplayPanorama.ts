@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, 
 import { animateValue, type AnimationHandle } from "../motion/animate";
 import { PANORAMA_MOTION, SPRING_PRESETS } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
+import { useWheelScroll } from "./useWheelScroll";
 import { clampPanorama, panoramaDepth, panoramaStep, panoramaWheel, type PanoramaMetric } from "../utils/quickplayPanorama";
 
 let savedScrollLeft = 0;
@@ -22,6 +23,7 @@ export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
   const drag = useRef<{ pointerId: number; startX: number; startY: number; left: number; lastX: number; time: number; velocity: number; moving: boolean } | null>(null);
   const reducedMotion = useReducedMotion();
   const sectionKey = sectionIds.join("|");
+  useWheelScroll(viewportRef, ".quick-section-scroll", sectionKey, enabled);
 
   function clearFadeTimer() {
     if (fadeTimer.current !== null) window.clearTimeout(fadeTimer.current);

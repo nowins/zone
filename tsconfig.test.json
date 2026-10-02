@@ -59,6 +59,7 @@
     "src/motion/flip.ts",
     "src/motion/coverFlip.ts",
     "src/motion/pageTransition.ts",
-    "src/motion/collectionPivot.ts"
+    "src/motion/collectionPivot.ts",
+    "src/motion/wheelScroll.ts"
   ]
 }

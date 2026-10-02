@@ -36,8 +36,9 @@ const KIND_LABELS = { track: "歌曲", album: "专辑", artist: "艺术家", pla
 const KIND_ICONS = { track: Music2, album: Disc3, artist: UserRound, playlist: ListMusic, podcastFeed: Podcast };
 type Placement = { target: string; after: boolean };
 
-export function QuickplayPinBoard({ items, onOpenCollection, onMovePin, onShiftPin, onResizePin, onCustomizePin, onUnpin, onActivate, onContextMenu }: {
+export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollection, onMovePin, onShiftPin, onResizePin, onCustomizePin, onUnpin, onActivate, onContextMenu }: {
   items: ResolvedPin[];
+  animateEntrance?: boolean;
   onOpenCollection: () => void;
   onMovePin: (source: string, target: string, after?: boolean) => void;
   onShiftPin: (id: string, direction: -1 | 1) => void;
@@ -62,6 +63,8 @@ export function QuickplayPinBoard({ items, onOpenCollection, onMovePin, onShiftP
   const rectsRef = useRef(new Map<string, DOMRect>());
   const animationsRef = useRef<AnimationHandle[]>([]);
   const reducedMotion = useReducedMotion();
+  const reducedRef = useRef(reducedMotion);
+  reducedRef.current = reducedMotion;
   const selected = items.find(item => item.pin.id === selectedId);
   const byId = new Map(items.map(item => [item.pin.id, item]));
   const ordered = draggedId && placement
@@ -76,11 +79,14 @@ export function QuickplayPinBoard({ items, onOpenCollection, onMovePin, onShiftP
 
   useLayoutEffect(() => {
     const grid = gridRef.current;
-    if (!grid) return;
+    if (!grid || !items.length || !animateEntrance || reducedRef.current) return;
     grid.classList.add("tiles-enter");
     const timer = window.setTimeout(() => grid.classList.remove("tiles-enter"), TILE_MOTION.entranceWindow);
     return () => { window.clearTimeout(timer); grid.classList.remove("tiles-enter"); };
-  }, [items.length > 0]);
+  }, [items.length > 0, animateEntrance]);
+  useLayoutEffect(() => {
+    if (reducedMotion) gridRef.current?.classList.remove("tiles-enter");
+  }, [reducedMotion]);
 
   useLayoutEffect(() => {
     animationsRef.current.forEach(handle => handle.cancel());

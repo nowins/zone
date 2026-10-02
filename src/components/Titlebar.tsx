@@ -13,7 +13,7 @@ export function Titlebar({
   onTogglePinned,
 }: {
   isSettings: boolean;
-  onOpenSettings: () => void;
+  onOpenSettings: (animate?: boolean) => void;
   closeToTray?: boolean;
   showSettings?: boolean;
   compact?: boolean;
@@ -30,7 +30,7 @@ export function Titlebar({
       <div className="window-controls">
         {showSettings ? <button
           className={isSettings ? "titlebar-settings active" : "titlebar-settings"}
-          onClick={onOpenSettings}
+          onClick={event => onOpenSettings(event.detail > 0)}
           title="设置"
           aria-current={isSettings ? "page" : undefined}
         >

@@ -10,6 +10,7 @@ import { CollectionEntityView, type CollectionEntityActions } from "./Collection
 import { SearchResultsView } from "./SearchResultsView";
 import type { CollectionNavigation } from "../hooks/useCollectionNavigation";
 import { useCollectionPivot } from "../hooks/useCollectionPivot";
+import { useWheelScroll } from "../hooks/useWheelScroll";
 import { resolveCollectionEntity, artistReference, albumReference } from "../utils/collectionEntities";
 import { resolveSearchSurface } from "../utils/collectionSearch";
 import { COLLECTION_CATEGORY_ORDER, type CollectionLocation } from "../utils/collectionNavigation";
@@ -18,7 +19,7 @@ import type { ViewMode } from "../types";
 const labels: Record<ViewMode, string> = { artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" };
 type Props = LibraryViewProps & CollectionEntityActions & {
   navigation: CollectionNavigation;
-  onTravel: (direction: 1 | -1) => void;
+  onTravel: (direction: 1 | -1, animate?: boolean) => void;
   searchInputRef: RefObject<HTMLInputElement>;
   onQuery: (query: string) => void;
   onClearSearch: () => void;
@@ -29,6 +30,7 @@ type Props = LibraryViewProps & CollectionEntityActions & {
 export function CollectionView(props: Props) {
   const { navigation, index } = props;
   const { location, history } = navigation;
+  const pageRevision = useRef(history.revision);
   const searching = resolveSearchSurface(location.query, location.searchMode) === "results";
   const detail = Boolean(location.entity) && !searching;
   const backdropScene = useMemo(() => buildCollectionBrowseBackdropScene(index, searching ? null : location.entity), [index, location.entity, searching]);
@@ -48,10 +50,12 @@ export function CollectionView(props: Props) {
   useLayoutEffect(() => navigation.restore(), [history.revision, navigation.restore]);
   const contentRef = useRef<HTMLDivElement>(null);
   useCollectionPivot(contentRef, history);
+  useWheelScroll(navigation.rootRef, "[data-collection-scroll]", history.revision);
   const count = props.view === "artists" ? `${index.artists.length} 位艺术家` : props.view === "albums" ? `${index.albums.length} 张专辑`
     : props.view === "songs" ? `${index.tracks.length} 首歌曲` : `${props.playlists.length + 1} 个列表`;
   return <CollectionContext.Provider value={{ index, navigation, open: props.onOpen, onContextMenu: props.onContextMenu }}>
     <section ref={navigation.rootRef} className="content-band collection-band collection-connected"
+      data-collection-motion={history.revision === pageRevision.current ? undefined : "content"}
       data-collection-surface={detail ? "detail" : searching ? "search" : props.view}
       onFocusCapture={event => navigation.recordFocus(event.target)}
       onKeyDown={event => {
@@ -69,7 +73,7 @@ export function CollectionView(props: Props) {
       <div className="collection-toolbar">
         {detail || searching ?
           <button type="button" data-collection-focus="back" className="collection-back" disabled={!canBack}
-            aria-label={`返回${previousLabel}`} title={`返回${previousLabel}`} onClick={() => props.onTravel(-1)}>
+            aria-label={`返回${previousLabel}`} title={`返回${previousLabel}`} onClick={event => props.onTravel(-1, event.detail > 0)}>
             <ArrowLeft size={18} /><span>返回{previousLabel}</span>
           </button>
         : <nav className="collection-categories" aria-label="收藏视图">

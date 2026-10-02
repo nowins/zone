@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 import { collectionPivotDirection, playCollectionPivot } from "../.tmp/visualizer-tests/motion/collectionPivot.js";
 import { initialCollectionHistory, pushCollectionLocation, travelCollectionHistory, emptyCollectionSurface } from "../.tmp/visualizer-tests/utils/collectionNavigation.js";
-import { applyMotionTokens, BROWSE_MOTION, MOTION_STAGGER } from "../.tmp/visualizer-tests/motion/tokens.js";
+import { applyMotionTokens, BROWSE_MOTION, COLLECTION_PIVOT_MOTION, MOTION_STAGGER } from "../.tmp/visualizer-tests/motion/tokens.js";
 
 test("categories, details and history have matching directions; keyboard category activation stays immediate", () => {
   let history = initialCollectionHistory();
@@ -43,29 +43,37 @@ function environment(t) {
     animations.push(animation); return animation;
   };
   const root = document.createElement("div");
-  root.innerHTML = '<div data-collection-scroll="songs">' + Array.from({ length: 80 }, (_, i) =>
+  root.innerHTML = '<div class="collection-track-head"></div><div class="collection-track-scroll" data-collection-scroll="songs">' + Array.from({ length: 80 }, (_, i) =>
     `<div class="collection-track-row" data-row="${Math.floor(i / 2)}">歌曲 ${i}</div>`).join("") + '</div>';
   document.body.append(root);
   return { window, document, root, animations, rect };
 }
 
-test("visible rows share a stagger by visual row, with bounded work and scroll clipping", t => {
+test("content regions move once without row scaling or library-sized layout work", t => {
   const { root, animations, rect } = environment(t);
+  let rowReads = 0;
+  root.querySelectorAll('.collection-track-row').forEach(node => { node.getBoundingClientRect = () => { rowReads++; return rect(100, 40); }; });
   const stop = playCollectionPivot(root, -1);
-  assert.equal(animations.length, 25, "a large library creates at most 24 item animations and one shared movement");
-  assert.equal(animations[0].frames[0].transform, "translate3d(-22px, 0, 0) scale(1)");
-  assert.deepEqual(animations.slice(1, 7).map(a => a.options.delay), [0, 0, 24, 24, 48, 48]);
-  assert.ok(animations.every(a => a.options.duration === BROWSE_MOTION.duration && a.options.duration >= 300));
-  assert.ok(animations.every(a => a.options.duration + a.options.delay <= BROWSE_MOTION.duration + MOTION_STAGGER.max));
-  assert.equal(animations.at(-1).options.delay, MOTION_STAGGER.max, "later visible rows keep a capped cascade instead of rushing into the third group");
-  assert.ok(animations.slice(1).every(a => a.frames[0].transform.endsWith(`scale(${BROWSE_MOTION.scale})`)));
+  assert.equal(animations.length, 2, "only heading and list move, irrespective of row count");
+  assert.equal(rowReads, 0, "no per-track rectangle scan");
+  assert.equal(animations[0].frames[0].transform, "translate3d(-22px, 0, 0)");
+  assert.equal(animations[1].frames[0].transform, "translate3d(-8px, 0, 0)");
+  assert.deepEqual(animations.map(a => a.options.delay), [0, MOTION_STAGGER.step]);
+  assert.ok(animations.every(a => a.options.duration === COLLECTION_PIVOT_MOTION.duration));
+  assert.ok(animations.every(a => a.node !== root && !a.frames[0].transform.includes("scale")));
   stop(); assert.ok(animations.every(a => a.cancelled));
   animations.length = 0;
-  root.firstElementChild.getBoundingClientRect = () => rect(180, 80);
+  root.innerHTML = Array.from({ length: 40 }, (_, i) => `<section class="collection-entity-section" data-row="${i}"><div class="collection-track-scroll"></div></section>`).join("");
   playCollectionPivot(root, 1);
-  assert.deepEqual(animations.slice(1).map(a => a.node.dataset.row), ["2", "2", "3", "3"]);
+  assert.equal(animations.length, COLLECTION_PIVOT_MOTION.maxGroups);
+  assert.ok(animations.every(a => a.node.className === "collection-entity-section"), "nested lists inherit their section's movement");
+  assert.equal(Math.max(...animations.map(a => a.options.delay)), MOTION_STAGGER.step * 2);
   animations.forEach(a => a.finish());
   assert.ok(animations.every(a => a.cancelled), "finished animations release their effects");
+  animations.length = 0;
+  root.getBoundingClientRect = () => rect(180, 80);
+  playCollectionPivot(root, 1);
+  assert.deepEqual(animations.map(a => a.node.dataset.row), ["2", "3"], "groups outside the viewport do not animate");
 });
 
 test("interaction, resize, hiding and cleanup settle an unfinished entrance without swallowing input", t => {
@@ -75,15 +83,29 @@ test("interaction, resize, hiding and cleanup settle an unfinished entrance with
   root.replaceWith(shell); shell.append(toolbar, root);
   for (const event of ["pointerdown", "keydown", "wheel", "scroll", "resize", "visibilitychange"]) {
     animations.length = 0;
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
     const stop = playCollectionPivot(root, 1);
-    const target = event === "resize" ? window : event === "visibilitychange" ? document : root.firstElementChild;
+    const target = event === "resize" ? window : event === "visibilitychange" ? document : root.lastElementChild;
     const input = new window.Event(event, { bubbles: true, cancelable: true });
     if (event === "scroll") target.scrollTop += 1;
+    if (event === "visibilitychange") Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    const original = [...animations];
+    original.forEach(a => { a.node.style.transform = "matrix(1, 0, 0, 1, 6, 0)"; a.node.style.opacity = "0.6"; });
     target.dispatchEvent(input);
     assert.equal(input.defaultPrevented, false);
-    assert.ok(animations.every(a => a.cancelled), event);
+    assert.ok(original.every(a => a.cancelled), event);
+    if (["wheel", "pointerdown", "scroll"].includes(event)) {
+      const settling = animations.slice(original.length);
+      assert.equal(settling.length, original.length);
+      assert.ok(settling.every(a => a.frames[0].transform === "matrix(1, 0, 0, 1, 6, 0)" && a.frames[0].opacity === "0.6"));
+      assert.ok(settling.every(a => a.options.duration === COLLECTION_PIVOT_MOTION.settle));
+      target.dispatchEvent(input);
+      assert.equal(animations.length, original.length * 2, "continuing input does not restart the settle");
+    } else assert.ok(animations.every(a => a.cancelled));
     stop();
+    assert.ok(animations.every(a => a.cancelled));
   }
+  Object.defineProperty(document, "hidden", { configurable: true, value: false });
   animations.length = 0;
   playCollectionPivot(root, 1);
   toolbar.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
@@ -96,7 +118,7 @@ test("interaction, resize, hiding and cleanup settle an unfinished entrance with
 
 test("queued restoration scroll events do not erase the return animation, while real scrolling still interrupts", t => {
   const { root, animations, window } = environment(t);
-  const area = root.firstElementChild;
+  const area = root.lastElementChild;
   area.scrollTop = 120;
   playCollectionPivot(root, -1);
   area.dispatchEvent(new window.Event("scroll"));
@@ -104,10 +126,11 @@ test("queued restoration scroll events do not erase the return animation, while 
   assert.equal(area.scrollTop, 120);
   area.scrollTop = 160;
   area.dispatchEvent(new window.Event("scroll"));
-  assert.ok(animations.every(a => a.cancelled));
+  assert.ok(animations.slice(0, 2).every(a => a.cancelled));
+  assert.ok(animations.slice(2).every(a => a.options.duration === COLLECTION_PIVOT_MOTION.settle));
 });
 
-test("podcast CSS and collection animation consume the same browsing duration and feather scale", t => {
+test("podcasts retain feather tokens while collection groups have a short flat entrance", t => {
   const { document } = environment(t);
   applyMotionTokens(document.documentElement);
   assert.equal(document.documentElement.style.getPropertyValue("--motion-browse"), `${BROWSE_MOTION.duration}ms`);
@@ -115,6 +138,7 @@ test("podcast CSS and collection animation consume the same browsing duration an
   const css = readFileSync("src/styles/motion.css", "utf8");
   assert.match(css, /\.podcast-queue-episode\s*\{\s*animation-duration: var\(--motion-browse\)/);
   assert.match(css, /@keyframes motion-feather-in\s*\{\s*from\s*\{[^}]*scale\(var\(--motion-feather-scale\)\)/);
+  assert.ok(COLLECTION_PIVOT_MOTION.duration + MOTION_STAGGER.step * 2 < 300);
 });
 
 await build({ stdin: { contents: `export { useCollectionNavigation } from './src/hooks/useCollectionNavigation';
@@ -136,11 +160,12 @@ test("real navigation and Pivot hooks cancel rapid switches, preserve ordinary u
     const content = useRef(null);
     useCollectionPivot(content, navigation.history);
     return React.createElement("section", { ref: navigation.rootRef }, React.createElement("div", { ref: content, key: navigation.history.revision },
-      React.createElement("div", { className: "collection-track-row", "data-row": 0 }, navigation.location.view)));
+      React.createElement("div", { className: "collection-track-head" }, navigation.location.view),
+      React.createElement("div", { className: "collection-track-scroll" }, "歌曲")));
   }
   const root = createRoot(document.getElementById("mount"));
   await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Fixture))));
-  assert.equal(animations.filter(a => !a.cancelled).length, 2, "StrictMode retains only one active entrance");
+  assert.equal(animations.length, 0, "StrictMode does not duplicate the outer page entrance");
   await act(async () => navigation.openIndex("songs"));
   await act(async () => navigation.openIndex("albums"));
   const current = animations.filter(a => !a.cancelled);
@@ -180,19 +205,19 @@ test("detail panel changes animate in both directions without replaying the head
     const content = useRef(null);
     useCollectionPanelMotion(content, tab, ["overview", "albums", "songs"]);
     return React.createElement("section", { className: "collection-connected" }, React.createElement("h1", null, "艺术家"),
-      React.createElement("div", { ref: content }, React.createElement("div", { className: "collection-track-row", "data-row": 0 }, tab)));
+      React.createElement("div", { ref: content }, React.createElement("div", { className: "collection-track-scroll" }, tab)));
   }
   const root = createRoot(document.getElementById("mount"));
   await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Fixture))));
   assert.equal(animations.length, 0, "the parent page owns initial arrival");
   await act(async () => setTab("songs"));
-  assert.equal(animations.filter(a => !a.cancelled).length, 2);
+  assert.equal(animations.filter(a => !a.cancelled).length, 1);
   assert.ok(animations.every(a => a.node.tagName !== "H1"));
   const count = animations.length;
   await act(async () => refresh());
   assert.equal(animations.length, count, "data refreshes do not restart the current panel");
   await act(async () => setTab("albums"));
-  assert.equal(animations.filter(a => !a.cancelled).length, 2);
+  assert.equal(animations.filter(a => !a.cancelled).length, 1);
   assert.ok(animations.filter(a => !a.cancelled).every(a => a.frames[0].transform.includes("-22px")));
   await act(async () => root.unmount());
   assert.ok(animations.every(a => a.cancelled));

@@ -50,10 +50,13 @@ export function useCollectionNavigation() {
       : { entity, searchMode: "browse", origin });
   }, [push]);
   const openIndex = useCallback((view: ViewMode, animate = true) => push({ entity: null, view, query: "", searchMode: "results", filter: "all" }, animate), [push]);
-  const travel = useCallback((direction: 1 | -1) => {
+  const travel = useCallback((direction: 1 | -1, animate = true) => {
     const before = historyRef.current;
     const origin = direction === -1 ? before.entries[before.cursor].origin : undefined;
-    commit(current => travelCollectionHistory(current, direction, capture()));
+    commit(current => {
+      const next = travelCollectionHistory(current, direction, capture());
+      return next === current ? current : { ...next, animate };
+    });
     return before === historyRef.current ? undefined : origin;
   }, [capture, commit]);
   const setPlaylistId = useCallback((action: SetStateAction<string>) => {
