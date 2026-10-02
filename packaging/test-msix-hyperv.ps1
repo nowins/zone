@@ -73,6 +73,11 @@ foreach ($target in $targets) {
     $guestRoot = Invoke-Command -Session $session -ScriptBlock {
       $directory = Join-Path $env:ProgramData ('ZoneMsixTest/' + [Guid]::NewGuid().ToString('N'))
       New-Item -ItemType Directory -Path $directory -Force | Out-Null
+      # The limited desktop task must be able to write its own test report.
+      $acl = Get-Acl -LiteralPath $directory
+      $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+      $acl.SetAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid, 'Modify', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
+      Set-Acl -LiteralPath $directory -AclObject $acl
       $directory
     }
     Copy-Item -LiteralPath $BaselinePackage -Destination "$guestRoot/baseline.msix" -ToSession $session
@@ -82,11 +87,14 @@ foreach ($target in $targets) {
     $taskName = 'ZoneMsixValidation-' + [Guid]::NewGuid().ToString('N')
     Invoke-Command -Session $session -ArgumentList $guestRoot,$taskName,$target.os -ScriptBlock {
       param($directory,$name,$expectedOS)
+      Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1')
+      # Trust the public test certificate here; the lifecycle task stays unelevated.
+      Import-Certificate -FilePath "$directory/development.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
       $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
       $explorer = Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" | Where-Object { (Invoke-CimMethod -InputObject $_ -MethodName GetOwnerSid).Sid -eq $identity.User.Value }
       if (-not $explorer) { throw '测试账号没有已登录桌面；请先登录专用测试账号，再保存干净快照。' }
       $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$directory/test.ps1`" -Directory `"$directory`" -ExpectedOS $expectedOS"
-      $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Highest
+      $principal = New-ScheduledTaskPrincipal -UserId $identity.User.Value -LogonType Interactive -RunLevel Limited
       Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Force | Out-Null
       Start-ScheduledTask -TaskName $name
     }

@@ -48,7 +48,7 @@ npm run test:msix:hyperv -- -Config .tmp/msix-hyperv-config/matrix.json -Baselin
 npm run test:msix:hyperv -- -Config .tmp/msix-hyperv-config/matrix.json -BaselinePackage <旧版.msix> -CandidatePackage <新版.msix> -Certificate <development.cer>
 ```
 
-旧版和新版须同包名称、同发布者、均为 x64，且新版版本更高。预检在任何快照还原前检查矩阵全部成员；未标记的虚拟机、缺失快照、错误凭据格式或不匹配包都会停止。正式执行逐台还原指定快照，通过 PowerShell Direct 复制开发包和公钥证书，再以测试账号交互桌面中的计划任务执行：
+旧版和新版须同包名称、同发布者、均为 x64，且新版版本更高。预检在任何快照还原前检查矩阵全部成员；未标记的虚拟机、缺失快照、错误凭据格式或不匹配包都会停止。正式执行逐台还原指定快照，通过 PowerShell Direct 复制开发包和公钥证书，仅在隔离虚拟机内提升权限导入公钥信任。生命周期任务在测试账号已登录桌面中以普通权限执行，并检查自身没有管理员令牌：
 
 - 安装旧版，核对包版本和注册。
 - 从应用入口启动，确认真实窗口和包数据目录中的 `zone.sqlite`。

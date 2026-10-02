@@ -39,13 +39,19 @@ function Start-And-Check($Package) {
   return $databases.FullName
 }
 try {
+  $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+  $result.elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  if ($result.elevated) { throw '安装、启动、升级与卸载必须在普通权限桌面运行。' }
   $os = Get-CimInstance Win32_OperatingSystem
   $result.system = @{ caption = $os.Caption; build = $os.BuildNumber; architecture = $os.OSArchitecture }
   if ($os.ProductType -ne 1 -or $os.OSArchitecture -notmatch '64' -or ($ExpectedOS -eq 'Windows10' -and ([int]$os.BuildNumber -lt 17763 -or [int]$os.BuildNumber -ge 22000)) -or ($ExpectedOS -eq 'Windows11' -and [int]$os.BuildNumber -lt 22000)) { throw '测试系统不是预期的 Windows 客户端版本。' }
   $baseline = Read-Identity "$Directory/baseline.msix"
   $candidate = Read-Identity "$Directory/candidate.msix"
   if (Get-AppxPackage -Name $baseline.Name) { throw '干净快照中已存在测试包。' }
-  Import-Certificate -FilePath "$Directory/development.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+  $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new([IO.File]::ReadAllBytes("$Directory/development.cer"))
+  try {
+    if (-not (Test-Path -LiteralPath ('Cert:\LocalMachine\TrustedPeople\' + $certificate.Thumbprint))) { throw '缺少隔离虚拟机内的开发公钥信任。' }
+  } finally { $certificate.Dispose() }
   Add-AppxPackage -Path "$Directory/baseline.msix" -ForceApplicationShutdown
   $package = Get-AppxPackage -Name $baseline.Name
   if (-not $package -or $package.Version -ne [version]$baseline.Version) { throw '旧版安装结果不符。' }
