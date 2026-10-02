@@ -15,6 +15,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:build:store": "tauri build --config src-tauri/tauri.microsoftstore.conf.json --bundles nsis",
+    "audit:release": "npm audit && node packaging/check-rust-audit.mjs",
     "package:msix": "powershell -ExecutionPolicy Bypass -File packaging/build-msix.ps1"
   },
   "dependencies": {
