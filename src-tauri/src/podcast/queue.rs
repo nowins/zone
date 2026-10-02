@@ -655,7 +655,8 @@ mod tests {
     let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
     let episode_id = parsed.episodes[0].id.clone();
     store_subscription(&state.db_path, parsed).expect("store subscription");
-    mark_download_failed(&state.db_path, &episode_id, 0, "test failure")
+    mark_download_failed_for_source(&state.db_path, &episode_id,
+      "https://media.example.test/episode-1.mp3", 0, "test failure")
       .expect("store download row without total bytes");
     queue_add(&state.db_path, &episode_id, false).expect("queue episode");
 

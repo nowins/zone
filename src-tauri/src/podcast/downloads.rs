@@ -1,13 +1,31 @@
 use reqwest::header;
 use reqwest::StatusCode;
-use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
-use std::collections::HashSet;
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::AsyncWriteExt;
 use super::*;
+
+type EpisodeFileOperations = Mutex<HashSet<String>>;
+
+// Feed storage and commands must share one guard even when reached through
+// different PodcastState instances. Weak entries do not retain inactive databases.
+pub(crate) fn episode_file_operations(db_path: &Path) -> Result<Arc<EpisodeFileOperations>, String> {
+  static OPERATIONS: OnceLock<Mutex<HashMap<PathBuf, Weak<EpisodeFileOperations>>>> = OnceLock::new();
+  let key = fs::canonicalize(db_path).map_err(|error| format!("无法定位播客数据库：{error}"))?;
+  let mut registry = OPERATIONS.get_or_init(|| Mutex::new(HashMap::new())).lock()
+    .map_err(|_| "播客下载状态不可用".to_string())?;
+  registry.retain(|_, operations| operations.strong_count() > 0);
+  if let Some(operations) = registry.get(&key).and_then(Weak::upgrade) {
+    return Ok(operations);
+  }
+  let operations = Arc::new(Mutex::new(HashSet::new()));
+  registry.insert(key, Arc::downgrade(&operations));
+  Ok(operations)
+}
 
 #[derive(Debug)]
 pub(crate) struct EpisodeDownloadSource {
@@ -893,24 +911,18 @@ async fn download_episode_with_network_policy(
   }
   let extension = detect_audio_extension(&part_path).await?;
   let final_path = downloads_dir.join(format!("{episode_id}.{extension}"));
-  if tokio::fs::metadata(&final_path).await.is_ok() {
-    tokio::fs::remove_file(&final_path)
-      .await
-      .map_err(|error| format!("无法替换旧的播客下载：{error}"))?;
-  }
-  tokio::fs::rename(&part_path, &final_path)
-    .await
-    .map_err(|error| format!("无法完成播客下载：{error}"))?;
   let local_path = final_path.to_string_lossy().to_string();
 
   let db_path_owned = db_path.to_path_buf();
   let completed_id = episode_id.to_string();
-  let completed_path = local_path.clone();
+  let completed_source = enclosure_url.to_string();
   tauri::async_runtime::spawn_blocking(move || {
-    mark_download_complete(
+    finalize_download_for_source(
       &db_path_owned,
       &completed_id,
-      &completed_path,
+      &completed_source,
+      &part_path,
+      &final_path,
       downloaded_bytes,
       response_total.or(Some(downloaded_bytes)),
     )
@@ -958,6 +970,7 @@ pub(crate) fn mark_download_started(
   Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn mark_download_complete(
   db_path: &Path,
   episode_id: &str,
@@ -966,6 +979,47 @@ pub(crate) fn mark_download_complete(
   total_bytes: Option<u64>,
 ) -> Result<(), String> {
   let connection = open_database(db_path)?;
+  write_download_complete(&connection, episode_id, local_path, downloaded_bytes, total_bytes)
+}
+
+fn finalize_download_for_source(
+  db_path: &Path,
+  episode_id: &str,
+  enclosure_url: &str,
+  part_path: &Path,
+  final_path: &Path,
+  downloaded_bytes: u64,
+  total_bytes: Option<u64>,
+) -> Result<(), String> {
+  let mut connection = open_database(db_path)?;
+  let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+    .map_err(|error| format!("无法保存播客下载结果：{error}"))?;
+  let current_source = transaction.query_row(
+    "SELECT enclosure_url FROM podcast_episodes WHERE id = ?1", [episode_id],
+    |row| row.get::<_, String>(0),
+  ).optional().map_err(|error| format!("无法复核播客音频地址：{error}"))?;
+  if current_source.as_deref() != Some(enclosure_url) {
+    remove_file_if_present(part_path, "失效的播客断点文件")?;
+    return Err("播客音频地址已变化，请重新下载".to_string());
+  }
+  remove_file_if_present(final_path, "旧的播客下载")?;
+  fs::rename(part_path, final_path).map_err(|error| format!("无法完成播客下载：{error}"))?;
+  let save = write_download_complete(&transaction, episode_id, &final_path.to_string_lossy(),
+    downloaded_bytes, total_bytes).and_then(|()| transaction.commit()
+      .map_err(|error| format!("无法提交播客下载结果：{error}")));
+  if save.is_err() {
+    let _ = fs::rename(final_path, part_path);
+  }
+  save
+}
+
+fn write_download_complete(
+  connection: &Connection,
+  episode_id: &str,
+  local_path: &str,
+  downloaded_bytes: u64,
+  total_bytes: Option<u64>,
+) -> Result<(), String> {
   connection
     .execute(
       "
@@ -993,9 +1047,18 @@ pub(crate) fn mark_download_complete(
   Ok(())
 }
 
-pub(crate) fn mark_download_failed(db_path: &Path, episode_id: &str, downloaded_bytes: u64, message: &str) -> Result<(), String> {
-  let connection = open_database(db_path)?;
-  connection
+pub(crate) fn mark_download_failed_for_source(
+  db_path: &Path, episode_id: &str, enclosure_url: &str, downloaded_bytes: u64, message: &str,
+) -> Result<(), String> {
+  let mut connection = open_database(db_path)?;
+  let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+    .map_err(|error| format!("无法保存播客下载错误：{error}"))?;
+  let current_source = transaction.query_row(
+    "SELECT enclosure_url FROM podcast_episodes WHERE id = ?1", [episode_id],
+    |row| row.get::<_, String>(0),
+  ).optional().map_err(|error| format!("无法复核播客音频地址：{error}"))?;
+  if current_source.as_deref() != Some(enclosure_url) { return Ok(()); }
+  transaction
     .execute(
       "
       INSERT INTO podcast_downloads (
@@ -1016,7 +1079,7 @@ pub(crate) fn mark_download_failed(db_path: &Path, episode_id: &str, downloaded_
       ],
     )
     .map_err(|error| format!("无法保存播客下载错误：{error}"))?;
-  Ok(())
+  transaction.commit().map_err(|error| format!("无法提交播客下载错误：{error}"))
 }
 
 pub(crate) fn save_progress(
@@ -1189,7 +1252,8 @@ mod tests {
       .expect("delete download idempotently");
 
     fs::write(&part_path, b"ID3-failed-part").expect("write failed part");
-    mark_download_failed(&state.db_path, &episode_id, 15, "网络失败").expect("mark failed download");
+    mark_download_failed_for_source(&state.db_path, &episode_id,
+      "https://media.example.test/episode-1.mp3", 15, "网络失败").expect("mark failed download");
     let failed =
       get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id).expect("failed detail");
     assert_eq!(failed.download_error.as_deref(), Some("网络失败"));
@@ -1643,6 +1707,91 @@ mod tests {
     drop(second);
   }
   #[tokio::test]
+  async fn feed_source_rotation_and_download_completion_share_episode_file_guards() {
+    let directory = test_directory("download-source-refresh-race");
+    let state = PodcastState::initialize_at(&directory).unwrap();
+    assert!(Arc::ptr_eq(&state.active_downloads, &episode_file_operations(&state.db_path).unwrap()));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let enclosure_url = format!("http://{}/episode.mp3", listener.local_addr().unwrap());
+    let parsed = parsed_fixture(&enclosure_url);
+    let id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed.clone()).unwrap();
+    let (requested, request_seen) = tokio::sync::oneshot::channel();
+    let (release, response_ready) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.unwrap();
+      let mut request = [0u8; 8192];
+      stream.read(&mut request).await.unwrap();
+      requested.send(()).unwrap();
+      response_ready.await.unwrap();
+      let body = b"ID3-original-source";
+      let headers = format!("HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+      stream.write_all(headers.as_bytes()).await.unwrap();
+      stream.write_all(body).await.unwrap();
+      stream.shutdown().await.unwrap();
+    });
+    let download_state = state.clone();
+    let download_id = id.clone();
+    let download_url = enclosure_url.clone();
+    let download = tokio::spawn(async move {
+      let _guard = EpisodeFileGuard::acquire(&download_state.active_downloads, &download_id).unwrap();
+      download_episode_with_network_policy(&download_state.db_path, &download_state.downloads_dir,
+        &download_id, &download_url, Some("audio/mpeg"), true).await
+    });
+    request_seen.await.unwrap();
+    let mut changed = parsed.clone();
+    changed.episodes[0].enclosure_url = "https://cdn.example.test/new.mp3".to_string();
+    changed.feed.title = "换源后的标题".to_string();
+    let rejected = store_preview(&state.db_path, changed.clone()).unwrap_err();
+    assert!(rejected.contains("请稍后重试刷新"), "{rejected}");
+    let pending = get_episode_detail(&state.db_path, &state.downloads_dir, &id).unwrap();
+    assert_eq!(pending.episode.enclosure_url, enclosure_url);
+    assert_eq!(pending.feed.title, parsed.feed.title, "refresh transaction rolled back");
+    let mut metadata_only = parsed.clone();
+    metadata_only.episodes[0].title = "正常元数据刷新".to_string();
+    store_preview(&state.db_path, metadata_only).unwrap();
+    release.send(()).unwrap();
+    let result = download.await.unwrap().unwrap();
+    server.await.unwrap();
+    assert_eq!(fs::read(&result.local_path).unwrap(), b"ID3-original-source");
+    assert_eq!(get_episode_detail(&state.db_path, &state.downloads_dir, &id).unwrap()
+      .episode.download_state, "downloaded");
+    store_preview(&state.db_path, changed).unwrap();
+    assert!(!Path::new(&result.local_path).exists());
+    let rotated = get_episode_detail(&state.db_path, &state.downloads_dir, &id).unwrap();
+    assert_eq!(rotated.episode.enclosure_url, "https://cdn.example.test/new.mp3");
+    assert_eq!(rotated.episode.download_state, "none");
+    fs::remove_dir_all(directory).unwrap();
+  }
+
+  #[test]
+  fn completion_and_failure_callbacks_cannot_publish_an_old_source() {
+    let directory = test_directory("download-source-commit-check");
+    let state = PodcastState::initialize_at(&directory).unwrap();
+    let old_url = "https://media.example.test/episode-1.mp3";
+    let mut parsed = parsed_fixture(old_url);
+    let id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed.clone()).unwrap();
+    let part = state.downloads_dir.join(format!("{id}.part"));
+    let final_path = state.downloads_dir.join(format!("{id}.mp3"));
+    parsed.episodes[0].enclosure_url = "https://cdn.example.test/new.mp3".to_string();
+    store_preview(&state.db_path, parsed).unwrap();
+    fs::write(&part, b"ID3-old-response").unwrap();
+    let rejected = finalize_download_for_source(&state.db_path, &id, old_url,
+      &part, &final_path, 16, Some(16)).unwrap_err();
+    assert!(rejected.contains("地址已变化"));
+    assert!(!part.exists());
+    assert!(!final_path.exists());
+    mark_download_started(&state.db_path, &id, 21, Some(50)).unwrap();
+    mark_download_failed_for_source(&state.db_path, &id, old_url, 16, "late failure").unwrap();
+    let detail = get_episode_detail(&state.db_path, &state.downloads_dir, &id).unwrap();
+    assert_eq!(detail.episode.download_state, "downloading");
+    assert_eq!(detail.episode.downloaded_bytes, 21);
+    assert!(detail.episode.local_path.is_none());
+    fs::remove_dir_all(directory).unwrap();
+  }
+
+  #[tokio::test]
   async fn incomplete_range_stays_partial_and_resumes_to_the_complete_file() {
     let directory = test_directory("range-incomplete");
     let state = PodcastState::initialize_at(&directory).expect("initialize state");
@@ -1764,7 +1913,7 @@ mod tests {
     });
 
     let enclosure_url = format!("http://{address}/episode.mp3");
-    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let parsed = parsed_fixture(&enclosure_url);
     let feed_id = parsed.feed.id.clone();
     let episode_id = parsed.episodes[0].id.clone();
     store_subscription(&state.db_path, parsed).expect("store subscription");

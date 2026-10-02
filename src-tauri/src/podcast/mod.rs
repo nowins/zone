@@ -127,11 +127,12 @@ impl PodcastState {
     if let Err(error) = sweep_orphan_download_files(&db_path, &downloads_dir) {
       eprintln!("[podcast] 无法清理播客遗留下载文件：{error}");
     }
+    let active_downloads = episode_file_operations(&db_path)?;
     Ok(Self {
       db_path,
       downloads_dir,
       artwork_cache_dir,
-      active_downloads: Arc::new(Mutex::new(HashSet::new())),
+      active_downloads,
       active_refreshes: Arc::new(Mutex::new(HashSet::new())),
       refresh_semaphore: Arc::new(tokio::sync::Semaphore::new(PODCAST_REFRESH_CONCURRENCY)),
       initialization_error: None,

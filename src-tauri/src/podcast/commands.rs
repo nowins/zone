@@ -455,8 +455,9 @@ pub async fn podcast_download_episode(
       .map(|metadata| metadata.len())
       .unwrap_or(0);
     let message = error.clone();
+    let failed_source = source.enclosure_url.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
-      mark_download_failed(&db_path, &failed_id, downloaded_bytes, &message)
+      mark_download_failed_for_source(&db_path, &failed_id, &failed_source, downloaded_bytes, &message)
     })
     .await;
   }

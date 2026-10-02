@@ -34,9 +34,12 @@ fn store_feed(
 ) -> Result<PodcastSubscribeResult, String> {
   // File deletions are collected while the transaction is open and executed
   // only after a successful commit: a rolled-back refresh must not strand
-  // downloads whose rows survive, and file I/O must not stretch the write lock.
+  // downloads whose rows survive. Episode guards remain held through cleanup so
+  // a new download cannot create a file that a refresh is about to remove.
   // Leftovers from a crash in between are swept at startup.
   let mut pending_file_deletes: Vec<PathBuf> = Vec::new();
+  let active_files = episode_file_operations(db_path)?;
+  let mut file_guards = Vec::new();
   let mut connection = open_database(db_path)?;
   let transaction = connection
     .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -223,6 +226,8 @@ fn store_feed(
           &episode.id,
           &episode.enclosure_url,
           &mut pending_file_deletes,
+          &active_files,
+          &mut file_guards,
         )?;
         updated_count += update
           .execute(params![
@@ -246,7 +251,8 @@ fn store_feed(
       reconcile_episode_resources(&transaction, episode)?;
     }
   }
-  prune_missing_feed_episodes(&transaction, &downloads_dir, &feed.id, &episodes, &mut pending_file_deletes)?;
+  prune_missing_feed_episodes(&transaction, &downloads_dir, &feed.id, &episodes, &mut pending_file_deletes,
+    &active_files, &mut file_guards)?;
   let (latest_episode_at, unplayed_count, latest_episode_title) = transaction
     .query_row(
       "
@@ -310,6 +316,8 @@ fn prune_missing_feed_episodes(
   feed_id: &str,
   current_episodes: &[ParsedPodcastEpisode],
   pending_file_deletes: &mut Vec<PathBuf>,
+  active_files: &std::sync::Arc<std::sync::Mutex<HashSet<String>>>,
+  file_guards: &mut Vec<EpisodeFileGuard>,
 ) -> Result<(), String> {
   let current_ids = current_episodes
     .iter()
@@ -369,6 +377,12 @@ fn prune_missing_feed_episodes(
     if has_progress || is_saved || is_queued || has_active_download {
       continue;
     }
+    // A command may have acquired its guard before registering its download row.
+    // Keep such episodes until the next refresh rather than pruning under it.
+    match EpisodeFileGuard::acquire(active_files, &episode_id) {
+      Ok(guard) => file_guards.push(guard),
+      Err(_) => continue,
+    }
 
     let local_path = transaction
       .query_row(
@@ -402,6 +416,8 @@ fn invalidate_download_if_enclosure_changed(
   episode_id: &str,
   next_enclosure_url: &str,
   pending_file_deletes: &mut Vec<PathBuf>,
+  active_files: &std::sync::Arc<std::sync::Mutex<HashSet<String>>>,
+  file_guards: &mut Vec<EpisodeFileGuard>,
 ) -> Result<(), String> {
   let previous_enclosure_url = transaction
     .query_row(
@@ -417,6 +433,8 @@ fn invalidate_download_if_enclosure_changed(
   if previous_enclosure_url == next_enclosure_url {
     return Ok(());
   }
+  file_guards.push(EpisodeFileGuard::acquire(active_files, episode_id)
+    .map_err(|_| "播客音频地址已变化，该单集正在下载或清理，请稍后重试刷新".to_string())?);
 
   let local_path = transaction
     .query_row(
@@ -1013,6 +1031,23 @@ mod tests {
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }
+  #[test]
+  fn pruning_keeps_an_episode_whose_file_operation_has_not_registered_yet() {
+    let directory = test_directory("prune-file-operation-guard");
+    let state = PodcastState::initialize_at(&directory).unwrap();
+    let mut parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed.clone()).unwrap();
+    let guard = EpisodeFileGuard::acquire(&state.active_downloads, &id).unwrap();
+    parsed.episodes.clear();
+    store_preview(&state.db_path, parsed.clone()).unwrap();
+    assert!(get_episode_detail(&state.db_path, &state.downloads_dir, &id).is_ok());
+    drop(guard);
+    store_preview(&state.db_path, parsed).unwrap();
+    assert!(get_episode_detail(&state.db_path, &state.downloads_dir, &id).is_err());
+    fs::remove_dir_all(directory).unwrap();
+  }
+
   #[test]
   fn enclosure_url_change_invalidates_managed_offline_downloads() {
     let directory = test_directory("enclosure-url-invalidates-download");
