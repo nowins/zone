@@ -1390,6 +1390,40 @@ mod tests {
     directory
   }
 
+  #[test]
+  fn unavailable_scan_keeps_the_snapshot_and_reconnection_preserves_activity() {
+    let root = test_root("offline-scan");
+    let state = MusicState::initialize_at(&root).unwrap();
+    let dir = root.join("Music");
+    fs::create_dir(&dir).unwrap();
+    let file = dir.join("one.mp3");
+    fs::write(&file, b"id3").unwrap();
+    let folder = MusicFolder { path: dir.to_string_lossy().into(), name: "音乐".into() };
+    let first = scan_and_store_library_controlled(&state, vec![folder.clone()], &|| false, &|_| {}).unwrap();
+    let id = first.tracks[0].id.clone();
+    save_track_activity(&state, serde_json::from_value(serde_json::json!({ id.clone(): {
+      "addedAt": 1, "playCount": 7, "completedCount": 5, "skipCount": 0
+    } })).unwrap()).unwrap();
+    save_home_pins(&state, serde_json::from_value(serde_json::json!([
+      { "id": "pin", "kind": "track", "targetId": id, "createdAt": 1 }
+    ])).unwrap()).unwrap();
+    let before = load_library_snapshot(&state).unwrap();
+    fs::rename(&dir, root.join("Offline")).unwrap();
+    assert!(scan_and_store_library_controlled(&state, vec![folder.clone()], &|| false, &|_| {}).unwrap_err().contains("已保留"));
+    assert_eq!(serde_json::to_value(&before).unwrap(), serde_json::to_value(load_library_snapshot(&state).unwrap()).unwrap());
+    fs::rename(root.join("Offline"), &dir).unwrap();
+    let invalid = MusicFolder { path: root.join("Missing").to_string_lossy().into(), name: "离线".into() };
+    fs::write(dir.join("two.mp3"), b"id3").unwrap();
+    assert!(scan_and_store_library_controlled(&state, vec![folder.clone(), invalid], &|| false, &|_| {}).is_err());
+    assert_eq!(serde_json::to_value(&before).unwrap(), serde_json::to_value(load_library_snapshot(&state).unwrap()).unwrap());
+    scan_and_store_library_controlled(&state, vec![folder.clone()], &|| false, &|_| {}).unwrap();
+    assert_eq!(load_library_snapshot(&state).unwrap().track_activity[&id].play_count, 7);
+    fs::remove_file(&file).unwrap();
+    fs::remove_file(dir.join("two.mp3")).unwrap();
+    let empty = scan_and_store_library_controlled(&state, vec![folder], &|| false, &|_| {}).unwrap();
+    assert!(empty.tracks.is_empty(), "a successfully scanned empty directory is authoritative");
+  }
+
   fn sample_track(id: &str, path: &str) -> Track {
     Track {
       id: id.to_string(),

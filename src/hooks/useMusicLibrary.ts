@@ -48,7 +48,7 @@ export function useMusicLibrary({
     const now = Date.now();
     const isMigrating = activityMigrationRef.current;
     setTrackActivity((current) => {
-      const next: TrackActivityMap = {};
+      const next: TrackActivityMap = { ...current };
       for (const track of tracks) {
         const migrationBaseline = isMigrating ? track.added_at ?? now : now;
         next[track.id] = createTrackActivity(current[track.id], migrationBaseline);
@@ -101,7 +101,9 @@ export function useMusicLibrary({
         pending = queuedScanRef.current;
       }
     } catch (error) {
-      setScanNote(String(error).includes("已取消") ? "扫描已取消" : "曲库同步失败");
+      const message = String(error);
+      setScanNote(message.includes("已取消") ? "扫描已取消"
+        : message.includes("已保留原资料库") ? "音乐来源暂不可用，已保留资料库，请稍后重试" : "曲库同步失败");
       if (import.meta.env.DEV) console.warn("[library] scan failed", error);
     } finally {
       scanInFlightRef.current = false;

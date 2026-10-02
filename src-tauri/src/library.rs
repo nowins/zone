@@ -71,8 +71,8 @@ pub(crate) fn select_music_folder() -> Option<MusicFolder> {
 }
 
 #[tauri::command]
-pub(crate) fn scan_library(folders: Vec<String>) -> ScanResult {
-  scan_library_controlled(folders, &|| false, &|_| {}).expect("uncancellable scan")
+pub(crate) fn scan_library(folders: Vec<String>) -> Result<ScanResult, String> {
+  scan_library_controlled(folders, &|| false, &|_| {})
 }
 
 pub(crate) fn scan_library_controlled(
@@ -82,14 +82,15 @@ pub(crate) fn scan_library_controlled(
   let mut skipped = 0usize;
 
   for folder in &folders {
+    if cancelled() { return Err("曲库扫描已取消".into()); }
     let root = PathBuf::from(folder);
-    if !root.exists() {
-      skipped += 1;
-      continue;
+    if !root.is_dir() {
+      return Err("音乐文件夹暂不可用，已保留原资料库".into());
     }
 
-    for entry in WalkDir::new(&root).follow_links(false).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(&root).follow_links(false) {
       if cancelled() { return Err("曲库扫描已取消".into()); }
+      let entry = entry.map_err(|_| "音乐文件夹读取不完整，已保留原资料库".to_string())?;
       if !entry.file_type().is_file() {
         continue;
       }
@@ -99,6 +100,9 @@ pub(crate) fn scan_library_controlled(
         skipped += 1;
         continue;
       }
+
+      // An unreadable file cannot authoritatively replace a previous snapshot.
+      fs::File::open(path).map_err(|_| "音乐文件读取失败，已保留原资料库".to_string())?;
 
       tracks.push(track_from_path(path));
       if tracks.len() % 25 == 0 { progress(tracks.len()); }
