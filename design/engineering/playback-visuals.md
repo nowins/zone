@@ -7,6 +7,7 @@
 - 本地音乐支持 `mp3`、`flac`、`m4a`、`aac`、`wav`、`ogg`，事实源是 `src-tauri/src/library.rs` 的 `is_supported_audio`；增加格式时同步扫描、协议 MIME 与解码验证。
 - M4A 中的 ALAC 经 `audio_transcode.rs` 在后台转换为无损 PCM32 WAV，再由同一 `zone-audio` 协议提供 Range 与 CORS。缓存按原文件路径、长度和修改时间区分，不改写媒体源文件；当前支持最高 192 kHz 的单/双声道，源文件上限 512 MiB、输出上限 1 GiB、转换时限 60 秒，缓存总量上限 2 GiB。超过边界或损坏文件明确失败，不跳过损坏数据生成成功缓存。
 - `src/hooks/usePlaybackControls.ts` 拥有播放尝试与 transport ref；`audioPlayAttemptRef` 仅由 `beginPlayAttempt` 递增，`runPlayAttempt` 统一处理 `audio.play()` 成功/失败，避免旧请求回调覆盖新音源状态。
+- 音乐启动恢复保持暂停，显式播放、切歌与自然续播才建立播放意图；SmartDJ 启动恢复只恢复队列和推荐会话，不抢占播客。音乐位置写入 `zone.sqlite` 已有的 `music_playback_state.position_ms`，播放中每 5 秒及状态变化后保存；元数据就绪后恢复位置，超出实际时长或已接近结尾时从头开始。
 - `usePodcastPlayback.ts` 通过 `podcastTransport.ts` 暴露产品状态与语义方法。播客自然结束委托 `handleEpisodeEnded`，待播消费以对应音源实际开始为准；守卫统一复用 `src/utils/playbackTransport.ts`。
 - Web Audio 图由 `useAudioEngine.ts` 持有，通过 `AudioEngineHandle` 接入播放控制。跨 hook 共享 ref/state 只创建一次，沿 App 的单向传参和 late-bound ref 接线；修改组合关系先读 [架构地图](architecture.md)。
 

@@ -365,6 +365,7 @@ fn upsert_playback_state(
   volume: f64,
   shuffle: bool,
   repeat: &str,
+  position_seconds: Option<f64>,
 ) -> Result<(), String> {
   let repeat_mode = match repeat {
     "one" | "all" | "off" => repeat,
@@ -377,9 +378,11 @@ fn upsert_playback_state(
       "
       INSERT INTO music_playback_state (
         id, active_track_id, position_ms, shuffle, repeat_mode, volume, updated_at
-      ) VALUES (1, ?1, 0, ?2, ?3, ?4, ?5)
+      ) VALUES (1, ?1, COALESCE(?6, 0), ?2, ?3, ?4, ?5)
       ON CONFLICT(id) DO UPDATE SET
         active_track_id = excluded.active_track_id,
+        position_ms = CASE WHEN music_playback_state.active_track_id IS excluded.active_track_id
+          THEN COALESCE(?6, music_playback_state.position_ms) ELSE COALESCE(?6, 0) END,
         shuffle = excluded.shuffle,
         repeat_mode = excluded.repeat_mode,
         volume = excluded.volume,
@@ -390,7 +393,8 @@ fn upsert_playback_state(
         i64::from(shuffle),
         repeat_mode,
         volume.clamp(0.0, 1.0),
-        now
+        now,
+        position_seconds.filter(|value| value.is_finite()).map(|value| (value.clamp(0.0, 604800.0) * 1000.0).round() as i64)
       ],
     )
     .map_err(|error| format!("无法保存播放状态：{error}"))?;
@@ -642,7 +646,7 @@ fn list_id_column(connection: &Connection, sql: &str) -> Result<Vec<String>, Str
 fn read_playback_snapshot(connection: &Connection) -> Result<MusicPlaybackSnapshot, String> {
   let row = connection
     .query_row(
-      "SELECT active_track_id, shuffle, repeat_mode, volume FROM music_playback_state WHERE id = 1",
+      "SELECT active_track_id, shuffle, repeat_mode, volume, position_ms FROM music_playback_state WHERE id = 1",
       [],
       |row| {
         Ok((
@@ -650,15 +654,17 @@ fn read_playback_snapshot(connection: &Connection) -> Result<MusicPlaybackSnapsh
           row.get::<_, i64>(1)?,
           row.get::<_, String>(2)?,
           row.get::<_, f64>(3)?,
+          row.get::<_, i64>(4)?,
         ))
       },
     )
     .optional()
     .map_err(|error| format!("无法读取播放状态：{error}"))?;
-  let (active_track_id, shuffle, repeat, volume) =
-    row.unwrap_or((None, 0, "off".to_string(), 0.8));
+  let (active_track_id, shuffle, repeat, volume, position_ms) =
+    row.unwrap_or((None, 0, "off".to_string(), 0.8, 0));
   Ok(MusicPlaybackSnapshot {
     active_track_id,
+    position_seconds: position_ms.max(0) as f64 / 1000.0,
     queue: list_id_column(
       connection,
       "SELECT track_id FROM music_queue_items ORDER BY position ASC",
@@ -754,6 +760,7 @@ pub(crate) fn import_legacy_player_state(
     legacy.volume.unwrap_or(0.8),
     legacy.shuffle.unwrap_or(false),
     legacy.repeat.as_deref().unwrap_or("off"),
+    None,
   )?;
   set_setting(
     &transaction,
@@ -943,6 +950,7 @@ pub(crate) fn save_playback_state(
     playback.volume.unwrap_or(0.8),
     playback.shuffle.unwrap_or(false),
     playback.repeat.as_deref().unwrap_or("off"),
+    playback.position_seconds,
   )?;
   if let Some(selected) = playback.selected_playlist_id {
     set_setting(
@@ -1442,6 +1450,23 @@ mod tests {
       extension: "mp3".to_string(),
       cover_path: None,
     }
+  }
+
+  #[test]
+  fn playback_position_round_trips_and_resets_for_a_different_track() {
+    let root = test_root("resume-position");
+    let state = MusicState::initialize_at(&root).unwrap();
+    let connection = open_music_db(&state).unwrap();
+    upsert_track(&connection, &sample_track("one", "one.mp3"), None, 1).unwrap();
+    upsert_track(&connection, &sample_track("two", "two.mp3"), None, 1).unwrap();
+    upsert_playback_state(&connection, Some("one"), 0.5, false, "off", Some(42.125)).unwrap();
+    assert_eq!(read_playback_snapshot(&connection).unwrap().position_seconds, 42.125);
+    upsert_playback_state(&connection, Some("one"), 0.7, false, "off", None).unwrap();
+    assert_eq!(read_playback_snapshot(&connection).unwrap().position_seconds, 42.125);
+    upsert_playback_state(&connection, Some("two"), 0.7, false, "off", None).unwrap();
+    assert_eq!(read_playback_snapshot(&connection).unwrap().position_seconds, 0.0);
+    upsert_playback_state(&connection, Some("two"), 0.7, false, "off", Some(-30.0)).unwrap();
+    assert_eq!(read_playback_snapshot(&connection).unwrap().position_seconds, 0.0);
   }
 
   #[test]

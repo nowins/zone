@@ -10,6 +10,7 @@ import type {
 
 export type MusicPlaybackSnapshot = {
   activeTrackId: string | null;
+  positionSeconds: number;
   queue: string[];
   playHistory: string[];
   volume: number;
@@ -54,6 +55,7 @@ export type LegacyPlayerStateV1 = {
 
 export type MusicPlaybackStateInput = {
   activeTrackId?: string | null;
+  positionSeconds?: number;
   queue?: string[];
   playHistory?: string[];
   volume?: number;

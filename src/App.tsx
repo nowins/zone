@@ -236,6 +236,8 @@ export default function App() {
     playNext,
     startSmartDj,
     restoreSmartDjSession,
+    restoreMusicPosition,
+    getMusicPosition,
     dislikeSmartDjTrack,
     getIsSmartDjActive,
     queueInsertMode,
@@ -452,6 +454,7 @@ export default function App() {
 
         setFolders(snapshot.folders ?? []);
         setTracks(snapshot.tracks ?? []);
+        restoreMusicPosition(snapshot.playback.activeTrackId ?? null, snapshot.playback.positionSeconds ?? 0);
         setActiveTrackId(snapshot.playback.activeTrackId ?? null);
         setQueue(snapshot.playback.queue ?? []);
         setPlayHistory(snapshot.playback.playHistory ?? []);
@@ -507,10 +510,11 @@ export default function App() {
 
   useEffect(() => {
     if (!restored || !libraryPersistenceReadyRef.current) return;
-    const timer = window.setTimeout(() => {
+    const savePlayback = () => {
       if (clearingLibraryRef.current) return;
       void trackMusicWrite(musicSavePlaybackState({
         activeTrackId,
+        positionSeconds: getMusicPosition(),
         queue,
         playHistory,
         volume,
@@ -522,9 +526,11 @@ export default function App() {
         recordDiagnostic({ domain: "library", event: "save_playback_state", outcome: "error" });
         if (import.meta.env.DEV) console.warn("[library] save playback state failed", error);
       });
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [restored, clearingLibrary, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId]);
+    };
+    const timer = window.setTimeout(savePlayback, 250);
+    const checkpoint = isPlaying && !activePodcastEpisode ? window.setInterval(savePlayback, 5000) : null;
+    return () => { window.clearTimeout(timer); if (checkpoint !== null) window.clearInterval(checkpoint); };
+  }, [restored, clearingLibrary, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId, isPlaying, activePodcastEpisode?.episodeId]);
 
   useEffect(() => {
     if (!restored || tracks.length === 0) return;
@@ -974,7 +980,7 @@ export default function App() {
     setRetryingPersistence(true);
     const results = await Promise.allSettled([
       trackMusicWrite(musicSavePlaylists(playlists)), trackMusicWrite(musicSaveHomePins(homePins)), trackMusicWrite(musicSaveTrackActivity(trackActivity)),
-      trackMusicWrite(musicSavePlaybackState({ activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId })),
+      trackMusicWrite(musicSavePlaybackState({ activeTrackId, positionSeconds: getMusicPosition(), queue, playHistory, volume, shuffle, repeat, selectedPlaylistId })),
     ]);
     const failed = results.some(result => result.status === "rejected");
     setPersistenceFailed(failed);

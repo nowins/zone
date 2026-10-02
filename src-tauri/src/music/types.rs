@@ -76,6 +76,7 @@ pub(crate) struct MusicLibrarySnapshot {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MusicPlaybackSnapshot {
   pub active_track_id: Option<String>,
+  pub position_seconds: f64,
   pub queue: Vec<String>,
   pub play_history: Vec<String>,
   pub volume: f64,
@@ -161,6 +162,8 @@ pub(crate) struct LegacyPlayerStateV1 {
 pub(crate) struct MusicPlaybackStateInput {
   #[serde(default)]
   pub active_track_id: Option<String>,
+  #[serde(default)]
+  pub position_seconds: Option<f64>,
   #[serde(default)]
   pub queue: Vec<String>,
   #[serde(default)]

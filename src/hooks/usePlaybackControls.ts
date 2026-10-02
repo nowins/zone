@@ -160,6 +160,9 @@ export function usePlaybackControls({
   // Transport owns play-attempt generation, autoplay intent, and resume bookkeeping.
   const audioPlayAttemptRef = useRef(0);
   const podcastPlaybackIntentRef = useRef(false);
+  const musicPlaybackIntentRef = useRef(false);
+  const musicPositionRef = useRef<{ trackId: string; position: number } | null>(null);
+  const pendingMusicResumeRef = useRef<{ trackId: string; position: number } | null>(null);
   const pendingPodcastStartRef = useRef<{ episodeId: string; position: number } | null>(null);
   const pendingPodcastResumeRef = useRef<PodcastPendingResume | null>(null);
   const activeAudioSourceKeyRef = useRef<string | null>(null);
@@ -294,6 +297,7 @@ export function usePlaybackControls({
 
   function clearPlaybackIntent() {
     podcastPlaybackIntentRef.current = false;
+    musicPlaybackIntentRef.current = false;
     beginPlayAttempt();
   }
 
@@ -305,6 +309,7 @@ export function usePlaybackControls({
     episodeId: string;
     positionSeconds?: number | null;
   }) {
+    musicPlaybackIntentRef.current = false;
     const requested = options.positionSeconds;
     pendingPodcastStartRef.current =
       requested === null || requested === undefined || !Number.isFinite(requested)
@@ -458,7 +463,12 @@ export function usePlaybackControls({
       };
       setProgress(Math.max(0, startPosition));
     }
-    if (activePlayback.kind === "music") setProgress(0);
+    if (activePlayback.kind === "music") {
+      const pending = pendingMusicResumeRef.current;
+      const position = pending?.trackId === activePlayback.track.id ? pending.position : 0;
+      musicPositionRef.current = { trackId: activePlayback.track.id, position };
+      setProgress(position);
+    }
     setDuration(
       activePlayback.kind === "podcast"
         ? Math.max(0, activePlayback.episode.durationSeconds ?? 0)
@@ -469,7 +479,7 @@ export function usePlaybackControls({
     audio.playbackRate = activePlayback.kind === "podcast" ? podcastPlaybackRate : 1;
     audio.load();
 
-    const shouldAutoplay = activePlayback.kind === "music" || podcastPlaybackIntentRef.current;
+    const shouldAutoplay = activePlayback.kind === "music" ? musicPlaybackIntentRef.current : podcastPlaybackIntentRef.current;
     if (!shouldAutoplay) {
       setIsPlaying(false);
       if (activePlayback.kind === "podcast") setPodcastPlaybackStatus("paused");
@@ -494,6 +504,8 @@ export function usePlaybackControls({
   }
 
   function playTrack(track: Track, sourceTracks = tracks) {
+    musicPlaybackIntentRef.current = true;
+    pendingMusicResumeRef.current = null;
     cancelPodcastSessionRestore();
     setQueue(sourceTracks.map((item) => item.id));
     if (activePodcastEpisode) {
@@ -608,8 +620,8 @@ export function usePlaybackControls({
       showActionNotice("SmartDJ 会话没有可继续的歌曲");
       return false;
     }
-    // Resume without forcing autoplay intent beyond normal playTracks path.
-    playTracks(materialized.tracks, { preserveSmartDj: true });
+    // Restoring radio state must not take over a restored podcast or start sound.
+    setQueue(materialized.tracks.map((track) => track.id));
     persistSmartDjSession(materialized.session);
     showActionNotice(`已恢复 SmartDJ：${materialized.session.seed.label}`);
     return true;
@@ -653,6 +665,8 @@ export function usePlaybackControls({
 
   function playTracks(targetTracks: Track[], options?: { preserveSmartDj?: boolean }) {
     if (targetTracks.length === 0) return;
+    musicPlaybackIntentRef.current = true;
+    pendingMusicResumeRef.current = null;
     if (!options?.preserveSmartDj) clearSmartDjSession();
     cancelPodcastSessionRestore();
     setQueue(targetTracks.map((track) => track.id));
@@ -803,6 +817,8 @@ export function usePlaybackControls({
       persistPodcastProgress(currentTime, trackDuration);
       return;
     }
+    if (pendingMusicResumeRef.current?.trackId === activeTrackId) return;
+    if (activeTrackId) musicPositionRef.current = { trackId: activeTrackId, position: Math.max(0, currentTime) };
     setProgress(currentTime);
     const session = playbackSessionRef.current;
     if (!session || session.trackId !== activeTrackId || session.finalized) return;
@@ -849,6 +865,8 @@ export function usePlaybackControls({
     const result = resolveQueueMove(playbackOrder, activeTrackId, delta, repeat);
     if (result.kind === "restart") restartCurrentPlayback();
     if (result.kind === "move") {
+      musicPlaybackIntentRef.current = true;
+      pendingMusicResumeRef.current = null;
       setActiveTrackId(result.trackId);
       if (smartDjSessionRef.current) {
         // Defer maintenance until state settles.
@@ -875,6 +893,7 @@ export function usePlaybackControls({
 
     const result = move(1, "ended");
     if (result.kind === "boundary" || result.kind === "empty") {
+      musicPlaybackIntentRef.current = false;
       setIsPlaying(false);
     }
   }
@@ -882,6 +901,10 @@ export function usePlaybackControls({
   function seek(value: number) {
     if (!audioRef.current) return;
     const podcastEpisode = activePodcastEpisodeRef.current;
+    if (!podcastEpisode && activeTrackId) {
+      pendingMusicResumeRef.current = null;
+      musicPositionRef.current = { trackId: activeTrackId, position: Math.max(0, value) };
+    }
     if (podcastEpisode) resumePodcastProgressWrites(podcastEpisode.episodeId);
     if (pendingPodcastResumeRef.current?.episodeId === podcastEpisode?.episodeId) {
       pendingPodcastResumeRef.current = null;
@@ -899,6 +922,15 @@ export function usePlaybackControls({
     setDuration(nextDuration);
     const pending = pendingPodcastResumeRef.current;
     const episode = activePodcastEpisodeRef.current;
+    if (!episode && pendingMusicResumeRef.current?.trackId === activeTrackId) {
+      const resume = pendingMusicResumeRef.current;
+      pendingMusicResumeRef.current = null;
+      const position = nextDuration > 0 && resume.position < nextDuration - 1 ? Math.max(0, resume.position) : 0;
+      audio.currentTime = position;
+      if (activeTrackId) musicPositionRef.current = { trackId: activeTrackId, position };
+      setProgress(position);
+      return;
+    }
     if (!pending || !episode || pending.episodeId !== episode.episodeId) return;
     pendingPodcastResumeRef.current = null;
     const resumePosition = resolvePodcastResumePosition(pending, episode, nextDuration);
@@ -916,6 +948,7 @@ export function usePlaybackControls({
   }
 
   function handleAudioError() {
+    musicPlaybackIntentRef.current = false;
     recordDiagnostic({ domain: activePodcastEpisodeRef.current ? "podcast" : "music", event: "media_error", outcome: "error", code: audioRef.current?.error?.code });
     if (!activePodcastEpisodeRef.current) showActionNotice("音乐播放失败，请检查文件是否可用后重试");
     setIsPlaying(false);
@@ -964,10 +997,12 @@ export function usePlaybackControls({
       audioPlayAttemptRef.current = playAttempt;
       const podcastEpisodeId = activePodcastEpisodeRef.current?.episodeId ?? null;
       if (podcastEpisodeId) podcastPlaybackIntentRef.current = true;
+      else musicPlaybackIntentRef.current = true;
       runPlayAttempt({ sourceKey, podcastEpisodeId, playAttempt });
     } else {
       flushPodcastProgress();
       if (activePodcastEpisodeRef.current) podcastPlaybackIntentRef.current = false;
+      else musicPlaybackIntentRef.current = false;
       const musicSession = playbackSessionRef.current;
       if (musicSession && !musicSession.finalized && musicSession.lastTickAt != null) {
         musicSession.listenedMs += Math.max(0, Date.now() - musicSession.lastTickAt);
@@ -1009,6 +1044,9 @@ export function usePlaybackControls({
   function restartCurrentPlayback() {
     const audio = audioRef.current;
     if (!audio || activePodcastEpisode || !activeTrack) return;
+    musicPlaybackIntentRef.current = true;
+    pendingMusicResumeRef.current = null;
+    musicPositionRef.current = { trackId: activeTrack.id, position: 0 };
     audio.currentTime = 0;
     setProgress(0);
     const previous = playbackSessionRef.current;
@@ -1047,6 +1085,16 @@ export function usePlaybackControls({
     });
   }
 
+  function restoreMusicPosition(trackId: string | null, position: number) {
+    const restored = trackId ? { trackId, position: Number.isFinite(position) ? Math.max(0, position) : 0 } : null;
+    pendingMusicResumeRef.current = restored;
+    musicPositionRef.current = restored;
+  }
+
+  function getMusicPosition() {
+    return musicPositionRef.current?.trackId === activeTrackId ? musicPositionRef.current.position : 0;
+  }
+
   return {
     isPlaying,
     setIsPlaying,
@@ -1073,6 +1121,8 @@ export function usePlaybackControls({
     startSmartDj,
     clearSmartDjSession,
     restoreSmartDjSession,
+    restoreMusicPosition,
+    getMusicPosition,
     dislikeSmartDjTrack,
     getIsSmartDjActive: () => Boolean(smartDjSessionRef.current && smartDjSessionRef.current.status === "playing"),
     queueInsertMode,
