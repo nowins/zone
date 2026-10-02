@@ -166,6 +166,7 @@ h2 {
 .settings-info-copy::-webkit-scrollbar-track { background: transparent; }
 .settings-info-copy h3 { margin: 20px 0 8px; font-size: 17px; font-weight: 400; }
 .settings-info-copy p { line-height: 1.65; font-size: 13px; color: var(--muted); }
+.settings-privacy-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 
 .folder-list {
   flex: 1 1 auto;

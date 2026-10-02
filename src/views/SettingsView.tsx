@@ -13,7 +13,7 @@ import { Presence } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
 import { createPortal } from "react-dom";
 import { APP_VERSION, RELEASE_LINKS } from "../app/releaseInfo";
-import { PRIVACY_SECTIONS } from "../app/privacy";
+import { PRIVACY_LINKS, PRIVACY_SECTIONS } from "../app/privacy";
 
 export function SettingsView({
   folders,
@@ -57,6 +57,7 @@ export function SettingsView({
   const [clearBusy, setClearBusy] = useState(false);
   const [clearError, setClearError] = useState("");
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [privacyNotice, setPrivacyNotice] = useState("");
   async function clearLibrary() {
     if (clearBusy || isScanning) return;
     setClearBusy(true);
@@ -393,7 +394,7 @@ export function SettingsView({
           </section>
           <section className="settings-about" aria-label="关于 Zone">
             <span className="settings-kicker">关于</span><h2>Zone {APP_VERSION}</h2>
-            <Button variant="ghost" onClick={() => setShowPrivacy(true)}>隐私说明</Button>
+            <Button variant="ghost" onClick={() => { setPrivacyNotice(""); setShowPrivacy(true); }}>隐私说明</Button>
             {RELEASE_LINKS.support && <Button variant="ghost" onClick={() => void invoke("plugin:opener|open_url", { url: RELEASE_LINKS.support }).catch(() => setDiagnosticNotice("无法打开帮助页面，请重试"))}>反馈与帮助</Button>}
             {RELEASE_LINKS.download && <Button variant="ghost" onClick={() => void invoke("plugin:opener|open_url", { url: RELEASE_LINKS.download }).catch(() => setDiagnosticNotice("无法打开下载页面，请重试"))}>获取新版</Button>}
           </section>
@@ -419,7 +420,13 @@ export function SettingsView({
         <Dialog titleId="privacy-title" kicker="Zone" title="隐私说明" className="settings-info-dialog"
           onCancel={() => setShowPrivacy(false)} onSubmit={event => event.preventDefault()}
           actions={<Button variant="ghost" onClick={() => setShowPrivacy(false)}>关闭</Button>}>
-          <div className="settings-info-copy" tabIndex={0}>{PRIVACY_SECTIONS.map(section => <section key={section.title}><h3>{section.title}</h3><p>{section.text}</p></section>)}</div>
+          <div className="settings-info-copy" tabIndex={0}>
+            {PRIVACY_SECTIONS.map(section => <section key={section.title}><h3>{section.title}</h3><p>{section.text}</p></section>)}
+            <div className="settings-privacy-links">
+              {PRIVACY_LINKS.map(link => <Button key={link.url} variant="ghost" onClick={() => void invoke("plugin:opener|open_url", { url: link.url }).catch(() => setPrivacyNotice("无法打开隐私页面，请重试"))}>{link.label}</Button>)}
+            </div>
+            {privacyNotice && <p role="alert">{privacyNotice}</p>}
+          </div>
         </Dialog>
       </Presence>, document.body)}
     </section>
