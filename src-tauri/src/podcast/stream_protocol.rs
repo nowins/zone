@@ -1,5 +1,8 @@
 use reqwest::header::{self, HeaderMap};
 use reqwest::StatusCode;
+use std::collections::VecDeque;
+use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 use tauri::http::{Method, Request, Response};
 use super::*;
 
@@ -8,6 +11,47 @@ pub(crate) enum PodcastStreamRange {
   Bounded { start: u64, end: u64 },
   Suffix { length: u64 },
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedStreamSource {
+  url: String,
+  total: u64,
+  etag: Option<String>,
+  last_modified: Option<String>,
+}
+
+impl VerifiedStreamSource {
+  fn from_headers(url: &str, total: u64, headers: &HeaderMap) -> Self {
+    Self {
+      url: url.to_string(),
+      total,
+      etag: header_text(headers, header::ETAG),
+      last_modified: header_text(headers, header::LAST_MODIFIED),
+    }
+  }
+}
+
+type VerifiedStreamCache = VecDeque<(VerifiedStreamSource, Instant)>;
+static VERIFIED_STREAM_SOURCES: OnceLock<Mutex<VerifiedStreamCache>> = OnceLock::new();
+const VERIFIED_STREAM_SOURCE_LIMIT: usize = 128;
+const VERIFIED_STREAM_SOURCE_TTL: Duration = Duration::from_secs(5 * 60);
+
+fn stream_source_is_verified(source: &VerifiedStreamSource) -> bool {
+  VERIFIED_STREAM_SOURCES.get_or_init(Default::default).lock().is_ok_and(|mut cache| {
+    cache.retain(|(_, verified_at)| verified_at.elapsed() < VERIFIED_STREAM_SOURCE_TTL);
+    cache.iter().any(|(verified, _)| verified == source)
+  })
+}
+
+fn remember_verified_stream_source(source: VerifiedStreamSource) {
+  if let Ok(mut cache) = VERIFIED_STREAM_SOURCES.get_or_init(Default::default).lock() {
+    cache.retain(|(verified, _)| verified != &source);
+    cache.push_back((source, Instant::now()));
+    while cache.len() > VERIFIED_STREAM_SOURCE_LIMIT {
+      cache.pop_front();
+    }
+  }
+}
+
 pub async fn serve_podcast_stream_protocol(
   state: PodcastState,
   request: Request<Vec<u8>>,
@@ -95,6 +139,7 @@ async fn serve_podcast_stream_protocol_with_network_policy(
     Some(source.enclosure_url.as_str()),
     requested_range,
     is_head,
+    allow_private_network,
   )
   .await
 }
@@ -105,6 +150,7 @@ async fn proxy_podcast_stream_response(
   enclosure_url: Option<&str>,
   requested_range: PodcastStreamRange,
   is_head: bool,
+  allow_private_network: bool,
 ) -> Response<Vec<u8>> {
   let status = response.status();
   if status == StatusCode::RANGE_NOT_SATISFIABLE {
@@ -158,11 +204,16 @@ async fn proxy_podcast_stream_response(
         .body(Vec::new())
         .unwrap();
     }
+    let source = VerifiedStreamSource::from_headers(
+      enclosure_url.unwrap_or_default(), total, response.headers(),
+    );
     let body = match read_exact_stream_body(response, expected_length).await {
       Ok(body) => body,
       Err(error) => return podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error),
     };
-    if let Err(error) = ensure_stream_body_looks_like_audio(&content_type, &body) {
+    if let Err(error) = ensure_stream_body_looks_like_audio(
+      &content_type, &body, start, &source, allow_private_network,
+    ).await {
       return podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error);
     }
     return podcast_stream_response_builder(StatusCode::PARTIAL_CONTENT, &content_type, expected_length)
@@ -197,11 +248,16 @@ async fn proxy_podcast_stream_response(
       "播客音频来源不支持范围播放",
     );
   }
+  let source = VerifiedStreamSource::from_headers(
+    enclosure_url.unwrap_or_default(), total, response.headers(),
+  );
   let body = match read_exact_stream_body(response, total).await {
     Ok(body) => body,
     Err(error) => return podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error),
   };
-  if let Err(error) = ensure_stream_body_looks_like_audio(&content_type, &body) {
+  if let Err(error) = ensure_stream_body_looks_like_audio(
+    &content_type, &body, 0, &source, allow_private_network,
+  ).await {
     return podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error);
   }
   let mut response = podcast_stream_response_builder(StatusCode::OK, &content_type, total)
@@ -343,16 +399,54 @@ fn podcast_stream_content_type(
   }
 }
 
-fn ensure_stream_body_looks_like_audio(content_type: &str, body: &[u8]) -> Result<(), String> {
+async fn ensure_stream_body_looks_like_audio(
+  content_type: &str,
+  body: &[u8],
+  start: u64,
+  source: &VerifiedStreamSource,
+  allow_private_network: bool,
+) -> Result<(), String> {
   if content_type.starts_with("audio/") {
     return Ok(());
   }
-  // Generic binary responses may be error pages or non-media payloads. Require a
-  // recognized audio magic when the upstream did not advertise an audio MIME.
-  if audio_prefix_looks_like_audio(body) {
+  // Only the file prefix carries container magic. Mid-file and suffix ranges
+  // reuse bounded, version-aware verification or probe the actual prefix.
+  if start == 0 && audio_prefix_looks_like_audio(body) {
+    remember_verified_stream_source(source.clone());
     return Ok(());
   }
-  Err("播客音频来源返回了非音频内容".to_string())
+  if start == 0 && body.len() >= 32 {
+    return Err("播客音频来源返回了非音频内容".to_string());
+  }
+  if stream_source_is_verified(source) {
+    return Ok(());
+  }
+  let probe_range = PodcastStreamRange::Bounded { start: 0, end: 31 };
+  let probe = send_public_get_with_policy(
+    validate_url_shape_with_policy(&source.url, allow_private_network)?,
+    PODCAST_STREAM_TIMEOUT,
+    Some(&probe_range.to_header_value()),
+    allow_private_network,
+  ).await?.response;
+  if probe.status() != StatusCode::PARTIAL_CONTENT {
+    return Err("播客音频来源不支持格式范围验证".to_string());
+  }
+  let (probe_start, probe_end, probe_total) = header_text(probe.headers(), header::CONTENT_RANGE)
+    .and_then(|value| parse_content_range(&value))
+    .ok_or_else(|| "播客音频格式范围无效".to_string())?;
+  if probe_total != Some(source.total)
+    || !probe_range.matches_response(probe_start, probe_end, source.total)
+    || VerifiedStreamSource::from_headers(&source.url, source.total, probe.headers()) != *source
+  {
+    return Err("播客音频来源在格式验证期间发生变化".to_string());
+  }
+  podcast_stream_content_type(probe.headers(), None, Some(&source.url))?;
+  let prefix = read_exact_stream_body(probe, probe_end - probe_start + 1).await?;
+  if !audio_prefix_looks_like_audio(&prefix) {
+    return Err("播客音频来源返回了非音频内容".to_string());
+  }
+  remember_verified_stream_source(source.clone());
+  Ok(())
 }
 
 pub(crate) fn parse_unsatisfied_content_range(value: &str) -> Option<u64> {
@@ -402,6 +496,104 @@ mod tests {
   use tokio::io::AsyncWriteExt;
   use tokio::net::TcpListener;
   use rusqlite::params;
+
+  fn silent_wav() -> Vec<u8> {
+    let mut wav = vec![0u8; 512];
+    let total = wav.len();
+    wav[0..4].copy_from_slice(b"RIFF");
+    wav[4..8].copy_from_slice(&((total - 8) as u32).to_le_bytes());
+    wav[8..16].copy_from_slice(b"WAVEfmt ");
+    wav[16..20].copy_from_slice(&16u32.to_le_bytes());
+    wav[20..24].copy_from_slice(&[1, 0, 1, 0]);
+    wav[24..28].copy_from_slice(&8000u32.to_le_bytes());
+    wav[28..32].copy_from_slice(&16000u32.to_le_bytes());
+    wav[32..36].copy_from_slice(&[2, 0, 16, 0]);
+    wav[36..40].copy_from_slice(b"data");
+    wav[40..44].copy_from_slice(&((total - 44) as u32).to_le_bytes());
+    wav
+  }
+
+  async fn generic_range_server(
+    responses: Vec<(usize, usize, &'static str, bool)>,
+  ) -> (String, tokio::task::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind server");
+    let url = format!("http://{}/episode.wav", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+      let wav = silent_wav();
+      for (start, end, etag, is_audio) in responses {
+        let (mut stream, _) = listener.accept().await.expect("accept request");
+        let mut request = [0u8; 8192];
+        let read = stream.read(&mut request).await.expect("read request");
+        let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+        let payload = if is_audio { wav.clone() } else { vec![b'x'; wav.len()] };
+        let body = &payload[start..=end];
+        assert!(
+          request.contains(&format!("range: bytes={start}-{end}"))
+            || (end == payload.len() - 1 && request.contains(&format!("range: bytes=-{}", body.len()))),
+          "{request}",
+        );
+        let headers = format!(
+          "HTTP/1.1 206 Partial Content\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nContent-Range: bytes {start}-{end}/{}\r\nETag: {etag}\r\nConnection: close\r\n\r\n",
+          body.len(), payload.len(),
+        );
+        stream.write_all(headers.as_bytes()).await.unwrap();
+        stream.write_all(body).await.unwrap();
+        stream.shutdown().await.unwrap();
+      }
+    });
+    (url, server)
+  }
+
+  async fn generic_stream_request(state: &PodcastState, id: &str, range: &str) -> Response<Vec<u8>> {
+    let request = Request::builder().method(Method::GET)
+      .uri(format!("zone-podcast://localhost/{id}"))
+      .header(header::RANGE, range).body(Vec::new()).unwrap();
+    serve_podcast_stream_protocol_with_network_policy(state.clone(), request, true).await
+  }
+
+  #[tokio::test]
+  async fn generic_audio_ranges_validate_the_file_prefix_and_invalidate_changed_sources() {
+    let directory = test_directory("generic-stream-ranges");
+    let state = PodcastState::initialize_at(&directory).unwrap();
+    let (url, server) = generic_range_server(vec![
+      (0, 63, "v1", true), (64, 95, "v1", true), (480, 511, "v1", true),
+      (64, 95, "v2", false), (0, 31, "v2", false),
+    ]).await;
+    let mut parsed = parsed_fixture("https://media.example.test/episode.mp3");
+    let id = parsed.episodes[0].id.clone();
+    parsed.episodes[0].enclosure_url = url;
+    store_subscription(&state.db_path, parsed).unwrap();
+    for range in ["bytes=0-63", "bytes=64-95", "bytes=-32"] {
+      let response = generic_stream_request(&state, &id, range).await;
+      assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+      assert_eq!(response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN], "*");
+    }
+    let changed = generic_stream_request(&state, &id, "bytes=64-95").await;
+    assert_eq!(changed.status(), StatusCode::BAD_GATEWAY);
+    server.await.unwrap();
+    fs::remove_dir_all(directory).unwrap();
+  }
+
+  #[tokio::test]
+  async fn a_cold_generic_seek_probes_the_prefix_and_allows_tiny_initial_ranges() {
+    let directory = test_directory("generic-stream-cold-seek");
+    let state = PodcastState::initialize_at(&directory).unwrap();
+    let (url, server) = generic_range_server(vec![
+      (64, 95, "v1", true), (0, 31, "v1", true), (0, 0, "v1", true),
+    ]).await;
+    let mut parsed = parsed_fixture("https://media.example.test/episode.mp3");
+    let id = parsed.episodes[0].id.clone();
+    parsed.episodes[0].enclosure_url = url;
+    store_subscription(&state.db_path, parsed).unwrap();
+    let seek = generic_stream_request(&state, &id, "bytes=64-95").await;
+    assert_eq!(seek.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(seek.body(), &[0; 32]);
+    let tiny = generic_stream_request(&state, &id, "bytes=0-0").await;
+    assert_eq!(tiny.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(tiny.body(), b"R");
+    server.await.unwrap();
+    fs::remove_dir_all(directory).unwrap();
+  }
 
   #[test]
   fn podcast_stream_ranges_are_single_and_capped() {
