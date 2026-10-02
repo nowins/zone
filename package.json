@@ -1,13 +1,14 @@
 {
   "name": "zone-player",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "node packaging/check-version.mjs && tsc && vite build",
+    "version:set": "node packaging/check-version.mjs --set",
     "test": "npm run test:visualizer",
-    "test:visualizer": "tsc -p tsconfig.test.json && node --test tests/*.test.mjs",
+    "test:visualizer": "node packaging/check-version.mjs && tsc -p tsconfig.test.json && node --test tests/*.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
