@@ -774,35 +774,39 @@ async fn download_episode_with_network_policy(
 
   let mut append = false;
   let mut resumed = false;
+  let content_length = public_response.response.content_length();
+  let mut response_length = content_length;
+  let response_total;
   if offset > 0 && status == StatusCode::PARTIAL_CONTENT {
     let content_range = header_text(public_response.response.headers(), header::CONTENT_RANGE)
       .ok_or_else(|| "播客音频断点响应缺少范围信息".to_string())?;
-    let (start, _, _) = parse_content_range(&content_range).ok_or_else(|| "播客音频断点响应范围无效".to_string())?;
+    let (start, end, total) = parse_content_range(&content_range).ok_or_else(|| "播客音频断点响应范围无效".to_string())?;
     if start != offset {
       return Err("播客音频断点响应与本地进度不一致".to_string());
     }
     append = true;
     resumed = true;
+    response_length = Some((end - start).checked_add(1)
+      .ok_or_else(|| "播客音频响应范围过大".to_string())?);
+    response_total = Some(total.ok_or_else(|| "播客音频断点响应缺少完整文件大小".to_string())?);
   } else if status == StatusCode::PARTIAL_CONTENT {
     let content_range = header_text(public_response.response.headers(), header::CONTENT_RANGE)
       .ok_or_else(|| "播客音频响应缺少范围信息".to_string())?;
-    let (start, _, _) = parse_content_range(&content_range).ok_or_else(|| "播客音频响应范围无效".to_string())?;
+    let (start, end, total) = parse_content_range(&content_range).ok_or_else(|| "播客音频响应范围无效".to_string())?;
     if start != 0 {
       return Err("播客音频响应没有从文件开头开始".to_string());
     }
     offset = 0;
+    response_length = Some((end - start).checked_add(1)
+      .ok_or_else(|| "播客音频响应范围过大".to_string())?);
+    response_total = Some(total.ok_or_else(|| "播客音频响应缺少完整文件大小".to_string())?);
   } else {
     offset = 0;
+    response_total = content_length;
   }
-
-  let response_total = header_text(public_response.response.headers(), header::CONTENT_RANGE)
-    .and_then(|value| parse_content_range(&value).and_then(|(_, _, total)| total))
-    .or_else(|| {
-      public_response
-        .response
-        .content_length()
-        .and_then(|length| offset.checked_add(length))
-    });
+  if content_length.is_some() && content_length != response_length {
+    return Err("播客音频响应长度与范围不一致".to_string());
+  }
   if response_total.is_some_and(|total| total > PODCAST_AUDIO_RESPONSE_LIMIT) {
     return Err("播客音频超过大小限制".to_string());
   }
@@ -842,6 +846,9 @@ async fn download_episode_with_network_policy(
     if downloaded_bytes > PODCAST_AUDIO_RESPONSE_LIMIT {
       return Err("播客音频超过大小限制".to_string());
     }
+    if response_length.is_some_and(|length| downloaded_bytes - offset > length) {
+      return Err("播客音频内容超过响应范围".to_string());
+    }
     file
       .write_all(&chunk)
       .await
@@ -876,6 +883,11 @@ async fn download_episode_with_network_policy(
     .map_err(|error| format!("无法完成播客下载文件：{error}"))?;
   drop(file);
 
+  if response_length.is_some_and(|length| downloaded_bytes - offset != length)
+    || response_total.is_some_and(|total| downloaded_bytes != total)
+  {
+    return Err("播客音频尚未完整下载，可重试继续下载".to_string());
+  }
   if downloaded_bytes == 0 {
     return Err("播客音频内容为空".to_string());
   }
@@ -1630,6 +1642,93 @@ mod tests {
     );
     drop(second);
   }
+  #[tokio::test]
+  async fn incomplete_range_stays_partial_and_resumes_to_the_complete_file() {
+    let directory = test_directory("range-incomplete");
+    let state = PodcastState::initialize_at(&directory).expect("initialize state");
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind server");
+    let enclosure_url = format!("http://{}/episode.mp3", listener.local_addr().unwrap());
+    let audio = b"ID3-zone-podcast-complete-download".to_vec();
+    let split = 12usize;
+    let server_audio = audio.clone();
+    let server = tokio::spawn(async move {
+      for (start, end) in [(0, split - 1), (split, server_audio.len() - 1)] {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0u8; 8192];
+        let read = stream.read(&mut request).await.unwrap();
+        if start > 0 {
+          assert!(String::from_utf8_lossy(&request[..read]).to_ascii_lowercase()
+            .contains(&format!("range: bytes={start}-")));
+        }
+        let body = &server_audio[start..=end];
+        let headers = format!(
+          "HTTP/1.1 206 Partial Content\r\nContent-Type: audio/mpeg\r\nContent-Length: {}\r\nContent-Range: bytes {start}-{end}/{}\r\nConnection: close\r\n\r\n",
+          body.len(), server_audio.len(),
+        );
+        stream.write_all(headers.as_bytes()).await.unwrap();
+        stream.write_all(body).await.unwrap();
+        stream.shutdown().await.unwrap();
+      }
+    });
+    let parsed = parsed_fixture(&enclosure_url);
+    let id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed).unwrap();
+    let partial = state.downloads_dir.join(format!("{id}.part"));
+    let first = download_episode_with_network_policy(
+      &state.db_path, &state.downloads_dir, &id, &enclosure_url, Some("audio/mpeg"), true,
+    ).await.unwrap_err();
+    assert!(first.contains("尚未完整下载"), "{first}");
+    assert_eq!(fs::read(&partial).unwrap(), &audio[..split]);
+    let detail = get_episode_detail(&state.db_path, &state.downloads_dir, &id).unwrap();
+    assert_ne!(detail.episode.download_state, "downloaded");
+    assert!(detail.episode.local_path.is_none());
+    let complete = download_episode_with_network_policy(
+      &state.db_path, &state.downloads_dir, &id, &enclosure_url, Some("audio/mpeg"), true,
+    ).await.unwrap();
+    server.await.unwrap();
+    assert!(complete.resumed);
+    assert_eq!(fs::read(&complete.local_path).unwrap(), audio);
+    assert!(!partial.exists());
+    assert_eq!(get_episode_detail(&state.db_path, &state.downloads_dir, &id).unwrap()
+      .episode.download_state, "downloaded");
+    fs::remove_dir_all(directory).unwrap();
+  }
+
+  #[tokio::test]
+  async fn invalid_range_lengths_and_unknown_totals_cannot_finalize_a_download() {
+    for (range, length, body) in [
+      ("bytes 0-11/32", "13", b"ID3-bad-range".as_slice()),
+      ("bytes 0-11/*", "12", b"ID3-unknown!".as_slice()),
+      ("bytes 0-18446744073709551615/*", "12", b"ID3-unknown!".as_slice()),
+      ("bytes 0-31/32", "32", b"ID3-short".as_slice()),
+    ] {
+      let directory = test_directory("range-invalid-length");
+      let state = PodcastState::initialize_at(&directory).unwrap();
+      let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let enclosure_url = format!("http://{}/episode.mp3", listener.local_addr().unwrap());
+      let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0u8; 8192];
+        stream.read(&mut request).await.unwrap();
+        let headers = format!("HTTP/1.1 206 Partial Content\r\nContent-Type: audio/mpeg\r\nContent-Length: {length}\r\nContent-Range: {range}\r\nConnection: close\r\n\r\n");
+        stream.write_all(headers.as_bytes()).await.unwrap();
+        stream.write_all(body).await.unwrap();
+        stream.shutdown().await.unwrap();
+      });
+      let parsed = parsed_fixture(&enclosure_url);
+      let id = parsed.episodes[0].id.clone();
+      store_subscription(&state.db_path, parsed).unwrap();
+      assert!(download_episode_with_network_policy(
+        &state.db_path, &state.downloads_dir, &id, &enclosure_url, Some("audio/mpeg"), true,
+      ).await.is_err());
+      server.await.unwrap();
+      let detail = get_episode_detail(&state.db_path, &state.downloads_dir, &id).unwrap();
+      assert_ne!(detail.episode.download_state, "downloaded");
+      assert!(detail.episode.local_path.is_none());
+      fs::remove_dir_all(directory).unwrap();
+    }
+  }
+
   #[tokio::test]
   async fn download_resumes_a_part_file_with_range_and_persists_result() {
     let directory = test_directory("range");
