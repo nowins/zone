@@ -77,8 +77,13 @@ pub(crate) fn music_save_playback_state(
 }
 
 #[tauri::command]
-pub(crate) fn music_clear_library(state: State<'_, MusicState>) -> Result<(), String> {
-  clear_library(state.inner())
+pub(crate) async fn music_clear_library(state: State<'_, MusicState>) -> Result<(), String> {
+  let state = state.inner().clone();
+  SCAN_GENERATION.fetch_add(1, Ordering::SeqCst);
+  tauri::async_runtime::spawn_blocking(move || {
+    let _lock = SCAN_LOCK.lock().map_err(|_| "曲库扫描暂不可用".to_string())?;
+    clear_library(&state)
+  }).await.map_err(|error| format!("音乐库清理任务异常结束：{error}"))?
 }
 
 #[tauri::command]

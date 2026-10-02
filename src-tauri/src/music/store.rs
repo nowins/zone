@@ -958,14 +958,16 @@ pub(crate) fn save_playback_state(
 }
 
 pub(crate) fn clear_library(state: &MusicState) -> Result<(), String> {
-  let connection = open_music_db(state)?;
-  connection
+  let mut connection = open_music_db(state)?;
+  let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+    .map_err(|error| format!("无法开始清空音乐库：{error}"))?;
+  transaction
     .execute_batch(
       "
       DELETE FROM music_play_history;
       DELETE FROM music_queue_items;
       DELETE FROM music_playback_state;
-      DELETE FROM music_home_pins;
+      DELETE FROM music_home_pins WHERE kind != 'podcastFeed';
       DELETE FROM music_playlist_items;
       DELETE FROM music_playlists WHERE id != 'favorites';
       DELETE FROM music_track_stats;
@@ -976,8 +978,8 @@ pub(crate) fn clear_library(state: &MusicState) -> Result<(), String> {
       ",
     )
     .map_err(|error| format!("无法清空音乐库：{error}"))?;
-  ensure_default_playlist(state.db_path())?;
-  let _ = bump_library_revision(&connection)?;
+  let _ = bump_library_revision(&transaction)?;
+  transaction.commit().map_err(|error| format!("无法提交音乐库清理：{error}"))?;
   Ok(())
 }
 
@@ -1284,6 +1286,40 @@ pub(crate) fn end_play_session(
 mod tests {
   use super::*;
   use crate::library::Track;
+
+  #[test]
+  fn clear_is_atomic_and_preserves_podcast_pins_and_audio_files() {
+    let root = test_root("atomic-clear");
+    let state = MusicState::initialize_at(&root).unwrap();
+    let path = root.join("track.mp3");
+    fs::write(&path, b"id3").unwrap();
+    let legacy = serde_json::json!({
+      "tracks": [sample_track("one", &path.to_string_lossy())],
+      "queue": ["one"],
+      "playlists": [{ "id": "custom", "name": "测试", "description": "", "kind": "manual", "trackIds": ["one"] }],
+      "homePins": [
+        { "id": "track:one", "kind": "track", "targetId": "one", "createdAt": 1 },
+        { "id": "podcastFeed:feed", "kind": "podcastFeed", "targetId": "feed", "createdAt": 2 }
+      ]
+    });
+    import_legacy_player_state(&state, serde_json::from_value(legacy).unwrap()).unwrap();
+    let before = load_library_snapshot(&state).unwrap();
+    let connection = open_music_db(&state).unwrap();
+    connection.execute_batch("CREATE TRIGGER fail_clear BEFORE DELETE ON music_tracks BEGIN SELECT RAISE(ABORT, 'injected failure'); END;").unwrap();
+    assert!(clear_library(&state).is_err());
+    let after = load_library_snapshot(&state).unwrap();
+    assert_eq!(serde_json::to_value(&before).unwrap(), serde_json::to_value(&after).unwrap());
+    connection.execute_batch("DROP TRIGGER fail_clear").unwrap();
+    clear_library(&state).unwrap();
+    let cleared = load_library_snapshot(&state).unwrap();
+    assert!(cleared.tracks.is_empty());
+    assert!(cleared.playback.queue.is_empty());
+    assert_eq!(cleared.playlists.len(), 1);
+    assert!(cleared.playlists[0].track_ids.is_empty());
+    assert_eq!(cleared.home_pins.len(), 1);
+    assert_eq!(cleared.home_pins[0].kind, "podcastFeed");
+    assert!(path.exists());
+  }
 
   #[test]
   fn retrying_empty_music_migration_preserves_newer_podcast_pins() {

@@ -95,6 +95,9 @@ export default function App() {
   const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
   const [persistenceFailed, setPersistenceFailed] = useState(false);
   const [retryingPersistence, setRetryingPersistence] = useState(false);
+  const [clearingLibrary, setClearingLibrary] = useState(false);
+  const clearingLibraryRef = useRef(false);
+  const pendingMusicWritesRef = useRef(new Set<Promise<unknown>>());
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [featureVectors, setFeatureVectors] = useState<Record<string, number[]>>({});
   const actionNoticeTimerRef = useRef<number | null>(null);
@@ -106,6 +109,11 @@ export default function App() {
       setActionNotice(null);
       actionNoticeTimerRef.current = null;
     }, 2_400);
+  }
+
+  function trackMusicWrite<T>(write: Promise<T>): Promise<T> {
+    pendingMusicWritesRef.current.add(write);
+    return write.finally(() => { pendingMusicWritesRef.current.delete(write); });
   }
 
   const {
@@ -500,7 +508,8 @@ export default function App() {
   useEffect(() => {
     if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
-      void musicSavePlaybackState({
+      if (clearingLibraryRef.current) return;
+      void trackMusicWrite(musicSavePlaybackState({
         activeTrackId,
         queue,
         playHistory,
@@ -508,14 +517,14 @@ export default function App() {
         shuffle,
         repeat,
         selectedPlaylistId,
-      }).catch((error) => {
+      })).catch((error) => {
         setPersistenceFailed(true);
         recordDiagnostic({ domain: "library", event: "save_playback_state", outcome: "error" });
         if (import.meta.env.DEV) console.warn("[library] save playback state failed", error);
       });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [restored, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId]);
+  }, [restored, clearingLibrary, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId]);
 
   useEffect(() => {
     if (!restored || tracks.length === 0) return;
@@ -556,38 +565,41 @@ export default function App() {
   useEffect(() => {
     if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
-      void musicSaveTrackActivity(trackActivity).catch((error) => {
+      if (clearingLibraryRef.current) return;
+      void trackMusicWrite(musicSaveTrackActivity(trackActivity)).catch((error) => {
         setPersistenceFailed(true);
         recordDiagnostic({ domain: "library", event: "save_track_activity", outcome: "error" });
         if (import.meta.env.DEV) console.warn("[library] save track activity failed", error);
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [restored, trackActivity]);
+  }, [restored, clearingLibrary, trackActivity]);
 
   useEffect(() => {
     if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
-      void musicSavePlaylists(playlists).catch((error) => {
+      if (clearingLibraryRef.current) return;
+      void trackMusicWrite(musicSavePlaylists(playlists)).catch((error) => {
         setPersistenceFailed(true);
         recordDiagnostic({ domain: "library", event: "save_playlists", outcome: "error" });
         if (import.meta.env.DEV) console.warn("[library] save playlists failed", error);
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [restored, playlists]);
+  }, [restored, clearingLibrary, playlists]);
 
   useEffect(() => {
     if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
-      void musicSaveHomePins(homePins).catch((error) => {
+      if (clearingLibraryRef.current) return;
+      void trackMusicWrite(musicSaveHomePins(homePins)).catch((error) => {
         setPersistenceFailed(true);
         recordDiagnostic({ domain: "library", event: "save_home_pins", outcome: "error" });
         if (import.meta.env.DEV) console.warn("[library] save home pins failed", error);
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [restored, homePins]);
+  }, [restored, clearingLibrary, homePins]);
 
   const [podcastArtworkCoverPath, setPodcastArtworkCoverPath] = useState<string | null>(null);
 
@@ -958,11 +970,11 @@ export default function App() {
     />
   ) : null;
   async function retryLibraryPersistence() {
-    if (retryingPersistence) return;
+    if (retryingPersistence || clearingLibraryRef.current) return;
     setRetryingPersistence(true);
     const results = await Promise.allSettled([
-      musicSavePlaylists(playlists), musicSaveHomePins(homePins), musicSaveTrackActivity(trackActivity),
-      musicSavePlaybackState({ activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId }),
+      trackMusicWrite(musicSavePlaylists(playlists)), trackMusicWrite(musicSaveHomePins(homePins)), trackMusicWrite(musicSaveTrackActivity(trackActivity)),
+      trackMusicWrite(musicSavePlaybackState({ activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId })),
     ]);
     const failed = results.some(result => result.status === "rejected");
     setPersistenceFailed(failed);
@@ -1237,24 +1249,30 @@ export default function App() {
             onRescan={() => rescan()}
             onCancelScan={cancelScan}
             scanNote={scanNote}
-            onClear={() => {
-              void musicClearLibrary()
-                .catch((error) => {
-                  if (import.meta.env.DEV) console.warn("[library] clear failed", error);
-                })
-                .finally(() => {
+            onClear={async () => {
+              if (clearingLibraryRef.current || isScanning) throw new Error("请等待扫描结束后再清空");
+              clearingLibraryRef.current = true;
+              setClearingLibrary(true);
+              try {
+                  await Promise.allSettled([...pendingMusicWritesRef.current]);
+                  await musicClearLibrary();
                   setFolders([]);
                   setTracks([]);
                   setQueue([]);
                   setPlayHistory([]);
                   setTrackActivity({});
                   setActiveTrackId(null);
-                  setHomePins([]);
+                  setHomePins(current => current.filter(pin => pin.kind === "podcastFeed"));
                   setPlaylists(normalizePlaylists(undefined));
                   setSelectedPlaylistId(DEFAULT_PLAYLIST_ID);
                   setScanNote("");
                   localStorage.removeItem(STORAGE_KEY);
-                });
+                  setPersistenceFailed(false);
+                  showActionNotice("音乐资料库已清空");
+              } finally {
+                clearingLibraryRef.current = false;
+                setClearingLibrary(false);
+              }
             }}
           />
         )}

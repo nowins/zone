@@ -8,6 +8,10 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { exportDiagnostics } from "../utils/diagnostics";
+import { Dialog } from "../components/Dialog";
+import { Presence } from "../motion/presence";
+import { MOTION_DURATIONS } from "../motion/tokens";
+import { createPortal } from "react-dom";
 
 export function SettingsView({
   folders,
@@ -42,11 +46,25 @@ export function SettingsView({
   onCloseToTrayChange: (enabled: boolean) => void;
   onAddFolder: () => void;
   onRescan: () => void;
-  onClear: () => void;
+  onClear: () => Promise<void>;
 }) {
   const folderCount = folders.length;
   const { configs, providers, setEnabled, move } = useLyricsProviderSettings();
   const [diagnosticNotice, setDiagnosticNotice] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearBusy, setClearBusy] = useState(false);
+  const [clearError, setClearError] = useState("");
+  async function clearLibrary() {
+    if (clearBusy || isScanning) return;
+    setClearBusy(true);
+    setClearError("");
+    try {
+      await onClear();
+      setConfirmClear(false);
+    } catch {
+      setClearError("清空失败，已有资料已保留，请重试");
+    } finally { setClearBusy(false); }
+  }
   async function saveDiagnostics() {
     try {
       const saved = await invoke<boolean>("export_diagnostics", { content: exportDiagnostics() });
@@ -373,13 +391,21 @@ export function SettingsView({
           <section className="settings-danger-zone">
             <span className="settings-kicker">维护</span>
             <h2>清理资料库</h2>
-            <p>移除 Zone 保存的索引、队列和播放状态，不会删除电脑中的音乐文件。</p>
-            <Button variant="danger" className="settings-danger-action" onClick={onClear} disabled={folderCount === 0 && trackCount === 0} icon={<Trash2 size={16} aria-hidden="true" />}>
+            <p>移除音乐索引、歌单、喜欢、固定内容和播放统计，保留播客资料。不会删除电脑中的音乐文件。</p>
+            <Button variant="danger" className="settings-danger-action" onClick={() => { setClearError(""); setConfirmClear(true); }} disabled={isScanning || clearBusy || (folderCount === 0 && trackCount === 0)} icon={<Trash2 size={16} aria-hidden="true" />}>
               <span>清空资料库</span>
             </Button>
           </section>
         </aside>
       </div>
+      {createPortal(<Presence show={confirmClear} exitDurationMs={MOTION_DURATIONS.micro}>
+        <Dialog titleId="clear-library-title" kicker="音乐资料库" title="清空音乐资料库？"
+          busy={clearBusy} onCancel={() => setConfirmClear(false)} onSubmit={event => { event.preventDefault(); void clearLibrary(); }}
+          actions={<><Button variant="ghost" disabled={clearBusy} onClick={() => setConfirmClear(false)}>取消</Button><Button variant="danger" type="submit" busy={clearBusy} disabled={isScanning}>确认清空</Button></>}>
+          <p>音乐文件与播客资料会保留。音乐歌单、喜欢、固定内容和播放统计将被清除。</p>
+          {clearError && <p role="alert">{clearError}</p>}
+        </Dialog>
+      </Presence>, document.body)}
     </section>
   );
 }
