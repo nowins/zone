@@ -1,4 +1,5 @@
 mod audio_protocol;
+mod audio_transcode;
 mod db;
 mod diagnostics;
 mod library;
@@ -143,7 +144,12 @@ pub fn run() {
     .plugin(tauri_plugin_opener::init())
     .manage(library::LibraryWatcherState::default())
     .manage(window_mode::CompactWindowState::default())
-    .register_uri_scheme_protocol("zone-audio", |_ctx, request| audio_protocol::serve_audio_protocol(request))
+    .register_asynchronous_uri_scheme_protocol("zone-audio", |ctx, request, responder| {
+      let cache_dir = ctx.app_handle().path().app_cache_dir().ok().map(|path| path.join("audio-transcodes"));
+      tauri::async_runtime::spawn_blocking(move || {
+        responder.respond(audio_protocol::serve_audio_protocol_with_cache(request, cache_dir.as_deref()));
+      });
+    })
     .register_asynchronous_uri_scheme_protocol("zone-podcast-artwork", |_ctx, request, responder| {
       tauri::async_runtime::spawn(async move {
         let response = podcast::serve_podcast_artwork_protocol(request).await;

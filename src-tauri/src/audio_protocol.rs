@@ -18,7 +18,12 @@ fn audio_content_type(path: &Path) -> &'static str {
   }
 }
 
+#[cfg(test)]
 pub(crate) fn serve_audio_protocol(request: Request<Vec<u8>>) -> Response<Vec<u8>> {
+  serve_audio_protocol_with_cache(request, None)
+}
+
+pub(crate) fn serve_audio_protocol_with_cache(request: Request<Vec<u8>>, cache_dir: Option<&Path>) -> Response<Vec<u8>> {
   if request.method() == Method::OPTIONS {
     return response_builder(StatusCode::NO_CONTENT, "text/plain", 0)
       .body(Vec::new())
@@ -32,6 +37,13 @@ pub(crate) fn serve_audio_protocol(request: Request<Vec<u8>>) -> Response<Vec<u8
   if !path.exists() || !path.is_file() || !is_supported_audio(&path) {
     return text_response(StatusCode::NOT_FOUND, "audio file not found");
   }
+
+  let path = if let Some(cache_dir) = cache_dir {
+    match crate::audio_transcode::playback_path(&path, cache_dir) {
+      Ok(path) => path,
+      Err(message) => return text_response(StatusCode::UNPROCESSABLE_ENTITY, &message),
+    }
+  } else { path };
 
   let Ok(metadata) = fs::metadata(&path) else {
     return text_response(StatusCode::NOT_FOUND, "audio file not found");
@@ -74,7 +86,7 @@ pub(crate) fn serve_audio_protocol(request: Request<Vec<u8>>) -> Response<Vec<u8
     return text_response(StatusCode::RANGE_NOT_SATISFIABLE, "invalid range");
   }
 
-  let mut body = vec![0; length as usize];
+  let mut body = if request.method() == Method::HEAD { Vec::new() } else { vec![0; length as usize] };
   if file.read_exact(&mut body).is_err() {
     return text_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to read audio");
   }
@@ -86,7 +98,7 @@ pub(crate) fn serve_audio_protocol(request: Request<Vec<u8>>) -> Response<Vec<u8
       StatusCode::OK
     },
     content_type,
-    body.len() as u64,
+    length,
   );
 
   if is_partial {
@@ -250,5 +262,23 @@ mod audio_protocol_tests {
     assert_eq!(response.body(), &audio[4..=8]);
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[test]
+  #[ignore = "requires ZONE_AUDIO_FIXTURES containing a real ALAC M4A"]
+  fn alac_range_and_head_use_the_pcm_cache() {
+    let source = PathBuf::from(std::env::var("ZONE_AUDIO_FIXTURES").expect("fixtures")).join("alac.m4a");
+    let cache = std::env::temp_dir().join(format!("zone-alac-protocol-{}", std::process::id()));
+    let uri = format!("zone-audio://localhost/{}", source.to_string_lossy().replace('\\', "/"));
+    let request = Request::builder().uri(&uri).header(header::RANGE, "bytes=0-43").body(Vec::new()).unwrap();
+    let response = serve_audio_protocol_with_cache(request, Some(&cache));
+    assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "audio/wav");
+    assert_eq!(&response.body()[0..4], b"RIFF");
+    let head = Request::builder().method(Method::HEAD).uri(&uri).header(header::RANGE, "bytes=0-43").body(Vec::new()).unwrap();
+    let response = serve_audio_protocol_with_cache(head, Some(&cache));
+    assert_eq!(response.headers()[header::CONTENT_LENGTH], "44");
+    assert!(response.body().is_empty());
+    fs::remove_dir_all(cache).unwrap();
   }
 }
