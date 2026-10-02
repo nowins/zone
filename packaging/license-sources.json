@@ -1,0 +1,206 @@
+{
+  "alloc-stdlib@0.2.2": [
+    {
+      "file": "rust-alloc-no-stdlib-6032b6a9b20e-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/6032b6a9b20e03737135c55a0270ccffcc1438ef/LICENSE"
+    }
+  ],
+  "lofty@0.22.4": [
+    {
+      "file": "lofty-rs-d9eb83ba6140-LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/Serial-ATA/lofty-rs/d9eb83ba614001973f9ba3663c9f3e10dd27a702/LICENSE-APACHE"
+    },
+    {
+      "file": "lofty-rs-d9eb83ba6140-LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/Serial-ATA/lofty-rs/d9eb83ba614001973f9ba3663c9f3e10dd27a702/LICENSE-MIT"
+    }
+  ],
+  "lofty_attr@0.11.1": [
+    {
+      "file": "lofty-rs-0d42d626b8a1-LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/Serial-ATA/lofty-rs/0d42d626b8a1bf40cce0d47a49ce65076dcf9db1/LICENSE-APACHE"
+    },
+    {
+      "file": "lofty-rs-0d42d626b8a1-LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/Serial-ATA/lofty-rs/0d42d626b8a1bf40cce0d47a49ce65076dcf9db1/LICENSE-MIT"
+    }
+  ],
+  "ogg_pager@0.7.1": [
+    {
+      "file": "lofty-rs-1fa48f426dac-LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/Serial-ATA/lofty-rs/1fa48f426dac605bf8fa08405e3f5019fe3d692c/LICENSE-APACHE"
+    },
+    {
+      "file": "lofty-rs-1fa48f426dac-LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/Serial-ATA/lofty-rs/1fa48f426dac605bf8fa08405e3f5019fe3d692c/LICENSE-MIT"
+    }
+  ],
+  "selectors@0.36.1": [
+    {
+      "file": "stylo-635e1a19d029-MPL-2.0.txt.txt",
+      "source": "https://www.mozilla.org/media/MPL/2.0/index.txt"
+    }
+  ],
+  "symphonia@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-bundle-flac@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-bundle-mp3@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-codec-aac@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-codec-alac@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-codec-pcm@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-codec-vorbis@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-core@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-format-isomp4@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-format-mkv@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-format-ogg@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-format-riff@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-metadata@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "symphonia-utils-xiph@0.5.5": [
+    {
+      "file": "Symphonia-6d533f261509-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/pdeljanov/Symphonia/6d533f26150953a882a6a111ebd13f0abf7129d5/LICENSE"
+    }
+  ],
+  "tauri-plugin@2.6.1": [
+    {
+      "file": "tauri-e5ae5b93cdd3-LICENSE_APACHE-2.0.txt",
+      "source": "https://raw.githubusercontent.com/tauri-apps/tauri/e5ae5b93cdd310045191cc0526f253140ad64b87/LICENSE_APACHE-2.0"
+    },
+    {
+      "file": "tauri-e5ae5b93cdd3-LICENSE_MIT.txt",
+      "source": "https://raw.githubusercontent.com/tauri-apps/tauri/e5ae5b93cdd310045191cc0526f253140ad64b87/LICENSE_MIT"
+    }
+  ],
+  "unic-char-property@0.9.0": [
+    {
+      "file": "rust-unic-5878605364af-LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE"
+    },
+    {
+      "file": "rust-unic-5878605364af-LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT"
+    }
+  ],
+  "unic-char-range@0.9.0": [
+    {
+      "file": "rust-unic-5878605364af-LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE"
+    },
+    {
+      "file": "rust-unic-5878605364af-LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT"
+    }
+  ],
+  "unic-common@0.9.0": [
+    {
+      "file": "rust-unic-5878605364af-LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE"
+    },
+    {
+      "file": "rust-unic-5878605364af-LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT"
+    }
+  ],
+  "unic-ucd-ident@0.9.0": [
+    {
+      "file": "rust-unic-8a6ce83063d9-LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-APACHE"
+    },
+    {
+      "file": "rust-unic-8a6ce83063d9-LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-MIT"
+    }
+  ],
+  "unic-ucd-version@0.9.0": [
+    {
+      "file": "rust-unic-5878605364af-LICENSE-APACHE.txt",
+      "source": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE"
+    },
+    {
+      "file": "rust-unic-5878605364af-LICENSE-MIT.txt",
+      "source": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT"
+    }
+  ],
+  "webview2-com@0.38.2": [
+    {
+      "file": "webview2-rs-b74dc5e2b394-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/wravery/webview2-rs/b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE"
+    }
+  ],
+  "webview2-com-macros@0.8.1": [
+    {
+      "file": "webview2-rs-dffa41a8a46d-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/wravery/webview2-rs/dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE"
+    }
+  ],
+  "webview2-com-sys@0.38.2": [
+    {
+      "file": "webview2-rs-b74dc5e2b394-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/wravery/webview2-rs/b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE"
+    }
+  ]
+}

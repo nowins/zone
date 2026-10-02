@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && node packaging/generate-notices.mjs --check",
     "frontendDist": "../dist"
   },
   "app": {
@@ -61,6 +61,7 @@
   },
   "bundle": {
     "active": true,
+    "resources": { "../packaging/THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt" },
     "targets": [
       "nsis"
     ],
