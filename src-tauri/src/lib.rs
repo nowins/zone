@@ -139,7 +139,19 @@ pub fn run() {
     eprintln!("Unable to set the Windows AppUserModelID: {error}");
   }
 
+  let initial_window_fitted = std::sync::atomic::AtomicBool::new(false);
   tauri::Builder::default()
+    .on_page_load(move |webview, payload| {
+      if webview.label() == "main" && payload.event() == tauri::webview::PageLoadEvent::Finished
+        && payload.url().scheme() != "about"
+        && !initial_window_fitted.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        if let Some(window) = webview.app_handle().get_webview_window("main") {
+          if let Err(error) = window_mode::fit_initial_window(&window) {
+            eprintln!("Unable to fit the initial window to the desktop: {error}");
+          }
+        }
+      }
+    })
     .plugin(tauri_plugin_single_instance::init(|app, _, _| {
       if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();

@@ -23,6 +23,22 @@ pub struct CompactMode {
   pinned: bool,
 }
 
+fn initial_window_exceeds_work_area(window: PhysicalSize<u32>, area: PhysicalSize<u32>) -> bool {
+  area.width > 0 && area.height > 0 && (window.width > area.width || window.height > area.height)
+}
+
+pub(crate) fn fit_initial_window(window: &WebviewWindow) -> tauri::Result<()> {
+  if !window.is_maximized()? {
+    if let Some(monitor) = window.current_monitor()?.or(window.primary_monitor()?) {
+      // Include the native frame and exclude the taskbar in the same physical coordinate system.
+      if initial_window_exceeds_work_area(window.outer_size()?, monitor.work_area().size) {
+        window.maximize()?;
+      }
+    }
+  }
+  Ok(())
+}
+
 #[tauri::command]
 pub fn get_main_window_visibility(window: WebviewWindow) -> Result<bool, String> {
   main_window(&window)?;
@@ -171,6 +187,21 @@ pub async fn set_compact_mode(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn initial_window_fits_the_work_area_including_frame_taskbar_and_dpi() {
+    for (window, area, maximize) in [
+      ((1196, 769), (1920, 1040), false),
+      ((1196, 769), (1024, 728), true),
+      ((1196, 769), (1280, 728), true),
+      ((1794, 1153), (1920, 1040), true),
+      ((1180, 760), (1180, 760), false),
+      ((1196, 769), (0, 0), false),
+    ] {
+      assert_eq!(initial_window_exceeds_work_area(PhysicalSize::new(window.0, window.1),
+        PhysicalSize::new(area.0, area.1)), maximize);
+    }
+  }
 
   #[test]
   fn compact_state_exposes_mode_and_native_pin_status_together() {

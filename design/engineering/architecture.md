@@ -7,7 +7,7 @@
 ## 技术栈
 
 - 前端：React 18、TypeScript（strict）、Vite（`@vitejs/plugin-react`）、`lucide-react` 图标、`@tauri-apps/api`。构建和测试使用 Node.js 24 LTS 或更新版本；版本以依赖清单为准。
-- 桌面壳：Tauri 2。窗口 1180×760（最小 920×620），无边框（`decorations: false`），自带 `Titlebar` 组件。
+- 桌面壳：Tauri 2。窗口 1180×760（最小 920×620），无边框（`decorations: false`），自带 `Titlebar` 组件。主页面首次加载完成后，按物理像素比较含原生边框的窗口尺寸与显示器工作区；默认窗口放不下时自动最大化，避免任务栏遮住控制区。适配只执行一次，不在窗口初始化期间提前最大化。
 - Rust 端（`src-tauri/`）：
   - `lofty` 0.22：音频标签与内嵌封面/歌词读取。
   - `encoding_rs`：修复老旧中文元数据的 GBK 乱码。
