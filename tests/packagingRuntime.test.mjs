@@ -149,3 +149,16 @@ test('guest lifecycle script refuses host execution and arbitrary working direct
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /Host and arbitrary directory rejected before installation/);
 });
+
+test('offline WebView2 staging rejects arbitrary destinations before downloading or extracting', { skip: process.platform !== 'win32' }, () => {
+  const script = resolve('packaging/prepare-msix-runtime.ps1').replaceAll("'", "''");
+  const result = powershell(`
+    function Invoke-WebRequest { throw 'Unexpected download' }
+    function expand.exe { throw 'Unexpected extraction' }
+    try { & '${script}' -Destination $env:TEMP; throw 'Arbitrary destination accepted' }
+    catch { if ($_.Exception.Message -notmatch 'MSIX.*临时打包目录') { throw } }
+    Write-Output 'Rejected arbitrary destination before download and extraction'
+  `);
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, /Rejected arbitrary destination/);
+});

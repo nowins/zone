@@ -13,6 +13,8 @@ mod provider_health;
 mod qrc;
 mod system_media;
 mod window_mode;
+#[cfg(target_os = "windows")]
+mod webview_runtime;
 
 use tauri::http::{header, Response, StatusCode};
 use tauri::{Emitter, Manager};
@@ -130,6 +132,8 @@ fn setup_system_tray(app: &tauri::App) {
 }
 
 pub fn run() {
+  #[cfg(target_os = "windows")]
+  webview_runtime::configure();
   #[cfg(target_os = "windows")]
   if let Err(error) = system_media::set_process_app_id() {
     eprintln!("Unable to set the Windows AppUserModelID: {error}");

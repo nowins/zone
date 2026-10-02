@@ -57,6 +57,7 @@ Push-Location $root
 try {
   node packaging/check-version.mjs
   if ($LASTEXITCODE -ne 0) { throw '版本校验失败。' }
+  & (Join-Path $PSScriptRoot 'prepare-msix-runtime.ps1') -ValidateOnly | Out-Null
   if ($ValidateOnly) { Write-Host "MSIX 配置校验完成：$PackageName / $msixVersion"; return }
   if (-not (Get-Command winapp -ErrorAction SilentlyContinue)) { throw '未找到 winapp CLI。请安装 Microsoft.WinAppCLI（0.6 或更新版）。' }
   if ($ForStore) {
@@ -84,6 +85,7 @@ try {
   Copy-Item -LiteralPath $exe -Destination (Join-Path $staging 'zone-player.exe')
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'THIRD_PARTY_NOTICES.txt') -Destination $staging
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Assets') -Destination $staging -Recurse
+  $runtime = & (Join-Path $PSScriptRoot 'prepare-msix-runtime.ps1') -Destination (Join-Path $staging 'WebView2')
   $manifest.Package.Identity.SetAttribute('Name', $PackageName)
   $manifest.Package.Identity.SetAttribute('Publisher', $Publisher)
   $manifest.Package.Identity.SetAttribute('Version', $msixVersion)
@@ -122,12 +124,12 @@ try {
   try {
     $signed = $null -ne $zip.GetEntry('AppxSignature.p7x')
     if (($ForStore -and $signed) -or (-not $ForStore -and -not $signed)) { throw 'MSIX 签名模式与构建用途不符。' }
-    foreach ($file in @('AppxManifest.xml', 'zone-player.exe', 'THIRD_PARTY_NOTICES.txt')) { if (-not $zip.GetEntry($file)) { throw "MSIX 缺少文件：$file" } }
+    foreach ($file in @('AppxManifest.xml', 'zone-player.exe', 'THIRD_PARTY_NOTICES.txt', 'WebView2/msedgewebview2.exe')) { if (-not $zip.GetEntry($file)) { throw "MSIX 缺少文件：$file" } }
   } finally { $zip.Dispose() }
   $stream = [IO.File]::OpenRead($out); $hasher = [Security.Cryptography.SHA256]::Create()
   try { $hash = [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '') }
   finally { $hasher.Dispose(); $stream.Dispose() }
-  $report = @{ version = $conf.version; packageVersion = $msixVersion; packageName = $PackageName; publisher = $Publisher; publisherDisplayName = $PublisherDisplayName; package = (Split-Path -Leaf $out); sha256 = $hash; sizeBytes = (Get-Item -LiteralPath $out).Length; signed = $signed; validationOnly = -not [bool]$ForStore; releaseReady = $false; links = $links; webview2 = 'Evergreen 系统运行时，缺失环境尚待干净系统验证'; pending = @('Windows 10/11 干净系统安装、启动、升级与卸载', 'Partner Center 标识、商店认证与发布') }
+  $report = @{ version = $conf.version; packageVersion = $msixVersion; packageName = $PackageName; publisher = $Publisher; publisherDisplayName = $PublisherDisplayName; package = (Split-Path -Leaf $out); sha256 = $hash; sizeBytes = (Get-Item -LiteralPath $out).Length; signed = $signed; validationOnly = -not [bool]$ForStore; releaseReady = $false; links = $links; webview2 = @{ mode = 'Evergreen preferred, bundled fixed fallback'; version = $runtime.version; source = $runtime.url; cabSha256 = $runtime.sha256 }; pending = @('本次产物的 Windows 10/11 干净系统安装、启动、升级与卸载', 'Partner Center 标识、商店认证与发布') }
   [IO.File]::WriteAllText((Join-Path $outDir 'release-report.json'), ($report | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
   Write-Host "MSIX 已保存：$out"
   if ($ForStore) { Write-Host '此包供商店上传，由微软签名；不能直接旁加载。' }

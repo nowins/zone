@@ -31,7 +31,9 @@ MSIX 商店构建不要求 `ZONE_CERT_THUMBPRINT` 或 `ZONE_INSTALLER_URL`，不
 
 需要 Microsoft WinApp CLI 0.6 或更新版：`winget install --id Microsoft.WinAppCLI -e`。产物按用途、四段版本、构建 ID 保存到 `packaging/dist/msix/`，包含 MSIX、SHA256 与 `release-report.json`。保留每次构建，避免覆盖旧包。开发 `-SkipBuild` 仅复用版本匹配的已验证 exe；商店模式要求完整构建。打包失败不能复用旧 exe，也不能将报告标成已可发布。
 
-当前 MSIX 使用系统 Evergreen WebView2，脚本不把 NSIS 安装器内的 WebView2 安装逻辑当作 MSIX 依赖。Windows 11 通常自带运行时，Windows 10 和缺失运行时的环境必须实测；缺失运行时路径尚未验收前不能宣称自包含或支持全部干净系统。不要在测试中提前安装运行时再把结果算作缺失环境通过。
+MSIX 优先使用系统 Evergreen WebView2，让系统继续自动更新运行时；系统缺失时使用包内 `WebView2/` 的离线固定版本，无需网络下载或额外管理员安装。`webview_runtime.rs` 在创建 Tauri 窗口前检测运行时，只选择主程序相邻目录，不覆盖显式的 WebView2 路径配置。打包脚本从 `webview2-runtime.json` 指定的微软地址取得 CAB，校验 SHA256、主程序微软签名与版本，再完整保留运行时资源和许可文件。运行时增大包体积，固定版本不会自动更新；每次发布前核对微软最新稳定版与安全公告，必要时更新固定版本、官方地址和校验值，并重新进行缺失运行时测试。缓存位于忽略的 `.tmp/msix-webview2-cache/`，损坏缓存使打包失败。
+
+Windows 10 和缺失运行时的环境必须从原始快照实测；不要提前安装运行时再把结果算作缺失环境通过。单次构建报告保留实际运行时版本和来源，不自动把其他产物的验收结果算成本次通过。
 
 依据：[微软 MSIX 包要求](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/package-version-numbering)、[微软商店签名说明](https://learn.microsoft.com/en-us/windows/msix/package/sign-msix-package-guide)、[更新分发机制](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/publish-first-app#step-5-set-up-auto-update)、[WebView2 分发](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution)。
 

@@ -85,6 +85,7 @@
   - `useReducedMotion.ts`：reduced-motion 统一 hook。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`controls`（Button 原语变体与尺寸）、`collection`、`podcasts`、`podcast-now-playing`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`tiles`（Metro 磁贴系统）、`motion`（动效原语层：feather 入场、页面/浮层出入场、反馈动画、共享 `.tilt-pressed` 倾斜规则、唯一 reduced-motion 块）、`animations-responsive`（正在播放入场编排与响应式）。
 - `src-tauri/src/lib.rs`：应用初始化接线。包含系统托盘、`update_system_media`/`update_system_media_timeline` 薄命令与 `pub fn run()`（协议注册、状态初始化、命令注册）；业务命令按模块注册，例如 `music::music_scan_library`。
+- `src-tauri/src/webview_runtime.rs`：Windows 窗口创建前的 WebView2 检测；优先系统运行时，缺失时选择主程序相邻的包内离线运行时。打包与版本维护见 [安装与发布](../../packaging/README.md)。
 - `src-tauri/src/window_mode.rs`：主窗口专用的 `get_compact_mode` / `set_compact_mode` / `set_compact_pinned`，统一返回模式与实际置顶状态。仅接受模式或置顶布尔值，置顶操作限小屏期间；原生端保存正常窗口几何、最大化与置顶快照，应用预设尺寸与工作区边界并处理回滚。不开放任意尺寸／位置参数，不增加通用窗口 capabilities。
 - `src-tauri/src/db/` 与 `src-tauri/src/music/`：音乐 SQLite schema、状态快照/迁移、可取消扫描、特征与电台逻辑；`beat_window.rs` 经 Symphonia 有界解码供前端 Worker 预分析。
 - `src/workers/beatAnalysis.worker.ts`：节拍计算 Worker；由 `useAudioEngine` 管理请求与缓存。
