@@ -71,8 +71,10 @@ pub(crate) fn select_music_folder() -> Option<MusicFolder> {
 }
 
 #[tauri::command]
-pub(crate) fn scan_library(folders: Vec<String>) -> Result<ScanResult, String> {
-  scan_library_controlled(folders, &|| false, &|_| {})
+pub(crate) fn scan_library(app: tauri::AppHandle, folders: Vec<String>) -> Result<ScanResult, String> {
+  let result = scan_library_controlled(folders, &|| false, &|_| {})?;
+  crate::image_scope::allow_tracks(&app, &result.tracks);
+  Ok(result)
 }
 
 pub(crate) fn scan_library_controlled(

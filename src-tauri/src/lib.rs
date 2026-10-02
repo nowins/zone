@@ -2,6 +2,7 @@ mod audio_protocol;
 mod audio_transcode;
 mod db;
 mod diagnostics;
+mod image_scope;
 mod library;
 mod lyrics;
 mod lyrics_provider;

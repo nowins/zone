@@ -27,9 +27,9 @@ Zone 是受 Microsoft Zune 4.8 启发的本地音乐播放器，使用 Tauri 2 +
 - 语言：新增功能性 UI 文案必须中文，文档使用中文，代码注释使用英文。关键文案由 `tests/localization.test.mjs` 守卫。
 - 播放：App 保持唯一的主 `<audio>`；音乐与播客共用 transport，但播客的队列、收藏语义、统计、倍速与进度独立。不得让播客触发音乐节拍预分析。
 - 可视化：必须来自真实音频；静音或无信号时不得用假动画冒充响应。暂停、隐藏及减少动态效果时按专题规则收敛停转。逐帧数据通过 ref/DOM/Canvas 或 `visualizerBus` 传递，不用 React state 驱动。
-- 状态：音乐主数据在 `zone.sqlite`，播客在 `podcasts.sqlite`；旧音乐 localStorage 只作迁移源。迁移失败保留原始数据，恢复未成功时暂停自动写回，不能误清理其他类别的状态。
+- 状态：音乐、播客和补充资料共用 `zone.sqlite`，按表和业务语义隔离；`podcasts.sqlite` 等旧库与旧音乐 localStorage 只作迁移源。迁移失败保留原始数据，恢复未成功时暂停自动写回，不能误清理其他类别的状态。
 - 网络与文件：在线歌词、播客 RSS/音频/封面经各自 Rust 受控入口；保留 URL/DNS/重定向校验、响应上限与下载路径守卫。协议、网络、导出或删除相关改动先读对应专题。
-- Tauri：不扩大已有权限或资源访问面。当前 `src-tauri/tauri.conf.json` 的 `csp: null` 与 `assetProtocol.scope: ["**"]` 是配置现状，不是安全保证；capabilities 以 `src-tauri/capabilities/default.json` 为准，包含 `core:default`、窗口操作与 `opener:default`，不因新功能随意扩权。
+- Tauri：不扩大已有权限或资源访问面。CSP 只允许本地资源与受控媒体协议，开发配置额外允许 Vite 热更新；`assetProtocol.scope` 初始为空，由 Rust 原生命令仅放行返回的真实图片文件。capabilities 以 `src-tauri/capabilities/default.json` 为准，包含 `core:default`、窗口操作与 `opener:default`，不因新功能随意扩权。
 - 复用：封面使用 `Cover`，常规动作使用 `Button`，加载使用 `MetroLoader`，通用深色对话框使用 `Dialog`；已有例外及接线见组件规范。
 - 动效：token 的唯一事实源是 `src/motion/tokens.ts`。页面切换走 `requestNavigation`，浮层退场走 `Presence`，共享封面走 FLIP；新增动效接入统一 reduced-motion 规则。
 - 测试模块导入：`src/utils/`、`src/motion/` 等经 `tsconfig.test.json` 编译后被 Node 直接运行的 TS 模块，相互相对导入使用显式 `.js` 后缀。React 侧现有 `.tsx` 导入不带后缀。

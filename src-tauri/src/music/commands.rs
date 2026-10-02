@@ -13,21 +13,28 @@ use crate::library::MusicFolder;
 
 #[tauri::command]
 pub(crate) fn music_get_library_snapshot(
+  app: tauri::AppHandle,
   state: State<'_, MusicState>,
 ) -> Result<MusicLibrarySnapshot, String> {
-  load_library_snapshot(state.inner())
+  let snapshot = load_library_snapshot(state.inner())?;
+  crate::image_scope::allow_tracks(&app, &snapshot.tracks);
+  Ok(snapshot)
 }
 
 #[tauri::command]
 pub(crate) fn music_import_legacy_player_state(
+  app: tauri::AppHandle,
   state: State<'_, MusicState>,
   legacy: LegacyPlayerStateV1,
 ) -> Result<MusicLibrarySnapshot, String> {
-  import_legacy_player_state(state.inner(), legacy)
+  let snapshot = import_legacy_player_state(state.inner(), legacy)?;
+  crate::image_scope::allow_tracks(&app, &snapshot.tracks);
+  Ok(snapshot)
 }
 
 #[tauri::command]
 pub(crate) async fn music_scan_library(
+  app: tauri::AppHandle,
   progress: tauri::ipc::Channel<usize>,
   state: State<'_, MusicState>,
   folders: Vec<MusicFolder>,
@@ -38,7 +45,9 @@ pub(crate) async fn music_scan_library(
     let _lock = SCAN_LOCK.lock().map_err(|_| "曲库扫描暂不可用".to_string())?;
     let cancelled = || SCAN_GENERATION.load(Ordering::SeqCst) != generation;
     if cancelled() { return Err("曲库扫描已取消".into()); }
-    scan_and_store_library_controlled(&state, folders, &cancelled, &|count| { let _ = progress.send(count); })
+    let result = scan_and_store_library_controlled(&state, folders, &cancelled, &|count| { let _ = progress.send(count); })?;
+    crate::image_scope::allow_tracks(&app, &result.tracks);
+    Ok(result)
   })
     .await
     .map_err(|error| format!("曲库扫描任务异常结束：{error}"))?

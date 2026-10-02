@@ -60,15 +60,18 @@ pub(crate) fn metadata_list_providers(
 
 #[tauri::command]
 pub(crate) fn metadata_search_sidecars(
+  app: tauri::AppHandle,
   kind: MetadataEntityKind,
   tracks: Vec<MetadataTrackInput>,
 ) -> Result<Vec<MetadataCandidate>, String> {
-  Ok(
-    find_sidecar_candidates(kind, &tracks)?
+  let candidates: Vec<MetadataCandidate> = find_sidecar_candidates(kind, &tracks)?
       .into_iter()
       .map(|resolved| resolved.candidate)
-      .collect(),
-  )
+      .collect();
+  crate::image_scope::allow_images(&app, candidates.iter().flat_map(|candidate| candidate.fields.iter())
+    .filter(|field| matches!(field.key.as_str(), "album_cover_path" | "artist_image_path"))
+    .map(|field| field.value.as_str()));
+  Ok(candidates)
 }
 
 #[tauri::command]
@@ -155,10 +158,16 @@ pub(crate) fn metadata_apply_manual(
 
 #[tauri::command]
 pub(crate) fn metadata_get_track_overlays(
+  app: tauri::AppHandle,
   state: State<'_, MetadataState>,
   track_ids: Vec<String>,
 ) -> Result<Vec<MetadataTrackOverlay>, String> {
-  read_track_overlays(&state, &track_ids)
+  let overlays = read_track_overlays(&state, &track_ids)?;
+  crate::image_scope::allow_images(&app, overlays.iter().flat_map(|overlay| {
+    overlay.cover_path.iter().chain(overlay.artist_image_path.iter()).map(String::as_str)
+      .chain(overlay.artist_images.iter().map(|image| image.path.as_str()))
+  }));
+  Ok(overlays)
 }
 
 #[tauri::command]

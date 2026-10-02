@@ -525,11 +525,14 @@ pub async fn podcast_clear_completed_downloads(
 
 #[tauri::command]
 pub async fn podcast_cache_artwork(
+  app: tauri::AppHandle,
   state: State<'_, PodcastState>,
   url: String,
 ) -> Result<Option<String>, String> {
   state.ensure_ready()?;
-  cache_podcast_artwork_file(state.artwork_cache_dir.clone(), url, false).await
+  let path = cache_podcast_artwork_file(state.artwork_cache_dir.clone(), url, false).await?;
+  crate::image_scope::allow_images(&app, path.iter().map(String::as_str));
+  Ok(path)
 }
 
 #[tauri::command]

@@ -23,6 +23,7 @@
 关键约束：
 
 - Tauri `convertFileSrc(path)` 默认走 `asset` 协议（通常是 `http://asset.localhost/...`）。
+- `asset` 初始无文件访问范围，原生命令通过 `image_scope.rs` 仅授权返回的封面与艺术家图片；校验扩展名、图片文件头和 8 MiB 上限，不授权目录或数据库文件。CSP 的媒体与连接入口只允许本地应用和受控协议，图片加载仍需原生文件范围校验。
 - dev 下页面源通常是 `http://localhost:5173`（vite 端口 5173，strictPort，host 127.0.0.1）。
 - Web Audio 可以播放跨源媒体，但媒体响应缺少有效 CORS 头时 `createMediaElementSource` 输出全零。
 - 应用使用自定义 Tauri 协议 `zone-audio` 播放音频：
