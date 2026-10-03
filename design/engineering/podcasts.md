@@ -111,3 +111,5 @@
 - 磁盘空间与虚拟机暂停测试另用 `tests/run-podcast-stability-hyperv.ps1`，参数为 `-VMName`、`-CredentialFile`、`-PreparedReport`。先运行 `npm run test:podcast:stability -- --prepare-only --minutes=1`，再把返回的报告目录传入 `-PreparedReport`。只接受备注包含 `Zone MSIX disposable test VM` 的专用 Hyper-V 测试机，凭据沿用 [发布测试配置](../../packaging/README.md) 的 DPAPI 文件，客体需有已登录的测试用户和 WebView2。
 - Hyper-V 夹具创建全新的 64 MiB VHDX，只在核实新增磁盘身份、大小与 RAW 分区状态后格式化，要求客体 `R:` 未占用。填充同时需要显式开关与测试卷标记，最多写入 128 MiB；WebView 资料留在客体系统盘。真实写满后验证进度和下载失败、释放空间后的恢复，结束时卸载测试卷并恢复原本关闭的虚拟机。
 - 虚拟机保存／恢复覆盖暂停后定时器收敛和媒体继续播放；它不等同于 Windows S3/S4，客体时钟也可能暂时冻结。真实待机、休眠、蓝牙设备切换与真实运营商网络仍需在支持这些条件的机器上补测，报告必须区分实际覆盖范围。
+
+- 发现页显示实际榜单来源与快照更新时间；刷新失败保留原时间。关注标记与原始排名同时显示，筛选不重排榜单名次。节目按钮保留完整标题与作者供悬停和辅助技术读取。

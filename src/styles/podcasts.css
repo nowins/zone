@@ -2235,3 +2235,7 @@
 .podcast-bar-options-dialog .podcast-bar-rates .button { min-width: 42px; min-height: 36px; }
 .podcast-bar-options-dialog .podcast-bar-sleep label { display: flex; width: 140px; align-items: center; gap: 12px; margin: 0 0 12px; }
 .podcast-bar-options-dialog .podcast-bar-sleep input { width: 80px; }
+
+.podcast-card-rank { left: 6px; right: auto; }
+.podcast-card-followed { display: flex; align-items: center; gap: 3px; font-size: 10px; padding: 2px 4px; background: rgba(0,0,0,.65); }
+.podcast-discovery-source time { color: rgba(247,242,246,.55); }

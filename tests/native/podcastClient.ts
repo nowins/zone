@@ -137,6 +137,10 @@ async function run() {
       document.querySelector<HTMLButtonElement>('.podcast-player button[aria-label^="打开待播"]')!.click();await until(()=>Boolean(document.querySelector('.podcast-playlist-screen')),"bar opens pending queue");assert(button("待播")?.getAttribute('aria-pressed')==="true","bar queue entry must select queue pivot");
       await capture("13-persistent-bar-920");checks.push("真实客户端底栏倍速、睡眠定时设置与关闭、直接打开待播及最小窗口布局");
     }
+    await click("发现");await until(()=>Boolean(document.querySelector('.podcast-show-card')),"discovery cache");
+    const ranked=document.querySelector<HTMLButtonElement>('.podcast-show-card')!;assert(ranked.title.includes("完整标题"),"full show metadata unavailable");assert(ranked.querySelector('.podcast-card-rank')?.textContent==="7"&&ranked.querySelector('.podcast-card-followed'),"rank and followed status must coexist");assert(document.querySelector('.podcast-discovery-source time')?.getAttribute('datetime'),"discovery snapshot date missing");await capture("14-discovery-920");
+    const unfollowed=document.querySelector<HTMLInputElement>('.podcast-episode-filters input[type=checkbox]')!;unfollowed.click();await until(()=>!document.querySelector('.podcast-show-card'),"discovery followed filter");assert(document.querySelector('.podcast-discovery-source time'),"empty filter hides source and date");unfollowed.click();
+    checks.push("真实客户端榜单来源与更新时间、完整标题、排行与已关注标记并存、筛选空状态");
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}
 }

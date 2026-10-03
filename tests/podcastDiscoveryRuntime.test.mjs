@@ -28,6 +28,7 @@ test("StrictMode discovery hydrates fresh SQLite data before issuing any network
     assert.deepEqual(harness.api.discoveryShows, cached.shows);
     assert.equal(harness.api.discoverySourceLabel, "XYZRank 中文榜");
     assert.equal(harness.api.discoveryRefreshing, false);
+    assert.equal(harness.api.discoveryFetchedAt, cached.fetchedAt);
   } finally { await harness.close(); }
 });
 
@@ -43,6 +44,7 @@ test("stale discovery stays visible during refresh and failure cannot advance it
     await step(() => network.reject("offline"));
     assert.equal(harness.api.discoveryState, "ready");
     assert.equal(harness.api.discoveryRefreshing, false);
+    assert.equal(harness.api.discoveryFetchedAt, cached.fetchedAt);
     assert.equal(runtime.discoveryCache.fetchedAt, cached.fetchedAt);
     assert.deepEqual(runtime.discoveryCache.shows, cached.shows);
   } finally { await harness.close(); }

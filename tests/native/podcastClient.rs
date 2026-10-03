@@ -40,6 +40,8 @@ pub fn initialize(app: &tauri::AppHandle) -> Result<(),String> {
   for (ordinal,start,end,text) in [(0,0,10,"开场介绍"),(1,10,30,"中文转写测试：查找关键词"),(2,30,90,"接下来的章节")] {
     connection.execute("INSERT OR IGNORE INTO podcast_transcript_cues(resource_id,ordinal,start_ms,end_ms,text,speaker) VALUES(?1,?2,?3,?4,?5,'Zone')",rusqlite::params![resource,ordinal,start*1000,end*1000,text]).map_err(|e|e.to_string())?;
   }
+  let catalogue=serde_json::json!({"source":"xyzrank","stale":false,"fetchedAt":crate::podcast::unix_time_millis(),"shows":[{"id":"client-ranked","title":"客户端验证节目：完整标题和作者信息可读性检查","author":"Zone 验收","feedUrl":"https://example.com/client-podcast.xml","genres":["科技"],"rank":7}]});
+  connection.execute("INSERT INTO app_settings(key,value_json,updated_at) VALUES('podcast.discovery.xyzrank.v1',?1,?2) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",rusqlite::params![catalogue.to_string(),crate::podcast::unix_time_millis()]).map_err(|e|e.to_string())?;
   drop(connection);
   fs::write(directory().join("data-directory.txt"),data.to_string_lossy().as_bytes()).map_err(|e|e.to_string())?;
   let handle=app.clone();

@@ -2377,6 +2377,7 @@ export function usePodcastViewModel({
     discoveryState,
     discoveryShows,
     discoverySourceLabel: discoveryPage ? podcastDiscoverySourceLabel(discoveryPage) : "",
+    discoveryFetchedAt: discoveryPage?.fetchedAt ?? null,
     discoveryRefreshing,
     loadDiscovery,
     libraryState,

@@ -15,6 +15,7 @@ function DiscoveryShelf({
   state,
   shows,
   sourceLabel,
+  fetchedAt,
   refreshing,
   feeds,
   openingId,
@@ -24,6 +25,7 @@ function DiscoveryShelf({
   state: RequestState;
   shows: PodcastDiscoveryShow[];
   sourceLabel: string;
+  fetchedAt: number | null;
   refreshing: boolean;
   feeds: PodcastFeed[];
   openingId: string | null;
@@ -41,17 +43,15 @@ function DiscoveryShelf({
       </div>
     );
   }
-  if (shows.length === 0) {
-    return <PodcastEmpty label="暂时没有热门节目" />;
-  }
   return (
     <>
     <div className="podcast-discovery-source">
-      <span>{sourceLabel}</span>
+      <span>{sourceLabel}{fetchedAt && Number.isFinite(fetchedAt) ? <time dateTime={new Date(fetchedAt).toISOString()} title={new Date(fetchedAt).toLocaleString("zh-CN")} > · 更新于 {new Date(fetchedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time> : null}</span>
       <Button variant="ghost" size="sm" busy={refreshing} onClick={onRetry}>
         {refreshing ? "刷新中" : "刷新榜单"}
       </Button>
     </div>
+    {shows.length === 0 ? <PodcastEmpty label="当前条件下没有热门节目" /> : null}
     <div className="podcast-show-shelf">
       {shows.map((show) => (
         <ShowCard
@@ -99,6 +99,8 @@ function ShowCard({
       className="podcast-show-card"
       onClick={onOpen}
       disabled={loading}
+      aria-label={`${show.title}，${show.author || "未知作者"}${show.rank ? `，榜单第 ${show.rank} 名` : ""}${followed ? "，已关注" : ""}`}
+      title={`${show.title} · ${show.author || "未知作者"}`}
     >
       <PodcastArtwork url={show.artworkUrl} title={show.title} />
       <span className="podcast-show-card-copy">
@@ -136,12 +138,11 @@ function ShowCard({
           <em>{genres[0]}</em>
         ) : null}
       </span>
+      {show.rank ? <span className="podcast-card-rank">{show.rank}</span> : null}
       {loading ? (
         <MetroLoader className="podcast-card-state" />
       ) : followed ? (
-        <Check className="podcast-card-state" size={16} />
-      ) : show.rank ? (
-        <span className="podcast-card-rank">{show.rank}</span>
+        <span className="podcast-card-state podcast-card-followed"><Check size={13} aria-hidden="true" />已关注</span>
       ) : null}
     </button>
   );

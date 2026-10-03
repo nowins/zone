@@ -354,6 +354,7 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
             state={discoveryState}
             shows={visibleDiscoveryShows}
             sourceLabel={discoverySourceLabel}
+            fetchedAt={vm.discoveryFetchedAt}
             refreshing={discoveryRefreshing}
             feeds={feeds}
             openingId={openingId}
