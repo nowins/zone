@@ -1,5 +1,5 @@
 import { type MouseEvent as ReactMouseEvent } from "react";
-import { Pause, Play } from "lucide-react";
+import { MoreHorizontal, Pause, Play } from "lucide-react";
 import { formatTime } from "../../../utils/music";
 import { podcastEpisodePlayedPercent } from "../../../utils/podcastListening";
 import type { PodcastEpisode } from "../../../types";
@@ -55,11 +55,12 @@ function ContinueCard({
         </span>
         <small>
           {episode.durationSeconds
-            ? `共 ${formatTime(episode.durationSeconds)}`
+            ? `剩余 ${formatTime(Math.max(0,episode.durationSeconds-episode.progressSeconds))}`
             : "继续收听"}
+          {episode.lastListenedAt ? ` · 上次 ${new Intl.DateTimeFormat("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}).format(new Date(episode.lastListenedAt))}` : ""}
         </small>
       </button>
-      <button
+      <div className="podcast-continue-controls"><button
         type="button"
         className="podcast-play-action"
         onClick={onPlay}
@@ -69,6 +70,7 @@ function ContinueCard({
           ? <Pause size={18} fill="currentColor" />
           : <Play size={18} fill="currentColor" />}
       </button>
+      <button type="button" aria-label={`更多单集操作：${episode.title}`} aria-haspopup="menu" onClick={onContextMenu}><MoreHorizontal size={17}/></button></div>
     </article>
   );
 }

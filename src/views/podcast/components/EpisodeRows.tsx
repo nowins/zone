@@ -4,6 +4,7 @@ import {
   Download,
   Pause,
   Play,
+  MoreHorizontal,
 } from "lucide-react";
 import { MetroLoader } from "../../../components/MetroLoader";
 import { formatTime } from "../../../utils/music";
@@ -184,6 +185,7 @@ function EpisodeRow({
                 ? <Pause size={17} fill="currentColor" />
                 : <Play size={17} fill="currentColor" />}
             </button>
+            <button type="button" className="podcast-episode-more" aria-label={`更多单集操作：${episode.title}`} aria-haspopup="menu" onClick={onContextMenu}><MoreHorizontal size={17}/></button>
           </>
         )}
       </div>

@@ -26,6 +26,7 @@ pub fn initialize(app: &tauri::AppHandle) -> Result<(),String> {
   connection.execute("INSERT INTO podcast_downloads(episode_id,state,downloaded_bytes,updated_at) VALUES(?1,'failed',8192,1) ON CONFLICT(episode_id) DO UPDATE SET state='failed',downloaded_bytes=8192,local_path=NULL",[&pending]).map_err(|e|e.to_string())?;
   connection.execute("INSERT INTO podcast_download_jobs(episode_id,state,updated_at) VALUES(?1,'paused',1) ON CONFLICT(episode_id) DO UPDATE SET state='paused',request_id=NULL",[&pending]).map_err(|e|e.to_string())?;
   let offline:String=connection.query_row("SELECT id FROM podcast_episodes WHERE title LIKE '离线单集%' LIMIT 1",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+  connection.execute("INSERT INTO podcast_progress(episode_id,position_seconds,duration_seconds,completed,updated_at) VALUES(?1,30,300,0,?2) ON CONFLICT(episode_id) DO UPDATE SET position_seconds=30,duration_seconds=300,completed=0,updated_at=excluded.updated_at",rusqlite::params![offline,crate::podcast::unix_time_millis()]).map_err(|e|e.to_string())?;
   // Regenerate only this fixture's managed audio, with a real silent segment.
   let rate=8000u32;let length=rate as usize*2*300;let mut wav=vec![0;length+44];
   wav[..4].copy_from_slice(b"RIFF");wav[4..8].copy_from_slice(&((length+36) as u32).to_le_bytes());wav[8..16].copy_from_slice(b"WAVEfmt ");

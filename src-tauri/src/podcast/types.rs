@@ -76,6 +76,7 @@ pub struct PodcastEpisode {
   pub(crate) downloaded_bytes: u64,
   pub(crate) total_bytes: Option<u64>,
   pub(crate) progress_seconds: f64,
+  pub(crate) last_listened_at: Option<i64>,
   pub(crate) completed: bool,
   pub(crate) feed_title: Option<String>,
   pub(crate) feed_artwork_url: Option<String>,

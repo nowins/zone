@@ -15,6 +15,12 @@ async function run() {
     await invoke("client_record",{value:{kind:"started",url:location.href,readyState:document.readyState}});
     await until(()=>Boolean(button("播客")),"full App mount"); await click("播客"); await until(()=>Boolean(document.querySelector(".podcast-page")),"podcast page");
     assert(document.querySelectorAll("audio").length===1,"App must own exactly one audio element");
+    await click("收听");await until(()=>Boolean(document.querySelector('.podcast-continue-card')),"continue listening overview");
+    assert(document.querySelector('.podcast-continue-card small')?.textContent?.includes("剩余")&&document.querySelector('.podcast-continue-card small')?.textContent?.includes("上次"),"continue listening must include remaining duration and last time");
+    document.querySelector<HTMLButtonElement>('.podcast-continue-controls button[aria-haspopup=menu]')!.click();await until(()=>Boolean(document.querySelector('[role=menu]')),"visible more entry opens episode menu");
+    document.querySelector('[role=menu]')!.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=menu]'),"more menu escape");
+    await click("查看全部");await until(()=>Boolean(document.querySelector('.podcast-search-page-status')),"complete continue listening list");await capture("11-continue-all-1180");await click("返回收听");
+    checks.push("真实客户端收听剩余时长、上次时间、完整资料库继续收听和可见更多操作");
     await click("资料库"); await click("播客设置");await until(()=>Boolean(document.querySelector(".podcast-settings-fields select")),"global settings");
     const select=document.querySelector<HTMLSelectElement>(".podcast-settings-fields select")!;
     const checkbox=document.querySelector<HTMLInputElement>(".podcast-settings-fields input[type=checkbox]")!;

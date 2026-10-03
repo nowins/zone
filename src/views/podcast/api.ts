@@ -102,7 +102,7 @@ export function listPodcastEpisodes(feedId: string, offset = 0, limit = 100) {
 }
 
 export type EpisodeSearchPage = { episodes: PodcastEpisode[]; total: number; hasMore: boolean };
-export const searchLocalEpisodes = (options: { feedId?: string; query: string; filter: string; sort: string; offset: number; limit: number }) =>
+export const searchLocalEpisodes = (options: { feedId?: string; query: string; filter: string; sort: string; offset: number; limit: number; followedOnly?: boolean }) =>
   invoke<EpisodeSearchPage>("podcast_search_episodes", options);
 
 export async function searchCatalogPodcasts(query: string): Promise<PodcastSearchResult[]> {

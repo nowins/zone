@@ -561,7 +561,7 @@
 .podcast-episode {
   min-height: 88px;
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) 100px;
+  grid-template-columns: 84px minmax(0, 1fr) 140px;
   align-items: start;
   gap: 16px;
   padding: 13px 5px 13px 0;
@@ -569,7 +569,7 @@
 }
 
 .podcast-episode.with-artwork {
-  grid-template-columns: 64px minmax(0, 1fr) 100px;
+  grid-template-columns: 64px minmax(0, 1fr) 140px;
 }
 
 .podcast-episode-artwork {
@@ -672,6 +672,9 @@
   gap: 9px;
   padding-top: 2px;
 }
+.podcast-episode-actions > button { width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; }
+.podcast-continue-controls { display: grid; justify-items: center; gap: 6px; }
+.podcast-continue-controls > button { min-width: 40px; min-height: 36px; display: grid; place-items: center; }
 
 .podcast-download-action {
   width: 44px;

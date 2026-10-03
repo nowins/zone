@@ -294,7 +294,7 @@ test("listening home filters before truncation and surfaces new and played state
   );
   includes(
     podcastCss,
-    /\.podcast-episode\.with-artwork\s*\{[\s\S]{0,120}64px minmax\(0,\s*1fr\) 100px/,
+    /\.podcast-episode\.with-artwork\s*\{[\s\S]{0,120}64px minmax\(0,\s*1fr\) 140px/,
     "artwork rows must preserve a bounded action column",
   );
 });

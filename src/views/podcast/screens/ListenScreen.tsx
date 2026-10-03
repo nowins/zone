@@ -8,8 +8,12 @@ import {
   PodcastSection,
 } from "../components/primitives";
 import type { PodcastViewModel } from "../usePodcastViewModel";
+import { useState } from "react";
+import { Button } from "../../../components/Button";
+import { EpisodeBrowser } from "../components/EpisodeBrowser";
 
 export function ListenScreen({ vm }: { vm: PodcastViewModel }) {
+  const [expanded,setExpanded]=useState<"continue"|"updates"|null>(null);
   const {
     // pull fields used by this screen (full bag is fine; unused locals are ok at runtime)
     ..._
@@ -152,8 +156,9 @@ export function ListenScreen({ vm }: { vm: PodcastViewModel }) {
 
   return (
     <main className="podcast-screen podcast-listen-screen">
+      {expanded ? <><Button variant="ghost" onClick={()=>setExpanded(null)}>返回收听</Button><h2>{expanded==="continue"?"全部继续收听":"来自你的节目"}</h2><EpisodeBrowser key={expanded} scope={`listen-${expanded}`} vm={vm} initialFilter={expanded==="continue"?"in-progress":listenFilter==="unplayed"?"unstarted":"all"} initialSort={expanded==="continue"?"listened":"newest"} followedOnly={expanded==="updates"}/></> : <>
               {continueListeningEpisodes.length > 0 ? (
-                <PodcastSection title="继续收听" count={continueListeningEpisodes.length}>
+                <PodcastSection title="继续收听" count={continueListeningEpisodes.length} actionLabel="查看全部" onAction={()=>setExpanded("continue")}>
                   <div className="podcast-continue-grid">
                     {continueListeningEpisodes.map((episode) => (
                       <ContinueCard
@@ -175,6 +180,7 @@ export function ListenScreen({ vm }: { vm: PodcastViewModel }) {
                 <PodcastSection
                   title="来自你的节目"
                   count={filteredLatestEpisodes.length}
+                  actionLabel="查看全部" onAction={()=>setExpanded("updates")}
                 >
                   <div
                     className="podcast-listen-filters"
@@ -240,6 +246,6 @@ export function ListenScreen({ vm }: { vm: PodcastViewModel }) {
                   )}
                 </PodcastSection>
               ) : null}
-            </main>
+      </>}</main>
   );
 }

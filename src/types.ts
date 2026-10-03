@@ -338,6 +338,7 @@ export type PodcastEpisode = {
   downloadedBytes: number;
   totalBytes?: number | null;
   progressSeconds: number;
+  lastListenedAt?: number | null;
   completed: boolean;
   saved: boolean;
   feedTitle?: string | null;
