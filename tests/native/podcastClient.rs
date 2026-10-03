@@ -26,6 +26,13 @@ pub fn initialize(app: &tauri::AppHandle) -> Result<(),String> {
   connection.execute("INSERT INTO podcast_downloads(episode_id,state,downloaded_bytes,updated_at) VALUES(?1,'failed',8192,1) ON CONFLICT(episode_id) DO UPDATE SET state='failed',downloaded_bytes=8192,local_path=NULL",[&pending]).map_err(|e|e.to_string())?;
   connection.execute("INSERT INTO podcast_download_jobs(episode_id,state,updated_at) VALUES(?1,'paused',1) ON CONFLICT(episode_id) DO UPDATE SET state='paused',request_id=NULL",[&pending]).map_err(|e|e.to_string())?;
   let offline:String=connection.query_row("SELECT id FROM podcast_episodes WHERE title LIKE '离线单集%' LIMIT 1",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+  // Regenerate only this fixture's managed audio, with a real silent segment.
+  let rate=8000u32;let length=rate as usize*2*300;let mut wav=vec![0;length+44];
+  wav[..4].copy_from_slice(b"RIFF");wav[4..8].copy_from_slice(&((length+36) as u32).to_le_bytes());wav[8..16].copy_from_slice(b"WAVEfmt ");
+  wav[16..20].copy_from_slice(&16u32.to_le_bytes());wav[20..24].copy_from_slice(&[1,0,1,0]);wav[24..28].copy_from_slice(&rate.to_le_bytes());
+  wav[28..32].copy_from_slice(&(rate*2).to_le_bytes());wav[32..36].copy_from_slice(&[2,0,16,0]);wav[36..40].copy_from_slice(b"data");wav[40..44].copy_from_slice(&(length as u32).to_le_bytes());
+  for(i,v)in wav[44..].chunks_exact_mut(2).enumerate(){let seconds=i as f64/rate as f64;let level=if(60.0..70.0).contains(&seconds){0.0}else{1000.0};let signal=((seconds*220.0*std::f64::consts::TAU).sin()*level)as i16;v.copy_from_slice(&signal.to_le_bytes());}
+  fs::write(data.join("podcast-downloads").join(format!("{offline}.wav")),wav).map_err(|e|e.to_string())?;
   let resource="1111111111111111111111111111111111111111111111111111111111111111";
   connection.execute("INSERT OR IGNORE INTO podcast_episode_resources(id,episode_id,kind,source_kind,url,mime_type,language,ordinal,fetched_at) VALUES(?1,?2,'transcript','podcast-transcript','https://example.com/client.vtt','text/vtt','zh-CN',0,?3)",rusqlite::params![resource,offline,crate::podcast::unix_time_millis()]).map_err(|e|e.to_string())?;
   connection.execute("UPDATE podcast_episodes SET description='<p>客户端简介，<strong>重点</strong>与 00:02 时间码。</p><p>资料：<a href=\"https://example.com/notes\">相关链接</a></p>' WHERE id=?1",[&offline]).map_err(|e|e.to_string())?;

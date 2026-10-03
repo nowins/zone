@@ -2203,3 +2203,11 @@
 .podcast-show-groups select { min-height: 36px; max-width: 300px; padding: 6px; font: inherit; color: var(--text); background: var(--app-bg); border: 1px solid var(--quiet); color-scheme: dark; }
 .podcast-show-groups p { flex-basis: 100%; }
 .podcast-download-job-actions { display: flex; align-items: center; gap: 16px; }
+/* Timestamp bookmarks use the same restrained episode reading column. */
+.podcast-bookmarks { margin: 28px 0; }
+.podcast-bookmark-entry { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.podcast-bookmark-entry input { width: min(300px, 100%); min-width: 0; }
+.podcast-bookmarks ol { list-style: none; padding: 0; }
+.podcast-bookmarks li { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.podcast-bookmarks li > :first-child { flex: 1; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+.podcast-bookmarks time { color: var(--accent); font-variant-numeric: tabular-nums; }

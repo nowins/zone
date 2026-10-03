@@ -355,7 +355,8 @@ fn prune_missing_feed_episodes(
               AND (completed = 1 OR position_seconds > 0)
           ),
           EXISTS(SELECT 1 FROM podcast_saved_episodes WHERE episode_id = ?1)
-            OR EXISTS(SELECT 1 FROM podcast_playlist_items WHERE episode_id = ?1),
+            OR EXISTS(SELECT 1 FROM podcast_playlist_items WHERE episode_id = ?1)
+            OR EXISTS(SELECT 1 FROM podcast_bookmarks WHERE episode_id = ?1),
           EXISTS(SELECT 1 FROM podcast_queue WHERE episode_id = ?1),
           EXISTS(
             SELECT 1

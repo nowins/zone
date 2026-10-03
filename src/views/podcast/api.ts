@@ -219,3 +219,8 @@ export function setEpisodeSaved(episodeId: string, saved: boolean) {
     saved,
   });
 }
+
+export type PodcastBookmark = { id: string; positionSeconds: number; label: string };
+export const listEpisodeBookmarks = (episodeId: string) => invoke<PodcastBookmark[]>("podcast_list_bookmarks", { episodeId });
+export const addEpisodeBookmark = (episodeId: string, positionSeconds: number, label: string) => invoke<PodcastBookmark[]>("podcast_add_bookmark", { episodeId, positionSeconds, label });
+export const removeEpisodeBookmark = (episodeId: string, bookmarkId: string) => invoke<PodcastBookmark[]>("podcast_remove_bookmark", { episodeId, bookmarkId });

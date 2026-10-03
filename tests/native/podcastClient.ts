@@ -48,6 +48,7 @@ async function run() {
       if(inherit.checked)inherit.click();await delay(100);
       await selectValue(document.querySelector('select[aria-label="节目播放速度"]')!,"1.5");
       for(const [label,value] of [["跳过片头","10"],["跳过片尾","20"],["后退间隔","10"],["前进间隔","45"]])await inputValue(document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!,value);
+      for(const label of ["均衡语音音量","加速静音段落"]){const option=Array.from(document.querySelectorAll<HTMLInputElement>('.podcast-settings-fields input[type=checkbox]')).find(el=>el.parentElement?.textContent?.includes(label))!;assert(option,`${label} setting missing`);if(!option.checked)option.click();await delay(100);}
       await capture("05-playback-settings-920");await click("保存");await until(()=>!document.querySelector("[role=dialog]"),"playback settings saved");
       const row=Array.from(document.querySelectorAll(".podcast-episode")).find(el=>el.textContent?.includes("离线单集"))!;
       row.scrollIntoView({block:"center"});(row.querySelector(".podcast-play-action") as HTMLButtonElement).click();
@@ -70,6 +71,13 @@ async function run() {
       document.querySelector<HTMLButtonElement>('.podcast-transcript-cues li button')!.click();await until(()=>audio.currentTime>=10&&audio.currentTime<18,"transcript timestamp");
       assert(document.querySelector('.podcast-transcript-cues li[aria-current="true"]'),"transcript does not follow actual progress");
       await capture("07-notes-transcript-920");checks.push("真实客户端富文本简介、时间码跳转保留显式片头位置、原生转写缓存、关键词查询、转写时间跳转与当前段落");
+      await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="书签备注"]')!,"客户端书签");
+      const addBookmark=Array.from(document.querySelectorAll<HTMLButtonElement>('.podcast-bookmark-entry button')).find(el=>el.textContent?.startsWith("添加"))!;addBookmark.scrollIntoView({block:"nearest"});addBookmark.click();
+      await until(()=>document.querySelector('.podcast-bookmarks ol')?.textContent?.includes("客户端书签") ?? false,"native timestamp bookmark persisted");
+      const bookmark=document.querySelector<HTMLButtonElement>('.podcast-bookmarks ol li button')!;bookmark.click();await delay(300);assert(audio.currentTime>=10&&audio.currentTime<20,"bookmark must seek shared audio");
+      await click("分享此刻");await until(()=>document.querySelector('.podcast-bookmarks')?.textContent?.includes("已复制单集链接和时间") ?? false,"timestamp clipboard share");
+      const remove=Array.from(document.querySelectorAll<HTMLButtonElement>('.podcast-bookmarks ol button')).find(el=>el.textContent?.trim()==="删除")!;remove.click();await until(()=>!document.querySelector('.podcast-bookmarks ol'),"remove native bookmark");
+      checks.push("真实客户端时间书签保存、共用音频跳转、带时间复制分享与删除");
       document.querySelector<HTMLButtonElement>('.podcast-player button[title="暂停"]')!.click();
       await click("加入播放列表");await until(()=>Boolean(document.querySelector('select[aria-label="选择播放列表"]')),"playlist picker");
       const manualName=`验收手动 ${Date.now()}`;
@@ -109,6 +117,13 @@ async function run() {
       await delay(200);await invoke("client_media",{action:"pause"});await until(()=>audio.paused,"native media pause event");
       window.dispatchEvent(new Event("online"));window.dispatchEvent(new Event("focus"));await delay(800);assert(audio.paused,"focus or reconnect revived a system-paused episode");
       checks.push("真实客户端原生媒体事件播放、定位、暂停，回到前台和网络恢复事件保持暂停意图（硬件按键仍需最终验证）");
+      await invoke("client_media",{action:"play"});await until(()=>!audio.paused,"enhanced playback");
+      await invoke("client_media",{action:"seek",positionSeconds:40});
+      await until(()=>Number(audio.dataset.podcastVoiceGain)>2&&Number(audio.dataset.podcastSignal)>0.01,"real PCM voice gain",8000);
+      await invoke("client_media",{action:"seek",positionSeconds:62});await until(()=>audio.playbackRate===3&&audio.dataset.podcastSilence==="true","real silence acceleration",8000);
+      await invoke("client_media",{action:"seek",positionSeconds:75});await until(()=>audio.playbackRate===1.5&&audio.dataset.podcastSilence==="false","voice restores selected rate");
+      await invoke("client_media",{action:"pause"});await until(()=>audio.paused&&audio.playbackRate===1.5,"pause restores selected rate");
+      checks.push("真实客户端 AudioWorklet 处理真实 PCM、语音增益、静音段 3 倍速、声音与暂停恢复节目 1.5 倍速");
     }
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

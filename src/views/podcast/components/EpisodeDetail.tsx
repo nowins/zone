@@ -31,6 +31,7 @@ import {
 import { PodcastArtwork, PodcastEmpty, PodcastLoading } from "./primitives";
 import { PodcastNotes, PodcastExternalLink } from "./Notes";
 import { TranscriptPanel } from "./TranscriptPanel";
+import { EpisodeBookmarks } from "./Bookmarks";
 
 function EpisodeDetail({
   detail,
@@ -213,6 +214,7 @@ function EpisodeDetail({
         </button>
       </div>
 
+      <EpisodeBookmarks key={episode.id} episode={episode} position={active ? activeProgress : episode.progressSeconds} onPlayAt={onPlayChapter}/>
       <section className="podcast-detail-description">
         <h3>简介</h3>
         {episode.description?<PodcastNotes source={episode.description} base={episode.webpageUrl??feed.feedUrl} duration={episode.durationSeconds} onPlayAt={onPlayChapter}/>:<p>这集暂时没有简介。</p>}

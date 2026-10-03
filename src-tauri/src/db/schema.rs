@@ -526,6 +526,15 @@ pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), Strin
         added_at INTEGER NOT NULL,
         PRIMARY KEY(playlist_id,episode_id)
       );
+      CREATE TABLE IF NOT EXISTS podcast_bookmarks (
+        id TEXT PRIMARY KEY NOT NULL,
+        episode_id TEXT NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,
+        position_ms INTEGER NOT NULL CHECK(position_ms >= 0),
+        label TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(episode_id,position_ms)
+      );
+      CREATE INDEX IF NOT EXISTS idx_podcast_bookmarks_episode ON podcast_bookmarks(episode_id,position_ms);
       CREATE TABLE IF NOT EXISTS podcast_show_groups (
         id TEXT PRIMARY KEY NOT NULL,
         name TEXT NOT NULL,
