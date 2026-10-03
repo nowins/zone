@@ -65,6 +65,7 @@ function QueueEpisodeRow({
         dragging ? "is-dragging" : "",
         dropPlacement ? "is-drop-target" : "",
       ].filter(Boolean).join(" ")}
+      data-podcast-episode={item.episode.id}
       data-drop-position={dropPlacement}
       onDragOver={onDragOver}
       onDrop={onDrop}
@@ -117,14 +118,14 @@ function QueueEpisodeRow({
       </button>
       {!selecting ? (
         <div className="podcast-queue-actions">
-          <button type="button" onClick={onPlay} title="立即播放">
+          <button type="button" onClick={onPlay} title="立即播放" aria-label={`播放“${item.episode.title}”`}>
             <Play size={15} fill="currentColor" />
           </button>
           <button
             type="button"
             onClick={() => onMove(-1)}
             disabled={index === 0}
-            title="上移"
+            title="上移" aria-label={`将第 ${index+1} 集“${item.episode.title}”上移`}
           >
             <ChevronUp size={16} />
           </button>
@@ -132,11 +133,11 @@ function QueueEpisodeRow({
             type="button"
             onClick={() => onMove(1)}
             disabled={index === count - 1}
-            title="下移"
+            title="下移" aria-label={`将第 ${index+1} 集“${item.episode.title}”下移`}
           >
             <ChevronDown size={16} />
           </button>
-          <button type="button" onClick={onRemove} title="从待播队列移除">
+          <button type="button" onClick={onRemove} title="从待播队列移除" aria-label={`从待播移除“${item.episode.title}”`}>
             <X size={16} />
           </button>
         </div>

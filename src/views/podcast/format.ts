@@ -45,7 +45,7 @@ export function formatFileSize(bytes: number) {
 }
 
 export function formatEpisodeDate(timestamp?: number | null) {
-  if (!timestamp || !Number.isFinite(timestamp)) return "日期未知";
+  if (!timestamp || !Number.isFinite(new Date(timestamp).getTime())) return "日期未知";
   return new Intl.DateTimeFormat("zh-CN", {
     month: "short",
     day: "numeric",
@@ -53,7 +53,7 @@ export function formatEpisodeDate(timestamp?: number | null) {
 }
 
 export function formatEpisodeFullDate(timestamp?: number | null) {
-  if (!timestamp || !Number.isFinite(timestamp)) return "发布日期未知";
+  if (!timestamp || !Number.isFinite(new Date(timestamp).getTime())) return "发布日期未知";
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
     month: "long",

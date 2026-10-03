@@ -25,6 +25,7 @@ pub fn initialize(app: &tauri::AppHandle) -> Result<(),String> {
   fs::write(data.join("podcast-downloads").join(format!("{pending}.part")),vec![0;8192]).map_err(|e|e.to_string())?;
   connection.execute("INSERT INTO podcast_downloads(episode_id,state,downloaded_bytes,updated_at) VALUES(?1,'failed',8192,1) ON CONFLICT(episode_id) DO UPDATE SET state='failed',downloaded_bytes=8192,local_path=NULL",[&pending]).map_err(|e|e.to_string())?;
   connection.execute("INSERT INTO podcast_download_jobs(episode_id,state,updated_at) VALUES(?1,'paused',1) ON CONFLICT(episode_id) DO UPDATE SET state='paused',request_id=NULL",[&pending]).map_err(|e|e.to_string())?;
+  connection.execute("DELETE FROM podcast_queue WHERE episode_id IN(SELECT id FROM podcast_episodes WHERE title LIKE '在线单集%' OR title LIKE '离线单集%')",[]).map_err(|e|e.to_string())?;
   let offline:String=connection.query_row("SELECT id FROM podcast_episodes WHERE title LIKE '离线单集%' LIMIT 1",[],|r|r.get(0)).map_err(|e|e.to_string())?;
   connection.execute("INSERT INTO podcast_progress(episode_id,position_seconds,duration_seconds,completed,updated_at) VALUES(?1,30,300,0,?2) ON CONFLICT(episode_id) DO UPDATE SET position_seconds=30,duration_seconds=300,completed=0,updated_at=excluded.updated_at",rusqlite::params![offline,crate::podcast::unix_time_millis()]).map_err(|e|e.to_string())?;
   // Regenerate only this fixture's managed audio, with a real silent segment.
@@ -94,4 +95,12 @@ pub async fn client_capture(app: tauri::AppHandle,name: String) -> Result<(),Str
     if let Err(error)=result {if let Some(sender)=completed.lock().unwrap().take(){let _=sender.send(Err(error.to_string()));}}
   }).map_err(|e|e.to_string())?;
   tokio::time::timeout(Duration::from_secs(10),receiver).await.map_err(|_|"capture timeout")?.map_err(|e|e.to_string())?
+}
+
+#[tauri::command]
+pub async fn client_motion(app:tauri::AppHandle,reduce:bool)->Result<(),String>{
+ let(sender,receiver)=tokio::sync::oneshot::channel();let completed=Arc::new(Mutex::new(Some(sender)));
+ app.get_webview_window("main").ok_or("missing main window")?.with_webview(move|webview|{
+  let result:windows::core::Result<()>=(||unsafe{let core=webview.controller().CoreWebView2()?;let finished=completed.clone();let handler=webview2_com::CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move|code,_|{if let Some(sender)=finished.lock().unwrap().take(){let _=sender.send(code.map_err(|e|e.to_string()));}Ok(())}));let parameters=windows::core::HSTRING::from(serde_json::json!({"features":[{"name":"prefers-reduced-motion","value":if reduce{"reduce"}else{"no-preference"}}]}).to_string());core.CallDevToolsProtocolMethod(windows::core::w!("Emulation.setEmulatedMedia"),&parameters,&handler)?;Ok(())})();if let Err(error)=result{if let Some(sender)=completed.lock().unwrap().take(){let _=sender.send(Err(error.to_string()));}}
+ }).map_err(|e|e.to_string())?;tokio::time::timeout(Duration::from_secs(10),receiver).await.map_err(|_|"motion emulation timeout")?.map_err(|e|e.to_string())?
 }

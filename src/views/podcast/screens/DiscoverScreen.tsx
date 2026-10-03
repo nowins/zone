@@ -169,6 +169,7 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
                 aria-label="搜索播客"
                 aria-autocomplete="list"
                 aria-controls="podcast-search-history"
+                aria-activedescendant={showSearchHistory&&historyHighlight>=0?`podcast-search-history-${historyHighlight}`:undefined}
                 aria-expanded={showSearchHistory}
                 autoComplete="off"
                 autoCorrect="off"
@@ -206,6 +207,7 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
                       <button
                         type="button"
                         role="option"
+                        id={`podcast-search-history-${index}`}
                         aria-selected={historyHighlight === index}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => chooseHistoryTerm(historyQuery)}

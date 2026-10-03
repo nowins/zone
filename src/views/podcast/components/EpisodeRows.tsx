@@ -146,6 +146,7 @@ function EpisodeRow({
             <button
               type="button"
               className="podcast-download-action"
+              aria-label={`${episode.localPath?"已下载":downloading?"正在下载":"下载"}“${episode.title}”`}
               onClick={onDownload}
               disabled={downloading || Boolean(episode.localPath)}
               title={
@@ -173,6 +174,7 @@ function EpisodeRow({
             <button
               type="button"
               className="podcast-play-action"
+              aria-label={`${active&&isPlaying?"暂停":"播放"}“${episode.title}”`}
               onClick={onPlay}
               title={
                 active && isPlaying

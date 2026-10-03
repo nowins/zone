@@ -2262,3 +2262,21 @@
 .podcast-playlist-current summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .podcast-queue-total,.podcast-queue-undo { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .podcast-queue-undo { display: flex; align-items: center; gap: 16px; }
+
+.playlist-dialog-overlay.podcast-settings-overlay { inset: 28px 0 0; padding: 24px; }
+.playlist-dialog.podcast-settings-dialog { max-height: calc(100vh - 76px); }
+.podcast-settings-dialog .playlist-dialog-actions { position: sticky; bottom: -28px; z-index: 1; background: #171118; padding: 16px 0; border-top: 1px solid var(--faint); }
+.podcast-heading h1:focus-visible { outline: 1px solid var(--quiet); outline-offset: 3px; }
+.podcast-page :is(button,summary,select,input):focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.podcast-page summary { border-radius: 0; }
+.podcast-show-hero { position: relative; padding-right: 66px; grid-template-columns: 112px minmax(0,1fr); }
+.podcast-refresh { position: absolute; right: 0; top: 0; margin-top: 0; }
+@media (max-height: 650px) {
+  .podcast-header { flex-basis: 74px; }
+  .podcast-header-detail { flex-basis: 58px; }
+  .podcast-screen { padding-top: 14px; }
+  .podcast-show-hero { gap: 16px; grid-template-columns: 100px minmax(0,1fr); }
+  .podcast-show-episodes { margin-top: 10px; }
+  .podcast-discovery-topics { margin-bottom: 14px; }
+}
+@media (min-width: 1400px) { .podcast-queue-total { grid-column: 2; grid-row: 3; } .podcast-queue-undo { grid-column: 2; grid-row: 4; } }

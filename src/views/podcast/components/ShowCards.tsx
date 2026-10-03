@@ -46,7 +46,7 @@ function DiscoveryShelf({
   return (
     <>
     <div className="podcast-discovery-source">
-      <span>{sourceLabel}{fetchedAt && Number.isFinite(fetchedAt) ? <time dateTime={new Date(fetchedAt).toISOString()} title={new Date(fetchedAt).toLocaleString("zh-CN")} > · 更新于 {new Date(fetchedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time> : null}</span>
+      <span>{sourceLabel}{fetchedAt && Number.isFinite(new Date(fetchedAt).getTime()) ? <time dateTime={new Date(fetchedAt).toISOString()} title={new Date(fetchedAt).toLocaleString("zh-CN")} > · 更新于 {new Date(fetchedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time> : null}</span>
       <Button variant="ghost" size="sm" busy={refreshing} onClick={onRetry}>
         {refreshing ? "刷新中" : "刷新榜单"}
       </Button>

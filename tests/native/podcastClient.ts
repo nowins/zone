@@ -30,7 +30,7 @@ async function run() {
     await invoke("client_window",{small:false});await capture("01-maintenance-1180");
     await invoke("client_window",{small:true});await capture("02-maintenance-920");
     const bounds=document.querySelector("[role=dialog]")!.getBoundingClientRect();
-    assert(bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.left>=0&&bounds.right<=innerWidth,"settings are cropped in the smallest window");
+    assert(bounds.top>=48&&bounds.bottom<=innerHeight-20&&bounds.left>=0&&bounds.right<=innerWidth,"settings are cropped in the smallest window");
     assert(document.querySelector("[role=dialog]")?.contains(document.activeElement),"settings must trap focus");
     await click("保存");await until(()=>!document.querySelector("[role=dialog]"),"settings saved");
     const preferences=await invoke<{storageLimitMb:number}>("podcast_get_preferences",{});
@@ -150,6 +150,7 @@ async function run() {
     const ranked=document.querySelector<HTMLButtonElement>('.podcast-show-card')!;assert(ranked.title.includes("完整标题"),"full show metadata unavailable");assert(ranked.querySelector('.podcast-card-rank')?.textContent==="7"&&ranked.querySelector('.podcast-card-followed'),"rank and followed status must coexist");assert(document.querySelector('.podcast-discovery-source time')?.getAttribute('datetime'),"discovery snapshot date missing");await capture("14-discovery-920");
     const unfollowed=document.querySelector<HTMLInputElement>('.podcast-episode-filters input[type=checkbox]')!;unfollowed.click();await until(()=>!document.querySelector('.podcast-show-card'),"discovery followed filter");assert(document.querySelector('.podcast-discovery-source time'),"empty filter hides source and date");unfollowed.click();
     checks.push("真实客户端榜单来源与更新时间、完整标题、排行与已关注标记并存、筛选空状态");
+    await invoke("client_motion",{reduce:true});await until(()=>matchMedia('(prefers-reduced-motion: reduce)').matches,"native reduced motion");await click("资料库");await click("播客设置");await until(()=>Boolean(document.querySelector('.podcast-settings-dialog')),"reduced motion settings");const modal=document.querySelector<HTMLElement>('.podcast-settings-dialog')!;await delay(100);assert(getComputedStyle(modal).animationName==="none"||parseFloat(getComputedStyle(modal).animationDuration)<0.02,"reduced motion retains rotating dialog animation");const focusables=Array.from(modal.querySelectorAll<HTMLButtonElement>('button')).filter(el=>!el.disabled);focusables.at(-1)!.focus();focusables.at(-1)!.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));assert(modal.contains(document.activeElement),"Tab escaped modal");await capture("16-reduced-motion-settings-920");modal.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=dialog]'),"reduced motion closes immediately");await invoke("client_motion",{reduce:false});checks.push("真实 WebView2 减少动态效果媒体条件、浮层动画停用与焦点 Tab／Escape 隔离（系统按键仍需手工补充）");
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}
 }

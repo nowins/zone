@@ -23,7 +23,7 @@ export function PodcastSettingsDialog({ feedId, title, onClose }: { feedId?: str
     finally { setBusy(false); }
   }
   return <Dialog titleId="podcast-settings-title" kicker={feedId ? "节目设置" : "播客设置"} title={title}
-    className="podcast-settings-dialog" busy={busy} onCancel={onClose}
+    overlayClassName="podcast-settings-overlay" className="podcast-settings-dialog" busy={busy} onCancel={onClose}
     onSubmit={event => { event.preventDefault(); void save(); }}
     actions={<><Button type="submit" variant="primary" disabled={!value} busy={busy}>保存</Button><Button disabled={busy} onClick={onClose}>取消</Button></>}>
     {value ? <div className="podcast-settings-fields">
