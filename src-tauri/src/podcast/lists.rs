@@ -30,7 +30,7 @@ pub struct PodcastPlaylist {
   pub rules: PlaylistRules,
   pub updated_at: i64,
 }
-fn validate_rules(rules: &PlaylistRules) -> Result<(), String> {
+pub(crate) fn validate_rules(rules: &PlaylistRules) -> Result<(), String> {
   if !matches!(
     rules.filter.as_str(),
     "all" | "unplayed" | "played" | "saved" | "downloaded"

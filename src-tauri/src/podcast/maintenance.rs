@@ -46,11 +46,7 @@ pub(crate) fn read_preferences_in(db:&rusqlite::Connection,feed_id:Option<&str>)
 
 pub(crate) fn write_preferences(path: &Path, feed_id: Option<&str>, value: &PodcastPreferences) -> Result<(), String> {
   let key = preferences_key(feed_id)?;
-  if value.auto_download_count > 50 || value.storage_limit_mb > 1_000_000 || value.intro_seconds > 3600 || value.outro_seconds > 3600
-    || !(1..=300).contains(&value.backward_seconds) || !(1..=300).contains(&value.forward_seconds)
-    || value.playback_rate.is_some_and(|r| !r.is_finite() || !(0.5..=3.0).contains(&r)) {
-    return Err("播客设置超出范围".into());
-  }
+  validate_preferences(value)?;
   let db = open_database(path)?;
   if let Some(id) = feed_id {
     let exists: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM podcast_feeds WHERE id=?1)", [id], |row| row.get(0)).map_err(|e| e.to_string())?;
@@ -58,6 +54,14 @@ pub(crate) fn write_preferences(path: &Path, feed_id: Option<&str>, value: &Podc
   }
   db.execute("INSERT INTO app_settings(key,value_json,updated_at) VALUES (?1,?2,?3) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at",
     params![key, serde_json::to_string(value).map_err(|e| e.to_string())?, unix_time_millis()]).map_err(|e| e.to_string())?;
+  Ok(())
+}
+pub(crate) fn validate_preferences(value:&PodcastPreferences)->Result<(),String> {
+  if value.auto_download_count > 50 || value.storage_limit_mb > 1_000_000 || value.intro_seconds > 3600 || value.outro_seconds > 3600
+    || !(1..=300).contains(&value.backward_seconds) || !(1..=300).contains(&value.forward_seconds)
+    || value.playback_rate.is_some_and(|r| !r.is_finite() || !(0.5..=3.0).contains(&r)) {
+    return Err("播客设置超出范围".into());
+  }
   Ok(())
 }
 

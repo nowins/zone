@@ -41,8 +41,11 @@ fn validate_frontend(frontend:&BTreeMap<String,String>)->Result<(),String> {
   if frontend.len()>32 || frontend.iter().any(|(k,v)|!k.starts_with("zone-podcast-")||k.len()>100||v.len()>512*1024) {return Err("播客界面设置无效".into());}Ok(())
 }
 
-struct CopiedFiles {files:Vec<PathBuf>,committed:bool}
-impl Drop for CopiedFiles {fn drop(&mut self){if !self.committed {for path in &self.files {let _=fs::remove_file(path);}}}}
+struct CopiedFiles {files:Vec<PathBuf>,directories:Vec<PathBuf>,committed:bool}
+impl Drop for CopiedFiles {fn drop(&mut self){if !self.committed {for path in &self.files {let _=fs::remove_file(path);}for path in self.directories.iter().rev(){let _=fs::remove_dir(path);}}}}
+impl CopiedFiles {
+  fn discard(&mut self,path:&Path)->Result<(),String>{if self.files.iter().any(|file|file==path){fs::remove_file(path).map_err(|e|e.to_string())?;self.files.retain(|file|file!=path);}Ok(())}
+}
 fn copy_verified(source:&Path,destination:&Path,bytes:u64,hash:&str,copied:&mut CopiedFiles)->Result<(),String> {
   let input=fs::File::open(source).map_err(|e|e.to_string())?;
   let mut output=fs::OpenOptions::new().create_new(true).write(true).open(destination).map_err(|e|e.to_string())?;
@@ -54,6 +57,7 @@ fn copy_verified(source:&Path,destination:&Path,bytes:u64,hash:&str,copied:&mut 
 
 pub(crate) fn export_backup(state:&PodcastState,path:&Path,frontend:BTreeMap<String,String>,include_audio:bool)->Result<(),String> {
   validate_frontend(&frontend)?;
+  let mut copied=CopiedFiles{files:vec![],directories:vec![],committed:false};
   let mut db=open_database(&state.db_path)?;let tx=db.transaction().map_err(|e|e.to_string())?;
   let mut saved=BTreeMap::new();for table in tables(&tx)? {saved.insert(table.clone(),snapshot(&tx,&format!("SELECT * FROM \"{table}\""))?);}
   let settings=snapshot(&tx,"SELECT * FROM app_settings WHERE key LIKE 'podcast.%'")?;
@@ -77,18 +81,19 @@ pub(crate) fn export_backup(state:&PodcastState,path:&Path,frontend:BTreeMap<Str
   let ids=sources.iter().map(|(id,_)|id.clone()).collect::<Vec<_>>();let _guards=EpisodeFileGuard::acquire_many(&state.active_downloads,&ids)?;
   if !sources.is_empty() {
     let name=format!("zone-podcast-media-{}",unix_time_millis());let media=path.parent().ok_or("备份目录无效")?.join(&name);
-    fs::create_dir(&media).map_err(|e|e.to_string())?;backup.media_directory=Some(name);
+    fs::create_dir(&media).map_err(|e|e.to_string())?;copied.directories.push(media.clone());backup.media_directory=Some(name);
     for (id,source) in sources {
       let name=source.file_name().and_then(|n|n.to_str()).ok_or("下载文件名无效")?.to_string();
-      let (bytes,sha256)=hash_file(&source)?;fs::copy(&source,media.join(&name)).map_err(|e|format!("无法备份音频：{e}"))?;
+      let (bytes,sha256)=hash_file(&source)?;copy_verified(&source,&media.join(&name),bytes,&sha256,&mut copied)?;
       backup.media.insert(id,MediaSnapshot{name,bytes,sha256});
     }
   }
   let json=serde_json::to_vec(&backup).map_err(|e|e.to_string())?;if json.len() as u64>MANIFEST_LIMIT {return Err("备份资料过大".into());}
   let temporary=path.with_extension(format!("partial-{}",unix_time_millis()));
   let mut file=fs::OpenOptions::new().create_new(true).write(true).open(&temporary).map_err(|e|e.to_string())?;
+  copied.files.push(temporary.clone());
   file.write_all(&json).map_err(|e|e.to_string())?;file.sync_all().map_err(|e|e.to_string())?;drop(file);
-  fs::rename(&temporary,path).map_err(|e|format!("无法保存备份：{e}"))?;Ok(())
+  fs::rename(&temporary,path).map_err(|e|format!("无法保存备份：{e}"))?;copied.committed=true;Ok(())
 }
 
 fn sql_value(value:&Value)->Result<SqlValue,String> {
@@ -106,11 +111,24 @@ fn import_table(db:&Connection,name:&str,data:&TableSnapshot)->Result<(),String>
     if row.len()!=data.columns.len() {return Err("备份行结构无效".into());}
     for (column,value) in data.columns.iter().zip(row) {
       if name=="app_settings" && column=="key" && !value.as_str().is_some_and(|key|key.starts_with("podcast.")) {return Err("备份包含其他类别设置".into());}
-      if ["podcast_feeds","podcast_episodes"].contains(&name)&&column=="id" {validate_identifier(value.as_str().ok_or("备份标识无效")?)?;}
+      if name.starts_with("podcast_") && (column=="id" || ["episode_id","feed_id","playlist_id","group_id","resource_id"].contains(&column.as_str())) {validate_identifier(value.as_str().ok_or("备份标识无效")?)?;}
+      if ["podcast_playlists","podcast_show_groups"].contains(&name)&&column=="name"{super::lists::collection_name(value.as_str().ok_or("备份名称无效")?)?;}
+      if name=="podcast_playlists"&&column=="rules_json"{let rules:super::lists::PlaylistRules=serde_json::from_str(value.as_str().ok_or("备份条件无效")?).map_err(|_|"备份条件无效")?;super::lists::validate_rules(&rules)?;}
+      if name=="podcast_bookmarks"&&column=="position_ms"&& !value.as_i64().is_some_and(|n|(0..=604800000).contains(&n)){return Err("备份书签时间无效".into());}
+      if name=="podcast_bookmarks"&&column=="label"&& !value.as_str().is_some_and(|s|s.chars().count()<=200&&!s.chars().any(char::is_control)){return Err("备份书签备注无效".into());}
       if ["feed_url","enclosure_url"].contains(&column.as_str()) {validate_public_url_shape(value.as_str().ok_or("备份地址无效")?)?;}
     }
     let values=row.iter().map(sql_value).collect::<Result<Vec<_>,_>>()?;q.execute(params_from_iter(values)).map_err(|e|format!("无法恢复播客资料：{e}"))?;
   }Ok(())
+}
+
+fn validate_restored_collections(db:&Connection)->Result<(),String>{
+  for (table,limit) in [("podcast_playlists",100),("podcast_show_groups",100),("podcast_bookmarks",10000)]{let count:i64=db.query_row(&format!("SELECT COUNT(*) FROM {table}"),[],|r|r.get(0)).map_err(|e|e.to_string())?;if count>limit{return Err("恢复后的播客集合超过上限".into());}}
+  for (table,key,limit) in [("podcast_playlist_items","playlist_id",500),("podcast_show_group_members","group_id",500),("podcast_bookmarks","episode_id",100)]{let exceeds:bool=db.query_row(&format!("SELECT EXISTS(SELECT 1 FROM {table} GROUP BY {key} HAVING COUNT(*)>?1)"),[limit],|r|r.get(0)).map_err(|e|e.to_string())?;if exceeds{return Err("恢复后的集合成员超过上限".into());}}
+  let mut q=db.prepare("SELECT value_json FROM app_settings WHERE key LIKE 'podcast.preferences.%'").map_err(|e|e.to_string())?;
+  let values=q.query_map([],|r|r.get::<_,String>(0)).map_err(|e|e.to_string())?;
+  for value in values{let preferences:PodcastPreferences=serde_json::from_str(&value.map_err(|e|e.to_string())?).map_err(|_|"备份播放偏好无效")?;validate_preferences(&preferences)?;}
+  Ok(())
 }
 
 pub(crate) fn restore_backup(state:&PodcastState,path:&Path)->Result<BTreeMap<String,String>,String> {
@@ -121,7 +139,7 @@ pub(crate) fn restore_backup(state:&PodcastState,path:&Path)->Result<BTreeMap<St
   if backup.tables.keys().any(|name|!allowed.contains(name)) {return Err("备份包含不支持的资料表".into());}
   let ids=backup.media.keys().cloned().collect::<Vec<_>>();for id in &ids {validate_identifier(id)?;}
   let _guards=EpisodeFileGuard::acquire_many(&state.active_downloads,&ids)?;
-  let mut copied=CopiedFiles{files:Vec::new(),committed:false};let mut restored_media=BTreeMap::new();
+  let mut copied=CopiedFiles{files:Vec::new(),directories:vec![],committed:false};let mut restored_media=BTreeMap::new();
   if let Some(name)=&backup.media_directory {
     if !name.starts_with("zone-podcast-media-")||name.contains(['/', '\\'])||name.contains("..") {return Err("备份音频目录无效".into());}
     let parent=path.parent().ok_or("备份目录无效")?.canonicalize().map_err(|e|e.to_string())?;
@@ -150,15 +168,17 @@ pub(crate) fn restore_backup(state:&PodcastState,path:&Path)->Result<BTreeMap<St
     tx.execute_batch("PRAGMA defer_foreign_keys=ON").map_err(|e|e.to_string())?;
     for (name,table) in &backup.tables {import_table(&tx,name,table)?;}
     import_table(&tx,"app_settings",&backup.settings)?;
+    validate_restored_collections(&tx)?;
     for (id,path) in restored_media {
       let original=backup.tables.get("podcast_episodes").and_then(|t| {
         let id_col=t.columns.iter().position(|c|c=="id")?;let url_col=t.columns.iter().position(|c|c=="enclosure_url")?;
         t.rows.iter().find(|row|row.get(id_col).and_then(Value::as_str)==Some(&id)).and_then(|row|row.get(url_col)).and_then(Value::as_str)
       });
       let current:String=tx.query_row("SELECT enclosure_url FROM podcast_episodes WHERE id=?1",[&id],|r|r.get(0)).map_err(|e|e.to_string())?;
-      if original!=Some(current.as_str()) {continue;}
+      if original!=Some(current.as_str()) {copied.discard(&path)?;continue;}
       let bytes=fs::metadata(&path).map_err(|e|e.to_string())?.len() as i64;
-      tx.execute("UPDATE podcast_downloads SET local_path=?2,state='downloaded',downloaded_bytes=?3,total_bytes=?3,error_message=NULL,resume_metadata=NULL WHERE episode_id=?1 AND state<>'downloaded'",params![id,path.to_string_lossy(),bytes]).map_err(|e|e.to_string())?;
+      tx.execute("UPDATE podcast_downloads SET local_path=?2,state='downloaded',downloaded_bytes=?3,total_bytes=?3,error_message=NULL,resume_metadata=NULL WHERE episode_id=?1 AND (state<>'downloaded' OR local_path=?2)",params![id,path.to_string_lossy(),bytes]).map_err(|e|e.to_string())?;
+      let referenced:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM podcast_downloads WHERE episode_id=?1 AND local_path=?2 AND state='downloaded')",params![id,path.to_string_lossy()],|r|r.get(0)).map_err(|e|e.to_string())?;if !referenced{copied.discard(&path)?;}
     }
     let mut q=tx.prepare("SELECT episode_id FROM podcast_queue ORDER BY position,added_at,episode_id").map_err(|e|e.to_string())?;
     let queue=q.query_map([],|r|r.get::<_,String>(0)).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;drop(q);
@@ -198,10 +218,15 @@ mod tests {
     open_database(&source.db_path).unwrap().execute("INSERT INTO podcast_progress VALUES (?1,90,300,0,50)",[&id]).unwrap();
     open_database(&source.db_path).unwrap().execute("INSERT INTO podcast_queue VALUES (?1,0,1)",[&id]).unwrap();
     write_preferences(&source.db_path,None,&PodcastPreferences{storage_limit_mb:1024,..Default::default()}).unwrap();
+    super::super::bookmarks::add_bookmark(&source.db_path,&id,30.0,"备份书签").unwrap();
+    super::super::groups::save_show_group(&source.db_path,None,"备份分组",&[get_episode_detail(&source.db_path,&source.downloads_dir,&id).unwrap().feed.id],None).unwrap();
+    super::super::lists::save_playlist(&source.db_path,None,"备份智能列表","smart",super::super::lists::PlaylistRules::default(),None).unwrap();
     let path=dir.join("backup.zonepodcast");export_backup(&source,&path,BTreeMap::new(),true).unwrap();
     let other=test_directory("backup-target");let target=PodcastState::initialize_at(&other).unwrap();open_database(&target.db_path).unwrap().execute("INSERT INTO app_settings VALUES ('music.fixture','42',1)",[]).unwrap();
     restore_backup(&target,&path).unwrap();let detail=get_episode_detail(&target.db_path,&target.downloads_dir,&id).unwrap();assert_eq!(detail.episode.progress_seconds,90.0);assert_eq!(detail.episode.download_state,"downloaded");assert_eq!(list_download_jobs(&target.db_path).unwrap().len(),0);
     assert_eq!(read_preferences(&target.db_path,None).unwrap().storage_limit_mb,1024);
+    assert_eq!(super::super::bookmarks::list_bookmarks(&target.db_path,&id).unwrap()[0].label,"备份书签");
+    assert_eq!(super::super::groups::show_groups(&target.db_path).unwrap()[0].name,"备份分组");
     let music:String=open_database(&target.db_path).unwrap().query_row("SELECT value_json FROM app_settings WHERE key='music.fixture'",[],|r|r.get(0)).unwrap();assert_eq!(music,"42");
   }
   #[test]
@@ -211,5 +236,24 @@ mod tests {
     data.settings.rows.push(vec![Value::from("music.foreign"),Value::from("42"),Value::from(1)]);fs::write(&path,serde_json::to_vec(&data).unwrap()).unwrap();
     assert!(restore_backup(&state,&path).is_err());assert!(get_episode_detail(&state.db_path,&state.downloads_dir,&id).is_ok());
     data.settings.rows.clear();data.media_directory=Some("../../outside".into());fs::write(&path,serde_json::to_vec(&data).unwrap()).unwrap();assert!(restore_backup(&state,&path).is_err());
+  }
+  #[test]
+  fn media_is_removed_on_restore_failure_or_source_mismatch_and_export_failure() {
+    let dir=test_directory("backup-media-rollback");let source=PodcastState::initialize_at(&dir).unwrap();let parsed=parsed_fixture("https://example.com/a.mp3");let id=parsed.episodes[0].id.clone();store_subscription(&source.db_path,parsed.clone()).unwrap();
+    let audio=source.downloads_dir.join(format!("{id}.mp3"));fs::write(&audio,b"ID3 audio").unwrap();mark_download_complete(&source.db_path,&id,&audio.to_string_lossy(),9,Some(9)).unwrap();
+    let path=dir.join("backup.zonepodcast");export_backup(&source,&path,BTreeMap::new(),true).unwrap();let good=fs::read(&path).unwrap();let mut backup:PodcastBackup=serde_json::from_slice(&good).unwrap();
+    let other=test_directory("backup-media-target");let target=PodcastState::initialize_at(&other).unwrap();
+    backup.settings.rows.push(vec![Value::from("music.foreign"),Value::from("42"),Value::from(1)]);fs::write(&path,serde_json::to_vec(&backup).unwrap()).unwrap();
+    assert!(restore_backup(&target,&path).is_err());assert_eq!(fs::read_dir(&target.downloads_dir).unwrap().count(),0);assert!(list_feeds(&target.db_path).unwrap().is_empty());
+    fs::write(&path,&good).unwrap();let mut changed=parsed;changed.episodes[0].enclosure_url="https://example.com/b.mp3".into();store_subscription(&target.db_path,changed).unwrap();restore_backup(&target,&path).unwrap();assert_eq!(fs::read_dir(&target.downloads_dir).unwrap().count(),0);
+    // A user-selected destination that is a directory makes rename fail after copying.
+    let destination=dir.join("blocked.zonepodcast");fs::create_dir(&destination).unwrap();let before=fs::read_dir(&dir).unwrap().count();assert!(export_backup(&source,&destination,BTreeMap::new(),true).is_err());assert_eq!(fs::read_dir(&dir).unwrap().count(),before);
+    let backup:PodcastBackup=serde_json::from_slice(&good).unwrap();fs::write(dir.join(backup.media_directory.unwrap()).join(format!("{id}.mp3")),b"damaged").unwrap();assert!(restore_backup(&target,&path).is_err());assert_eq!(fs::read_dir(&target.downloads_dir).unwrap().count(),0);
+  }
+  #[test]
+  fn malformed_playlist_rules_roll_back_the_complete_restore() {
+    let dir=test_directory("backup-invalid-list");let source=PodcastState::initialize_at(&dir).unwrap();store_subscription(&source.db_path,parsed_fixture("https://example.com/a.mp3")).unwrap();super::super::lists::save_playlist(&source.db_path,None,"条件","smart",super::super::lists::PlaylistRules::default(),None).unwrap();
+    let path=dir.join("backup.zonepodcast");export_backup(&source,&path,BTreeMap::new(),false).unwrap();let mut backup:PodcastBackup=serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();let lists=backup.tables.get_mut("podcast_playlists").unwrap();let column=lists.columns.iter().position(|name|name=="rules_json").unwrap();lists.rows[0][column]=Value::from(r#"{"filter":"injected","sort":"newest"}"#);fs::write(&path,serde_json::to_vec(&backup).unwrap()).unwrap();
+    let target_dir=test_directory("backup-invalid-list-target");let target=PodcastState::initialize_at(&target_dir).unwrap();assert!(restore_backup(&target,&path).is_err());assert!(list_feeds(&target.db_path).unwrap().is_empty());
   }
 }
