@@ -731,6 +731,40 @@ pub(crate) async fn download_episode(
   download_episode_with_network_policy(db_path, downloads_dir, episode_id, enclosure_url, enclosure_type, false).await
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DownloadVersion {
+  source: String,
+  final_url: String,
+  etag: String,
+  total: Option<u64>,
+}
+
+fn strong_etag(headers: &header::HeaderMap) -> Option<String> {
+  let value = header_text(headers, header::ETAG)?;
+  // Weak validators and dates cannot identify byte-for-byte representations.
+  (value.starts_with('"') && value.ends_with('"') && value.len() >= 2
+    && value[1..value.len() - 1].bytes().all(|byte| byte == 0x21 || (0x23..=0x7e).contains(&byte) || byte >= 0x80))
+    .then_some(value)
+}
+
+fn load_download_version(db_path: &Path, episode_id: &str) -> Result<Option<DownloadVersion>, String> {
+  let connection = open_database(db_path)?;
+  let value = connection.query_row("SELECT resume_metadata FROM podcast_downloads WHERE episode_id = ?1",
+    [episode_id], |row| row.get::<_, Option<String>>(0)).optional()
+    .map_err(|error| format!("无法读取播客断点版本：{error}"))?.flatten();
+  Ok(value.and_then(|value| serde_json::from_str(&value).ok()))
+}
+
+fn save_download_version(db_path: &Path, episode_id: &str, version: Option<&DownloadVersion>, total: Option<u64>) -> Result<(), String> {
+  let connection = open_database(db_path)?;
+  let metadata = version.map(serde_json::to_string).transpose()
+    .map_err(|error| format!("无法保存播客断点版本：{error}"))?;
+  connection.execute("UPDATE podcast_downloads SET resume_metadata = ?2, total_bytes = ?3 WHERE episode_id = ?1",
+    params![episode_id, metadata, total.and_then(|total| i64::try_from(total).ok())])
+    .map_err(|error| format!("无法保存播客断点版本：{error}"))?;
+  Ok(())
+}
+
 async fn download_episode_with_network_policy(
   db_path: &Path,
   downloads_dir: &Path,
@@ -749,6 +783,11 @@ async fn download_episode_with_network_policy(
     let _ = tokio::fs::remove_file(&part_path).await;
     offset = 0;
   }
+  let version = load_download_version(db_path, episode_id)?
+    .filter(|version| version.source == enclosure_url && version.total.is_none_or(|total| offset <= total));
+  // Legacy partial files have no trustworthy byte version. Keep them until a
+  // new response is accepted, but never append to them.
+  if version.is_none() { offset = 0; }
 
   let db_path_owned = db_path.to_path_buf();
   let started_id = episode_id.to_string();
@@ -757,17 +796,31 @@ async fn download_episode_with_network_policy(
     .map_err(|error| format!("播客数据任务异常结束：{error}"))??;
 
   let range = (offset > 0).then(|| format!("bytes={offset}-"));
-  let mut public_response = send_public_get_with_policy(
-    url,
+  let mut headers = header::HeaderMap::new();
+  if offset > 0 {
+    if let Some(version) = &version {
+      headers.insert(header::IF_RANGE, header::HeaderValue::from_str(&version.etag)
+        .map_err(|_| "播客断点版本无效".to_string())?);
+    }
+  }
+  let resume_url = version.as_ref().filter(|_| offset > 0)
+    .map(|version| validate_url_shape_with_policy(&version.final_url, allow_private_network))
+    .transpose()?.unwrap_or(url.clone());
+  let mut public_response = send_public_get_with_headers(
+    resume_url,
     Duration::from_secs(30 * 60),
     range.as_deref(),
     allow_private_network,
+    &headers,
   )
   .await?;
-  if offset > 0 && public_response.response.status() == StatusCode::RANGE_NOT_SATISFIABLE {
-    tokio::fs::remove_file(&part_path)
-      .await
-      .map_err(|error| format!("无法重置失效的播客断点文件：{error}"))?;
+  if offset > 0 && (public_response.response.status() == StatusCode::RANGE_NOT_SATISFIABLE
+    || !public_response.response.status().is_success()
+    || (public_response.response.status() == StatusCode::PARTIAL_CONTENT && !version.as_ref().is_some_and(|version|
+      version.final_url == public_response.final_url.as_str()
+        && strong_etag(public_response.response.headers()).as_deref() == Some(version.etag.as_str())
+        && version.total.is_none_or(|total| header_text(public_response.response.headers(), header::CONTENT_RANGE)
+          .and_then(|range| parse_content_range(&range)).is_some_and(|(_, _, current)| current == Some(total)))))) {
     offset = 0;
     public_response = send_public_get_with_policy(
       validate_url_shape_with_policy(enclosure_url, allow_private_network)?,
@@ -807,6 +860,9 @@ async fn download_episode_with_network_policy(
     response_length = Some((end - start).checked_add(1)
       .ok_or_else(|| "播客音频响应范围过大".to_string())?);
     response_total = Some(total.ok_or_else(|| "播客音频断点响应缺少完整文件大小".to_string())?);
+    if version.as_ref().is_some_and(|version| version.total.is_some() && version.total != response_total) {
+      return Err("播客音频版本的文件大小发生变化，请重试下载".to_string());
+    }
   } else if status == StatusCode::PARTIAL_CONTENT {
     let content_range = header_text(public_response.response.headers(), header::CONTENT_RANGE)
       .ok_or_else(|| "播客音频响应缺少范围信息".to_string())?;
@@ -829,15 +885,6 @@ async fn download_episode_with_network_policy(
     return Err("播客音频超过大小限制".to_string());
   }
 
-  let db_path_owned = db_path.to_path_buf();
-  let progress_id = episode_id.to_string();
-  let total_for_db = response_total;
-  tauri::async_runtime::spawn_blocking(move || {
-    mark_download_started(&db_path_owned, &progress_id, offset, total_for_db)
-  })
-  .await
-  .map_err(|error| format!("播客数据任务异常结束：{error}"))??;
-
   let mut options = tokio::fs::OpenOptions::new();
   options.create(true).write(true);
   if append {
@@ -849,6 +896,17 @@ async fn download_episode_with_network_policy(
     .open(&part_path)
     .await
     .map_err(|error| format!("无法创建播客下载文件：{error}"))?;
+  // Truncate before publishing a new version, then publish before writing any
+  // bytes. A crash cannot leave old bytes labelled as the new representation.
+  let new_version = strong_etag(public_response.response.headers()).map(|etag| DownloadVersion {
+    source: enclosure_url.to_string(), final_url: public_response.final_url.to_string(), etag, total: response_total,
+  });
+  let db_path_owned = db_path.to_path_buf();
+  let progress_id = episode_id.to_string();
+  tauri::async_runtime::spawn_blocking(move || {
+    mark_download_started(&db_path_owned, &progress_id, offset, response_total)?;
+    save_download_version(&db_path_owned, &progress_id, new_version.as_ref(), response_total)
+  }).await.map_err(|error| format!("播客数据任务异常结束：{error}"))??;
   let mut response = public_response.response;
   let mut downloaded_bytes = offset;
   let mut persisted_downloaded_bytes = offset;
@@ -1811,7 +1869,7 @@ mod tests {
         }
         let body = &server_audio[start..=end];
         let headers = format!(
-          "HTTP/1.1 206 Partial Content\r\nContent-Type: audio/mpeg\r\nContent-Length: {}\r\nContent-Range: bytes {start}-{end}/{}\r\nConnection: close\r\n\r\n",
+          "HTTP/1.1 206 Partial Content\r\nContent-Type: audio/mpeg\r\nETag: \"v1\"\r\nContent-Length: {}\r\nContent-Range: bytes {start}-{end}/{}\r\nConnection: close\r\n\r\n",
           body.len(), server_audio.len(),
         );
         stream.write_all(headers.as_bytes()).await.unwrap();
@@ -1901,7 +1959,7 @@ mod tests {
       );
       let remaining = &server_audio[split..];
       let headers = format!(
-        "HTTP/1.1 206 Partial Content\r\nContent-Type: audio/mpeg\r\nContent-Length: {}\r\nContent-Range: bytes {}-{}/{}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 206 Partial Content\r\nContent-Type: audio/mpeg\r\nETag: \"v1\"\r\nContent-Length: {}\r\nContent-Range: bytes {}-{}/{}\r\nConnection: close\r\n\r\n",
         remaining.len(),
         split,
         server_audio.len() - 1,
@@ -1919,6 +1977,10 @@ mod tests {
     store_subscription(&state.db_path, parsed).expect("store subscription");
     let part_path = state.downloads_dir.join(format!("{episode_id}.part"));
     fs::write(&part_path, &audio[..split]).expect("write partial download");
+    mark_download_started(&state.db_path, &episode_id, split as u64, Some(audio.len() as u64)).unwrap();
+    save_download_version(&state.db_path, &episode_id, Some(&DownloadVersion {
+      source: enclosure_url.clone(), final_url: enclosure_url.clone(), etag: "\"v1\"".into(), total: Some(audio.len() as u64),
+    }), Some(audio.len() as u64)).unwrap();
 
     let result = download_episode_with_network_policy(
       &state.db_path,
@@ -1941,5 +2003,101 @@ mod tests {
     assert_eq!(episodes[0].local_path.as_deref(), Some(result.local_path.as_str()));
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[tokio::test]
+  async fn resume_rejects_a_changed_etag() {
+    let directory = test_directory("network-review-same-url-version");
+    let state = PodcastState::initialize_at(&directory).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let enclosure_url = format!("http://{}/episode.mp3", listener.local_addr().unwrap());
+    fn wave(sample: u8) -> Vec<u8> {
+      let mut bytes = b"RIFF".to_vec(); bytes.extend(120u32.to_le_bytes()); bytes.extend(b"WAVEfmt ");
+      bytes.extend(16u32.to_le_bytes()); bytes.extend(1u16.to_le_bytes()); bytes.extend(1u16.to_le_bytes());
+      bytes.extend(8000u32.to_le_bytes()); bytes.extend(8000u32.to_le_bytes());
+      bytes.extend(1u16.to_le_bytes()); bytes.extend(8u16.to_le_bytes());
+      bytes.extend(b"data"); bytes.extend(84u32.to_le_bytes()); bytes.extend([sample; 84]); bytes
+    }
+    let old_audio = wave(128);
+    let new_audio = wave(192);
+    let split = 64usize;
+    let expected = new_audio.clone();
+    let server = tokio::spawn(async move {
+      for index in 0..3 {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0u8; 2048];
+        let read = stream.read(&mut request).await.unwrap();
+        let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+        if index == 1 {
+          assert!(request.contains("range: bytes=64-"));
+          assert!(request.contains("if-range: \"v1\""));
+        }
+        if index == 2 {
+          assert!(!request.contains("range:"));
+          let reply = format!("HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nETag: \"v2\"\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", new_audio.len());
+          stream.write_all(reply.as_bytes()).await.unwrap();
+          stream.write_all(&new_audio).await.unwrap();
+          continue;
+        }
+        let (start, end, audio, version) = if index == 0 { (0, split - 1, &old_audio, "v1") }
+          else { (split, new_audio.len() - 1, &new_audio, "v2") };
+        let body = &audio[start..=end];
+        let reply = format!("HTTP/1.1 206 Partial Content\r\nContent-Type: audio/wav\r\nETag: \"{version}\"\r\nContent-Length: {}\r\nContent-Range: bytes {start}-{end}/{}\r\nConnection: close\r\n\r\n", body.len(), audio.len());
+        stream.write_all(reply.as_bytes()).await.unwrap();
+        stream.write_all(body).await.unwrap();
+        stream.shutdown().await.unwrap();
+      }
+    });
+    let parsed = parsed_fixture(&enclosure_url);
+    let id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed).unwrap();
+    assert!(download_episode_with_network_policy(&state.db_path, &state.downloads_dir, &id,
+      &enclosure_url, Some("audio/wav"), true).await.is_err());
+    let complete = download_episode_with_network_policy(&state.db_path, &state.downloads_dir, &id,
+      &enclosure_url, Some("audio/wav"), true).await.unwrap();
+    server.await.unwrap();
+    let actual = fs::read(&complete.local_path).unwrap();
+    let detail = get_episode_detail(&state.db_path, &state.downloads_dir, &id).unwrap();
+    println!("resumed={}, state={}, mismatched_pcm_bytes={}", complete.resumed, detail.episode.download_state,
+      actual.iter().zip(expected.iter()).filter(|(a, b)| a != b).count());
+    assert!(!complete.resumed);
+    fs::remove_dir_all(directory).unwrap();
+    assert_eq!(actual, expected, "a completed file must not mix v1 prefix with v2 tail");
+  }
+
+  #[tokio::test]
+  async fn legacy_and_weak_validator_parts_restart_without_appending() {
+    for etag in [None, Some("W/\"v1\"")] {
+      let directory = test_directory("legacy-resume");
+      let state = PodcastState::initialize_at(&directory).unwrap();
+      let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+      let url = format!("http://{}/episode.mp3", listener.local_addr().unwrap());
+      let parsed = parsed_fixture(&url);
+      let id = parsed.episodes[0].id.clone();
+      store_subscription(&state.db_path, parsed).unwrap();
+      let audio = b"ID3-new-complete-audio";
+      fs::write(state.downloads_dir.join(format!("{id}.part")), b"ID3-old-version").unwrap();
+      if let Some(etag) = etag {
+        mark_download_started(&state.db_path, &id, 15, Some(100)).unwrap();
+        // Versions saved by older clients must not become usable validators.
+        let mut headers = header::HeaderMap::new();
+        headers.insert(header::ETAG, header::HeaderValue::from_str(etag).unwrap());
+        assert!(strong_etag(&headers).is_none());
+      }
+      let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0; 2048];
+        let read = stream.read(&mut request).await.unwrap();
+        assert!(!String::from_utf8_lossy(&request[..read]).to_ascii_lowercase().contains("range:"));
+        let reply = format!("HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", audio.len());
+        stream.write_all(reply.as_bytes()).await.unwrap();
+        stream.write_all(audio).await.unwrap();
+      });
+      let result = download_episode_with_network_policy(&state.db_path, &state.downloads_dir, &id, &url, Some("audio/mpeg"), true).await.unwrap();
+      assert!(!result.resumed);
+      assert_eq!(fs::read(result.local_path).unwrap(), audio);
+      server.await.unwrap();
+      fs::remove_dir_all(directory).unwrap();
+    }
   }
 }

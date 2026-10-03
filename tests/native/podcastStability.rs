@@ -56,7 +56,7 @@ pub fn run() {
           .unwrap_or((0, wav.len() - 1));
         let end = end.min(wav.len() - 1);
         if start > end { return; }
-        let headers = format!("HTTP/1.1 206 Partial Content\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nContent-Range: bytes {start}-{end}/{}\r\nETag: fixture-v1\r\nConnection: close\r\n\r\n", end-start+1, wav.len());
+        let headers = format!("HTTP/1.1 206 Partial Content\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nContent-Range: bytes {start}-{end}/{}\r\nETag: \"fixture-v1\"\r\nConnection: close\r\n\r\n", end-start+1, wav.len());
         if stream.write_all(headers.as_bytes()).await.is_err() { return; }
         let mode_at_start = mode.load(Ordering::Relaxed);
         let served_end = if mode_at_start == 2 { start + (end-start)/2 } else { end };
