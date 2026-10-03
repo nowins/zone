@@ -102,6 +102,9 @@
 
 ### 原生稳定性测试
 
+- 完整客户端验收使用 `npm run test:podcast:client`：先构建前端，再由隔离的 Rust 源码副本加载正式 `App`、插件、命令和受控协议。默认检查两种窗口尺寸、播放、设置、阅读、列表、待播、真实 PCM 处理、减少动态效果以及本地音乐／播客双向切换。资料、音频和截图位于 `.tmp/podcast-client/`，不使用生产应用身份。
+- PowerShell 可用 `$env:ZONE_PODCAST_CLIENT_MODE='network'` 检查公共 NPR RSS、真实在线播放／定位、下载后本地续听和暂停意图；`restart` 配合 `ZONE_PODCAST_CLIENT_IDENTIFIER` 与前一轮 `snapshot.json` 的 `ZONE_PODCAST_CLIENT_EXPECTED`，检查进程重启恢复，身份仅允许测试前缀。`manual` 保留限时窗口供原生文件／目录选择和真实键盘操作验收，以测试按钮“结束验收”退出；完成后清除这些环境变量。完整客户端与故障注入夹具报告分别记录，模拟网络事件不能代替真实断网／硬件测试。
+
 - `npm run test:podcast:stability -- --phase=discovery --minutes=1 --cycles=1` 使用隔离榜单及 RSS 服务器验证目录解析、SQLite 缓存恢复、双来源失败、Apple 回退与主来源恢复，并经正式节目页、播放 hook 和下载入口完成一条 RSS 单集流程。检查两种窗口尺寸、刷新焦点及 reduced-motion 分支，原生截图保存在同轮报告目录；捕获依赖仅加入测试副本。`live_xyzrank_catalogue_has_playable_rss_candidates` 是显式 `ZONE_PODCAST_LIVE=1` 下运行的忽略测试，用正式网络入口检查真实榜单和首个 RSS，夹具成功不代表所有运营商、RSS 或音频 CDN 的可达性。
 
 - Windows 上先运行 `npm run build`，确保 Cargo 依赖已缓存，再运行 `npm run test:podcast:stability`。默认执行 200 次在线／离线切源、暂停恢复、10 次网络失败重试、截断下载续传、播放／下载期间强制退出并重启，以及真实时间的 120 分钟连续播放。`-- --minutes=30 --cycles=200` 可调整时长；时长上限 240 分钟，切源上限 2000 次。

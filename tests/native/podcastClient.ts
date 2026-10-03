@@ -13,6 +13,10 @@ async function run() {
   const checks:string[]=[];
   try {
     await invoke("client_record",{value:{kind:"started",url:location.href,readyState:document.readyState}});
+    const context=await invoke<{mode:string;expected?:{active:{activeEpisodeId:string};detail:{episode:{progressSeconds:number}};queue:Array<{episode:{id:string}}>}}>("client_context");
+    if(context.mode==="manual"){await until(()=>Boolean(button("播客")),"manual full App");await click("播客");await click("资料库");await click("管理");await capture("20-manual-ready");let captured=0;const controls=document.createElement('div');controls.style.cssText="position:fixed;top:4px;left:300px;z-index:10000;display:flex;gap:8px;font-size:11px";const shot=document.createElement('button');shot.textContent="验收快照";shot.onclick=()=>void capture(`21-manual-${++captured}`);const finish=document.createElement('button');finish.textContent="结束验收";finish.onclick=()=>void invoke("client_record",{value:{kind:"result",ok:true,checks:["原生窗口人工操作结束，具体流程与证据见手工验收报告"]}});controls.append(shot,finish);document.body.append(controls);return;}
+    if(context.mode==="network"){await networkAudit(checks);await invoke("client_record",{value:{kind:"result",ok:true,checks}});return;}
+    if(context.mode==="restart"){await restartAudit(context.expected!,checks);await invoke("client_record",{value:{kind:"result",ok:true,checks}});return;}
     await until(()=>Boolean(button("播客")),"full App mount"); await click("播客"); await until(()=>Boolean(document.querySelector(".podcast-page")),"podcast page");
     assert(document.querySelectorAll("audio").length===1,"App must own exactly one audio element");
     await click("收听");await until(()=>Boolean(document.querySelector('.podcast-continue-card')),"continue listening overview");
@@ -151,7 +155,51 @@ async function run() {
     const unfollowed=document.querySelector<HTMLInputElement>('.podcast-episode-filters input[type=checkbox]')!;unfollowed.click();await until(()=>!document.querySelector('.podcast-show-card'),"discovery followed filter");assert(document.querySelector('.podcast-discovery-source time'),"empty filter hides source and date");unfollowed.click();
     checks.push("真实客户端榜单来源与更新时间、完整标题、排行与已关注标记并存、筛选空状态");
     await invoke("client_motion",{reduce:true});await until(()=>matchMedia('(prefers-reduced-motion: reduce)').matches,"native reduced motion");await click("资料库");await click("播客设置");await until(()=>Boolean(document.querySelector('.podcast-settings-dialog')),"reduced motion settings");const modal=document.querySelector<HTMLElement>('.podcast-settings-dialog')!;await delay(100);assert(getComputedStyle(modal).animationName==="none"||parseFloat(getComputedStyle(modal).animationDuration)<0.02,"reduced motion retains rotating dialog animation");const focusables=Array.from(modal.querySelectorAll<HTMLButtonElement>('button')).filter(el=>!el.disabled);focusables.at(-1)!.focus();focusables.at(-1)!.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));assert(modal.contains(document.activeElement),"Tab escaped modal");await capture("16-reduced-motion-settings-920");modal.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=dialog]'),"reduced motion closes immediately");await invoke("client_motion",{reduce:false});checks.push("真实 WebView2 减少动态效果媒体条件、浮层动画停用与焦点 Tab／Escape 隔离（系统按键仍需手工补充）");
+    await musicSwitchAudit(checks);
+    await snapshot();
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}
 }
 void run();
+
+async function musicSwitchAudit(checks:string[]) {
+  const audio=document.querySelector('audio')!;
+  const active=await invoke<{activeEpisodeId:string}>("podcast_load_active_episode");
+  // The outro case above deliberately completes this episode; prepare an unfinished replay.
+  await click("节目");document.querySelector<HTMLButtonElement>('.podcast-library-show-open')!.click();
+  await until(()=>Boolean(document.querySelector('.podcast-episode')),"show before unfinished replay");
+  const replay=Array.from(document.querySelectorAll('.podcast-episode')).find(row=>row.textContent?.includes("离线单集"))!;
+  replay.querySelector<HTMLButtonElement>('.podcast-episode-open')!.click();
+  await until(()=>Boolean(document.querySelector('.podcast-detail-more summary')),"replay detail");
+  (document.querySelector('.podcast-detail-more summary') as HTMLElement).click();await click("标记为未播放");
+  await until(()=>Boolean(button("标记为已播放")),"replay completion reset");
+  await invoke("client_media",{action:"play"});await until(()=>!audio.paused,"unfinished replay starts");
+  await invoke("client_media",{action:"seek",positionSeconds:45});await until(()=>audio.currentTime>=45&&audio.currentTime<48,"unfinished replay seek");
+  await invoke("client_media",{action:"pause"});await until(()=>audio.paused,"unfinished replay pause");await delay(800);
+  const before=await invoke<{episode:{progressSeconds:number}}>("podcast_get_episode_detail",{episodeId:active.activeEpisodeId});
+  assert(before.episode.progressSeconds>=45&&before.episode.progressSeconds<48,"unfinished replay progress not saved");
+  await click("收藏");await click("歌曲");
+  await until(()=>Boolean(Array.from(document.querySelectorAll<HTMLButtonElement>('.collection-track-row button')).find(el=>el.title.startsWith("Zone-client-music"))),"real music fixture row");
+  Array.from(document.querySelectorAll<HTMLButtonElement>('.collection-track-row button')).find(el=>el.title.startsWith("Zone-client-music"))!.click();
+  await until(()=>!audio.paused&&!document.querySelector('.podcast-player')&&audio.currentTime<5,"music shared transport");
+  assert(document.querySelectorAll('audio').length===1&&document.querySelector('audio')===audio,"music switch replaced the unique audio");
+  assert(audio.playbackRate===1,"podcast playback rate leaked into music");
+  const started=audio.currentTime;await delay(1000);assert(audio.currentTime>started+0.5,"music media clock did not advance");
+  await capture("17-real-music-playback-920");audio.currentTime=90;await delay(250);
+  await click("播客");await until(()=>Boolean(document.querySelector('.podcast-detail')),"restored podcast detail after music");
+  await click("继续收听");
+  await until(()=>!audio.paused&&Boolean(document.querySelector('.podcast-player'))&&audio.currentTime>=before.episode.progressSeconds-1&&audio.currentTime<before.episode.progressSeconds+8,"independent podcast resume after music");
+  assert(audio.playbackRate===1.5,"show rate not restored after music");
+  assert(document.querySelectorAll('audio').length===1&&document.querySelector('audio')===audio,"podcast switch replaced the unique audio");
+  await capture("18-podcast-resume-after-music-920");
+  document.querySelector<HTMLButtonElement>('.podcast-player button[title="暂停"]')!.click();await until(()=>audio.paused,"pause after music switch");
+  checks.push("完整客户端真实本地音乐与播客双向切换：唯一 audio、音乐正常倍速与时钟、音乐 90 秒不污染播客进度、节目倍速恢复");
+}
+
+async function snapshot(){await delay(800);const active=await invoke<{activeEpisodeId:string}>("podcast_load_active_episode");const detail=await invoke("podcast_get_episode_detail",{episodeId:active.activeEpisodeId});const queue=await invoke("podcast_list_queue");await invoke("client_record",{value:{kind:"snapshot",active,detail,queue}});}
+async function restartAudit(expected:unknown,checks:string[]){
+ await until(()=>Boolean(button("播客")),"restart full App");await click("播客");await delay(800);const saved=expected as {active:{activeEpisodeId:string};detail:{episode:{progressSeconds:number}};queue:Array<{episode:{id:string}}>};const active=await invoke<{activeEpisodeId:string}>("podcast_load_active_episode");assert(active.activeEpisodeId===saved.active.activeEpisodeId,"active episode changed on restart");const detail=await invoke<{episode:{progressSeconds:number}}>("podcast_get_episode_detail",{episodeId:active.activeEpisodeId});assert(Math.abs(detail.episode.progressSeconds-saved.detail.episode.progressSeconds)<1,"progress changed on restart");const queue=await invoke<Array<{episode:{id:string}}>>("podcast_list_queue");assert(JSON.stringify(queue.map(item=>item.episode.id))===JSON.stringify(saved.queue.map(item=>item.episode.id)),"queue changed on restart");const audio=document.querySelector('audio')!;assert(audio.paused,"restart autoplays");await until(()=>Boolean(document.querySelector('.podcast-player button[title="播放"]')),"paused restored transport");document.querySelector<HTMLButtonElement>('.podcast-player button[title="播放"]')!.click();await until(()=>!audio.paused&&audio.currentTime>=saved.detail.episode.progressSeconds,"restart audio resume");await delay(1000);document.querySelector<HTMLButtonElement>('.podcast-player button[title="暂停"]')!.click();await capture("32-restarted-client");checks.push("完整客户端进程重启：当前单集、队列与收听位置持久恢复，默认暂停，实际音频续听");}
+async function networkAudit(checks:string[]){
+ await until(()=>Boolean(button("播客")),"network full App");await click("播客");await click("发现");await click("+ RSS");await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="RSS 地址"]')!,"https://feeds.npr.org/500005/podcast.xml");await click("关注");await until(()=>document.querySelector('.podcast-show-hero')?.textContent?.includes("NPR News Now")??false,"public NPR feed subscription",60000);await until(()=>Boolean(document.querySelector('.podcast-episode')),"live RSS episodes");const row=document.querySelector('.podcast-episode')!;(row.querySelector('.podcast-play-action') as HTMLButtonElement).click();const audio=document.querySelector('audio')!;await until(()=>!audio.paused&&audio.readyState>=2&&audio.currentTime>1,"live controlled stream decoding",60000);assert(audio.currentSrc.includes('zone-podcast'),"online audio bypasses guarded protocol");const start=audio.currentTime;await delay(2000);assert(audio.currentTime>start+1,"live media clock stalled");await invoke("client_media",{action:"seek",positionSeconds:60});await until(()=>audio.currentTime>=60&&!audio.seeking,"live Range seek",30000);await capture("30-public-rss-stream");await invoke("client_media",{action:"pause"});await until(()=>audio.paused,"pause live audio");
+ const session=await invoke<{activeEpisodeId:string}>("podcast_load_active_episode");const latest=()=>Array.from(document.querySelectorAll('.podcast-episode')).find(el=>el.getAttribute('data-podcast-episode')===session.activeEpisodeId)!;(latest().querySelector('.podcast-download-action') as HTMLButtonElement).click();await until(()=>latest()?.querySelector('.podcast-download-action')?.getAttribute('title')==="已下载，可离线收听","actual public enclosure download",90000);assert(audio.paused,"download completion revives paused playback");(latest().querySelector('.podcast-play-action') as HTMLButtonElement).click();await until(()=>!audio.paused&&audio.readyState>=2&&audio.currentSrc.includes('zone-audio'),"downloaded episode uses local protocol",20000);window.dispatchEvent(new Event('offline'));await delay(1500);assert(!audio.paused&&audio.currentSrc.includes('zone-audio'),"offline event interrupted local playback");await invoke("client_media",{action:"pause"});window.dispatchEvent(new Event('online'));window.dispatchEvent(new Event('focus'));await delay(500);assert(audio.paused,"reconnect revives manually paused live episode");await capture("31-public-download-offline");checks.push("真实 NPR RSS 关注与解析、公开音频多次重定向、受控流媒体解码／Range 定位、完整下载、离线本地协议续听、暂停后网络恢复保持意图");await snapshot();
+}
