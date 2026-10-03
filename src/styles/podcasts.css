@@ -1977,6 +1977,10 @@
 }
 
 .podcast-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow-wrap: anywhere;
   position: absolute;
   z-index: 8;
   right: 0;
@@ -1992,6 +1996,12 @@
 .podcast-notice.error {
   color: #ffb2b2;
   border-left-color: #e55d68;
+}
+
+.podcast-notice .button {
+  min-height: 28px;
+  padding: 4px 8px;
+  flex-shrink: 0;
 }
 
 .podcast-player-cover {

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { cancelPodcastNetworkRequest, newPodcastNetworkRequestId } from "../../utils/podcastNetwork.js";
 import type {
   PodcastChapterDocument,
   PodcastDiscoveryShow,
@@ -13,6 +14,43 @@ import type {
   PodcastSearchResult,
   PodcastSubscribeResult,
 } from "../../types";
+
+const networkRequests = new Map<string, string>();
+const downloadPromises = new Map<string, Promise<PodcastDownloadResult>>();
+const downloadListeners = new Set<() => void>();
+function notifyDownloads() { for (const listener of downloadListeners) listener(); }
+export function getActivePodcastDownloadId() {
+  const key = Array.from(networkRequests.keys()).find(key => key.startsWith("download-"));
+  return key?.slice("download-".length) ?? null;
+}
+export function subscribePodcastDownloads(listener: () => void) {
+  downloadListeners.add(listener);
+  return () => { downloadListeners.delete(listener); };
+}
+export function cancelPodcastRequest(key: string) {
+  const requestId = networkRequests.get(key);
+  if (requestId) {
+    return cancelPodcastNetworkRequest(requestId);
+  }
+  return Promise.resolve();
+}
+export function cancelPodcastViewRequests() {
+  for (const key of networkRequests.keys()) {
+    if (!key.startsWith("download-")) void cancelPodcastRequest(key).catch(() => {});
+  }
+}
+function invokeNetwork<T>(key: string, command: string, args: Record<string, unknown>) {
+  void cancelPodcastRequest(key).catch(() => {});
+  const requestId = newPodcastNetworkRequestId();
+  networkRequests.set(key, requestId);
+  notifyDownloads();
+  return invoke<T>(command, { ...args, requestId }).finally(() => {
+    if (networkRequests.get(key) === requestId) {
+      networkRequests.delete(key);
+      notifyDownloads();
+    }
+  });
+}
 
 export function listPodcastFeeds() {
   return invoke<PodcastFeed[]>("podcast_list_feeds");
@@ -34,7 +72,7 @@ export function listPodcastDownloads(offset: number, limit: number) {
 }
 
 export function browseApplePodcasts(limit: number) {
-  return invoke<PodcastDiscoveryShow[]>("podcast_browse_apple", { limit });
+  return invokeNetwork<PodcastDiscoveryShow[]>("browse", "podcast_browse_apple", { limit });
 }
 
 export function listPodcastEpisodes(feedId: string, offset = 0, limit = 100) {
@@ -56,7 +94,7 @@ export function listRelatedEpisodes(episodeId: string, limit: number) {
 }
 
 export function getEpisodeChapters(episodeId: string) {
-  return invoke<PodcastChapterDocument>("podcast_get_episode_chapters", {
+  return invokeNetwork<PodcastChapterDocument>("chapters", "podcast_get_episode_chapters", {
     episodeId,
   });
 }
@@ -81,14 +119,14 @@ export function clearCompletedDownloads() {
 }
 
 export function searchApplePodcasts(query: string, limit: number) {
-  return invoke<PodcastSearchResult[]>("podcast_search_apple", {
+  return invokeNetwork<PodcastSearchResult[]>("search", "podcast_search_apple", {
     query,
     limit,
   });
 }
 
 export function previewPodcastFeed(feedUrl: string) {
-  return invoke<PodcastSubscribeResult>("podcast_preview_feed", { feedUrl });
+  return invokeNetwork<PodcastSubscribeResult>("preview", "podcast_preview_feed", { feedUrl });
 }
 
 export function subscribePodcastFeed(feedUrl: string) {
@@ -100,9 +138,15 @@ export function setFeedFollowing(feedId: string, following: boolean) {
 }
 
 export function downloadPodcastEpisode(episodeId: string) {
-  return invoke<PodcastDownloadResult>("podcast_download_episode", {
+  const existing = downloadPromises.get(episodeId);
+  if (existing) return existing;
+  const pending = invokeNetwork<PodcastDownloadResult>(`download-${episodeId}`, "podcast_download_episode", {
     episodeId,
+  }).finally(() => {
+    if (downloadPromises.get(episodeId) === pending) downloadPromises.delete(episodeId);
   });
+  downloadPromises.set(episodeId, pending);
+  return pending;
 }
 
 export function deleteEpisodeDownload(episodeId: string) {

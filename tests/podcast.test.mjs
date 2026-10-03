@@ -1178,7 +1178,9 @@ function hasInvoke(source, command) {
   const commandPattern = new RegExp(
     String.raw`\binvoke(?:<[^>\n]+>)?\s*\(\s*["']${command}["']`,
   );
-  return commandPattern.test(source);
+  const scopedPattern = new RegExp(String.raw`\binvokeNetwork(?:<[^>\n]+>)?\s*\(\s*(?:["'][^"']*["']|\`[^\`]*\`)\s*,\s*["']${command}["']`);
+  return commandPattern.test(source) || (scopedPattern.test(source)
+    && /return invoke<T>\(command, \{ \.\.\.args, requestId \}\)/.test(source));
 }
 
 function escapeRegExp(value) {

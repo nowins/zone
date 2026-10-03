@@ -17,7 +17,7 @@ const cycles = Number(argument("cycles", "200"));
 const crashDelayMs = Number(argument("crash-delay-ms", "10000"));
 const switchRounds = Number(argument("switch-rounds", "1"));
 const requestedPhase = argument("phase", "all");
-if (!["all", "short", "crash-playback", "crash-download", "soak"].includes(requestedPhase)) throw Error("Unknown stability phase");
+if (!["all", "network", "short", "crash-playback", "crash-download", "soak"].includes(requestedPhase)) throw Error("Unknown stability phase");
 if (process.platform !== "win32") throw Error("Native podcast stability tests require Windows and WebView2");
 if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240 || !Number.isInteger(cycles) || cycles < 1 || cycles > 2000) throw Error("Invalid bounded duration or cycle count");
 if (!Number.isInteger(crashDelayMs) || crashDelayMs < 0 || crashDelayMs > 30000) throw Error("Invalid crash delay");
@@ -65,7 +65,7 @@ for (const [file, functionName] of [["stream_protocol.rs", "serve_podcast_stream
   await fs.writeFile(destination, replaceOnce(await fs.readFile(destination, "utf8"), `async fn ${functionName}(`, `pub(crate) async fn ${functionName}(`));
 }
 await build({ entryPoints: [path.join(root, "tests", "native", "podcastStability.tsx")],
-  outfile: path.join(workspace, "src", "podcastStability.js"), bundle: true, format: "iife", platform: "browser",
+  outfile: path.join(workspace, "src", "podcastStability.js"), loader: { ".woff2": "dataurl", ".woff": "dataurl", ".ttf": "dataurl", ".svg": "dataurl", ".png": "dataurl" }, bundle: true, format: "iife", platform: "browser",
   define: { "import.meta.env.DEV": "false", "process.env.NODE_ENV": '"production"' } });
 async function command(executable, commandArgs, log) {
   const stream = createWriteStream(log);

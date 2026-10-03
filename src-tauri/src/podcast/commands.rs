@@ -3,13 +3,17 @@ use tauri::State;
 use super::*;
 
 #[tauri::command]
-pub async fn podcast_search_apple(query: String, limit: Option<u8>) -> Result<Vec<PodcastSearchResult>, String> {
-  search_apple_cn(&query, limit.unwrap_or(12)).await
+pub async fn podcast_search_apple(query: String, limit: Option<u8>, request_id: Option<String>) -> Result<Vec<PodcastSearchResult>, String> {
+  run_network_task(request_id.as_deref(), async {
+    search_apple_cn(&query, limit.unwrap_or(12)).await
+  }).await
 }
 
 #[tauri::command]
-pub async fn podcast_browse_apple(limit: Option<u8>) -> Result<Vec<PodcastDiscoveryShow>, String> {
-  browse_apple_cn(limit.unwrap_or(24)).await
+pub async fn podcast_browse_apple(limit: Option<u8>, request_id: Option<String>) -> Result<Vec<PodcastDiscoveryShow>, String> {
+  run_network_task(request_id.as_deref(), async {
+    browse_apple_cn(limit.unwrap_or(24)).await
+  }).await
 }
 
 #[tauri::command]
@@ -41,33 +45,36 @@ pub async fn podcast_preview_feed(
   title_hint: Option<String>,
   author_hint: Option<String>,
   artwork_url: Option<String>,
+  request_id: Option<String>,
 ) -> Result<PodcastSubscribeResult, String> {
-  state.ensure_ready()?;
-  let cache_db_path = state.db_path.clone();
-  let cache_feed_url = feed_url.clone();
-  if let Some(cached) = tauri::async_runtime::spawn_blocking(move || {
-    get_recent_preview(
-      &cache_db_path,
-      &cache_feed_url,
-      unix_time_millis(),
-    )
-  })
-  .await
-  .map_err(|error| format!("播客数据任务异常结束：{error}"))??
-  {
-    return Ok(cached);
-  }
-  let parsed = fetch_and_parse_feed(
-    &feed_url,
-    title_hint.as_deref(),
-    author_hint.as_deref(),
-    artwork_url.as_deref(),
-  )
-  .await?;
-  let db_path = state.db_path.clone();
-  tauri::async_runtime::spawn_blocking(move || store_preview(&db_path, parsed))
+  run_network_task(request_id.as_deref(), async {
+    state.ensure_ready()?;
+    let cache_db_path = state.db_path.clone();
+    let cache_feed_url = feed_url.clone();
+    if let Some(cached) = tauri::async_runtime::spawn_blocking(move || {
+      get_recent_preview(
+        &cache_db_path,
+        &cache_feed_url,
+        unix_time_millis(),
+      )
+    })
     .await
-    .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+    .map_err(|error| format!("播客数据任务异常结束：{error}"))??
+    {
+      return Ok(cached);
+    }
+    let parsed = fetch_and_parse_feed(
+      &feed_url,
+      title_hint.as_deref(),
+      author_hint.as_deref(),
+      artwork_url.as_deref(),
+    )
+    .await?;
+    let db_path = state.db_path.clone();
+    tauri::async_runtime::spawn_blocking(move || store_preview(&db_path, parsed))
+      .await
+      .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+  }).await
 }
 
 #[tauri::command]
@@ -89,30 +96,22 @@ pub async fn podcast_refresh_feeds(
   .map_err(|error| format!("播客数据任务异常结束：{error}"))??;
 
   let mut report = PodcastRefreshReport::default();
-  for chunk in targets.chunks(PODCAST_REFRESH_CONCURRENCY) {
-    let mut refresh_tasks = tokio::task::JoinSet::new();
-    for target in chunk {
-      refresh_tasks.spawn(refresh_feed_target(
-        state.db_path.clone(),
-        state.active_refreshes.clone(),
-        state.refresh_semaphore.clone(),
-        target.clone(),
-        false,
-      ));
+  let mut targets = targets.into_iter();
+  let mut refresh_tasks = tokio::task::JoinSet::new();
+  loop {
+    while refresh_tasks.len() < PODCAST_REFRESH_CONCURRENCY {
+      let Some(target) = targets.next() else { break; };
+      refresh_tasks.spawn(refresh_feed_target(state.db_path.clone(), state.active_refreshes.clone(),
+        state.refresh_semaphore.clone(), target, false));
     }
-    while let Some(outcome) = refresh_tasks.join_next().await {
-      let outcome = outcome.map_err(|error| format!("播客刷新任务异常结束：{error}"))?;
-      match outcome {
-        PodcastRefreshOutcome::Skipped => continue,
-        PodcastRefreshOutcome::NotModified => report.not_modified += 1,
-        PodcastRefreshOutcome::Updated { inserted, updated } => {
-          report.inserted += inserted;
-          report.updated += updated;
-        }
-        PodcastRefreshOutcome::Failed(failure) => report.failures.push(failure),
-      }
-      report.checked += 1;
+    let Some(outcome) = refresh_tasks.join_next().await else { break; };
+    match outcome.map_err(|error| format!("播客刷新任务异常结束：{error}"))? {
+      PodcastRefreshOutcome::Skipped => continue,
+      PodcastRefreshOutcome::NotModified => report.not_modified += 1,
+      PodcastRefreshOutcome::Updated { inserted, updated } => { report.inserted += inserted; report.updated += updated; }
+      PodcastRefreshOutcome::Failed(failure) => report.failures.push(failure),
     }
+    report.checked += 1;
   }
   Ok(report)
 }
@@ -228,15 +227,18 @@ pub async fn podcast_get_episode_detail(
 pub async fn podcast_get_episode_chapters(
   state: State<'_, PodcastState>,
   episode_id: String,
+  request_id: Option<String>,
 ) -> Result<PodcastChapterDocument, String> {
-  state.ensure_ready()?;
-  validate_identifier(&episode_id)?;
-  get_episode_chapters_with_network_policy(
-    &state.db_path,
-    &episode_id,
-    false,
-  )
-  .await
+  run_network_task(request_id.as_deref(), async {
+    state.ensure_ready()?;
+    validate_identifier(&episode_id)?;
+    get_episode_chapters_with_network_policy(
+      &state.db_path,
+      &episode_id,
+      false,
+    )
+    .await
+  }).await
 }
 
 #[tauri::command]
@@ -414,6 +416,7 @@ pub async fn podcast_queue_autofill(
 pub async fn podcast_download_episode(
   state: State<'_, PodcastState>,
   episode_id: String,
+  request_id: Option<String>,
 ) -> Result<PodcastDownloadResult, String> {
   state.ensure_ready()?;
   validate_identifier(&episode_id)?;
@@ -437,14 +440,13 @@ pub async fn podcast_download_episode(
     }
   }
 
-  let result = download_episode(
+  let result = run_network_task(request_id.as_deref(), download_episode(
     &state.db_path,
     &downloads_dir,
     &episode_id,
     &source.enclosure_url,
     source.enclosure_type.as_deref(),
-  )
-  .await;
+  )).await;
 
   if let Err(error) = &result {
     let db_path = state.db_path.clone();
@@ -567,4 +569,9 @@ pub async fn podcast_save_progress(
   })
     .await
     .map_err(|error| format!("播客数据任务异常结束：{error}"))?
+}
+
+#[tauri::command]
+pub fn podcast_cancel_network_request(request_id: String) -> Result<(), String> {
+  cancel_network_task(&request_id)
 }

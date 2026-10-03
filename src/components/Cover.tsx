@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { initials } from "../utils/music";
+import { cancelPodcastNetworkRequest, isPodcastArtworkProtocol, newPodcastNetworkRequestId, podcastProtocolRequestUrl } from "../utils/podcastNetwork.js";
 
 /**
  * The one artwork renderer. artPath is a local file routed through
@@ -28,7 +29,18 @@ export function Cover({
   fallback?: ReactNode;
 }) {
   const resolvedClassName = className ?? (size === "mini" ? "mini-cover" : "cover");
-  const imageSrc = src ?? (artPath ? convertFileSrc(artPath) : null);
+  const baseSrc = src ?? (artPath ? convertFileSrc(artPath) : null);
+  const [scopedSrc, setScopedSrc] = useState<{ base: string; url: string } | null>(null);
+  const controlledArtwork = isPodcastArtworkProtocol(baseSrc);
+  useEffect(() => {
+    if (!controlledArtwork || !baseSrc) return;
+    const requestId = newPodcastNetworkRequestId();
+    setScopedSrc({ base: baseSrc, url: podcastProtocolRequestUrl(baseSrc, requestId) });
+    return () => { void cancelPodcastNetworkRequest(requestId).catch(() => {}); };
+  }, [baseSrc, controlledArtwork]);
+  const imageSrc = controlledArtwork
+    ? scopedSrc?.base === baseSrc ? scopedSrc.url : null
+    : baseSrc;
 
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   useEffect(() => {

@@ -1,3 +1,6 @@
+import "../../src/styles.css";
+import { PodcastView } from "../../src/views/PodcastView";
+import { applyMotionTokens } from "../../src/motion/tokens";
 import React, { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
@@ -19,7 +22,11 @@ window.AudioContext = class extends NativeAudioContext {
   constructor(options?: AudioContextOptions) { super(options); contextsCreated++; }
   close() { contextsClosed++; return super.close(); }
 };
+let setFixtureView: (show: boolean) => void;
+const episodeRequest = { episodeId: "__STREAM_ID__", nonce: 1 };
 function Harness() {
+  const [showView, setShowView] = useState(false);
+  setFixtureView = setShowView;
   const audioRef = useRef<HTMLAudioElement>(null);
   const playbackControlsRef = useRef<PlaybackControlsHandle | null>(null);
   const audioEngineRef = useRef<AudioEngineHandle | null>(null);
@@ -39,13 +46,27 @@ function Harness() {
     isPlaying: controls.isPlaying, activePlayback: controls.activePlayback, activePlaybackSourceKey: controls.activePlaybackSourceKey,
     activeTrackId, visualizerVisible: false });
   api = { domain, controls, audioRef };
-  return <audio ref={audioRef} crossOrigin="anonymous"
+  return <>
+    {showView ? <PodcastView queue={domain.podcastQueue} autoQueueMode={domain.podcastAutoQueueMode}
+      activeEpisode={domain.activePodcastEpisode} activeEpisodeId={domain.activePodcastEpisode?.episodeId ?? null}
+      activeProgress={controls.progress} activeDuration={controls.duration} libraryRevision={domain.podcastLibraryRevision}
+      episodeRequest={episodeRequest} onEpisodeRequestHandled={() => {}} feedRequest={null} onFeedRequestHandled={() => {}}
+      pinnedPodcastFeedIds={new Set()} onTogglePodcastPin={() => {}} onReturnToNowPlaying={() => {}} isPlaying={controls.isPlaying}
+      onPlayEpisode={domain.playPodcastEpisode} onPlayEpisodeAt={domain.playPodcastEpisode}
+      onQueueEpisode={domain.queuePodcastEpisode} onRemoveQueueEpisode={domain.removePodcastQueueEpisode}
+      onMoveQueueEpisode={domain.movePodcastQueueEpisode} onReorderQueueEpisode={domain.reorderPodcastQueueEpisode}
+      onRemoveQueueEpisodes={domain.removePodcastQueueEpisodes} onSetQueueEpisodesPlayed={domain.setPodcastQueueEpisodesPlayed}
+      onDownloadQueueEpisodes={domain.downloadPodcastQueueEpisodes} onClearQueue={domain.clearPodcastQueue}
+      onAutoQueueMode={domain.changePodcastAutoQueueMode} onEpisodeUpdated={domain.updatePodcastEpisode}
+      onSetEpisodePlayed={domain.setPodcastEpisodePlayed} onDownloadsDeleted={domain.reconcileDeletedPodcastDownloads} /> : null}
+    <audio ref={audioRef} crossOrigin="anonymous"
     onTimeUpdate={event => controls.handleTimeUpdate(event.currentTarget.currentTime, event.currentTarget.duration)}
     onLoadedMetadata={event => controls.handleLoadedMetadata(event.currentTarget)}
     onLoadStart={controls.handleAudioLoadStart} onCanPlay={controls.handleAudioCanPlay}
     onWaiting={controls.handleAudioWaiting} onStalled={controls.handleAudioWaiting}
     onPause={controls.handleAudioPause} onError={controls.handleAudioError} onEnded={controls.onEnded}
-    onPlay={() => { controls.setIsPlaying(true); domain.markPodcastPlaying(); }} />;
+    onPlay={() => { controls.setIsPlaying(true); domain.markPodcastPlaying(); }} />
+  </>;
 }
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 function audio() {
@@ -79,12 +100,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     phase = options.phase;
     await record("startup", { phase: options.phase, storage: localStorage.getItem("zone-podcast-playback-v1"), origin: location.origin });
     if (!options.phase.startsWith("restore")) localStorage.removeItem("zone-podcast-playback-v1");
-    const node = document.createElement("div"); document.body.append(node);
+    const node = document.createElement("div"); node.style.height = "100vh"; document.body.append(node);
     const root = createRoot(node); root.render(<Harness />);
     await until(() => api?.domain.podcastSessionHydrated, "hydrate");
     const a = podcastPlaybackForEpisode((await detail(streamId)).episode);
     const b = podcastPlaybackForEpisode((await detail(localId)).episode);
-    if (options.phase === "short") {
+    if (options.phase === "short" || options.phase === "network") {
+      if (options.phase === "short") {
       await play(b, 1); await delay(30000);
       await record("resource-stage", { stage: "baseline" });
       for (let round = 0; round < (options.switchRounds ?? 1); round++) {
@@ -112,7 +134,44 @@ document.addEventListener("DOMContentLoaded", async () => {
         await until(() => api.controls.hasEpisodeStartedOnDevice(a.episodeId) && !audio().paused && audio().currentTime >= 100 + index, "network retry");
       }
       checks.push("10 HTTP 503/connection-drop recovery cycles retain requested position");
+      }
       await stop();
+      await invoke("stability_network", { mode: 3 });
+      setFixtureView(true);
+      const button = (text: string) => Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(element => element.textContent?.trim() === text);
+      await until(() => Boolean(button("下载")), "native episode download action");
+      button("下载")!.click();
+      await until(() => Boolean(button("取消下载")), "native cancel action");
+      await delay(400);
+      const reducedStyle = document.createElement("style");
+      reducedStyle.textContent = Array.from(document.styleSheets).flatMap(sheet => Array.from(sheet.cssRules))
+        .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule && rule.conditionText.includes("prefers-reduced-motion: reduce"))
+        .flatMap(rule => Array.from(rule.cssRules).map(item => item.cssText)).join("\n");
+      assert(reducedStyle.textContent.length > 0, "production reduced-motion rules missing");
+      for (const reduced of [false, true]) {
+      if (reduced) document.head.append(reducedStyle);
+      for (const [width, height] of [[1180, 760], [920, 620]]) {
+        await invoke("stability_window_size", { width, height }); await delay(200);
+        const cancel = button("取消下载")!;
+        cancel.focus(); assert(document.activeElement === cancel, "cancel action lost keyboard focus");
+        const bounds = cancel.getBoundingClientRect();
+        assert(bounds.width > 30 && bounds.height >= 24 && bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight, `cancel action overflowed native window: ${JSON.stringify({ bounds: bounds.toJSON(), viewport: [innerWidth, innerHeight], button: getComputedStyle(cancel).cssText, parent: cancel.parentElement?.getBoundingClientRect().toJSON() })}`);
+      }
+      }
+      reducedStyle.remove();
+      const cancelStarted = performance.now();
+      button("取消下载")!.click();
+      await until(() => !button("取消下载"), "native cancellation settles UI");
+      assert(performance.now() - cancelStarted < 1500, "download cancellation was not prompt");
+      assert((await detail(streamId)).episode.downloadedBytes > 0, "cancellation lost the partial download");
+      checks.push("real podcast view cancels a native throttled download at both window sizes and retains keyboard focus and its versioned partial file");
+      const bulk = api.domain.downloadPodcastQueueEpisodes([a, { ...b, localPath: null }]);
+      await until(() => Boolean(button("取消下载")), "bulk cancel action");
+      await delay(300); button("取消下载")!.click();
+      const bulkResult = await bulk;
+      assert(bulkResult.canceled && bulkResult.downloadedCount === 0 && bulkResult.failedCount === 0, "bulk cancellation started remaining episodes or reported a network failure");
+      checks.push("canceling a bulk download stops the remaining episodes");
+      setFixtureView(false); await delay(200);
       await invoke("stability_network", { mode: 2 });
       let failed = false;
       try { await invoke("stability_download", { episodeId: streamId }); } catch { failed = true; }

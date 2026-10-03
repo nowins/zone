@@ -157,7 +157,7 @@ async fn fetch_podcast_artwork_bytes(
   url: Url,
   allow_private_network: bool,
 ) -> Result<FetchedPodcastArtwork, String> {
-  with_network_retries(PODCAST_ARTWORK_TIMEOUT, || fetch_podcast_artwork_bytes_once(url.clone(), allow_private_network)).await
+  with_network_retries(PODCAST_ARTWORK_TIMEOUT, || with_network_limit(NetworkClass::Artwork, fetch_podcast_artwork_bytes_once(url.clone(), allow_private_network))).await
 }
 
 async fn fetch_podcast_artwork_bytes_once(url: Url, allow_private_network: bool) -> Result<FetchedPodcastArtwork, String> {
@@ -226,7 +226,8 @@ async fn serve_podcast_artwork_protocol_with_network_policy(
     Ok(url) => url,
     Err(error) => return podcast_artwork_text_response(StatusCode::BAD_REQUEST, &error),
   };
-  let fetched = match fetch_podcast_artwork_bytes(url, allow_private_network).await {
+  let task_id = protocol_task_id(request.uri());
+  let fetched = match run_network_task(task_id.as_deref(), fetch_podcast_artwork_bytes(url, allow_private_network)).await {
     Ok(fetched) => fetched,
     Err(error) => return podcast_artwork_text_response(StatusCode::BAD_GATEWAY, &error),
   };
@@ -247,9 +248,7 @@ fn decode_podcast_artwork_url(
   request: &Request<Vec<u8>>,
   allow_private_network: bool,
 ) -> Result<Url, String> {
-  if request.uri().query().is_some() {
-    return Err("播客封面地址无效".to_string());
-  }
+  validate_protocol_query(request.uri())?;
   let token = request.uri().path().trim_matches('/');
   if token.is_empty() || token.len() > PODCAST_ARTWORK_TOKEN_LIMIT || token.contains('/') {
     return Err("播客封面地址无效".to_string());

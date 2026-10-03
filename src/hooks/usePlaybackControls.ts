@@ -1,3 +1,4 @@
+import { cancelPodcastNetworkRequest, newPodcastNetworkRequestId, podcastProtocolRequestUrl } from "../utils/podcastNetwork.js";
 import { recordDiagnostic } from "../utils/diagnostics";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -427,10 +428,15 @@ export function usePlaybackControls({
       ? activePlayback.episode.episodeId
       : null;
     podcastAudioEpisodeRef.current = podcastEpisodeId;
+    const requestId = activePlayback.kind === "podcast" && !activePlayback.episode.playbackLocalPath
+      ? newPodcastNetworkRequestId() : null;
+    const cancelSourceRequest = () => {
+      if (requestId) void cancelPodcastNetworkRequest(requestId).catch(() => {});
+    };
     const sourceUrl = activePlayback.kind === "podcast"
       ? activePlayback.episode.playbackLocalPath
         ? convertFileSrc(activePlayback.episode.playbackLocalPath, "zone-audio")
-        : convertFileSrc(activePlayback.episode.episodeId, "zone-podcast")
+        : podcastProtocolRequestUrl(convertFileSrc(activePlayback.episode.episodeId, "zone-podcast"), requestId!)
       : convertFileSrc(activePlayback.track.path, "zone-audio");
     visualizerUnavailableRef.current = false;
     realtimeBeatRef.current = null;
@@ -485,7 +491,7 @@ export function usePlaybackControls({
     if (!shouldAutoplay) {
       setIsPlaying(false);
       if (activePlayback.kind === "podcast") setPodcastPlaybackStatus("paused");
-      return;
+      return cancelSourceRequest;
     }
 
     runPlayAttempt({
@@ -494,6 +500,7 @@ export function usePlaybackControls({
       playAttempt,
       resumeGraph: resumeAudioGraph,
     });
+    return cancelSourceRequest;
   }, [activePlaybackSourceKey]);
 
   function stopPodcastForMusic() {

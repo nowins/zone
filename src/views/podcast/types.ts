@@ -99,7 +99,7 @@ export type PodcastViewProps = {
   ) => Promise<void>;
   onDownloadQueueEpisodes: (
     episodes: PodcastEpisode[],
-  ) => Promise<{ downloadedCount: number; failedCount: number }>;
+  ) => Promise<{ downloadedCount: number; failedCount: number; canceled?: boolean }>;
   onClearQueue: () => void | Promise<void>;
   onAutoQueueMode: (mode: PodcastAutoQueueMode) => void;
   onEpisodeUpdated: (episode: PodcastEpisode) => void;

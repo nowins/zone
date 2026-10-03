@@ -1,4 +1,5 @@
 import { recordDiagnostic } from "../utils/diagnostics";
+import { downloadPodcastEpisode } from "../views/podcast/api";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { movePodcastQueueItem, podcastPlaybackForEpisode } from "../utils/podcastPlayback";
@@ -772,14 +773,16 @@ export function usePodcastPlayback({
     ).values()];
     let downloadedCount = 0;
     let failedCount = 0;
+    let canceled = false;
     const refreshedEpisodes: PodcastEpisode[] = [];
     for (const episode of uniqueEpisodes) {
       if (episode.localPath) continue;
       try {
-        await invoke("podcast_download_episode", { episodeId: episode.id });
+        await downloadPodcastEpisode(episode.id);
         downloadedCount += 1;
       } catch (reason) {
-        failedCount += 1;
+        canceled = String(reason).includes("已取消播客网络请求");
+        if (!canceled) failedCount += 1;
         if (import.meta.env.DEV) {
           console.warn("[podcast] queue batch download failed", episode.id, reason);
         }
@@ -799,9 +802,10 @@ export function usePodcastPlayback({
           );
         }
       }
+      if (canceled) break;
     }
     updatePodcastEpisodes(refreshedEpisodes);
-    return { downloadedCount, failedCount };
+    return { downloadedCount, failedCount, canceled };
   }
 
   function openActivePodcastEpisode() {

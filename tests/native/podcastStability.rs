@@ -84,7 +84,7 @@ pub fn run() {
   if options.phase != "full-disk" {
     crate::podcast::open_database(&db).unwrap().execute("INSERT INTO podcast_downloads (episode_id, local_path, state, downloaded_bytes, updated_at) VALUES (?1, ?2, 'downloaded', ?3, 1) ON CONFLICT(episode_id) DO UPDATE SET local_path=excluded.local_path, state='downloaded'", rusqlite::params![second, local.to_string_lossy(), wav.len() as i64]).unwrap();
   }
-  let script = include_str!("podcastStability.js").replace("__STREAM_ID__", &first).replace("__LOCAL_ID__", &second);
+  let script = format!("document.addEventListener(\"DOMContentLoaded\",()=>{{const style=document.createElement(\"style\");style.textContent={};document.documentElement.append(style);}});\n{}", serde_json::to_string(include_str!("podcastStability.css")).unwrap(), include_str!("podcastStability.js")).replace("__STREAM_ID__", &first).replace("__LOCAL_ID__", &second);
   let profile = options.webview_directory.clone().unwrap_or_else(|| directory.join("webview"));
   let mut context = tauri::generate_context!();
   context.config_mut().identifier = "com.zone.player.podcast.stability".into(); context.config_mut().app.windows.clear();
@@ -92,12 +92,15 @@ pub fn run() {
   let timeout = options.duration_ms.max(120_000).max(switch_budget) + 300_000;
   let audio_hash = Sha256::digest(wav.as_ref()).to_vec();
   tauri::Builder::default().manage(state).manage(Fixture { directory, mode, requests, audio_hash })
-    .invoke_handler(tauri::generate_handler![stability_config, stability_network, stability_record, stability_download, stability_disk, stability_release_reserve,
+    .invoke_handler(tauri::generate_handler![stability_config, stability_network, stability_record, stability_download, stability_disk, stability_release_reserve, stability_window_size, podcast_download_episode,
+      crate::podcast::podcast_list_home, crate::podcast::podcast_list_feeds, crate::podcast::podcast_list_saved_episodes,
+      crate::podcast::podcast_list_downloads, crate::podcast::podcast_list_related_episodes, crate::podcast::podcast_get_episode_chapters,
       crate::podcast::podcast_list_queue, crate::podcast::podcast_get_episode_detail, crate::podcast::podcast_save_progress,
+      crate::podcast::podcast_cancel_network_request,
       crate::podcast::podcast_load_active_episode, crate::podcast::podcast_save_active_episode,
       crate::podcast::podcast_queue_remove, crate::podcast::podcast_queue_add, crate::podcast::podcast_queue_clear])
     .register_uri_scheme_protocol("zone-stability", |_ctx, _request| tauri::http::Response::builder().header("Content-Type", "text/html")
-      .header("Content-Security-Policy", "default-src 'self'; script-src 'self'; media-src 'self' http://zone-audio.localhost http://zone-podcast.localhost; connect-src 'self' http://zone-audio.localhost http://zone-podcast.localhost")
+      .header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'; media-src 'self' http://zone-audio.localhost http://zone-podcast.localhost; connect-src 'self' http://zone-audio.localhost http://zone-podcast.localhost")
       .body(b"<!doctype html><html><body></body></html>".to_vec()).unwrap())
     .register_asynchronous_uri_scheme_protocol("zone-podcast", |ctx, request, responder| {
       let state = ctx.app_handle().state::<crate::podcast::PodcastState>().inner().clone();
@@ -139,12 +142,12 @@ fn stability_record(app: tauri::AppHandle, state: tauri::State<'_, Fixture>, val
   Ok(())
 }
 #[tauri::command]
-async fn stability_download(state: tauri::State<'_, Fixture>, episode_id: String) -> Result<crate::podcast::PodcastDownloadResult, String> {
+async fn stability_download(state: tauri::State<'_, Fixture>, episode_id: String, request_id: Option<String>) -> Result<crate::podcast::PodcastDownloadResult, String> {
   let db = state.directory.join("zone.sqlite"); let downloads = state.directory.join("podcast-downloads");
   let active = crate::podcast::episode_file_operations(&db)?;
   let _guard = crate::podcast::EpisodeFileGuard::acquire(&active, &episode_id)?;
   let source = crate::podcast::load_episode_download_source(&db, &episode_id)?;
-  let result = crate::podcast::download_episode_with_network_policy(&db, &downloads, &episode_id, &source.enclosure_url, source.enclosure_type.as_deref(), true).await;
+  let result = crate::podcast::run_network_task(request_id.as_deref(), crate::podcast::download_episode_with_network_policy(&db, &downloads, &episode_id, &source.enclosure_url, source.enclosure_type.as_deref(), true)).await;
   if let Err(error) = &result {
     let length = fs::metadata(downloads.join(format!("{episode_id}.part"))).map(|metadata| metadata.len()).unwrap_or(0);
     let _ = crate::podcast::mark_download_failed_for_source(&db, &episode_id, &source.enclosure_url, length, error);
@@ -193,4 +196,13 @@ fn stability_release_reserve(state: tauri::State<'_, Fixture>) -> Result<(), Str
   let root = state.directory.parent().ok_or("missing test volume")?;
   if !config(&state.directory).allow_disk_full || !root.join("zone-stability-disposable-volume.marker").is_file() { return Err("unmarked test volume".into()); }
   fs::remove_file(root.join("zone-stability-reserve.bin")).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn podcast_download_episode(state: tauri::State<'_, Fixture>, episode_id: String, request_id: Option<String>) -> Result<crate::podcast::PodcastDownloadResult, String> { stability_download(state, episode_id, request_id).await }
+
+#[tauri::command]
+fn stability_window_size(app: tauri::AppHandle, width: u32, height: u32) -> Result<(), String> {
+  if !matches!((width, height), (1180, 760) | (920, 620)) { return Err("unsupported fixture dimensions".into()); }
+  app.get_webview_window("main").unwrap().set_size(tauri::LogicalSize::new(width, height)).map_err(|error| error.to_string())
 }

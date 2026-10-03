@@ -64,14 +64,15 @@ async fn serve_podcast_stream_protocol_with_network_policy(
   request: Request<Vec<u8>>,
   allow_private_network: bool,
 ) -> Response<Vec<u8>> {
-  with_network_retries(PODCAST_STREAM_TIMEOUT, || async {
+  let task_id = protocol_task_id(request.uri());
+  run_network_task(task_id.as_deref(), with_network_retries(PODCAST_STREAM_TIMEOUT, || with_network_limit(NetworkClass::Stream, async {
     let response = serve_podcast_stream_once(state.clone(), request.clone(), allow_private_network).await;
     if response.status() == StatusCode::BAD_GATEWAY {
       let error = String::from_utf8_lossy(response.body()).into_owned();
       return Err(error);
     }
     Ok(response)
-  }).await.unwrap_or_else(|error| podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error))
+  }))).await.unwrap_or_else(|error| podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error))
 }
 
 async fn serve_podcast_stream_once(state: PodcastState, request: Request<Vec<u8>>, allow_private_network: bool) -> Response<Vec<u8>> {
@@ -301,9 +302,7 @@ impl PodcastStreamRange {
 }
 
 fn podcast_stream_episode_id(request: &Request<Vec<u8>>) -> Result<String, String> {
-  if request.uri().query().is_some() {
-    return Err("播客流地址无效".to_string());
-  }
+  validate_protocol_query(request.uri())?;
   let episode_id = request.uri().path().trim_matches('/');
   if episode_id.contains('/') {
     return Err("播客流地址无效".to_string());
@@ -365,9 +364,7 @@ async fn read_exact_stream_body(mut response: reqwest::Response, expected_length
     return Err("播客音频范围响应长度不一致".to_string());
   }
   let mut body = Vec::with_capacity(expected_length as usize);
-  while let Some(chunk) = response
-    .chunk()
-    .await
+  while let Some(chunk) = network_io(response.chunk()).await?
     .map_err(|error| format!("播客网络读取中断：无法读取播客音频响应：{error}"))?
   {
     if body.len().saturating_add(chunk.len()) > expected_length as usize {

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useSyncExternalStore,
   useMemo,
   useRef,
   useState,
@@ -294,7 +295,7 @@ export function usePodcastViewModel({
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [openingCandidate, setOpeningCandidate] = useState<ShowCandidate | null>(null);
   const [following, setFollowing] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const downloadingId = useSyncExternalStore(podcastApi.subscribePodcastDownloads, podcastApi.getActivePodcastDownloadId);
   const [detailAction, setDetailAction] = useState<
     "save" | "played" | "delete" | null
   >(null);
@@ -329,6 +330,7 @@ export function usePodcastViewModel({
   selectedFeedRef.current = selectedFeed;
 
   useEffect(() => () => {
+    podcastApi.cancelPodcastViewRequests();
     downloadProgressEpisodeRef.current = null;
     if (downloadProgressPollRef.current !== null) {
       window.clearInterval(downloadProgressPollRef.current);
@@ -1170,7 +1172,9 @@ export function usePodcastViewModel({
     setNotice(`正在依次下载 ${episodesToDownload.length} 集`);
     try {
       const result = await onDownloadQueueEpisodes(episodesToDownload);
-      if (result.downloadedCount === 0 && result.failedCount === 0) {
+      if (result.canceled) {
+        setNotice(`批量下载已取消，已完成 ${result.downloadedCount} 集`);
+      } else if (result.downloadedCount === 0 && result.failedCount === 0) {
         setNotice("所选单集均已下载");
       } else if (result.failedCount > 0) {
         setNotice(
@@ -1342,6 +1346,7 @@ export function usePodcastViewModel({
   ) {
     const cleanQuery = requestedQuery.trim();
     if (!cleanQuery) return;
+    void podcastApi.cancelPodcastRequest("search").catch(() => {});
     const requestId = appleSearchRequestRef.current + 1;
     appleSearchRequestRef.current = requestId;
     setDiscoveryTopic(topic);
@@ -1644,7 +1649,6 @@ export function usePodcastViewModel({
 
   async function downloadEpisode(episode: PodcastEpisode) {
     if (downloadingId || episode.localPath) return;
-    setDownloadingId(episode.id);
     setError(null);
     setNotice(`正在下载“${episode.title}”`);
     downloadProgressEpisodeRef.current = episode.id;
@@ -1705,8 +1709,13 @@ export function usePodcastViewModel({
           );
         }
       }
-      setNotice(null);
-      setError(errorMessage(reason, "下载单集失败"));
+      if (String(reason).includes("已取消播客网络请求")) {
+        setNotice("下载已取消，已保留断点");
+        setError(null);
+      } else {
+        setNotice(null);
+        setError(errorMessage(reason, "下载单集失败"));
+      }
     } finally {
       if (downloadProgressEpisodeRef.current === episode.id) {
         downloadProgressEpisodeRef.current = null;
@@ -1715,7 +1724,16 @@ export function usePodcastViewModel({
       if (downloadProgressPollRef.current === progressPoll) {
         downloadProgressPollRef.current = null;
       }
-      setDownloadingId(null);
+    }
+  }
+
+  async function cancelDownload() {
+    if (!downloadingId) return;
+    setNotice("正在取消下载，保留已下载的部分");
+    try {
+      await podcastApi.cancelPodcastRequest(`download-${downloadingId}`);
+    } catch (reason) {
+      setError(errorMessage(reason, "取消下载失败，请重试"));
     }
   }
 
@@ -2407,6 +2425,7 @@ export function usePodcastViewModel({
     toggleEpisodeSaved,
     toggleEpisodePlayed,
     downloadEpisode,
+    cancelDownload,
     deleteEpisodeDownload,
     shareEpisode,
     displayedRelatedEpisodes,

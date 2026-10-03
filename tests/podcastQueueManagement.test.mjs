@@ -59,8 +59,9 @@ test("podcast batch queue mutations stay atomic and synchronize through App", ()
   );
   assert.match(
     appSource,
-    /function downloadPodcastQueueEpisodes\([\s\S]*?for \(const episode of uniqueEpisodes\)[\s\S]*?podcast_download_episode/,
+    /function downloadPodcastQueueEpisodes\([\s\S]*?for \(const episode of uniqueEpisodes\)[\s\S]*?downloadPodcastEpisode\(episode\.id\)/,
   );
+  assert.match(appSource, /if \(canceled\) break/);
   assert.match(rustSource, /pub async fn podcast_queue_remove_many\(/);
   assert.match(rustSource, /transaction_with_behavior\(TransactionBehavior::Immediate\)/);
   assert.match(rustSource, /pub async fn podcast_set_episodes_played\(/);

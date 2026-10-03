@@ -16,10 +16,26 @@ struct NetworkBudget {
 }
 tokio::task_local! { static NETWORK_BUDGET: NetworkBudget; }
 
+pub(crate) fn network_deadline() -> Option<tokio::time::Instant> {
+  NETWORK_BUDGET.try_with(|budget| budget.deadline).ok()
+}
+
 fn transient_network_error(error: &str) -> bool {
   ["播客来源响应超时", "播客来源解析超时", "无法解析播客来源地址", "无法连接播客来源：",
     "播客网络读取中断：", "播客来源暂不可用"].iter().any(|prefix| error.starts_with(prefix))
     && !error.to_ascii_lowercase().contains("certificate")
+}
+
+fn transient_connect_failure(error: &reqwest::Error) -> bool {
+  use std::error::Error;
+  if !error.is_connect() { return false; }
+  let mut cause = error.source();
+  while let Some(error) = cause {
+    let message = error.to_string().to_ascii_lowercase();
+    if message.contains("certificate") || message.contains("invalid dnsname") { return false; }
+    cause = error.source();
+  }
+  true
 }
 
 fn retry_after(headers: &HeaderMap) -> Option<Duration> {
@@ -42,8 +58,9 @@ where F: FnMut() -> Fut, Fut: std::future::Future<Output = Result<T, String>> {
   let budget = NetworkBudget { deadline: budget.deadline.min(now + timeout), ..budget };
   NETWORK_BUDGET.scope(budget.clone(), async move {
     loop {
-      let result = tokio::time::timeout_at(budget.deadline, action()).await
-        .map_err(|_| "播客来源响应超时".to_string())?;
+      // Only network waits observe this deadline. Atomic database/file work
+      // after a response must finish rather than becoming a detached writer.
+      let result = action().await;
       let Err(error) = &result else { return result; };
       if !transient_network_error(error) { return result; }
       let Ok(attempt) = budget.retries.fetch_update(std::sync::atomic::Ordering::SeqCst,
@@ -52,7 +69,7 @@ where F: FnMut() -> Fut, Fut: std::future::Future<Output = Result<T, String>> {
       let jitter = unix_time_millis().unsigned_abs() % 100;
       let delay = server_delay.unwrap_or(Duration::from_millis((300 << attempt) + jitter));
       if tokio::time::Instant::now() + delay >= budget.deadline { return result; }
-      tokio::time::sleep(delay).await;
+      network_io(tokio::time::sleep(delay)).await?;
     }
   }).await
 }
@@ -163,8 +180,8 @@ async fn send_public_get_once(
     .unwrap_or_else(|_| tokio::time::Instant::now() + timeout);
   for redirect_count in 0..=PODCAST_REDIRECT_LIMIT {
     validate_url_with_policy(&url, allow_private_network)?;
-    let addresses = tokio::time::timeout_at(deadline, resolve_public_addresses(&url, allow_private_network))
-      .await.map_err(|_| "播客来源解析超时".to_string())??;
+    let addresses = network_io(tokio::time::timeout_at(deadline, resolve_public_addresses(&url, allow_private_network)))
+      .await?.map_err(|_| "播客来源解析超时".to_string())??;
     let raw_host = url.host_str().ok_or_else(|| "播客请求地址缺少主机名".to_string())?;
     let host = host_without_ipv6_brackets(raw_host);
     let client = shared_public_client(host, &addresses, allow_private_network)?;
@@ -183,11 +200,11 @@ async fn send_public_get_once(
     // Header wait is bounded separately for long downloads; reqwest keeps the
     // remaining overall deadline active while the body is being consumed.
     let header_deadline = deadline.min(tokio::time::Instant::now() + Duration::from_secs(30));
-    let response = tokio::time::timeout_at(header_deadline, request.send()).await
+    let response = network_io(tokio::time::timeout_at(header_deadline, request.send())).await?
       .map_err(|_| "播客来源响应超时".to_string())?.map_err(|error| {
       if error.is_timeout() {
         "播客来源响应超时".to_string()
-      } else if error.is_connect() {
+      } else if transient_connect_failure(&error) {
         format!("无法连接播客来源：{error}")
       } else {
         format!("播客网络请求失败：{error}")
@@ -373,9 +390,7 @@ pub(crate) async fn read_limited(mut response: reqwest::Response, limit: usize, 
     return Err(format!("{label}超过大小限制"));
   }
   let mut bytes = Vec::new();
-  while let Some(chunk) = response
-    .chunk()
-    .await
+  while let Some(chunk) = network_io(response.chunk()).await?
     .map_err(|error| format!("播客网络读取中断：无法读取{label}：{error}"))?
   {
     if bytes.len().saturating_add(chunk.len()) > limit {
@@ -792,5 +807,58 @@ mod tests {
     let mut headers = HeaderMap::new();
     headers.insert(header::RETRY_AFTER, header::HeaderValue::from_str(&httpdate::fmt_http_date(std::time::SystemTime::now() + Duration::from_secs(5))).unwrap());
     assert!(retry_after(&headers).unwrap() <= Duration::from_secs(5));
+  }
+
+  #[tokio::test]
+  async fn response_body_keeps_the_remaining_redirect_deadline() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = Url::parse(&format!("http://{}/0", listener.local_addr().unwrap())).unwrap();
+    let server = tokio::spawn(async move {
+      for index in 0..2 {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0; 1024]; stream.read(&mut request).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        if index == 0 { stream.write_all(b"HTTP/1.1 302 Found\r\nLocation: /body\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap(); }
+        else {
+          stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\n").await.unwrap();
+          tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+      }
+    });
+    let start = std::time::Instant::now();
+    let response = send_public_get_with_policy(url, Duration::from_millis(160), None, true).await.unwrap();
+    assert!(read_limited(response.response, 10, "body").await.unwrap_err().contains("读取中断"));
+    assert!(start.elapsed() < Duration::from_millis(250)); server.abort();
+  }
+
+  #[tokio::test]
+  async fn body_idle_timeout_stops_a_stalled_transfer_before_the_download_budget() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = Url::parse(&format!("http://{}/body", listener.local_addr().unwrap())).unwrap();
+    let server = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.unwrap();
+      let mut request = [0; 1024]; stream.read(&mut request).await.unwrap();
+      stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\n").await.unwrap();
+      tokio::time::sleep(Duration::from_secs(60)).await;
+    });
+    let response = send_public_get_with_policy(url, Duration::from_secs(35), None, true).await.unwrap();
+    let start = std::time::Instant::now();
+    assert!(read_limited(response.response, 10, "idle").await.unwrap_err().contains("读取中断"));
+    assert!(start.elapsed() >= Duration::from_secs(29) && start.elapsed() < Duration::from_secs(33)); server.abort();
+  }
+
+  #[tokio::test]
+  async fn network_deadline_does_not_abandon_atomic_work_after_io() {
+    let result = with_network_retries(Duration::from_millis(20), || async {
+      network_io(std::future::ready(())).await?;
+      // Represents an already-started file/database commit, not a network wait.
+      tokio::time::sleep(Duration::from_millis(40)).await;
+      Ok(42)
+    }).await.unwrap();
+    assert_eq!(result, 42);
+    let error = with_network_retries(Duration::from_millis(20), || async {
+      network_io(std::future::pending::<()>()).await
+    }).await.unwrap_err();
+    assert!(error.contains("超时"));
   }
 }

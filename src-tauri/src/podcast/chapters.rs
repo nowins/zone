@@ -200,7 +200,7 @@ async fn refresh_external_chapter_resource(
   resource: &StoredChapterResource,
   allow_private_network: bool,
 ) -> Result<PodcastChapterDocument, String> {
-  with_network_retries(PODCAST_CHAPTER_TIMEOUT, || refresh_external_chapter_resource_once(db_path, resource, allow_private_network)).await
+  with_network_retries(PODCAST_CHAPTER_TIMEOUT, || with_network_limit(NetworkClass::Metadata, refresh_external_chapter_resource_once(db_path, resource, allow_private_network))).await
 }
 
 async fn refresh_external_chapter_resource_once(db_path: &Path, resource: &StoredChapterResource, allow_private_network: bool) -> Result<PodcastChapterDocument, String> {

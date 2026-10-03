@@ -773,7 +773,7 @@ async fn download_episode_with_network_policy(
   enclosure_type: Option<&str>,
   allow_private_network: bool,
 ) -> Result<PodcastDownloadResult, String> {
-  with_network_retries(Duration::from_secs(4 * 60 * 60), || download_episode_once(db_path, downloads_dir, episode_id, enclosure_url, enclosure_type, allow_private_network)).await
+  with_network_retries(Duration::from_secs(4 * 60 * 60), || with_network_limit(NetworkClass::Download, download_episode_once(db_path, downloads_dir, episode_id, enclosure_url, enclosure_type, allow_private_network))).await
 }
 
 async fn download_episode_once(db_path: &Path, downloads_dir: &Path, episode_id: &str, enclosure_url: &str, enclosure_type: Option<&str>, allow_private_network: bool) -> Result<PodcastDownloadResult, String> {
@@ -810,14 +810,24 @@ async fn download_episode_once(db_path: &Path, downloads_dir: &Path, episode_id:
   let resume_url = version.as_ref().filter(|_| offset > 0)
     .map(|version| validate_url_shape_with_policy(&version.final_url, allow_private_network))
     .transpose()?.unwrap_or(url.clone());
-  let mut public_response = send_public_get_with_headers(
+  let resumed_response = send_public_get_with_headers(
     resume_url,
     Duration::from_secs(4 * 60 * 60),
     range.as_deref(),
     allow_private_network,
     &headers,
   )
-  .await?;
+  .await;
+  let mut public_response = match resumed_response {
+    Ok(response) => response,
+    Err(_) if offset > 0 => {
+      // Signed CDN addresses can expire or disappear between sessions. Resolve
+      // the original enclosure again without touching the old part first.
+      offset = 0;
+      send_public_get_with_policy(url, Duration::from_secs(4 * 60 * 60), None, allow_private_network).await?
+    }
+    Err(error) => return Err(error),
+  };
   if offset > 0 && (public_response.response.status() == StatusCode::RANGE_NOT_SATISFIABLE
     || !public_response.response.status().is_success()
     || (public_response.response.status() == StatusCode::PARTIAL_CONTENT && !version.as_ref().is_some_and(|version|
@@ -915,9 +925,7 @@ async fn download_episode_once(db_path: &Path, downloads_dir: &Path, episode_id:
   let mut downloaded_bytes = offset;
   let mut persisted_downloaded_bytes = offset;
   let mut last_progress_update = Instant::now();
-  while let Some(chunk) = response
-    .chunk()
-    .await
+  while let Some(chunk) = network_io(response.chunk()).await?
     .map_err(|error| format!("播客网络读取中断：无法读取播客音频响应：{error}"))?
   {
     downloaded_bytes = downloaded_bytes
@@ -971,6 +979,7 @@ async fn download_episode_once(db_path: &Path, downloads_dir: &Path, episode_id:
   if downloaded_bytes == 0 {
     return Err("播客音频内容为空".to_string());
   }
+  network_io(std::future::ready(())).await?;
   let extension = detect_audio_extension(&part_path).await?;
   let final_path = downloads_dir.join(format!("{episode_id}.{extension}"));
   let local_path = final_path.to_string_lossy().to_string();
@@ -2103,5 +2112,40 @@ mod tests {
       server.await.unwrap();
       fs::remove_dir_all(directory).unwrap();
     }
+  }
+
+  #[tokio::test]
+  async fn expired_final_address_restarts_from_the_original_enclosure() {
+    let directory = test_directory("expired-resume-url");
+    let state = PodcastState::initialize_at(&directory).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/episode.mp3", listener.local_addr().unwrap());
+    let final_url = url.replace("episode.mp3", "expired.mp3");
+    let audio = b"ID3-new-enclosure-audio";
+    let parsed = parsed_fixture(&url); let id = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed).unwrap();
+    fs::write(state.downloads_dir.join(format!("{id}.part")), b"ID3-old").unwrap();
+    mark_download_started(&state.db_path, &id, 7, Some(40)).unwrap();
+    save_download_version(&state.db_path, &id, Some(&DownloadVersion {
+      source: url.clone(), final_url, etag: "\"v1\"".into(), total: Some(40),
+    }), Some(40)).unwrap();
+    let server = tokio::spawn(async move {
+      for index in 0..4 {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0; 2048]; let read = stream.read(&mut request).await.unwrap();
+        let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+        if index < 3 {
+          assert!(request.starts_with("get /expired.mp3"));
+          stream.write_all(b"HTTP/1.1 503 Unavailable\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+        } else {
+          assert!(request.starts_with("get /episode.mp3")); assert!(!request.contains("range:"));
+          stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", audio.len()).as_bytes()).await.unwrap();
+          stream.write_all(audio).await.unwrap();
+        }
+      }
+    });
+    let result = download_episode_with_network_policy(&state.db_path, &state.downloads_dir, &id, &url, Some("audio/mpeg"), true).await.unwrap();
+    assert!(!result.resumed); assert_eq!(fs::read(result.local_path).unwrap(), audio);
+    server.await.unwrap(); fs::remove_dir_all(directory).unwrap();
   }
 }

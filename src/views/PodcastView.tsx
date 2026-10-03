@@ -1,3 +1,4 @@
+import { Button } from "../components/Button";
 import {
   ArrowLeft,
   Check,
@@ -179,12 +180,15 @@ export function PodcastView(props: PodcastViewProps) {
         </div>
       ) : null}
 
-      {(notice || error) ? (
+      {(notice || error || downloadingId) ? (
         <div
           className={`podcast-notice${error ? " error" : ""}`}
           role={error ? "alert" : "status"}
         >
-          {error ?? notice}
+          <span>{error ?? notice ?? "下载进行中"}</span>
+          {downloadingId ? (
+            <Button variant="ghost" size="sm" onClick={vm.cancelDownload}>取消下载</Button>
+          ) : null}
         </div>
       ) : null}
 

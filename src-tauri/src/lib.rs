@@ -284,6 +284,7 @@ pub fn run() {
       update_system_media,
       update_system_media_timeline,
       podcast::podcast_search_apple,
+      podcast::podcast_cancel_network_request,
       podcast::podcast_browse_apple,
       podcast::podcast_subscribe,
       podcast::podcast_preview_feed,

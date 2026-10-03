@@ -66,8 +66,7 @@ pub(crate) async fn search_apple_cn(query: &str, requested_limit: u8) -> Result<
     .append_pair("limit", &limit.to_string())
     .append_pair("term", query);
 
-  let public_response = send_public_get(url, Duration::from_secs(15), None).await?;
-  let bytes = read_limited(public_response.response, APPLE_SEARCH_RESPONSE_LIMIT, "Apple 播客搜索").await?;
+  let bytes = request_apple_json(url, APPLE_SEARCH_RESPONSE_LIMIT, "Apple 播客搜索").await?;
   let response =
     serde_json::from_slice::<AppleSearchResponse>(&bytes).map_err(|_| "Apple 播客搜索结果格式无效".to_string())?;
   Ok(
@@ -154,10 +153,10 @@ fn apple_chart_url(limit: u8) -> String {
 }
 
 async fn request_apple_json(url: Url, limit: usize, label: &str) -> Result<Vec<u8>, String> {
-  with_network_retries(Duration::from_secs(15), || async {
+  with_network_retries(Duration::from_secs(15), || with_network_limit(NetworkClass::Metadata, async {
     let response = send_public_get(url.clone(), Duration::from_secs(15), None).await?;
     read_limited(response.response, limit, label).await
-  }).await
+  })).await
 }
 
 fn parse_apple_discovery(
