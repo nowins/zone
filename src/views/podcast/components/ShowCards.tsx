@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import { Button } from "../../../components/Button";
 import { MetroLoader } from "../../../components/MetroLoader";
 import { splitPodcastSearchMatch } from "../../../utils/podcastDiscovery";
 import type { PodcastDiscoveryShow, PodcastFeed } from "../../../types";
@@ -13,6 +14,8 @@ import {
 function DiscoveryShelf({
   state,
   shows,
+  sourceLabel,
+  refreshing,
   feeds,
   openingId,
   onOpen,
@@ -20,19 +23,21 @@ function DiscoveryShelf({
 }: {
   state: RequestState;
   shows: PodcastDiscoveryShow[];
+  sourceLabel: string;
+  refreshing: boolean;
   feeds: PodcastFeed[];
   openingId: string | null;
   onOpen: (show: PodcastDiscoveryShow) => void;
   onRetry: () => void;
 }) {
   if (state === "idle" || state === "loading") {
-    return <PodcastLoading label="正在读取中国区热门节目" />;
+    return <PodcastLoading label="正在读取热门节目" />;
   }
   if (state === "error") {
     return (
       <div className="podcast-inline-state">
         <span>热门节目暂时不可用，资料库和搜索仍可使用</span>
-        <button type="button" onClick={onRetry}>重试</button>
+        <Button variant="ghost" size="sm" onClick={onRetry}>重试</Button>
       </div>
     );
   }
@@ -40,6 +45,13 @@ function DiscoveryShelf({
     return <PodcastEmpty label="暂时没有热门节目" />;
   }
   return (
+    <>
+    <div className="podcast-discovery-source">
+      <span>{sourceLabel}</span>
+      <Button variant="ghost" size="sm" busy={refreshing} onClick={onRetry}>
+        {refreshing ? "刷新中" : "刷新榜单"}
+      </Button>
+    </div>
     <div className="podcast-show-shelf">
       {shows.map((show) => (
         <ShowCard
@@ -51,6 +63,7 @@ function DiscoveryShelf({
         />
       ))}
     </div>
+    </>
   );
 }
 

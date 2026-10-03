@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { isPodcastDiscoveryFresh, podcastDiscoverySourceLabel } from "../.tmp/visualizer-tests/utils/podcastDiscovery.js";
+
+test("discovery reports the actual provider and marks cached fallback", () => {
+  assert.equal(podcastDiscoverySourceLabel({ source: "xyzrank", stale: false }), "XYZRank 中文榜");
+  assert.equal(podcastDiscoverySourceLabel({ source: "apple", stale: false }), "Apple 中国区 · 备用来源");
+  assert.equal(podcastDiscoverySourceLabel({ source: "xyzrank", stale: true }), "XYZRank 中文榜 · 缓存");
+  assert.equal(podcastDiscoverySourceLabel({ source: "apple", stale: true }), "Apple 中国区 · 备用来源 · 缓存");
+});
+
+test("fresh discovery cache suppresses requests but stale and invalid timestamps cannot", () => {
+  const now = 1_000_000, ttl = 900_000;
+  assert.equal(isPodcastDiscoveryFresh({ fetchedAt: now - ttl + 1, stale: false }, now, ttl), true);
+  for (const fetchedAt of [now - ttl, 0, now + 1, NaN, Infinity]) {
+    assert.equal(isPodcastDiscoveryFresh({ fetchedAt, stale: false }, now, ttl), false);
+  }
+  assert.equal(isPodcastDiscoveryFresh({ fetchedAt: now, stale: true }, now, ttl), false);
+});
 
 const viewSource = [
   "src/views/PodcastView.tsx",

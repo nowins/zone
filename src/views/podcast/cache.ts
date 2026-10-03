@@ -1,15 +1,12 @@
 import type {
   PodcastChapterDocument,
-  PodcastDiscoveryShow,
+  PodcastDiscoveryPage,
   PodcastFeed,
   PodcastSearchResult,
 } from "../../types";
 import type { PodcastSessionSnapshot } from "./types";
 
-export let discoveryCache: {
-  shows: PodcastDiscoveryShow[];
-  fetchedAt: number;
-} | null = null;
+export let discoveryCache: PodcastDiscoveryPage | null = null;
 export const searchCache = new Map<
   string,
   { results: PodcastSearchResult[]; fetchedAt: number }
@@ -25,7 +22,7 @@ export const chapterDocumentCache = new Map<
 export let podcastSessionSnapshot: PodcastSessionSnapshot | null = null;
 
 export function setDiscoveryCache(
-  next: { shows: PodcastDiscoveryShow[]; fetchedAt: number } | null,
+  next: PodcastDiscoveryPage | null,
 ) {
   discoveryCache = next;
 }

@@ -11,6 +11,8 @@ import { podcastPlaybackForEpisode } from "../../src/utils/podcastPlayback";
 import type { AudioEngineHandle } from "../../src/hooks/useAudioEngine";
 import type { PlaybackControlsHandle, PlaybackSession } from "../../src/hooks/usePlaybackControls";
 import type { PodcastEpisodeDetail, PodcastPlayback, PodcastDownloadResult, Track, TrackActivityMap } from "../../src/types";
+import type { PodcastDiscoveryPage } from "../../src/types";
+import { setDiscoveryCache } from "../../src/views/podcast/cache";
 
 type FixtureConfig = { phase: string; durationMs: number; cycles: number; crashDelayMs?: number; switchRounds?: number };
 let api: { domain: ReturnType<typeof usePodcastPlayback>; controls: ReturnType<typeof usePlaybackControls>; audioRef: React.RefObject<HTMLAudioElement> };
@@ -24,6 +26,7 @@ window.AudioContext = class extends NativeAudioContext {
 };
 let setFixtureView: (show: boolean) => void;
 const episodeRequest = { episodeId: "__STREAM_ID__", nonce: 1 };
+let discoveryFixture = false;
 function Harness() {
   const [showView, setShowView] = useState(false);
   setFixtureView = setShowView;
@@ -50,7 +53,7 @@ function Harness() {
     {showView ? <PodcastView queue={domain.podcastQueue} autoQueueMode={domain.podcastAutoQueueMode}
       activeEpisode={domain.activePodcastEpisode} activeEpisodeId={domain.activePodcastEpisode?.episodeId ?? null}
       activeProgress={controls.progress} activeDuration={controls.duration} libraryRevision={domain.podcastLibraryRevision}
-      episodeRequest={episodeRequest} onEpisodeRequestHandled={() => {}} feedRequest={null} onFeedRequestHandled={() => {}}
+      episodeRequest={discoveryFixture ? null : episodeRequest} onEpisodeRequestHandled={() => {}} feedRequest={null} onFeedRequestHandled={() => {}}
       pinnedPodcastFeedIds={new Set()} onTogglePodcastPin={() => {}} onReturnToNowPlaying={() => {}} isPlaying={controls.isPlaying}
       onPlayEpisode={domain.playPodcastEpisode} onPlayEpisodeAt={domain.playPodcastEpisode}
       onQueueEpisode={domain.queuePodcastEpisode} onRemoveQueueEpisode={domain.removePodcastQueueEpisode}
@@ -98,6 +101,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
     let options: FixtureConfig = await invoke("stability_config");
     phase = options.phase;
+    discoveryFixture = phase === "discovery";
     await record("startup", { phase: options.phase, storage: localStorage.getItem("zone-podcast-playback-v1"), origin: location.origin });
     if (!options.phase.startsWith("restore")) localStorage.removeItem("zone-podcast-playback-v1");
     const node = document.createElement("div"); node.style.height = "100vh"; document.body.append(node);
@@ -105,6 +109,58 @@ document.addEventListener("DOMContentLoaded", async () => {
     await until(() => api?.domain.podcastSessionHydrated, "hydrate");
     const a = podcastPlaybackForEpisode((await detail(streamId)).episode);
     const b = podcastPlaybackForEpisode((await detail(localId)).episode);
+    if (options.phase === "discovery") {
+      const button = (text: string) => Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(element => element.textContent?.trim() === text);
+      const label = () => document.querySelector(".podcast-discovery-source span")?.textContent;
+      setFixtureView(true);
+      await until(() => Boolean(button("发现")), "discovery navigation"); button("发现")!.click();
+      await until(() => label() === "XYZRank 中文榜", "XYZRank native discovery");
+      const initial = await invoke<PodcastDiscoveryPage>("podcast_load_discovery_cache");
+      assert(initial.source === "xyzrank" && initial.shows.length === 1, "successful discovery was not persisted");
+      const reducedStyle = document.createElement("style");
+      reducedStyle.textContent = Array.from(document.styleSheets).flatMap(sheet => Array.from(sheet.cssRules))
+        .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule && rule.conditionText.includes("prefers-reduced-motion: reduce"))
+        .flatMap(rule => Array.from(rule.cssRules).map(item => item.cssText)).join("\n");
+      for (const [width, height] of [[1180, 760], [920, 620]]) {
+        await invoke("stability_window_size", { width, height }); await delay(250);
+        const refresh = button("刷新榜单")!; refresh.focus();
+        const bounds = document.querySelector(".podcast-discovery-source")!.getBoundingClientRect();
+        assert(document.activeElement === refresh && bounds.left >= 0 && bounds.right <= innerWidth + 1, "discovery source or keyboard focus is outside the native window");
+        await invoke("stability_capture", { name: width === 1180 ? "discovery-1180" : "discovery-920" });
+      }
+      document.head.append(reducedStyle);
+      assert(getComputedStyle(button("刷新榜单")!).transitionDuration.split(",").every(value => parseFloat(value) <= 0.001), "discovery controls ignore reduced motion");
+      reducedStyle.remove();
+      document.querySelector<HTMLButtonElement>(".podcast-show-card")!.click();
+      await until(() => Boolean(document.querySelector(".podcast-episode-open")), "RSS preview list");
+      document.querySelector<HTMLButtonElement>(".podcast-episode-open")!.click();
+      await until(() => Boolean(button("播放")), "RSS preview episode"); button("播放")!.click();
+      await until(() => Boolean(api.domain.activePodcastEpisode) && !audio().paused && audio().currentTime > 1, "discovery RSS audio playback");
+      assert(api.domain.activePodcastEpisode!.title === "中文榜单集", "directory preview did not play the RSS episode");
+      await stop();
+      await until(() => Boolean(button("下载")), "discovery download action"); button("下载")!.click();
+      await until(() => Boolean(button("删除下载")), "discovery episode offline download");
+      checks.push("XYZRank catalogue opens a guarded RSS preview, plays through the shared audio element and downloads offline");
+      checks.push("discovery source, refresh keyboard focus and reduced motion fit 1180x760 and 920x620 native windows");
+      button("返回节目")!.click();
+      await until(() => Boolean(button("返回发现")), "return to discovery"); button("返回发现")!.click();
+      setFixtureView(false); await delay(250); setDiscoveryCache(null);
+      await invoke("stability_discovery_mode", { mode: 2 }); setFixtureView(true);
+      await until(() => Boolean(button("发现")), "discovery remount navigation"); button("发现")!.click();
+      await until(() => label() === "XYZRank 中文榜", "persistent discovery cache after remount");
+      button("刷新榜单")!.click();
+      await until(() => label() === "XYZRank 中文榜 · 缓存", "both providers failed cached fallback");
+      await invoke("stability_capture", { name: "discovery-cache" });
+      assert((await invoke<PodcastDiscoveryPage>("podcast_load_discovery_cache")).fetchedAt === initial.fetchedAt, "failure rewrote cache freshness");
+      await invoke("stability_discovery_mode", { mode: 1 }); button("刷新榜单")!.click();
+      await until(() => label() === "Apple 中国区 · 备用来源", "native Apple fallback label");
+      await invoke("stability_capture", { name: "discovery-apple" });
+      assert(document.body.textContent?.includes("Apple 备用节目"), "Apple fallback shows were not displayed");
+      await invoke("stability_discovery_mode", { mode: 0 }); button("刷新榜单")!.click();
+      await until(() => label() === "XYZRank 中文榜", "primary provider recovery");
+      checks.push("persistent cache restores immediately, both-provider failure preserves freshness, Apple fallback is labelled and primary recovers");
+      await record("result", { ok: true, checks, contextsCreated, contextsClosed }); return;
+    }
     if (options.phase === "short" || options.phase === "network") {
       if (options.phase === "short") {
       await play(b, 1); await delay(30000);

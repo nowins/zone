@@ -35,8 +35,9 @@ test("podcast discovery and search keep cached content ahead of network refresh"
   assert.match(viewSource, /const searchCache = new Map/);
   assert.match(
     viewSource,
-    /const cached = discoveryCache;[\s\S]*?setDiscoveryShows\(cached\.shows\);[\s\S]*?setDiscoveryState\("ready"\)/,
+    /const publish = \(page: PodcastDiscoveryPage\) => \{[\s\S]*?setDiscoveryShows\(page\.shows\);[\s\S]*?setDiscoveryState\("ready"\)/,
   );
+  assert.match(viewSource, /let cached = discoveryCache;[\s\S]*?loadPodcastDiscoveryCache\(\)[\s\S]*?publish\(cached\)[\s\S]*?isPodcastDiscoveryFresh\([\s\S]*?browsePodcastDiscovery\(\)/);
   assert.match(
     viewSource,
     /const cached = searchCache\.get\(cacheKey\);[\s\S]*?setSearchResults\(cached\.results\);[\s\S]*?setSearchState\("ready"\)/,

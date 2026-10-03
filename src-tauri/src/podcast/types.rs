@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,7 +13,7 @@ pub struct PodcastSearchResult {
   pub(crate) latest_release_at: Option<i64>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PodcastDiscoveryShow {
   pub(crate) id: String,
@@ -23,6 +23,19 @@ pub struct PodcastDiscoveryShow {
   pub(crate) artwork_url: Option<String>,
   pub(crate) genres: Vec<String>,
   pub(crate) rank: usize,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PodcastDiscoverySource { Xyzrank, Apple }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastDiscoveryPage {
+  pub(crate) shows: Vec<PodcastDiscoveryShow>,
+  pub(crate) source: PodcastDiscoverySource,
+  pub(crate) fetched_at: i64,
+  pub(crate) stale: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]

@@ -3,6 +3,7 @@ import { cancelPodcastNetworkRequest, newPodcastNetworkRequestId } from "../../u
 import type {
   PodcastChapterDocument,
   PodcastDiscoveryShow,
+  PodcastDiscoveryPage,
   PodcastDownloadDeleteResult,
   PodcastDownloadPage,
   PodcastDownloadResult,
@@ -73,6 +74,14 @@ export function listPodcastDownloads(offset: number, limit: number) {
 
 export function browseApplePodcasts(limit: number) {
   return invokeNetwork<PodcastDiscoveryShow[]>("browse", "podcast_browse_apple", { limit });
+}
+
+export function browsePodcastDiscovery() {
+  return invokeNetwork<PodcastDiscoveryPage>("browse", "podcast_browse_discovery", {});
+}
+
+export function loadPodcastDiscoveryCache() {
+  return invoke<PodcastDiscoveryPage | null>("podcast_load_discovery_cache");
 }
 
 export function listPodcastEpisodes(feedId: string, offset = 0, limit = 100) {

@@ -286,6 +286,8 @@ pub fn run() {
       podcast::podcast_search_apple,
       podcast::podcast_cancel_network_request,
       podcast::podcast_browse_apple,
+      podcast::podcast_browse_discovery,
+      podcast::podcast_load_discovery_cache,
       podcast::podcast_subscribe,
       podcast::podcast_preview_feed,
       podcast::podcast_refresh_feeds,

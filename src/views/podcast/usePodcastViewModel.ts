@@ -29,6 +29,8 @@ import {
 import {
   addPodcastSearchHistory,
   isRememberedPodcastSearchTerm,
+  isPodcastDiscoveryFresh,
+  podcastDiscoverySourceLabel,
   PODCAST_SEARCH_COMPOSITION_GRACE_MS,
   shouldBlockPodcastSearchCommit,
   sortPodcastSearchResults,
@@ -38,6 +40,7 @@ import { mergePodcastEpisodePlayback } from "../../utils/podcastPlayback";
 import type {
   PodcastChapterDocument,
   PodcastDiscoveryShow,
+  PodcastDiscoveryPage,
   PodcastDownloadDeleteResult,
   PodcastDownloadPage,
   PodcastDownloadResult,
@@ -216,6 +219,8 @@ export function usePodcastViewModel({
   );
   const [discoveryState, setDiscoveryState] = useState<RequestState>("idle");
   const [discoveryShows, setDiscoveryShows] = useState<PodcastDiscoveryShow[]>([]);
+  const [discoveryPage, setDiscoveryPage] = useState<PodcastDiscoveryPage | null>(null);
+  const [discoveryRefreshing, setDiscoveryRefreshing] = useState(false);
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
   const [libraryState, setLibraryState] = useState<RequestState>("loading");
   const [librarySort, setLibrarySort] = useState<PodcastLibrarySort>(
@@ -321,6 +326,8 @@ export function usePodcastViewModel({
   const ignorePodcastSearchSubmitRef = useRef(false);
   const ignorePodcastSearchSubmitTimerRef = useRef<number | null>(null);
   const discoveryRequestActive = useRef(false);
+  const discoveryRequestRef = useRef(0);
+  const discoveryMountedRef = useRef(true);
   const feedRefreshActive = useRef(false);
   const selectedFeedRef = useRef(selectedFeed);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
@@ -329,13 +336,19 @@ export function usePodcastViewModel({
   const lastQueueRemovalIntent = useLastNonNull(queueRemovalIntent);
   selectedFeedRef.current = selectedFeed;
 
-  useEffect(() => () => {
-    podcastApi.cancelPodcastViewRequests();
-    downloadProgressEpisodeRef.current = null;
-    if (downloadProgressPollRef.current !== null) {
-      window.clearInterval(downloadProgressPollRef.current);
-      downloadProgressPollRef.current = null;
-    }
+  useEffect(() => {
+    discoveryMountedRef.current = true;
+    return () => {
+      discoveryMountedRef.current = false;
+      discoveryRequestRef.current += 1;
+      discoveryRequestActive.current = false;
+      podcastApi.cancelPodcastViewRequests();
+      downloadProgressEpisodeRef.current = null;
+      if (downloadProgressPollRef.current !== null) {
+        window.clearInterval(downloadProgressPollRef.current);
+        downloadProgressPollRef.current = null;
+      }
+    };
   }, []);
 
   const currentEpisodeId = activeEpisode?.episodeId ?? activeEpisodeId;
@@ -437,28 +450,44 @@ export function usePodcastViewModel({
     }
   }, []);
 
-  const loadDiscovery = useCallback(async () => {
-    const cached = discoveryCache;
-    if (cached) {
-      setDiscoveryShows(cached.shows);
-      setDiscoveryState("ready");
-      if (Date.now() - cached.fetchedAt < DISCOVERY_CACHE_TTL_MS) return;
-    }
+  const loadDiscovery = useCallback(async (force = false) => {
     if (discoveryRequestActive.current) return;
     discoveryRequestActive.current = true;
+    const requestId = ++discoveryRequestRef.current;
+    const current = () => discoveryMountedRef.current && discoveryRequestRef.current === requestId;
+    const publish = (page: PodcastDiscoveryPage) => {
+      setDiscoveryCache(page);
+      setDiscoveryPage(page);
+      setDiscoveryShows(page.shows);
+      setDiscoveryState("ready");
+    };
+    let cached = discoveryCache;
     if (!cached) setDiscoveryState("loading");
     try {
-      const shows = await podcastApi.browseApplePodcasts(24);
-      setDiscoveryCache({ shows, fetchedAt: Date.now() });
-      setDiscoveryShows(shows);
-      setDiscoveryState("ready");
-    } catch {
       if (!cached) {
+        cached = await podcastApi.loadPodcastDiscoveryCache().catch(() => null);
+        if (!current()) return;
+      }
+      if (cached) {
+        publish(cached);
+        if (!force && isPodcastDiscoveryFresh(cached, Date.now(), DISCOVERY_CACHE_TTL_MS)) return;
+      }
+      setDiscoveryRefreshing(true);
+      const page = await podcastApi.browsePodcastDiscovery();
+      if (current()) publish(page);
+    } catch {
+      if (!current()) return;
+      if (cached) {
+        publish({ ...cached, stale: true });
+      } else {
         setDiscoveryShows([]);
         setDiscoveryState("error");
       }
     } finally {
-      discoveryRequestActive.current = false;
+      if (current()) {
+        discoveryRequestActive.current = false;
+        setDiscoveryRefreshing(false);
+      }
     }
   }, []);
 
@@ -2330,6 +2359,8 @@ export function usePodcastViewModel({
     previewFeed,
     discoveryState,
     discoveryShows,
+    discoverySourceLabel: discoveryPage ? podcastDiscoverySourceLabel(discoveryPage) : "",
+    discoveryRefreshing,
     loadDiscovery,
     libraryState,
     librarySort,

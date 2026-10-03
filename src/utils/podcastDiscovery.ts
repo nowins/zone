@@ -4,6 +4,16 @@ export const PODCAST_SEARCH_COMPOSITION_GRACE_MS = 80;
 
 export type PodcastDiscoverySort = "relevance" | "recent" | "episodes";
 
+export function podcastDiscoverySourceLabel(page: { source: "xyzrank" | "apple"; stale: boolean }): string {
+  const source = page.source === "xyzrank" ? "XYZRank 中文榜" : "Apple 中国区 · 备用来源";
+  return page.stale ? `${source} · 缓存` : source;
+}
+
+export function isPodcastDiscoveryFresh(page: { fetchedAt: number; stale: boolean }, now: number, ttl: number): boolean {
+  return !page.stale && Number.isFinite(page.fetchedAt) && page.fetchedAt > 0
+    && page.fetchedAt <= now && now - page.fetchedAt < ttl;
+}
+
 export type PodcastSearchMatchSegment = {
   text: string;
   matched: boolean;

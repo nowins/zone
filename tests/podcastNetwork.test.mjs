@@ -14,6 +14,26 @@ await build({ entryPoints: ["src/views/podcast/api.ts"], outfile: output, bundle
   } }] });
 const api = await import(pathToFileURL(output));
 
+test("discovery restores SQLite locally and cancels provider requests when leaving the view", async () => {
+  const calls = []; let complete;
+  const page = { source: "xyzrank", shows: [], fetchedAt: 1, stale: false };
+  globalThis.podcastNetworkMock = (name, args) => {
+    calls.push({ name, args });
+    if (name === "podcast_load_discovery_cache") return Promise.resolve(page);
+    if (name === "podcast_cancel_network_request") return Promise.resolve();
+    return new Promise(resolve => { complete = resolve; });
+  };
+  assert.equal(await api.loadPodcastDiscoveryCache(), page);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].args, undefined);
+  const pending = api.browsePodcastDiscovery();
+  assert.equal(calls[1].name, "podcast_browse_discovery");
+  assert.ok(calls[1].args.requestId);
+  api.cancelPodcastViewRequests();
+  assert.equal(calls[2].args.requestId, calls[1].args.requestId);
+  complete(page); assert.equal(await pending, page);
+});
+
 test("superseding and unmounting search cancel native IDs without losing the newer request", async () => {
   const calls = []; const resolvers = [];
   globalThis.podcastNetworkMock = (name, args) => {

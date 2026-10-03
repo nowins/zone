@@ -297,6 +297,13 @@ export type PodcastDiscoveryShow = {
   rank: number;
 };
 
+export type PodcastDiscoveryPage = {
+  shows: PodcastDiscoveryShow[];
+  source: "xyzrank" | "apple";
+  fetchedAt: number;
+  stale: boolean;
+};
+
 export type PodcastFeed = {
   id: string;
   feedUrl: string;

@@ -387,6 +387,16 @@
   background: var(--accent);
 }
 
+.podcast-discovery-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: -6px 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .podcast-show-shelf {
   display: grid;
   grid-template-columns: repeat(8, minmax(86px, 1fr));

@@ -9,7 +9,7 @@ await build({
     export { usePodcastPlayback } from "./src/hooks/usePodcastPlayback";
     export { usePlaybackControls } from "./src/hooks/usePlaybackControls";
     export { usePodcastViewModel } from "./src/views/podcast/usePodcastViewModel";
-    export { setPodcastSessionSnapshot } from "./src/views/podcast/cache";
+    export { setPodcastSessionSnapshot, setDiscoveryCache, discoveryCache } from "./src/views/podcast/cache";
   `, resolveDir: process.cwd(), loader: "ts" },
   outfile: runtimePath, bundle: true, packages: "external", format: "esm",
   platform: "browser", define: { "import.meta.env.DEV": "false" }, logLevel: "silent",

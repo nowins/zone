@@ -47,6 +47,8 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
     previewFeed,
     discoveryState,
     discoveryShows,
+    discoverySourceLabel,
+    discoveryRefreshing,
     loadDiscovery,
   } = vm;
   const searchFieldRef = useRef<HTMLDivElement>(null);
@@ -335,14 +337,16 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
           )}
         </PodcastSection>
       ) : (
-        <PodcastSection title="中国区热门节目" count={discoveryShows.length}>
+        <PodcastSection title="热门节目" count={discoveryShows.length}>
           <DiscoveryShelf
             state={discoveryState}
             shows={discoveryShows}
+            sourceLabel={discoverySourceLabel}
+            refreshing={discoveryRefreshing}
             feeds={feeds}
             openingId={openingId}
             onOpen={(show) => void previewFeed(show, "discover")}
-            onRetry={() => void loadDiscovery()}
+            onRetry={() => void loadDiscovery(true)}
           />
         </PodcastSection>
       )}

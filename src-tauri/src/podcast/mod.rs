@@ -9,6 +9,7 @@ mod apple;
 mod artwork_protocol;
 mod chapters;
 mod commands;
+mod discovery;
 mod downloads;
 mod feed_parse;
 mod network;
@@ -33,6 +34,7 @@ pub use types::*;
 
 pub(crate) use apple::*;
 pub(crate) use chapters::*;
+pub(crate) use discovery::*;
 pub(crate) use downloads::*;
 pub(crate) use feed_parse::*;
 pub(crate) use network::*;

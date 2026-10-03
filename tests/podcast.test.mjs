@@ -134,7 +134,7 @@ test("podcasts open on content, keep search secondary, and separate play from do
     /setPodcastSessionSnapshot\(\{[\s\S]{0,420}\bscreen,[\s\S]{0,420}\bselectedEpisodeDetail,/,
     "podcasts must preserve their navigation and episode context while full-screen playback is open",
   );
-  for (const label of ["收听", "发现", "资料库", "继续收听", "中国区热门节目"]) {
+  for (const label of ["收听", "发现", "资料库", "继续收听", "热门节目"]) {
     includes(podcastViewSource, new RegExp(label), `missing formal podcast label: ${label}`);
   }
   excludes(podcastViewSource, /播客实验|下载并播放/, "probe copy must not remain in the formal experience");
@@ -149,7 +149,7 @@ test("podcasts open on content, keep search secondary, and separate play from do
   );
   excludes(
     listenScreenSource,
-    /DiscoveryShelf|中国区热门节目/,
+    /DiscoveryShelf|中国区热门节目|title="热门节目"/,
     "the listening home must not duplicate the discovery catalog",
   );
   includes(
@@ -164,7 +164,7 @@ test("podcasts open on content, keep search secondary, and separate play from do
   );
   includes(
     discoverSurface,
-    /title="中国区热门节目"[\s\S]{0,220}<DiscoveryShelf[\s\S]{0,180}shows=\{discoveryShows\}/,
+    /title="热门节目"[\s\S]{0,220}<DiscoveryShelf[\s\S]{0,180}shows=\{discoveryShows\}/,
     "discovery must own the complete regional catalog",
   );
   includes(
