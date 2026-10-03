@@ -44,11 +44,15 @@ export function Dialog({
   useModalFocus(dialogRef);
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape" || busy) return;
-      onCancel();
+      if (event.key !== "Escape") return;
+      const dialogs=document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if(dialogs[dialogs.length-1]!==dialogRef.current)return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!busy) onCancel();
     }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [busy, onCancel]);
 
   const overlayClasses = ["playlist-dialog-overlay", overlayClassName].filter(Boolean).join(" ");

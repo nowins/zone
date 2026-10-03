@@ -965,6 +965,7 @@ export function usePodcastViewModel({
     if (screen !== "show" && screen !== "episode") return;
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
       event.preventDefault();
       if (screen === "episode") closeEpisodeDetail();
       else closeShow();
