@@ -312,6 +312,12 @@ pub(crate) fn validate_public_url_shape(value: &str) -> Result<Url, String> {
   validate_url_shape_with_policy(value, false)
 }
 
+pub(crate) async fn validate_public_link_target(value:&str)->Result<(),String> {
+  let url=validate_public_url_shape(value)?;
+  tokio::time::timeout(Duration::from_secs(5),resolve_public_addresses(&url,false)).await.map_err(|_|"链接地址解析超时")??;
+  Ok(())
+}
+
 pub(crate) fn validate_url_shape_with_policy(value: &str, allow_private_network: bool) -> Result<Url, String> {
   let url = Url::parse(value.trim()).map_err(|_| "播客来源地址无效".to_string())?;
   validate_url_with_policy(&url, allow_private_network)?;

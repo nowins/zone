@@ -541,6 +541,16 @@ pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), Strin
         PRIMARY KEY(resource_id, ordinal)
       );
 
+      CREATE TABLE IF NOT EXISTS podcast_transcript_cues (
+        resource_id TEXT NOT NULL REFERENCES podcast_episode_resources(id) ON DELETE CASCADE,
+        ordinal INTEGER NOT NULL CHECK(ordinal >= 0),
+        start_ms INTEGER CHECK(start_ms IS NULL OR start_ms >= 0),
+        end_ms INTEGER,
+        text TEXT NOT NULL,
+        speaker TEXT,
+        PRIMARY KEY(resource_id, ordinal)
+      );
+
       CREATE INDEX IF NOT EXISTS podcast_episodes_feed_published
         ON podcast_episodes(feed_id, published_at DESC);
       CREATE INDEX IF NOT EXISTS podcast_saved_episodes_saved_at

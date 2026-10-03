@@ -138,6 +138,11 @@ export function getEpisodeChapters(episodeId: string) {
   });
 }
 
+export type TranscriptCue = {startSeconds:number|null;endSeconds:number|null;text:string;speaker:string|null};
+export type TranscriptDocument = {episodeId:string;language:string|null;cues:TranscriptCue[];stale:boolean};
+export const getTranscript = (episodeId:string) => invokeNetwork<TranscriptDocument>("transcript","podcast_get_transcript",{episodeId});
+export const openPodcastLink = (url:string) => invoke<void>("podcast_open_link",{url});
+
 export function getEpisodeDetail(episodeId: string) {
   return invoke<PodcastEpisodeDetail>("podcast_get_episode_detail", {
     episodeId,

@@ -24,6 +24,8 @@ import {
   podcastDownloadProgressLabel,
 } from "../format";
 import { PodcastArtwork, PodcastEmpty, PodcastLoading } from "./primitives";
+import { PodcastNotes, PodcastExternalLink } from "./Notes";
+import { TranscriptPanel } from "./TranscriptPanel";
 
 function EpisodeDetail({
   detail,
@@ -206,11 +208,7 @@ function EpisodeDetail({
 
       <section className="podcast-detail-description">
         <h3>简介</h3>
-        <p>
-          {episode.description
-            ? plainText(episode.description)
-            : "这集暂时没有简介。"}
-        </p>
+        {episode.description?<PodcastNotes source={episode.description} base={episode.webpageUrl??feed.feedUrl} duration={episode.durationSeconds} onPlayAt={onPlayChapter}/>:<p>这集暂时没有简介。</p>}
       </section>
       {detail.hasChapters ? (
         <section className="podcast-detail-chapters">
@@ -271,6 +269,7 @@ function EpisodeDetail({
                             <span>{chapter.title}</span>
                             {current ? <em>正在播放</em> : null}
                           </button>
+                          {chapter.href&&<PodcastExternalLink href={chapter.href}>相关链接</PodcastExternalLink>}
                         </li>
                       );
                     })}
@@ -281,6 +280,7 @@ function EpisodeDetail({
           ) : null}
         </section>
       ) : null}
+      {detail.transcriptCount>0&&<TranscriptPanel key={episode.id} episodeId={episode.id} active={active} progress={activeProgress} onPlayAt={onPlayChapter}/>}
     </article>
   );
 }

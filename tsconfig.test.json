@@ -27,6 +27,7 @@
     "src/utils/podcastPlayback.ts",
     "src/utils/podcastProgress.ts",
     "src/utils/podcastPreferences.ts",
+    "src/utils/podcastNotes.ts",
     "src/utils/podcastListening.ts",
     "src/utils/podcastLibrary.ts",
     "src/utils/podcastDiscovery.ts",

@@ -57,6 +57,17 @@ async function run() {
       const forward=document.querySelector<HTMLButtonElement>('.podcast-player button[title="前进 45 秒"]')!;assert(forward,"custom skip interval missing");const before=audio.currentTime;forward.click();await delay(250);assert(audio.currentTime>before+44,"custom forward seek not applied");
       await capture("06-offline-playing-920");audio.currentTime=285;await until(()=>audio.paused&&audio.currentTime>=299,"outro completion");
       checks.push("真实客户端解码离线 WAV、共用单一 audio、每节目 1.5 倍速、跳过片头、暂停续播、自定义前进与片尾完成");
+      await until(()=>Array.from(document.querySelectorAll('.podcast-episode')).some(el=>el.textContent?.includes("离线单集")),"refreshed episodes");
+      const refreshedRow=Array.from(document.querySelectorAll('.podcast-episode')).find(el=>el.textContent?.includes("离线单集"))!;
+      (refreshedRow.querySelector('.podcast-episode-open') as HTMLButtonElement).click();await until(()=>Boolean(document.querySelector('.podcast-detail-description')),"episode reading");
+      const note=document.querySelector<HTMLButtonElement>('.podcast-note-timecode')!;assert(note,"shownote timecode not actionable");note.scrollIntoView({block:"center"});note.click();
+      await until(()=>!audio.paused&&audio.currentTime>=2&&audio.currentTime<8,"explicit note timestamp must bypass intro");
+      const transcript=button("转写 · 展开")!;transcript.scrollIntoView({block:"center"});transcript.click();await until(()=>Boolean(document.querySelector('.podcast-transcript-cues li')),"cached native transcript");
+      await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="搜索转写内容"]')!,"关键词");await until(()=>document.querySelectorAll('.podcast-transcript-cues li').length===1,"transcript search");
+      document.querySelector<HTMLButtonElement>('.podcast-transcript-cues li button')!.click();await until(()=>audio.currentTime>=10&&audio.currentTime<18,"transcript timestamp");
+      assert(document.querySelector('.podcast-transcript-cues li[aria-current="true"]'),"transcript does not follow actual progress");
+      await capture("07-notes-transcript-920");checks.push("真实客户端富文本简介、时间码跳转保留显式片头位置、原生转写缓存、关键词查询、转写时间跳转与当前段落");
+      document.querySelector<HTMLButtonElement>('.podcast-player button[title="暂停"]')!.click();
     }
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

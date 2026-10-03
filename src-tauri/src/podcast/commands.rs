@@ -3,6 +3,16 @@ use tauri::State;
 use super::*;
 
 #[tauri::command]
+pub async fn podcast_open_link(app:tauri::AppHandle,url:String)->Result<(),String> {
+  use tauri_plugin_opener::OpenerExt;
+  if url.len()>8192 {return Err("链接地址过长".into());}
+  let mut parsed=reqwest::Url::parse(&url).map_err(|_|"链接地址无效")?;
+  let href=parsed.to_string();
+  parsed.set_fragment(None);validate_public_link_target(parsed.as_str()).await?;
+  app.opener().open_url(href,None::<&str>).map_err(|_|"无法打开链接".into())
+}
+
+#[tauri::command]
 pub async fn podcast_search_apple(query: String, limit: Option<u8>, request_id: Option<String>) -> Result<Vec<PodcastSearchResult>, String> {
   run_network_task(request_id.as_deref(), async {
     search_apple_cn(&query, limit.unwrap_or(12)).await
