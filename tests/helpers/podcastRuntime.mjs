@@ -29,7 +29,7 @@ export const podcastEpisode = (id, extra = {}) => ({ id, feedId: "feed", title: 
   saved: false, completed: false, progressSeconds: 0, durationSeconds: 1000,
   feedTitle: "节目", ...extra });
 export const podcastPlayback = (episode) => ({ ...episode, episodeId: episode.id,
-  podcastTitle: "节目", savedProgressSeconds: episode.progressSeconds });
+  podcastTitle: "节目", savedProgressSeconds: episode.progressSeconds, playbackLocalPath: episode.localPath });
 export const podcastDetail = (episode) => ({ episode, feed: podcastFeed, saved: episode.saved,
   hasChapters: false, transcriptCount: 0 });
 
@@ -59,8 +59,9 @@ export async function mountPodcastHook(hook, props, invoke, settings = {}, rende
 }
 
 export async function mountPodcastPlayback(invoke, settings = {}, session = {}) {
-  const audioRef = { current: { currentTime: 0, duration: 1000, paused: true, ended: false,
-    pause() { this.paused = true; } } };
+  const audioListeners=new Map();
+  const audioRef = { current: { addEventListener(type,handler){audioListeners.set(type,[...(audioListeners.get(type)??[]),handler]);}, removeEventListener(type,handler){audioListeners.set(type,(audioListeners.get(type)??[]).filter(item=>item!==handler));}, currentTime: 0, duration: 1000, paused: true, ended: false,
+    pause() { this.paused = true;for(const handler of audioListeners.get("pause")??[])handler(); } } };
   const armed = [];
   const notices = [];
   let intent = false;

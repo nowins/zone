@@ -408,7 +408,7 @@ export function usePodcastPlayback({
     const current = activePodcastEpisode;
     if (
       current?.episodeId === episode.episodeId
-      && (current.localPath ?? null) === (episode.localPath ?? null)
+      && (current.playbackLocalPath ?? null) === (episode.playbackLocalPath ?? null)
     ) {
       playbackControlsRef.current?.clearPendingPodcastStart();
       if (requestedPosition !== null) {
@@ -725,11 +725,11 @@ export function usePodcastPlayback({
       if (!episode) return current;
       const next = podcastPlaybackForEpisode(episode);
       const audio = audioRef.current;
-      if (current.playbackLocalPath && !episode.localPath) {
+      if ((current.playbackLocalPath && !episode.localPath) || (audio?.paused && episode.localPath && current.playbackLocalPath!==episode.localPath)) {
         return {
           ...next,
           savedProgressSeconds: audio?.currentTime ?? current.savedProgressSeconds,
-          playbackLocalPath: null,
+          playbackLocalPath: episode.localPath,
         };
       }
       return {
@@ -740,6 +740,16 @@ export function usePodcastPlayback({
     });
     bumpLibraryRevision();
   }
+
+  useEffect(()=>{
+    const audio=audioRef.current;if(!audio || typeof audio.addEventListener!=="function")return;
+    const preferDownloaded=()=>{const active=activePodcastEpisodeRef.current;
+      if(!active?.localPath || active.playbackLocalPath || !playbackControlsRef.current?.hasEpisodeStartedOnDevice(active.episodeId))return;
+      const position=Number.isFinite(audio.currentTime)?audio.currentTime:active.savedProgressSeconds;
+      setActivePodcastEpisode(current=>current?.episodeId===active.episodeId && current.localPath && !current.playbackLocalPath?{...current,playbackLocalPath:current.localPath,savedProgressSeconds:position}:current);
+    };
+    audio.addEventListener("pause",preferDownloaded);return()=>audio.removeEventListener("pause",preferDownloaded);
+  },[audioRef,playbackControlsRef]);
 
   function updatePodcastEpisode(episode: PodcastEpisode) {
     updatePodcastEpisodes([episode]);

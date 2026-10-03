@@ -56,7 +56,7 @@ export function PodcastPlayerBar({
         </button>
         {onPlaybackRate && onSleepTimer && <button className="podcast-bar-options-trigger" onClick={()=>setOptionsOpen(true)} aria-label={`播放选项，${playbackRate} 倍速，${sleepLabel}`} aria-haspopup="dialog" title={`倍速与睡眠 · ${sleepLabel}`}><span>{playbackRate}×</span>{sleepTimer&&<Clock size={12}/>}</button>}
         {onOpenQueue&&<button onClick={onOpenQueue} aria-label={`打开待播，${queueCount} 集`} title={`待播 ${queueCount} 集`}><ListMusic size={18}/><small>{queueCount||""}</small></button>}
-        <span className="podcast-bar-status" role="status" title={stateLabel}>{status==="loading"||status==="buffering"||status==="error"?stateLabel:episode.localPath?"离线":""}</span>
+        <span className="podcast-bar-status" role="status" title={stateLabel}>{status==="loading"||status==="buffering"||status==="error"?stateLabel:episode.playbackLocalPath?"离线":episode.localPath?"已下载":""}</span>
       </nav>
 
       <div className="player-primary">
