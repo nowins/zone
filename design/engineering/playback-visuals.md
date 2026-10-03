@@ -39,6 +39,8 @@ WebView2 隐藏原生窗口时可能仍报告 `document.visibilityState = visibl
 audioRef -> MediaElementAudioSourceNode -> AnalyserNode -> GainNode -> destination
 ```
 
+播客开启语音均衡或静音加速时，`podcastAudioEnhancement.ts` 在 Analyser 与 Gain 之间按需插入 `podcastAudio.worklet.js` 的 AudioWorklet；模块以独立本地文件加载，保持既有 CSP。音乐及关闭增强时逐样本旁路。均衡基于真实 PCM RMS、用户音量补偿和有界平滑增益，静音不提升底噪；持续静音 350 ms 后临时加速至所选倍速的两倍（最高 3 倍），声音恢复时回到所选倍速。暂停、定位、音源或偏好变化均清空检测状态并使旧消息失效。处理不依赖可视化 rAF 或 React 逐帧状态，在减少动态效果和后台收听时仍工作；Worklet 失败则重新连接原声链路并提示，不中断播放。
+
 - 未下载播客经 `zone-podcast`、已下载播客经 `zone-audio`，二者都复用主 `<audio>`；播客不得进入音乐 queue、收藏或播放统计，也不得触发音乐的整文件节拍预分析。
 
 如果可视化看起来是假的或从不响应，先在 dev 控制台检查：

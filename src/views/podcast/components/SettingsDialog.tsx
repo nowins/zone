@@ -46,6 +46,9 @@ export function PodcastSettingsDialog({ feedId, title, onClose }: { feedId?: str
           {([["introSeconds","跳过片头",0,3600],["outroSeconds","跳过片尾",0,3600],["backwardSeconds","后退间隔",1,300],["forwardSeconds","前进间隔",1,300]] as const).map(([key,label,min,max])=><label key={key}>{label}<span><input disabled={Boolean(feedId&&value.inheritPlayback)} type="number" aria-label={label} min={min} max={max} step={1} value={value[key]} onChange={event=>setValue({...value,[key]:Number(event.target.value)})}/> 秒</span></label>)}
           <label>同节目续播<select disabled={Boolean(feedId&&value.inheritPlayback)} aria-label="节目播放顺序" value={value.oldestFirst?"oldest":"newest"} onChange={event=>setValue({...value,oldestFirst:event.target.value==="oldest"})}><option value="newest">由新到旧</option><option value="oldest">由旧到新</option></select></label>
         </div>
+        <label className="podcast-setting-check"><input type="checkbox" disabled={Boolean(feedId&&value.inheritPlayback)} checked={value.normalizeVoice} onChange={event=>setValue({...value,normalizeVoice:event.target.checked})}/>均衡语音音量</label>
+        <label className="podcast-setting-check"><input type="checkbox" disabled={Boolean(feedId&&value.inheritPlayback)} checked={value.trimSilence} onChange={event=>setValue({...value,trimSilence:event.target.checked})}/>加速静音段落</label>
+        <small>均衡只处理真实播客声音；持续静音时临时加速，检测到声音后恢复所选倍速。</small>
       </fieldset>
     </div> : error ? null : <p role="status"><MetroLoader />正在读取设置</p>}
     {error && <p role="alert">{error}</p>}

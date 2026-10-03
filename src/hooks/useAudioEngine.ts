@@ -13,6 +13,7 @@ import { isDocumentVisible, isVisualizerSurfaceActive, publishVisualizerFrame, W
 import { useReducedMotion } from "../motion/useReducedMotion";
 import type { ActivePlayback } from "./usePlaybackControls";
 import type { Track } from "../types";
+import { createPodcastAudioEnhancement, type PodcastAudioOptions } from "./podcastAudioEnhancement";
 
 export type AudioEngineHandle = {
   resumeAudioGraph: () => Promise<void>;
@@ -35,6 +36,8 @@ type UseAudioEngineParams = {
   activePlaybackSourceKey: string | null;
   activeTrackId: string | null;
   visualizerVisible: boolean;
+  podcastAudio?: { rate: number; normalize: boolean; trim: boolean };
+  onEnhancementError?: () => void;
 };
 
 export function useAudioEngine({
@@ -46,6 +49,8 @@ export function useAudioEngine({
   activePlaybackSourceKey,
   activeTrackId,
   visualizerVisible,
+  podcastAudio,
+  onEnhancementError,
 }: UseAudioEngineParams): AudioEngineHandle {
   const reducedMotion = useReducedMotion();
   const audible = isPlaying && volume > 0;
@@ -64,6 +69,15 @@ export function useAudioEngine({
   const finishWorkerRef = useRef<(() => void) | null>(null);
   const nativeCancellationRef = useRef<Promise<unknown>>(Promise.resolve());
   const activeTrackRef = useRef(activeTrackId);
+  const enhancementRef = useRef<ReturnType<typeof createPodcastAudioEnhancement> | null>(null);
+  const enhancementOptionsRef = useRef<PodcastAudioOptions>({ source: null, podcast: false, rate: 1, normalize: false, trim: false, volume });
+  enhancementOptionsRef.current = { source: activePlaybackSourceKey, podcast: activePlayback?.kind === "podcast", rate: podcastAudio?.rate ?? 1, normalize: podcastAudio?.normalize ?? false, trim: podcastAudio?.trim ?? false, volume };
+  const enhancementErrorRef = useRef(onEnhancementError); enhancementErrorRef.current = onEnhancementError;
+  useEffect(() => {
+    if (enhancementOptionsRef.current.podcast && (podcastAudio?.normalize || podcastAudio?.trim)) ensureAudioGraph();
+    enhancementRef.current?.update(enhancementOptionsRef.current);
+  }, [activePlaybackSourceKey, activePlayback?.kind, podcastAudio?.rate, podcastAudio?.normalize, podcastAudio?.trim, volume]);
+  useEffect(() => () => { enhancementRef.current?.dispose(); enhancementRef.current = null; }, []);
   activeTrackRef.current = activeTrackId;
   useEffect(() => () => cancelBeatAnalysis(), []);
 
@@ -142,6 +156,14 @@ export function useAudioEngine({
         analyserRef.current.connect(outputGain);
         outputGain.connect(audioContextRef.current.destination);
         outputGainRef.current = outputGain;
+      }
+
+      if (!enhancementRef.current && enhancementOptionsRef.current.podcast && (enhancementOptionsRef.current.normalize || enhancementOptionsRef.current.trim)) {
+        enhancementRef.current = createPodcastAudioEnhancement(audio, audioContextRef.current, analyserRef.current, outputGainRef.current, () => {
+          recordDiagnostic({ domain: "podcast", event: "audio_enhancement", outcome: "error" });
+          enhancementErrorRef.current?.();
+        });
+        enhancementRef.current.update(enhancementOptionsRef.current);
       }
 
       if (audioContextRef.current.state === "suspended") {

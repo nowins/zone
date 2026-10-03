@@ -303,6 +303,8 @@ export default function App() {
     hasEpisodeStartedOnDevice,
   };
   audioEngineRef.current = useAudioEngine({
+    podcastAudio: { rate: podcast.podcastPlaybackRate, normalize: podcast.podcastPreferences.normalizeVoice, trim: podcast.podcastPreferences.trimSilence },
+    onEnhancementError: () => showActionNotice("语音增强暂不可用，继续原声播放"),
     visualizerVisible: !compactMode.active,
     audioRef,
     volume,
