@@ -1,5 +1,5 @@
 import { PODCAST_AUTO_QUEUE_MODES } from "../constants";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../../components/Button";
 import { NamedLists } from "../components/NamedLists";
 import { formatEpisodeDate, plainText } from "../format";
@@ -11,6 +11,7 @@ import type { PodcastViewModel } from "../usePodcastViewModel";
 
 export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
   const [tab, setTab] = useState<"queue" | "lists">("queue");
+  useEffect(()=>{if(vm.queueFocusRequest>0)setTab("queue");},[vm.queueFocusRequest]);
   const {
     // pull fields used by this screen (full bag is fine; unused locals are ok at runtime)
     ..._

@@ -130,6 +130,12 @@ async function run() {
       await invoke("client_media",{action:"seek",positionSeconds:75});await until(()=>audio.playbackRate===1.5&&audio.dataset.podcastSilence==="false","voice restores selected rate");
       await invoke("client_media",{action:"pause"});await until(()=>audio.paused&&audio.playbackRate===1.5,"pause restores selected rate");
       checks.push("真实客户端 AudioWorklet 处理真实 PCM、语音增益、静音段 3 倍速、声音与暂停恢复节目 1.5 倍速");
+      const options=document.querySelector<HTMLButtonElement>('.podcast-player button[aria-haspopup=dialog]')!;assert(options,"persistent bar options missing");options.click();await until(()=>Boolean(document.querySelector('.podcast-bar-options-dialog')),"bar playback options");
+      document.querySelector<HTMLButtonElement>('[aria-label="底栏播放速度"] button:nth-child(4)')!.click();await until(()=>audio.playbackRate===1.25,"bar applies selected rate");
+      await click("本集结束");await until(()=>document.querySelector('.podcast-bar-sleep')?.textContent?.includes("本集结束后暂停") ?? false,"bar sleep timer");await capture("12-bar-options-920");await click("关闭定时");await click("1.5×");await click("完成");await until(()=>!document.querySelector('[role=dialog]'),"bar dialog close");
+      assert(options.getAttribute('aria-label')?.includes("1.5 倍速"),"bar must show selected rate");
+      document.querySelector<HTMLButtonElement>('.podcast-player button[aria-label^="打开待播"]')!.click();await until(()=>Boolean(document.querySelector('.podcast-playlist-screen')),"bar opens pending queue");assert(button("待播")?.getAttribute('aria-pressed')==="true","bar queue entry must select queue pivot");
+      await capture("13-persistent-bar-920");checks.push("真实客户端底栏倍速、睡眠定时设置与关闭、直接打开待播及最小窗口布局");
     }
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

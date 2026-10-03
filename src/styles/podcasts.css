@@ -2219,3 +2219,19 @@
 .podcast-sync-settings > div { display: flex; flex-wrap: wrap; gap: 10px; }
 .podcast-sync-settings > p { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .podcast-sync-path { overflow-wrap: anywhere; }
+.podcast-player .podcast-bar-options-trigger { width: auto; min-width: 48px; gap: 4px; grid-auto-flow: column; font-size: 12px; }
+.podcast-player .player-shortcuts small { position: absolute; right: 0; top: -2px; font-size: 9px; color: var(--accent); }
+.podcast-bar-status { max-width: 68px; font-size: 10px; color: var(--muted); }
+.podcast-bar-rates > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.podcast-bar-rates button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.podcast-bar-sleep { margin-top: 24px; }
+.podcast-bar-sleep > div { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.podcast-bar-sleep input { width: 80px; }
+.playlist-dialog-overlay.podcast-bar-options-overlay { inset: 28px 0 0; padding: 24px; }
+.playlist-dialog.podcast-bar-options-dialog { --dialog-offset-y: 0px; box-sizing: border-box; width: min(590px, calc(100vw - 48px)); max-height: calc(100vh - 76px); overflow: auto; color-scheme: dark; }
+.podcast-bar-options-dialog .playlist-dialog-actions { position: sticky; bottom: -28px; padding-block: 16px; background: #171118; }
+.podcast-bar-options-dialog fieldset { border: 0; border-top: 1px solid rgba(255,255,255,.16); padding: 16px 0; margin-inline: 0; min-width: 0; font-size: 13px; }
+.podcast-bar-options-dialog legend { padding-right: 10px; color: var(--muted); font-size: 12px; }
+.podcast-bar-options-dialog .podcast-bar-rates .button { min-width: 42px; min-height: 36px; }
+.podcast-bar-options-dialog .podcast-bar-sleep label { display: flex; width: 140px; align-items: center; gap: 12px; margin: 0 0 12px; }
+.podcast-bar-options-dialog .podcast-bar-sleep input { width: 80px; }

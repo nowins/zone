@@ -1,7 +1,11 @@
-import { Pause, Play, Podcast, RotateCcw, RotateCw } from "lucide-react";
+import { Clock, ListMusic, Pause, Play, Podcast, RotateCcw, RotateCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { PodcastTransportOptions } from "./PodcastTransportOptions";
+import { Presence } from "../motion/presence";
+import { MOTION_DURATIONS } from "../motion/tokens";
 import { PlaybackProgress } from "./PlaybackProgress";
 import { VolumeControl } from "./TransportControls";
-import type { PodcastPlayback, PodcastPlaybackStatus } from "../types";
+import type { PodcastPlayback, PodcastPlaybackStatus, PodcastSleepTimer } from "../types";
 import { podcastArtworkSrc } from "../utils/podcastArtwork";
 
 export function PodcastPlayerBar({
@@ -19,6 +23,7 @@ export function PodcastPlayerBar({
   onOpenNowPlaying,
   backwardSeconds = 15,
   forwardSeconds = 30,
+  playbackRate = 1, sleepTimer = null, queueCount = 0, onPlaybackRate, onSleepTimer, onOpenQueue,
 }: {
   episode: PodcastPlayback;
   isPlaying: boolean;
@@ -34,14 +39,24 @@ export function PodcastPlayerBar({
   onOpenNowPlaying: () => void;
   backwardSeconds?: number;
   forwardSeconds?: number;
+  playbackRate?: number; sleepTimer?: PodcastSleepTimer; queueCount?: number;
+  onPlaybackRate?: (value: number) => void; onSleepTimer?: (value: PodcastSleepTimer) => void; onOpenQueue?: () => void;
 }) {
   const artworkSrc = podcastArtworkSrc(episode.artworkUrl);
+  const [optionsOpen,setOptionsOpen]=useState(false),[now,setNow]=useState(Date.now());
+  useEffect(()=>{setOptionsOpen(false);},[episode.episodeId]);
+  useEffect(()=>{if(sleepTimer?.kind!=="deadline")return;setNow(Date.now());const timer=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(timer);},[sleepTimer]);
+  const sleepLabel=sleepTimer?.kind==="episodeEnd"?"本集结束":sleepTimer?.kind==="deadline"?`${Math.max(0,Math.ceil((sleepTimer.deadlineAt-now)/60000))} 分钟`:"睡眠关闭";
+  const stateLabel=status==="loading"?"正在连接":status==="buffering"?"正在缓冲":status==="error"?"播放失败":isPlaying?"正在播放":"已暂停";
   return (
     <footer className="player podcast-player">
       <nav className="player-shortcuts" aria-label="播客快捷方式">
-        <button onClick={onOpenPodcasts} title="返回播客">
+        <button onClick={onOpenPodcasts} title="返回播客" aria-label="返回播客">
           <Podcast size={19} />
         </button>
+        {onPlaybackRate && onSleepTimer && <button className="podcast-bar-options-trigger" onClick={()=>setOptionsOpen(true)} aria-label={`播放选项，${playbackRate} 倍速，${sleepLabel}`} aria-haspopup="dialog" title={`倍速与睡眠 · ${sleepLabel}`}><span>{playbackRate}×</span>{sleepTimer&&<Clock size={12}/>}</button>}
+        {onOpenQueue&&<button onClick={onOpenQueue} aria-label={`打开待播，${queueCount} 集`} title={`待播 ${queueCount} 集`}><ListMusic size={18}/><small>{queueCount||""}</small></button>}
+        <span className="podcast-bar-status" role="status" title={stateLabel}>{status==="loading"||status==="buffering"||status==="error"?stateLabel:episode.localPath?"离线":""}</span>
       </nav>
 
       <div className="player-primary">
@@ -81,6 +96,7 @@ export function PodcastPlayerBar({
         </div>
         <VolumeControl volume={volume} onVolume={onVolume} />
       </div>
+      <Presence show={optionsOpen} exitDurationMs={MOTION_DURATIONS.micro}>{onPlaybackRate&&onSleepTimer?<PodcastTransportOptions rate={playbackRate} timer={sleepTimer} episodeId={episode.episodeId} onRate={onPlaybackRate} onTimer={onSleepTimer} onClose={()=>setOptionsOpen(false)}/>:<span style={{display:"none"}}/>}</Presence>
     </footer>
   );
 }

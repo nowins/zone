@@ -124,6 +124,7 @@ import {
 export type PodcastViewModel = ReturnType<typeof usePodcastViewModel>;
 
 export function usePodcastViewModel({
+  queueRequest = 0, onQueueRequestHandled,
   queue,
   autoQueueMode,
   activeEpisode,
@@ -156,6 +157,9 @@ export function usePodcastViewModel({
   onDownloadsDeleted,
 }: PodcastViewProps) {
   const restoredSession = useMemo(() => podcastSessionSnapshot, []);
+  const [queueFocusRequest,setQueueFocusRequest]=useState(0);
+  const queueHandledRef=useRef(0);
+  useEffect(()=>{if(queueRequest>queueHandledRef.current){queueHandledRef.current=queueRequest;changeRootScreen("playlist");setQueueFocusRequest(value=>value+1);onQueueRequestHandled?.(queueRequest);}},[queueRequest,onQueueRequestHandled]);
   const initialLibraryPreferences = useMemo(
     readPodcastLibraryPreferences,
     [],
@@ -2311,6 +2315,7 @@ export function usePodcastViewModel({
         : "音频节目";
 
   return {
+    queueFocusRequest,
     libraryRevision,
     screen,
     searchFocusRequest,

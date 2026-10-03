@@ -91,6 +91,8 @@ export default function App() {
     activeTrack: null,
   });
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+  const [podcastQueueRequest,setPodcastQueueRequest]=useState(0);
+  const podcastQueueRequestNonce=useRef(0);
   const [queue, setQueue] = useState<string[]>([]);
   const [playHistory, setPlayHistory] = useState<string[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -872,6 +874,9 @@ export default function App() {
   const playerBarElement = chromeVisible && podcastSessionHydrated ? (
     activePodcastEpisode ? (
       <PodcastPlayerBar
+        playbackRate={podcastPlaybackRate} sleepTimer={podcastSleepTimer} queueCount={podcastQueue.filter(item=>item.episode.id!==activePodcastEpisode.episodeId).length}
+        onPlaybackRate={setPodcastPlaybackRate} onSleepTimer={setPodcastSleepTimer}
+        onOpenQueue={()=>{setPodcastQueueRequest(++podcastQueueRequestNonce.current);navigatePage("podcasts");}}
         episode={activePodcastEpisode}
         isPlaying={isPlaying}
         progress={progress}
@@ -1151,6 +1156,7 @@ export default function App() {
         {page === "podcasts" && (
           <Suspense fallback={loadingPage}>
           <PodcastView
+            queueRequest={podcastQueueRequest} onQueueRequestHandled={nonce=>setPodcastQueueRequest(value=>value===nonce?0:value)}
             activeEpisode={activePodcastEpisode}
             activeEpisodeId={activePodcastEpisode?.episodeId ?? null}
             activeProgress={progress}

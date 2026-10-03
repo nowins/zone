@@ -61,6 +61,8 @@ export type PodcastDiscoveryTopic =
   | "english";
 
 export type PodcastViewProps = {
+  queueRequest?: number;
+  onQueueRequestHandled?: (nonce: number) => void;
   queue: PodcastQueueItem[];
   autoQueueMode: PodcastAutoQueueMode;
   activeEpisode: PodcastPlayback | null;
