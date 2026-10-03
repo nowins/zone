@@ -21,6 +21,7 @@ export type PodcastTransportBridge = {
   podcastPreferencesReady?: boolean;
   resolvePodcastIntro?: (position:number,duration:number,explicit:boolean)=>number;
   handlePodcastClock?: (position:number,duration:number)=>boolean;
+  expireSleepTimer?: () => boolean;
 
   setPodcastPlaybackStatus: (status: PodcastPlaybackStatus) => void;
   cancelPodcastSessionRestore: () => void;

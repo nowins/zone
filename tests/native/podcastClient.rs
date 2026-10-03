@@ -1,5 +1,5 @@
 use std::{fs::{self,OpenOptions},io::Write,path::PathBuf,sync::{Arc,Mutex},time::Duration};
-use tauri::Manager;
+use tauri::{Manager,Emitter};
 
 fn directory() -> PathBuf { PathBuf::from(std::env::var("ZONE_PODCAST_CLIENT_REPORT").expect("client report directory")) }
 
@@ -47,6 +47,12 @@ pub fn client_record(app: tauri::AppHandle,value: serde_json::Value) -> Result<(
   writeln!(OpenOptions::new().create(true).append(true).open(directory().join("events.jsonl")).map_err(|e|e.to_string())?,"{json}").map_err(|e|e.to_string())?;
   if value["kind"]=="result" {fs::write(directory().join("result.json"),json).map_err(|e|e.to_string())?;app.exit(if value["ok"]==true {0}else{1});}
   Ok(())
+}
+
+#[tauri::command]
+pub fn client_media(app:tauri::AppHandle,action:String,position_seconds:Option<f64>)->Result<(),String> {
+  if !matches!(action.as_str(),"pause"|"play"|"seek") {return Err("unsupported client media action".into());}
+  app.emit("system-media-command",serde_json::json!({"action":action,"positionSeconds":position_seconds})).map_err(|e|e.to_string())
 }
 
 #[tauri::command]

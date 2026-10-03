@@ -1,5 +1,6 @@
 import { cancelPodcastNetworkRequest, newPodcastNetworkRequestId, podcastProtocolRequestUrl } from "../utils/podcastNetwork.js";
 import { recordDiagnostic } from "../utils/diagnostics";
+import { usePodcastRecovery } from "./usePodcastRecovery";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { uniqueIds } from "../utils/music";
@@ -79,6 +80,7 @@ export type PlaybackSession = {
 export type PlaybackControlsHandle = {
   seek: (value: number) => void;
   togglePlay: () => void;
+  pausePlayback?: () => void;
   /** Arm autoplay before `activePodcastEpisode` changes to a new source. */
   armPodcastPlay: (options: {
     episodeId: string;
@@ -917,7 +919,8 @@ export function usePlaybackControls({
   }
 
   function seek(value: number) {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !Number.isFinite(value)) return;
+    value = Math.max(0, Number.isFinite(audioRef.current.duration) && audioRef.current.duration > 0 ? Math.min(audioRef.current.duration, value) : value);
     podcast.cancelPendingPodcastAutofill();
     const podcastEpisode = activePodcastEpisodeRef.current;
     if (!podcastEpisode && activeTrackId) {
@@ -1027,18 +1030,20 @@ export function usePlaybackControls({
       else musicPlaybackIntentRef.current = true;
       runPlayAttempt({ sourceKey, podcastEpisodeId, playAttempt });
     } else {
-      flushPodcastProgress();
-      if (activePodcastEpisodeRef.current) podcastPlaybackIntentRef.current = false;
-      else musicPlaybackIntentRef.current = false;
-      const musicSession = playbackSessionRef.current;
-      if (musicSession && !musicSession.finalized && musicSession.lastTickAt != null) {
-        musicSession.listenedMs += Math.max(0, Date.now() - musicSession.lastTickAt);
-        musicSession.lastTickAt = null;
-      }
-      beginPlayAttempt();
-      audio.pause();
-      setIsPlaying(false);
+      pausePlayback();
     }
+  }
+
+  function pausePlayback() {
+    podcast.cancelPendingPodcastAutofill();
+    void flushPodcastProgress();
+    podcastPlaybackIntentRef.current = false; musicPlaybackIntentRef.current = false;
+    const musicSession = playbackSessionRef.current;
+    if (musicSession && !musicSession.finalized && musicSession.lastTickAt != null) {
+      musicSession.listenedMs += Math.max(0, Date.now() - musicSession.lastTickAt); musicSession.lastTickAt = null;
+    }
+    beginPlayAttempt(); audioRef.current?.pause(); setIsPlaying(false);
+    if (activePodcastEpisodeRef.current) setPodcastPlaybackStatus("paused");
   }
 
   function retryPodcastPlayback() {
@@ -1057,16 +1062,28 @@ export function usePlaybackControls({
     pendingPodcastResumeRef.current = {
       episodeId: episode.episodeId,
       position: resumePosition,
+      explicit: true,
     };
     podcastPlaybackIntentRef.current = true;
     setPodcastPlaybackStatus("loading");
     audio.load();
+    audio.playbackRate = podcast.podcastPlaybackRate;
     runPlayAttempt({
       sourceKey,
       podcastEpisodeId: episode.episodeId,
       playAttempt,
     });
   }
+
+  usePodcastRecovery({ audioRef, episodeId: activePodcastEpisode?.episodeId ?? null,
+    remote: Boolean(activePodcastEpisode && !activePodcastEpisode.localPath),
+    hasIntent: () => podcastPlaybackIntentRef.current && podcast.podcastPreferencesReady !== false && podcastAudioEpisodeRef.current === activePodcastEpisodeRef.current?.episodeId,
+    generation: () => audioPlayAttemptRef.current,
+    expireSleep: () => podcast.expireSleepTimer?.() ?? false,
+    retry: retryPodcastPlayback,
+    resumeGraph: () => { void audioEngineRef.current?.resumeAudioGraph(); },
+    pauseForDevice: () => { pausePlayback(); showActionNotice("音频输出设备变化，已暂停，请确认后继续播放"); },
+  });
 
   function restartCurrentPlayback() {
     const audio = audioRef.current;
@@ -1167,6 +1184,7 @@ export function usePlaybackControls({
     handleAudioWaiting,
     handleAudioCanPlay,
     togglePlay,
+    pausePlayback,
     retryPodcastPlayback,
     armPodcastPlay,
     clearPlaybackIntent,

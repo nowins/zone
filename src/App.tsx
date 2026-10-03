@@ -260,6 +260,7 @@ export default function App() {
     handleAudioLoadStart,
     handleAudioWaiting,
     handleAudioCanPlay,
+    pausePlayback,
     togglePlay,
     retryPodcastPlayback,
     armPodcastPlay,
@@ -804,7 +805,7 @@ export default function App() {
   useAppHotkeys({
     onTogglePlay: togglePlay,
     onPrevious: () => {
-      if (activePodcastEpisode) seek(Math.max(0, progress - 15));
+      if (activePodcastEpisode) seek(Math.max(0, progress - podcast.podcastPreferences.backwardSeconds));
       else move(-1);
     },
     onNext: () => {
@@ -837,11 +838,11 @@ export default function App() {
       if (audioRef.current?.paused) togglePlay();
     },
     onPause: () => {
-      if (audioRef.current && !audioRef.current.paused) togglePlay();
+      pausePlayback();
     },
     onToggle: togglePlay,
     onPrevious: () => {
-      if (activePodcastEpisode) seek(Math.max(0, progress - 15));
+      if (activePodcastEpisode) seek(Math.max(0, progress - podcast.podcastPreferences.backwardSeconds));
       else move(-1);
     },
     onNext: () => {

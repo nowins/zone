@@ -101,6 +101,11 @@ async function run() {
       await click("编辑分组");await click("删除分组");await until(()=>!document.querySelector('input[aria-label="节目分组名称"]'),"group delete confirmation");
       (document.querySelector('[role=dialog] button[type=submit]') as HTMLButtonElement).click();await until(()=>!document.querySelector('[role=dialog]'),"group deleted");await until(()=>document.querySelectorAll('.podcast-library-show').length===1,"unfollow unaffected");
       checks.push("真实客户端节目分组创建、成员过滤、空组编辑、删除分组保护关注状态");
+      await invoke("client_media",{action:"play"});await until(()=>!audio.paused,"native media play event");
+      await delay(200);await invoke("client_media",{action:"seek",positionSeconds:25});await until(()=>audio.currentTime>=25&&audio.currentTime<30,"native media seek event");
+      await delay(200);await invoke("client_media",{action:"pause"});await until(()=>audio.paused,"native media pause event");
+      window.dispatchEvent(new Event("online"));window.dispatchEvent(new Event("focus"));await delay(800);assert(audio.paused,"focus or reconnect revived a system-paused episode");
+      checks.push("真实客户端原生媒体事件播放、定位、暂停，回到前台和网络恢复事件保持暂停意图（硬件按键仍需最终验证）");
     }
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

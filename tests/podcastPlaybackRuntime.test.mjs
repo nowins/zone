@@ -17,6 +17,22 @@ test("playing a named list uses the shared transport and a later pause prevents 
   } finally { await h.close(); }
 });
 
+test("a return from suspended scheduling expires sleep before reconnect can resume", async () => {
+  const h = await mountPodcastPlayback(async () => []);
+  try {
+    await step(() => h.api.playPodcastEpisode(podcastPlayback(podcastEpisode("sleeping"))));
+    h.audioRef.current.paused = false;
+    await step(() => h.api.setPodcastSleepTimer({ kind: "deadline", deadlineAt: Date.now() + 60000 }));
+    const original = Date.now;
+    try {
+      Date.now = () => original() + 120000;
+      await step(() => { assert.equal(h.api.transport.expireSleepTimer(), true); });
+      assert.equal(h.audioRef.current.paused, true); assert.equal(h.intent, false); assert.equal(h.api.podcastSleepTimer, null);
+      assert.equal(h.api.transport.expireSleepTimer(), false);
+    } finally { Date.now = original; }
+  } finally { await h.close(); }
+});
+
 test("a queue edit after list playback starts wins over its delayed activation result", async () => {
   const pending = deferred(); let queue = [];
   const h = await mountPodcastPlayback(async command => {

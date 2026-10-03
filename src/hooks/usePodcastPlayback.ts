@@ -97,6 +97,7 @@ export function usePodcastPlayback({
     useState<PodcastAutoQueueMode>(readPodcastAutoQueueMode);
   const podcastAutoQueueModeRef = useRef(podcastAutoQueueMode);
   const [podcastSleepTimer, setPodcastSleepTimer] = useState<PodcastSleepTimer>(null);
+  const sleepStateRef = useRef(podcastSleepTimer); sleepStateRef.current = podcastSleepTimer;
   const [podcastPlaybackStatus, setPodcastPlaybackStatus] = useState<PodcastPlaybackStatus>("idle");
   const [podcastSessionHydrated, setPodcastSessionHydrated] = useState(false);
   const [podcastActiveSessionReady, setPodcastActiveSessionReady] = useState(false);
@@ -325,13 +326,7 @@ export function usePodcastPlayback({
     const remaining = Math.max(0, podcastSleepTimer.deadlineAt - Date.now());
     podcastSleepTimerRef.current = window.setTimeout(() => {
       podcastSleepTimerRef.current = null;
-      cancelPendingPodcastAutofill();
-      flushPodcastProgress();
-      playbackControlsRef.current?.clearPlaybackIntent();
-      audioRef.current?.pause();
-      setPodcastSleepTimer(null);
-      setPodcastPlaybackStatus("paused");
-      showActionNotice("睡眠定时已暂停播放");
+      expireSleepTimer();
     }, remaining);
     return () => {
       if (podcastSleepTimerRef.current !== null) {
@@ -340,6 +335,18 @@ export function usePodcastPlayback({
       }
     };
   }, [activePodcastEpisode?.episodeId, podcastSleepTimer]);
+
+  function expireSleepTimer() {
+    const timer = sleepStateRef.current;
+    if (!activePodcastEpisodeRef.current || timer?.kind !== "deadline" || Date.now() < timer.deadlineAt) return false;
+    sleepStateRef.current = null;
+    cancelPendingPodcastAutofill();
+    void flushPodcastProgress();
+    playbackControlsRef.current?.clearPlaybackIntent();
+    audioRef.current?.pause();
+    setPodcastSleepTimer(null); setPodcastPlaybackStatus("paused");
+    showActionNotice("睡眠定时已暂停播放"); return true;
+  }
 
   function cancelPodcastSessionRestore() {
     if (podcastSessionHydratedRef.current) return;
@@ -1160,6 +1167,7 @@ export function usePodcastPlayback({
     cancelPendingQueueConsume,
     cancelPendingPodcastAutofill,
     handleEpisodeEnded,
+    expireSleepTimer,
     podcastPreferencesReady: !activePodcastEpisode || episodePreferences?.episodeId===activePodcastEpisode.episodeId,
     resolvePodcastIntro: (position,duration,explicit)=>{
       const preferences=episodePreferencesRef.current?.value ?? DEFAULT_PODCAST_PREFERENCES;

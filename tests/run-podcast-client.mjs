@@ -21,7 +21,7 @@ await fs.copyFile(path.join(root,'tests','native','podcastClient.rs'),path.join(
 const manifest=path.join(workspace,'Cargo.toml');await fs.writeFile(manifest,(await fs.readFile(manifest,'utf8')).replace('[dependencies]','[dependencies]\nwebview2-com = "0.38.2"'));
 const lib=path.join(workspace,'src','lib.rs');let source=await fs.readFile(lib,'utf8');
 source='#[path = "podcastClient.rs"] mod podcast_client;\n'+source;
-source=source.replace('.invoke_handler(tauri::generate_handler![','.invoke_handler(tauri::generate_handler![podcast_client::client_record,podcast_client::client_capture,podcast_client::client_window,');
+source=source.replace('.invoke_handler(tauri::generate_handler![','.invoke_handler(tauri::generate_handler![podcast_client::client_record,podcast_client::client_capture,podcast_client::client_window,podcast_client::client_media,');
 source=source.replace('app.manage(music_state);','app.manage(music_state);\n      podcast_client::initialize(app.handle()).map_err(std::io::Error::other)?;');
 source=source.replace('.on_page_load(move |webview, payload| {','.on_page_load(move |webview, payload| { if payload.event()==tauri::webview::PageLoadEvent::Finished && payload.url().scheme()!="about" { let _=webview.eval(include_str!("podcastClient.js")); }');
 await fs.writeFile(lib,source);

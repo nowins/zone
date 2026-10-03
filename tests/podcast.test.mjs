@@ -763,9 +763,10 @@ test("podcast playback handles speed, sleep, buffering, and errors on the shared
 
   includes(
     appSource,
-    /podcastSleepTimer\?\.kind\s*!==\s*"deadline"[\s\S]{0,420}setTimeout[\s\S]{0,260}flushPodcastProgress\(\)[\s\S]{0,120}pause\(\)/,
-    "a deadline sleep timer must preserve progress before pausing",
+    /podcastSleepTimer\?\.kind\s*!==\s*"deadline"[\s\S]{0,420}setTimeout[\s\S]{0,260}expireSleepTimer\(\)/,
+    "a deadline callback must invoke the same expiry guard used after suspension",
   );
+  includes(appSource, /function expireSleepTimer\(\)[\s\S]{0,500}flushPodcastProgress\(\)[\s\S]{0,140}pause\(\)/, "sleep expiry must preserve progress before pausing");
   includes(podcastNowPlayingSource, /SLEEP_MINUTES\s*=\s*\[15,\s*30,\s*45,\s*60\]/, "sleep choices are incomplete");
   includes(podcastNowPlayingSource, /kind:\s*"episodeEnd"/, "sleep-at-end is missing");
 

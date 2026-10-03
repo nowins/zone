@@ -5,6 +5,7 @@ import { mountPodcastHook, runtime, podcastEpisode, podcastPlayback, step } from
 test("late media pause, waiting and canplay events retain a failed podcast until explicit retry", async () => {
   const statuses = [];
   const audio = { currentTime: 0, duration: 1000, paused: true, error: null,
+    addEventListener() {}, removeEventListener() {},
     pause() { this.paused = true; }, removeAttribute() {}, load() { this.error = null; this.playbackRate=1; },
     play() { this.paused = false; return Promise.resolve(); } };
   const noop = () => {};
@@ -32,6 +33,8 @@ test("late media pause, waiting and canplay events retain a failed podcast until
     await step(() => harness.api.retryPodcastPlayback());
     assert.equal(audio.error, null);
     assert.equal(statuses.at(-1), "playing");
+    await step(() => harness.api.pausePlayback());
+    assert.equal(audio.paused, true);
     await step(()=>harness.api.armPodcastPlay({episodeId:"b",positionSeconds:2}));
     const pending={...props,podcast:{...props.podcast,activePodcastEpisode:podcastPlayback(podcastEpisode("b")),podcastPreferencesReady:false}};
     await harness.render(pending);
