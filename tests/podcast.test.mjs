@@ -164,9 +164,11 @@ test("podcasts open on content, keep search secondary, and separate play from do
   );
   includes(
     discoverSurface,
-    /title="热门节目"[\s\S]{0,220}<DiscoveryShelf[\s\S]{0,180}shows=\{discoveryShows\}/,
-    "discovery must own the complete regional catalog",
+    /title="热门节目"[\s\S]{0,1400}<DiscoveryShelf[\s\S]{0,180}shows=\{visibleDiscoveryShows\}/,
+    "discovery must own the filtered regional catalog",
   );
+  includes(discoverSurface, /visibleDiscoveryShows = useMemo\(\(\) => discoveryShows\.filter\(/,
+    "discovery filters must derive from the complete catalog without slicing the default shelf");
   includes(
     podcastViewSource,
     /useEffect\(\(\)\s*=>\s*\{\s*if\s*\(screen\s*!==\s*"discover"\s*\|\|\s*discoveryState\s*!==\s*"idle"\)\s*return;\s*void loadDiscovery\(\);/,

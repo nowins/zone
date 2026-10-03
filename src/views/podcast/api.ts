@@ -104,6 +104,24 @@ export function listPodcastEpisodes(feedId: string, offset = 0, limit = 100) {
   return invoke<PodcastEpisode[]>("podcast_list_episodes", { feedId, offset, limit });
 }
 
+export type EpisodeSearchPage = { episodes: PodcastEpisode[]; total: number; hasMore: boolean };
+export const searchLocalEpisodes = (options: { feedId?: string; query: string; filter: string; sort: string; offset: number; limit: number }) =>
+  invoke<EpisodeSearchPage>("podcast_search_episodes", options);
+
+export async function searchCatalogPodcasts(query: string): Promise<PodcastSearchResult[]> {
+  const feeds = await listPodcastFeeds().catch(() => []);
+  const cached = await loadPodcastDiscoveryCache().catch(() => null);
+  const catalog = cached ?? await browsePodcastDiscovery().catch(() => null);
+  const terms = query.toLocaleLowerCase().trim().split(/\s+/);
+  const candidates: PodcastSearchResult[] = [...feeds.map(feed => ({ ...feed, author: feed.author ?? "", genres: [] })), ...(catalog?.shows ?? [])];
+  const seen = new Set<string>();
+  return candidates.filter(show => {
+    const matches = terms.every(term => `${show.title} ${show.author ?? ""} ${show.genres.join(" ")}`.toLocaleLowerCase().includes(term));
+    if (!matches || seen.has(show.feedUrl)) return false;
+    seen.add(show.feedUrl); return true;
+  }).map(show => ({ ...show, author: show.author ?? "" }));
+}
+
 export function refreshPodcastFeeds(options: {
   force?: boolean;
   feedId?: string;

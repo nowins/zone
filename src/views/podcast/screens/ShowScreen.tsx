@@ -6,6 +6,7 @@ import { RefreshCw } from "lucide-react";
 import { plainText } from "../format";
 import { MetroLoader } from "../../../components/MetroLoader";
 import { EpisodeRow } from "../components/EpisodeRows";
+import { EpisodeBrowser } from "../components/EpisodeBrowser";
 import {
   PodcastArtwork,
   PodcastEmpty,
@@ -55,8 +56,8 @@ export function ShowScreen({ vm }: { vm: PodcastViewModel }) {
               <section className="podcast-show-episodes">
                 <div className="podcast-section-title">
                   <h2>单集</h2>
-                  <span>已加载 {displayedEpisodes.length} 集</span>
                 </div>
+                <EpisodeBrowser key={selectedFeed.id} vm={vm} feedId={selectedFeed.id}>
                 {episodeState === "loading" && episodes.length === 0 ? (
                   <PodcastLoading label="正在读取单集" />
                 ) : displayedEpisodes.length > 0 ? (
@@ -79,6 +80,7 @@ export function ShowScreen({ vm }: { vm: PodcastViewModel }) {
                 {hasMoreEpisodes && episodeState === "ready" && (
                   <Button variant="ghost" busy={loadingEpisodePage} onClick={() => void loadMoreEpisodes()}>加载更多单集</Button>
                 )}
+                </EpisodeBrowser>
               </section>
             </main>
   );

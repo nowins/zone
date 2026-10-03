@@ -1418,9 +1418,17 @@ export function usePodcastViewModel({
         setSearchState("ready");
         setNotice("网络暂时不可用，已保留上次搜索结果");
       } else {
-        setSearchResults([]);
-        setSearchState("error");
-        setError(errorMessage(reason, "搜索节目失败"));
+        const fallback = await podcastApi.searchCatalogPodcasts(cleanQuery).catch(() => []);
+        if (appleSearchRequestRef.current !== requestId) return;
+        if (fallback.length) {
+          setSearchResults(fallback);
+          setSearchState("ready");
+          setNotice("Apple 搜索暂时不可用，显示本地节目及榜单内匹配结果");
+        } else {
+          setSearchResults([]);
+          setSearchState("error");
+          setError(errorMessage(reason, "搜索节目失败，本地单集仍可查询"));
+        }
       }
     }
   }
@@ -2301,6 +2309,7 @@ export function usePodcastViewModel({
         : "音频节目";
 
   return {
+    libraryRevision,
     screen,
     searchFocusRequest,
     returnScreen,

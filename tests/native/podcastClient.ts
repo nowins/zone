@@ -30,7 +30,14 @@ async function run() {
     checks.push("完整 App 中打开下载设置、保存原生 SQLite、1180×760 与 920×620、对话框焦点隔离");
     const open=document.querySelector<HTMLButtonElement>(".podcast-library-show-open");
     if(open){open.click();await click("节目设置");await until(()=>Boolean(document.querySelector(".podcast-settings-fields select")),"feed settings");await capture("03-feed-settings");
-      window.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}));await until(()=>!document.querySelector("[role=dialog]"),"escape closes settings");checks.push("节目设置入口与 Escape 关闭");}
+      (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector("[role=dialog]"),"escape closes settings");checks.push("节目设置入口与 Escape 关闭且保留节目页");
+      await until(()=>Boolean(document.querySelector(".podcast-search-page-status")),"native episode count");
+      const search=document.querySelector<HTMLInputElement>(".podcast-episode-filters input[type=search]")!;
+      const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!;
+      setter.call(search,"不存在的单集 987");search.dispatchEvent(new Event("input",{bubbles:true}));await until(()=>Boolean(document.body.textContent?.includes("没有匹配的本地单集")),"empty local search");
+      setter.call(search,"");search.dispatchEvent(new Event("input",{bubbles:true}));await until(()=>Boolean(document.querySelector(".podcast-search-page-status")),"reset local search");
+      const order=document.querySelector<HTMLSelectElement>('select[aria-label="单集排序"]')!;order.value="oldest";order.dispatchEvent(new Event("change",{bubbles:true}));await delay(450);
+      await capture("04-show-search-920");checks.push("原生资料库查询、节目内搜索空状态、清空查询与最早排序");}
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}
 }

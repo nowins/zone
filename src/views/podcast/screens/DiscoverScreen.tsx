@@ -9,6 +9,7 @@ import {
   PODCAST_DISCOVERY_TOPICS,
 } from "../constants";
 import { DiscoveryShelf, ShowCard } from "../components/ShowCards";
+import { EpisodeBrowser } from "../components/EpisodeBrowser";
 import {
   PodcastEmpty,
   PodcastLoading,
@@ -58,6 +59,10 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
   const [searchFocused, setSearchFocused] = useState(false);
   const [historyDismissed, setHistoryDismissed] = useState(false);
   const [historyHighlight, setHistoryHighlight] = useState(-1);
+  const [genre, setGenre] = useState("");
+  const [unfollowedOnly, setUnfollowedOnly] = useState(false);
+  const genres = useMemo(() => Array.from(new Set(discoveryShows.flatMap(show => show.genres))).sort(), [discoveryShows]);
+  const visibleDiscoveryShows = useMemo(() => discoveryShows.filter(show => (!genre || show.genres.includes(genre)) && (!unfollowedOnly || !feeds.some(feed => feed.feedUrl === show.feedUrl))), [discoveryShows, genre, unfollowedOnly, feeds]);
   const suggestedHistory = useMemo(
     () => filterPodcastSearchHistory(searchHistory, query),
     [query, searchHistory],
@@ -285,6 +290,8 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
       </div>
 
       {searchState !== "idle" ? (
+        <>
+        <EpisodeBrowser vm={vm} requestedQuery={searchHighlightQuery} />
         <PodcastSection
           title={searchState === "loading" ? "正在搜索" : searchHeading}
           count={searchResults.length}
@@ -336,11 +343,16 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
             <PodcastEmpty label="没有找到相关节目" />
           )}
         </PodcastSection>
+        </>
       ) : (
-        <PodcastSection title="热门节目" count={discoveryShows.length}>
+        <PodcastSection title="热门节目" count={visibleDiscoveryShows.length}>
+          <div className="podcast-episode-filters">
+            <select aria-label="发现节目分类" value={genre} onChange={event=>setGenre(event.target.value)}><option value="">全部分类</option>{genres.map(value=><option key={value} value={value}>{value}</option>)}</select>
+            <label><input type="checkbox" checked={unfollowedOnly} onChange={event=>setUnfollowedOnly(event.target.checked)}/>仅看未关注</label>
+          </div>
           <DiscoveryShelf
             state={discoveryState}
-            shows={discoveryShows}
+            shows={visibleDiscoveryShows}
             sourceLabel={discoverySourceLabel}
             refreshing={discoveryRefreshing}
             feeds={feeds}
