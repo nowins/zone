@@ -78,6 +78,9 @@ export function usePodcastPlayback({
   const podcastActiveSessionMountedRef = useRef(false);
   const podcastSleepTimerRef = useRef<number | null>(null);
   const [activePodcastEpisode, setActivePodcastEpisode] = useState<PodcastPlayback | null>(null);
+  const [queueUndo, setQueueUndo]=useState<{ids:string[];expected:string[];active:string|null;expires:number}|null>(null);
+  const queueUndoRef=useRef(queueUndo);queueUndoRef.current=queueUndo;
+  useEffect(()=>{if(!queueUndo)return;const timer=window.setTimeout(()=>setQueueUndo(null),Math.max(0,queueUndo.expires-Date.now()));return()=>window.clearTimeout(timer);},[queueUndo]);
   const [podcastQueue, setPodcastQueue] = useState<PodcastQueueItem[]>([]);
   const [podcastLibraryRevision, setPodcastLibraryRevision] = useState(0);
   const [podcastEpisodeRequest, setPodcastEpisodeRequest] = useState<{
@@ -444,6 +447,7 @@ export function usePodcastPlayback({
   }
 
   function beginPodcastQueueMutation(items: PodcastQueueItem[]) {
+    setQueueUndo(null);queueUndoRef.current=null;
     const revision = podcastQueueRevisionRef.current + 1;
     podcastQueueRevisionRef.current = revision;
     applyPodcastQueue(items);
@@ -570,7 +574,19 @@ export function usePodcastPlayback({
     });
   }
 
+  function rememberQueueRemoval(snapshot:PodcastQueueItem[], expected:PodcastQueueItem[], revision:number, active:string|null) {
+    if (revision!==podcastQueueRevisionRef.current || active!==(activePodcastEpisodeRef.current?.episodeId ?? null)) return;
+    const ids=snapshot.map(item=>item.episode.id).filter(id=>id!==active);
+    if(ids.length<=expected.length)return;
+    setQueueUndo({ids,expected:expected.map(item=>item.episode.id),active,expires:Date.now()+30000});
+  }
+  function undoPodcastQueueRemoval() {
+    const undo=queueUndoRef.current;if(!undo || Date.now()>undo.expires)return Promise.resolve();
+    const revision=beginPodcastQueueMutation(podcastQueueRef.current);
+    return serializePodcastQueueMutation(async()=>{try{const items=await invoke<PodcastQueueItem[]>("podcast_queue_restore",{episodeIds:undo.ids,expectedIds:undo.expected,expectedActive:undo.active});applyPodcastQueueResult(items,revision);showActionNotice("已撤销待播移除");}catch{await reloadPodcastQueue(revision);showActionNotice("待播或当前单集已变化，无法撤销");}});
+  }
   function removePodcastQueueEpisode(episodeId: string) {
+    const snapshot=podcastQueueRef.current;const active=activePodcastEpisodeRef.current?.episodeId ?? null;
     const optimistic = podcastQueueRef.current
       .filter((item) => item.episode.id !== episodeId)
       .map((item, position) => ({ ...item, position }));
@@ -579,6 +595,7 @@ export function usePodcastPlayback({
       try {
         const items = await invoke<PodcastQueueItem[]>("podcast_queue_remove", { episodeId });
         applyPodcastQueueResult(items, revision);
+        rememberQueueRemoval(snapshot,items,revision,active);
       } catch (reason) {
         await reloadPodcastQueue(revision);
         showActionNotice("无法移除待播单集");
@@ -588,6 +605,7 @@ export function usePodcastPlayback({
   }
 
   function removePodcastQueueEpisodes(episodeIds: string[]) {
+    const snapshot=podcastQueueRef.current;const active=activePodcastEpisodeRef.current?.episodeId ?? null;
     const selected = new Set(episodeIds);
     if (selected.size === 0) return Promise.resolve();
     const optimistic = podcastQueueRef.current
@@ -601,6 +619,7 @@ export function usePodcastPlayback({
           { episodeIds: [...selected] },
         );
         applyPodcastQueueResult(items, revision);
+        rememberQueueRemoval(snapshot,items,revision,active);
       } catch (reason) {
         await reloadPodcastQueue(revision);
         if (import.meta.env.DEV) {
@@ -612,11 +631,13 @@ export function usePodcastPlayback({
   }
 
   function clearPodcastQueue() {
+    const snapshot=podcastQueueRef.current;const active=activePodcastEpisodeRef.current?.episodeId ?? null;
     const revision = beginPodcastQueueMutation([]);
     return serializePodcastQueueMutation(async () => {
       try {
         await invoke("podcast_queue_clear");
         applyPodcastQueueResult([], revision);
+        rememberQueueRemoval(snapshot,[],revision,active);
         showActionNotice("已清空待播队列");
       } catch (reason) {
         await reloadPodcastQueue(revision);
@@ -1200,6 +1221,8 @@ export function usePodcastPlayback({
     removePodcastQueueEpisode,
     removePodcastQueueEpisodes,
     clearPodcastQueue,
+    queueUndoAvailable: Boolean(queueUndo && queueUndo.active===(activePodcastEpisode?.episodeId ?? null) && queueUndo.expected.join("|")===podcastQueue.map(item=>item.episode.id).join("|")),
+    undoPodcastQueueRemoval,
     movePodcastQueueEpisode,
     reorderPodcastQueueEpisode,
     updatePodcastEpisode,

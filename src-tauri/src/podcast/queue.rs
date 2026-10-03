@@ -211,6 +211,16 @@ pub(crate) fn queue_reorder(db_path: &Path, episode_ids: &[String]) -> Result<()
     .map_err(|error| format!("无法提交播客待播列表：{error}"))
 }
 
+pub(crate) fn queue_restore(db_path:&Path, episode_ids:&[String], expected_ids:&[String], expected_active:Option<&str>)->Result<(),String> {
+  validate_queue_identifiers(episode_ids)?;validate_queue_identifiers(expected_ids)?;
+  if let Some(id)=expected_active{validate_identifier(id)?;}
+  let mut db=open_database(db_path)?;let tx=db.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|e|e.to_string())?;
+  let current=read_queue_records(&tx)?;let active=load_active_episode_session_in(&tx)?.and_then(|session|session.active_episode_id);
+  if current.iter().map(|r|r.episode_id.as_str()).collect::<Vec<_>>() != expected_ids.iter().map(String::as_str).collect::<Vec<_>>() || active.as_deref()!=expected_active {return Err("待播或当前单集已变化，无法撤销".into());}
+  let mut records=Vec::new();for id in episode_ids {ensure_episode_exists(&tx,id)?;if active.as_deref()==Some(id.as_str()){return Err("当前单集不能恢复到待播".into());}records.push(QueueRecord{episode_id:id.clone(),added_at:current.iter().find(|r|r.episode_id==*id).map(|r|r.added_at).unwrap_or_else(unix_time_millis)});}
+  rewrite_queue(&tx,&records)?;tx.commit().map_err(|e|e.to_string())
+}
+
 pub(crate) fn queue_clear(db_path: &Path) -> Result<(), String> {
   let connection = open_database(db_path)?;
   connection
@@ -659,6 +669,12 @@ mod tests {
     assert!(queue_remove_many(&state.db_path, &[]).is_err());
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+  #[test]
+  fn queue_undo_restores_order_and_rejects_changed_queue_or_active_session() {
+    let dir=test_directory("queue-undo");let state=PodcastState::initialize_at(&dir).unwrap();let parsed=parsed_fixture_with_episode_count(3);let ids=parsed.episodes.iter().map(|e|e.id.clone()).collect::<Vec<_>>();store_subscription(&state.db_path,parsed).unwrap();for id in &ids{queue_add(&state.db_path,id,false).unwrap();}
+    queue_remove(&state.db_path,&ids[1]).unwrap();let remaining=vec![ids[0].clone(),ids[2].clone()];queue_restore(&state.db_path,&ids,&remaining,None).unwrap();assert_eq!(list_queue(&state.db_path,&state.downloads_dir).unwrap().iter().map(|q|q.episode.id.clone()).collect::<Vec<_>>(),ids);
+    assert!(queue_restore(&state.db_path,&ids,&remaining,None).is_err());queue_clear(&state.db_path).unwrap();save_active_episode_session(&state.db_path,Some(ids[0].clone())).unwrap();assert!(queue_restore(&state.db_path,&ids,&[],None).is_err());assert!(queue_restore(&state.db_path,&ids,&[],Some(&ids[0])).is_err());assert!(list_queue(&state.db_path,&state.downloads_dir).unwrap().is_empty());
   }
   #[test]
   fn queue_total_bytes_falls_back_to_episode_expected_bytes_without_shifting_rows() {

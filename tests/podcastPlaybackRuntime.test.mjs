@@ -310,3 +310,9 @@ test("explicit transport cancellation and music takeover invalidate pending cont
     } finally { await harness.close(); }
   }
 });
+
+test("queue removal undo is serialized and new queue actions invalidate the previous snapshot",async()=>{
+ const original=[{episode:podcastEpisode("first"),position:0,addedAt:1},{episode:podcastEpisode("second"),position:1,addedAt:2}];let queue=[...original];const restores=[];
+ const h=await mountPodcastPlayback(async(command,args)=>{if(command==="podcast_list_queue")return queue;if(command==="podcast_queue_remove"){queue=queue.filter(item=>item.episode.id!==args.episodeId);return queue;}if(command==="podcast_queue_restore"){restores.push(args);queue=[...original];return queue;}if(command==="podcast_queue_clear"){queue=[];return;}if(command==="podcast_queue_add"){queue=[...original];return queue;}});
+ try{await step(()=>h.api.removePodcastQueueEpisode("first"));assert.equal(h.api.queueUndoAvailable,true);await step(()=>h.api.undoPodcastQueueRemoval());assert.deepEqual(restores[0].expectedIds,["second"]);assert.deepEqual(h.api.podcastQueue.map(item=>item.episode.id),["first","second"]);await step(()=>h.api.clearPodcastQueue());assert.equal(h.api.queueUndoAvailable,true);await step(()=>h.api.queuePodcastEpisode(podcastEpisode("first"),false));assert.equal(h.api.queueUndoAvailable,false);await step(()=>h.api.undoPodcastQueueRemoval());assert.equal(restores.length,1);}finally{await h.close();}
+});

@@ -1,3 +1,4 @@
+import { formatTime } from "../../../utils/music";
 import { usePodcastBrowsePosition } from "../components/BrowsePosition";
 import { PODCAST_AUTO_QUEUE_MODES } from "../constants";
 import { useEffect, useState } from "react";
@@ -156,6 +157,8 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
     episodes,
   } = vm;
 
+  const remaining=upNextQueue.reduce((sum,item)=>sum+(item.episode.durationSeconds?Math.max(0,item.episode.durationSeconds-item.episode.progressSeconds):0),0);
+  const unknown=upNextQueue.filter(item=>!item.episode.durationSeconds).length;
   return (
     <main ref={pageRef} className="podcast-screen podcast-playlist-screen">
       <div className="podcast-list-pivots" role="group" aria-label="播放列表分类">
@@ -164,7 +167,7 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
       </div>
       {tab === "lists" ? <NamedLists vm={vm} /> :
       <div className="podcast-playlist-content">
-              <PodcastSection title="正在播放" className="podcast-playlist-current">
+              {knownActiveEpisode ? <details className="podcast-playlist-current"><summary>当前单集 · {knownActiveEpisode.title} · {isPlaying?"播放中":"已暂停"}</summary>
                 {knownActiveEpisode ? (
                   <CurrentEpisodeRow
                     episode={knownActiveEpisode}
@@ -174,14 +177,10 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
                     onContextMenu={(event) =>
                       showEpisodeMenu(event, knownActiveEpisode)}
                   />
-                ) : currentEpisodeId ? (
-                  <div className="podcast-inline-state">
-                    <span>当前单集正在播放</span>
-                  </div>
-                ) : (
-                  <PodcastEmpty label="还没有正在播放的单集" />
-                )}
-              </PodcastSection>
+                ) : null}
+              </details> : null}
+              <p className="podcast-queue-total" role="status">{upNextQueue.length} 集待播 · 剩余音频 {formatTime(remaining)}{vm.playbackRate!==1?` · 按 ${vm.playbackRate}× 约 ${formatTime(remaining/(vm.playbackRate??1))}`:""}{unknown?` · ${unknown} 集时长未知`:""}</p>
+              {vm.queueUndoAvailable ? <div className="podcast-queue-undo" role="status">已移除待播内容 <Button variant="ghost" onClick={()=>void vm.onUndoQueueRemoval?.()}>撤销移除</Button></div> : null}
 
               <div className="podcast-auto-queue">
                 <span id="podcast-auto-queue-label">播完后</span>
@@ -359,7 +358,7 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
                     </div>
                   </>
                 ) : (
-                  <PodcastEmpty label="待播队列为空，可从单集详情加入" />
+                  <><PodcastEmpty label="待播队列为空，可从单集详情加入" /><Button variant="ghost" onClick={()=>changeRootScreen("discover")}>去发现节目</Button></>
                 )}
               </PodcastSection>
       </div>}

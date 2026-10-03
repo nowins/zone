@@ -1187,6 +1187,9 @@ export default function App() {
             onMoveQueueEpisode={movePodcastQueueEpisode}
             onReorderQueueEpisode={reorderPodcastQueueEpisode}
             onClearQueue={clearPodcastQueue}
+            queueUndoAvailable={podcast.queueUndoAvailable}
+            onUndoQueueRemoval={podcast.undoPodcastQueueRemoval}
+            playbackRate={podcastPlaybackRate}
             onEpisodeUpdated={updatePodcastEpisode}
             onSetEpisodePlayed={setPodcastEpisodePlayed}
             onSetQueueEpisodesPlayed={setPodcastQueueEpisodesPlayed}

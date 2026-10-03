@@ -395,6 +395,11 @@ pub async fn podcast_queue_reorder(
 }
 
 #[tauri::command]
+pub async fn podcast_queue_restore(state:State<'_,PodcastState>,episode_ids:Vec<String>,expected_ids:Vec<String>,expected_active:Option<String>)->Result<Vec<PodcastQueueItem>,String>{
+  state.ensure_ready()?;let path=state.db_path.clone();let downloads=state.downloads_dir.clone();tauri::async_runtime::spawn_blocking(move||{queue_restore(&path,&episode_ids,&expected_ids,expected_active.as_deref())?;list_queue(&path,&downloads)}).await.map_err(|e|e.to_string())?
+}
+
+#[tauri::command]
 pub async fn podcast_queue_clear(state: State<'_, PodcastState>) -> Result<(), String> {
   state.ensure_ready()?;
   let db_path = state.db_path.clone();

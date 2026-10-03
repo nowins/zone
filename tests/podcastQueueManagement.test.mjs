@@ -85,7 +85,7 @@ test("playlist queue exposes drag ordering and useful episode metadata", () => {
 test("podcast playlist keeps its controls and queue on one responsive content track", () => {
   assert.match(
     viewSource,
-    /className="podcast-playlist-content"[\s\S]*?<PodcastSection title="正在播放" className="podcast-playlist-current">[\s\S]*?className="podcast-auto-queue"[\s\S]*?title="待播队列"[\s\S]*?className="podcast-playlist-queue"/,
+    /className="podcast-playlist-content"[\s\S]*?<details className="podcast-playlist-current">[\s\S]*?className="podcast-auto-queue"[\s\S]*?title="待播队列"[\s\S]*?className="podcast-playlist-queue"/,
   );
   assert.match(
     cssSource,
