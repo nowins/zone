@@ -461,10 +461,6 @@ pub(crate) async fn run_download_episode(
   }
 
   begin_download_job(&state.db_path, &episode_id, request_id.as_deref())?;
-  if let Err(error) = check_download_capacity(state, &episode_id) {
-    finish_download_job(&state.db_path, &episode_id, Some(&error))?;
-    return Err(error);
-  }
   let result = run_network_task(request_id.as_deref(), download_episode(
     &state.db_path,
     &downloads_dir,

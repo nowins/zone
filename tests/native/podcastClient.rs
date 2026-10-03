@@ -21,6 +21,10 @@ pub fn initialize(app: &tauri::AppHandle) -> Result<(),String> {
       rusqlite::params![offline,path.to_string_lossy(),(length+44) as i64]).map_err(|e|e.to_string())?;
   }
   let connection=crate::podcast::open_database(&db)?;
+  let pending:String=connection.query_row("SELECT id FROM podcast_episodes WHERE title LIKE '在线单集%' LIMIT 1",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+  fs::write(data.join("podcast-downloads").join(format!("{pending}.part")),vec![0;8192]).map_err(|e|e.to_string())?;
+  connection.execute("INSERT INTO podcast_downloads(episode_id,state,downloaded_bytes,updated_at) VALUES(?1,'failed',8192,1) ON CONFLICT(episode_id) DO UPDATE SET state='failed',downloaded_bytes=8192,local_path=NULL",[&pending]).map_err(|e|e.to_string())?;
+  connection.execute("INSERT INTO podcast_download_jobs(episode_id,state,updated_at) VALUES(?1,'paused',1) ON CONFLICT(episode_id) DO UPDATE SET state='paused',request_id=NULL",[&pending]).map_err(|e|e.to_string())?;
   let offline:String=connection.query_row("SELECT id FROM podcast_episodes WHERE title LIKE '离线单集%' LIMIT 1",[],|r|r.get(0)).map_err(|e|e.to_string())?;
   let resource="1111111111111111111111111111111111111111111111111111111111111111";
   connection.execute("INSERT OR IGNORE INTO podcast_episode_resources(id,episode_id,kind,source_kind,url,mime_type,language,ordinal,fetched_at) VALUES(?1,?2,'transcript','podcast-transcript','https://example.com/client.vtt','text/vtt','zh-CN',0,?3)",rusqlite::params![resource,offline,crate::podcast::unix_time_millis()]).map_err(|e|e.to_string())?;

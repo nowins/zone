@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/Button";
-import { listDownloadJobs, enqueueDownload, pauseDownloadJob, type PodcastDownloadJob } from "../api";
+import { listDownloadJobs, enqueueDownload, pauseDownloadJob, clearDownloadPartial, type PodcastDownloadJob } from "../api";
 import { formatFileSize } from "../format";
 
 const labels = { queued: "等待下载", running: "正在下载", paused: "已暂停", failed: "下载失败" };
@@ -18,9 +18,9 @@ export function DownloadJobs() {
     void read(); const timer=window.setInterval(()=>void read(),2000);
     return()=>{disposed=true;window.clearInterval(timer);};
   },[]);
-  async function act(job:PodcastDownloadJob) {
+  async function act(job:PodcastDownloadJob,clear=false) {
     setBusy(job.episodeId);
-    try { if(job.state==="running"||job.state==="queued") await pauseDownloadJob(job.episodeId); else await enqueueDownload(job.episodeId);
+    try { if(clear) await clearDownloadPartial(job.episodeId); else if(job.state==="running"||job.state==="queued") await pauseDownloadJob(job.episodeId); else await enqueueDownload(job.episodeId);
       setJobs(await listDownloadJobs()); setError(null);
     } catch(reason) {setError(String(reason));} finally {setBusy(null);}
   }
@@ -31,7 +31,8 @@ export function DownloadJobs() {
     {jobs.map(job=><div className="podcast-download-job" key={job.episodeId}>
       <div><strong>{job.title}</strong><span>{labels[job.state]} · {formatFileSize(job.downloadedBytes)}{job.totalBytes?` / ${formatFileSize(job.totalBytes)}`:""}</span>
         {job.error&&<small>{job.error}</small>}</div>
-      <Button variant="ghost" busy={busy===job.episodeId} disabled={busy!==null} onClick={()=>void act(job)}>{job.state==="running"||job.state==="queued"?"暂停":"继续下载"}</Button>
+      <div className="podcast-download-job-actions"><Button variant="ghost" busy={busy===job.episodeId} disabled={busy!==null} onClick={()=>void act(job)}>{job.state==="running"||job.state==="queued"?"暂停":"继续下载"}</Button>
+      {job.state==="paused"||job.state==="failed"?<Button variant="ghost" disabled={busy!==null||job.downloadedBytes===0} onClick={()=>void act(job,true)}>清理断点</Button>:null}</div>
     </div>)}
   </section>;
 }

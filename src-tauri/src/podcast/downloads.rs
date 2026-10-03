@@ -27,6 +27,47 @@ pub(crate) fn episode_file_operations(db_path: &Path) -> Result<Arc<EpisodeFileO
   Ok(operations)
 }
 
+type StorageLock = tokio::sync::RwLock<()>;
+enum DownloadStoragePolicy {
+  Unlimited { _guard: tokio::sync::OwnedRwLockReadGuard<()> },
+  Capped { _guard: tokio::sync::OwnedRwLockWriteGuard<()>, budget: u64 },
+}
+fn storage_lock(path:&Path)->Result<Arc<StorageLock>,String> {
+  static LOCKS:OnceLock<Mutex<HashMap<PathBuf,Weak<StorageLock>>>>=OnceLock::new();
+  let key=fs::canonicalize(path).map_err(|e|e.to_string())?;
+  let mut locks=LOCKS.get_or_init(||Mutex::new(HashMap::new())).lock().map_err(|_|"下载空间锁不可用")?;
+  locks.retain(|_,lock|lock.strong_count()>0);
+  if let Some(lock)=locks.get(&key).and_then(Weak::upgrade){return Ok(lock);}
+  let lock=Arc::new(StorageLock::new(()));locks.insert(key,Arc::downgrade(&lock));Ok(lock)
+}
+fn remaining_download_budget(db_path:&Path,downloads_dir:&Path,id:&str,limit:u64)->Result<u64,String> {
+  let db=open_database(db_path)?;let mut statement=db.prepare("SELECT episode_id,local_path FROM podcast_downloads").map_err(|e|e.to_string())?;
+  let rows=statement.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?))).map_err(|e|e.to_string())?;
+  let mut used=0u64;
+  for row in rows {
+    let (episode,path)=row.map_err(|e|e.to_string())?;validate_identifier(&episode)?;
+    if let Some(path)=path {let path=PathBuf::from(path);if is_managed_download_path(downloads_dir,&episode,&path){if let Ok(meta)=fs::symlink_metadata(path){if meta.is_file()&&!meta.file_type().is_symlink(){used=used.saturating_add(meta.len());}}}}
+    if episode!=id {if let Ok(meta)=fs::symlink_metadata(downloads_dir.join(format!("{episode}.part"))){if meta.is_file()&&!meta.file_type().is_symlink(){used=used.saturating_add(meta.len());}}}
+  }
+  if used>=limit{return Err("下载空间已达上限，请清理下载或调整设置".into());}Ok(limit-used)
+}
+async fn download_storage_policy(db_path:&Path,downloads_dir:&Path,id:&str)->Result<DownloadStoragePolicy,String> {
+  let lock=storage_lock(db_path)?;
+  loop {
+    let limit=u64::from(read_preferences(db_path,None)?.storage_limit_mb)*1024*1024;
+    if limit==0 {
+      let guard=lock.clone().read_owned().await;
+      if read_preferences(db_path,None)?.storage_limit_mb==0 {return Ok(DownloadStoragePolicy::Unlimited{_guard:guard});}
+      drop(guard);
+    }else{
+      let guard=lock.clone().write_owned().await;
+      let limit=u64::from(read_preferences(db_path,None)?.storage_limit_mb)*1024*1024;
+      if limit>0 {let budget=remaining_download_budget(db_path,downloads_dir,id,limit)?;return Ok(DownloadStoragePolicy::Capped{_guard:guard,budget});}
+      drop(guard);
+    }
+  }
+}
+
 #[derive(Debug)]
 pub(crate) struct EpisodeDownloadSource {
   pub(crate) enclosure_url: String,
@@ -617,6 +658,20 @@ fn delete_episode_downloads_with_rename(
   requested_count: usize,
   rename_file: &mut dyn FnMut(&Path, &Path) -> std::io::Result<()>,
 ) -> Result<PodcastDownloadDeleteResult, String> {
+  delete_episode_downloads_with_policy(db_path,downloads_dir,episode_ids,completed_only,requested_count,false,rename_file)
+}
+
+pub(crate) fn delete_automatic_episode_download(db_path:&Path,downloads_dir:&Path,active_downloads:&Arc<Mutex<HashSet<String>>>,id:&str)->Result<PodcastDownloadDeleteResult,String> {
+  validate_identifier(id)?;
+  let _guard=EpisodeFileGuard::acquire(active_downloads,id)?;
+  let mut rename=|from:&Path,to:&Path|fs::rename(from,to);
+  delete_episode_downloads_with_policy(db_path,downloads_dir,&[id.into()],true,1,true,&mut rename)
+}
+
+fn delete_episode_downloads_with_policy(
+  db_path:&Path,downloads_dir:&Path,episode_ids:&[String],completed_only:bool,requested_count:usize,automatic:bool,
+  rename_file:&mut dyn FnMut(&Path,&Path)->std::io::Result<()>,
+) ->Result<PodcastDownloadDeleteResult,String> {
   if episode_ids.is_empty() {
     return Ok(PodcastDownloadDeleteResult {
       requested_count,
@@ -628,12 +683,29 @@ fn delete_episode_downloads_with_rename(
   let transaction = connection
     .transaction_with_behavior(TransactionBehavior::Immediate)
     .map_err(|error| format!("无法开始清理播客下载：{error}"))?;
-  let targets = load_episode_download_delete_targets(
+  let mut targets = load_episode_download_delete_targets(
     &transaction,
     downloads_dir,
     episode_ids,
     completed_only,
   )?;
+  if automatic {
+    let active=load_active_episode_session_in(&transaction)?.and_then(|session|session.active_episode_id);
+    let global=read_preferences_in(&transaction,None)?;
+    let mut retained=Vec::new();
+    for target in targets {
+      let (feed,protected):(String,bool)=transaction.query_row("SELECT e.feed_id,
+        EXISTS(SELECT 1 FROM podcast_saved_episodes WHERE episode_id=e.id)
+        OR EXISTS(SELECT 1 FROM podcast_queue WHERE episode_id=e.id)
+        OR EXISTS(SELECT 1 FROM podcast_playlist_items WHERE episode_id=e.id)
+        FROM podcast_episodes e WHERE e.id=?1",[&target.episode_id],|r|Ok((r.get(0)?,r.get(1)?))).map_err(|e|e.to_string())?;
+      let total:i64=transaction.query_row("SELECT COALESCE(SUM(downloaded_bytes),0) FROM podcast_downloads WHERE state='downloaded'",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+      let limit=u64::from(global.storage_limit_mb)*1024*1024;
+      if !protected && active.as_deref()!=Some(&target.episode_id)
+        && (global.cleanup_played || read_preferences_in(&transaction,Some(&feed))?.cleanup_played || (limit>0 && total.max(0) as u64>limit)) {retained.push(target);}
+    }
+    targets=retained;
+  }
   if targets.is_empty() {
     drop(transaction);
     return Ok(PodcastDownloadDeleteResult {
@@ -773,12 +845,16 @@ async fn download_episode_with_network_policy(
   enclosure_type: Option<&str>,
   allow_private_network: bool,
 ) -> Result<PodcastDownloadResult, String> {
-  with_network_retries(Duration::from_secs(4 * 60 * 60), || with_network_limit(NetworkClass::Download, download_episode_once(db_path, downloads_dir, episode_id, enclosure_url, enclosure_type, allow_private_network))).await
+  validate_identifier(episode_id)?;
+  let policy=download_storage_policy(db_path,downloads_dir,episode_id).await?;
+  let budget=match &policy {DownloadStoragePolicy::Unlimited{..}=>PODCAST_AUDIO_RESPONSE_LIMIT,DownloadStoragePolicy::Capped{budget,..}=>*budget};
+  with_network_retries(Duration::from_secs(4 * 60 * 60), || with_network_limit(NetworkClass::Download, download_episode_once(db_path, downloads_dir, episode_id, enclosure_url, enclosure_type, allow_private_network,budget))).await
 }
 
-async fn download_episode_once(db_path: &Path, downloads_dir: &Path, episode_id: &str, enclosure_url: &str, enclosure_type: Option<&str>, allow_private_network: bool) -> Result<PodcastDownloadResult, String> {
+async fn download_episode_once(db_path: &Path, downloads_dir: &Path, episode_id: &str, enclosure_url: &str, enclosure_type: Option<&str>, allow_private_network: bool,budget:u64) -> Result<PodcastDownloadResult, String> {
   let url = validate_url_shape_with_policy(enclosure_url, allow_private_network)?;
   let part_path = downloads_dir.join(format!("{episode_id}.part"));
+  if let Ok(metadata)=fs::symlink_metadata(&part_path) {if !metadata.is_file() || metadata.file_type().is_symlink() {return Err("播客断点文件路径不安全".into());}}
   let mut offset = tokio::fs::metadata(&part_path)
     .await
     .map(|metadata| metadata.len())
@@ -898,6 +974,7 @@ async fn download_episode_once(db_path: &Path, downloads_dir: &Path, episode_id:
   if response_total.is_some_and(|total| total > PODCAST_AUDIO_RESPONSE_LIMIT) {
     return Err("播客音频超过大小限制".to_string());
   }
+  if response_total.is_some_and(|total|total>budget) {return Err("下载空间不足以保存这集，请清理下载或调整设置".into());}
 
   let mut options = tokio::fs::OpenOptions::new();
   options.create(true).write(true);
@@ -934,6 +1011,7 @@ async fn download_episode_once(db_path: &Path, downloads_dir: &Path, episode_id:
     if downloaded_bytes > PODCAST_AUDIO_RESPONSE_LIMIT {
       return Err("播客音频超过大小限制".to_string());
     }
+    if downloaded_bytes>budget {return Err("下载空间已达上限，已保留可恢复的断点".into());}
     if response_length.is_some_and(|length| downloaded_bytes - offset > length) {
       return Err("播客音频内容超过响应范围".to_string());
     }
@@ -1218,6 +1296,44 @@ pub(crate) fn save_progress_with_policy(
 
 #[cfg(test)]
 mod tests {
+  #[test]
+  fn automatic_delete_rechecks_protection_and_policy_inside_its_transaction() {
+    let directory=test_directory("automatic-delete-race");let state=PodcastState::initialize_at(&directory).unwrap();
+    let parsed=parsed_fixture_with_episode_count(5);let ids=parsed.episodes.iter().map(|episode|episode.id.clone()).collect::<Vec<_>>();store_subscription(&state.db_path,parsed).unwrap();
+    for id in &ids {let path=state.downloads_dir.join(format!("{id}.mp3"));fs::write(&path,b"ID3-audio").unwrap();mark_download_complete(&state.db_path,id,path.to_str().unwrap(),9,Some(9)).unwrap();set_episode_played(&state.db_path,id,true).unwrap();}
+    write_preferences(&state.db_path,None,&PodcastPreferences{cleanup_played:true,..Default::default()}).unwrap();
+    // These IDs were eligible when a background planning pass captured them.
+    set_episode_saved(&state.db_path,&ids[0],true).unwrap();queue_add(&state.db_path,&ids[1],false).unwrap();save_active_episode_session(&state.db_path,Some(ids[2].clone())).unwrap();
+    let list=super::super::lists::save_playlist(&state.db_path,None,"保留","manual",super::super::lists::PlaylistRules::default(),None).unwrap();super::super::lists::update_playlist_item(&state.db_path,&list.id,&ids[3],true).unwrap();
+    for id in &ids[..4] {assert_eq!(delete_automatic_episode_download(&state.db_path,&state.downloads_dir,&state.active_downloads,id).unwrap().deleted_count,0);assert!(state.downloads_dir.join(format!("{id}.mp3")).is_file());}
+    write_preferences(&state.db_path,None,&PodcastPreferences::default()).unwrap();assert_eq!(delete_automatic_episode_download(&state.db_path,&state.downloads_dir,&state.active_downloads,&ids[4]).unwrap().deleted_count,0);
+    write_preferences(&state.db_path,None,&PodcastPreferences{cleanup_played:true,..Default::default()}).unwrap();assert_eq!(delete_automatic_episode_download(&state.db_path,&state.downloads_dir,&state.active_downloads,&ids[4]).unwrap().deleted_count,1);
+  }
+
+  #[tokio::test]
+  async fn unknown_length_download_stops_before_exceeding_storage_and_keeps_its_partial() {
+    use tokio::io::{AsyncReadExt,AsyncWriteExt};
+    let directory=test_directory("download-unknown-quota");let state=PodcastState::initialize_at(&directory).unwrap();let parsed=parsed_fixture_with_episode_count(1);let id=parsed.episodes[0].id.clone();store_subscription(&state.db_path,parsed).unwrap();
+    write_preferences(&state.db_path,None,&PodcastPreferences{storage_limit_mb:1,..Default::default()}).unwrap();
+    let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let url=format!("http://localhost:{}/audio.mp3",listener.local_addr().unwrap().port());
+    open_database(&state.db_path).unwrap().execute("UPDATE podcast_episodes SET enclosure_url=?1 WHERE id=?2",params![url,id]).unwrap();
+    let server=tokio::spawn(async move {let (mut stream,_)=listener.accept().await.unwrap();let mut request=[0;4096];stream.read(&mut request).await.unwrap();let _=stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nETag: \"quota\"\r\nConnection: close\r\n\r\n").await;let mut body=vec![0;1200*1024];body[..3].copy_from_slice(b"ID3");let _=stream.write_all(&body).await;});
+    let error=download_episode_with_network_policy(&state.db_path,&state.downloads_dir,&id,&url,Some("audio/mpeg"),true).await.unwrap_err();assert!(error.contains("空间"));server.await.unwrap();
+    let size=fs::metadata(state.downloads_dir.join(format!("{id}.part"))).unwrap().len();assert!(size>0&&size<=1024*1024);assert!(!state.downloads_dir.join(format!("{id}.mp3")).exists());
+  }
+
+  #[tokio::test]
+  async fn concurrent_capped_downloads_share_one_byte_budget() {
+    use tokio::io::{AsyncReadExt,AsyncWriteExt};
+    let directory=test_directory("download-concurrent-quota");let state=PodcastState::initialize_at(&directory).unwrap();let parsed=parsed_fixture_with_episode_count(2);let ids=parsed.episodes.iter().map(|episode|episode.id.clone()).collect::<Vec<_>>();store_subscription(&state.db_path,parsed).unwrap();
+    write_preferences(&state.db_path,None,&PodcastPreferences{storage_limit_mb:1,..Default::default()}).unwrap();
+    let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let url=format!("http://localhost:{}/audio.mp3",listener.local_addr().unwrap().port());
+    for id in &ids {open_database(&state.db_path).unwrap().execute("UPDATE podcast_episodes SET enclosure_url=?1 WHERE id=?2",params![url,id]).unwrap();}
+    let server=tokio::spawn(async move {for _ in 0..2 {let (mut stream,_)=listener.accept().await.unwrap();let mut request=[0;4096];stream.read(&mut request).await.unwrap();let header="HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nContent-Length: 716800\r\nConnection: close\r\n\r\n";let _=stream.write_all(header.as_bytes()).await;let mut body=vec![0;716800];body[..3].copy_from_slice(b"ID3");let _=stream.write_all(&body).await;}});
+    let (first,second)=tokio::join!(download_episode_with_network_policy(&state.db_path,&state.downloads_dir,&ids[0],&url,Some("audio/mpeg"),true),download_episode_with_network_policy(&state.db_path,&state.downloads_dir,&ids[1],&url,Some("audio/mpeg"),true));
+    assert_ne!(first.is_ok(),second.is_ok());server.await.unwrap();
+    let used:u64=fs::read_dir(&state.downloads_dir).unwrap().filter_map(Result::ok).filter_map(|entry|entry.metadata().ok()).filter(|meta|meta.is_file()).map(|meta|meta.len()).sum();assert!(used<=1024*1024);
+  }
   use super::*;
   use crate::podcast::test_support::*;
   use tokio::io::AsyncReadExt;

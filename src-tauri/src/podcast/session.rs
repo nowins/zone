@@ -13,6 +13,10 @@ pub struct PodcastActiveEpisodeSession {
 
 pub(crate) fn load_active_episode_session(db_path: &Path) -> Result<Option<PodcastActiveEpisodeSession>, String> {
   let connection = open_database(db_path)?;
+  load_active_episode_session_in(&connection)
+}
+
+pub(crate) fn load_active_episode_session_in(connection: &rusqlite::Connection) -> Result<Option<PodcastActiveEpisodeSession>, String> {
   let json: Option<String> = connection.query_row("SELECT value_json FROM app_settings WHERE key = ?1", [ACTIVE_EPISODE_KEY], |row| row.get(0))
     .optional().map_err(|error| format!("无法读取播客当前单集：{error}"))?;
   let Some(json) = json else { return Ok(None) };

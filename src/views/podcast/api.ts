@@ -68,6 +68,7 @@ export const setPodcastPreferences = (preferences: PodcastPreferences, feedId?: 
 export const listDownloadJobs = () => invoke<PodcastDownloadJob[]>("podcast_list_download_jobs");
 export const enqueueDownload = (episodeId: string) => invoke<void>("podcast_enqueue_download", { episodeId });
 export const pauseDownloadJob = (episodeId: string) => invoke<void>("podcast_pause_download_job", { episodeId });
+export const clearDownloadPartial = (episodeId: string) => invoke<void>("podcast_clear_download_partial", { episodeId });
 
 export function listPodcastHome() {
   return invoke<PodcastHome>("podcast_list_home");

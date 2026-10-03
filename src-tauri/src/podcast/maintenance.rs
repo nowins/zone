@@ -34,8 +34,11 @@ fn preferences_key(feed_id: Option<&str>) -> Result<String, String> {
 }
 
 pub(crate) fn read_preferences(path: &Path, feed_id: Option<&str>) -> Result<PodcastPreferences, String> {
-  let key = preferences_key(feed_id)?;
   let db = open_database(path)?;
+  read_preferences_in(&db,feed_id)
+}
+pub(crate) fn read_preferences_in(db:&rusqlite::Connection,feed_id:Option<&str>)->Result<PodcastPreferences,String> {
+  let key=preferences_key(feed_id)?;
   let json: Option<String> = db.query_row("SELECT value_json FROM app_settings WHERE key=?1", [key], |row| row.get(0))
     .optional().map_err(|e| e.to_string())?;
   match json { Some(json) => serde_json::from_str(&json).map_err(|_| "播客设置损坏，已保留原记录".into()), None => Ok(PodcastPreferences::default()) }
@@ -137,19 +140,11 @@ pub(crate) fn cleanup_managed_downloads(state: &PodcastState) -> Result<(), Stri
   for (id,feed,bytes) in candidates {
     if active.as_deref()==Some(&id) { continue; }
     if global.cleanup_played || read_preferences(&state.db_path,Some(&feed))?.cleanup_played || (limit>0 && remaining>limit) {
-      let result = delete_episode_downloads_guarded(&state.db_path,&state.downloads_dir,&state.active_downloads,vec![id],true)?;
+      let result = delete_automatic_episode_download(&state.db_path,&state.downloads_dir,&state.active_downloads,&id)?;
       remaining = remaining.saturating_sub(result.deleted_bytes.min(bytes));
     }
   }
   Ok(())
-}
-
-pub(crate) fn check_download_capacity(state: &PodcastState, id: &str) -> Result<(), String> {
-  let limit = u64::from(read_preferences(&state.db_path,None)?.storage_limit_mb)*1024*1024;
-  if limit==0 { return Ok(()); }
-  let db=open_database(&state.db_path)?;
-  let (bytes,expected)=db.query_row("SELECT (SELECT COALESCE(SUM(downloaded_bytes),0) FROM podcast_downloads WHERE state='downloaded'),COALESCE(expected_bytes,0) FROM podcast_episodes WHERE id=?1",[id],|r|Ok((r.get::<_,i64>(0)?.max(0) as u64,r.get::<_,i64>(1)?.max(0) as u64))).map_err(|e|e.to_string())?;
-  if bytes>=limit || bytes.saturating_add(expected)>limit { Err("下载空间已达上限，请清理下载或调整设置".into()) } else { Ok(()) }
 }
 
 pub fn start_podcast_maintenance(app: tauri::AppHandle, state: PodcastState) {
@@ -218,9 +213,33 @@ pub async fn podcast_pause_download_job(state: State<'_,PodcastState>,episode_id
   Ok(())
 }
 
+pub(crate) fn clear_download_job_partial(state:&PodcastState,id:&str)->Result<(),String> {
+  validate_identifier(id)?;
+  let _guard=EpisodeFileGuard::acquire(&state.active_downloads,id)?;
+  let db=open_database(&state.db_path)?;
+  let running:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM podcast_download_jobs WHERE episode_id=?1 AND state='running')",[id],|r|r.get(0)).map_err(|e|e.to_string())?;
+  let complete:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM podcast_downloads WHERE episode_id=?1 AND state='downloaded')",[id],|r|r.get(0)).map_err(|e|e.to_string())?;
+  if running{return Err("请先暂停并等待下载停止".into());}if complete{return Err("单集已下载，请从已下载列表管理".into());}
+  db.execute("UPDATE podcast_download_jobs SET state='paused',request_id=NULL,error=NULL,updated_at=?2 WHERE episode_id=?1",params![id,unix_time_millis()]).map_err(|e|e.to_string())?;
+  delete_episode_download(&state.db_path,&state.downloads_dir,id)
+}
+#[tauri::command]
+pub async fn podcast_clear_download_partial(state:State<'_,PodcastState>,episode_id:String)->Result<(),String> {
+  state.ensure_ready()?;let owned=state.inner().clone();
+  tauri::async_runtime::spawn_blocking(move||clear_download_job_partial(&owned,&episode_id)).await.map_err(|e|e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
   use super::*; use crate::podcast::test_support::*;
+  #[test]
+  fn clearing_partial_jobs_releases_space_without_automatic_redownload_or_complete_audio_loss() {
+    let dir=test_directory("partial-job-cleanup");let state=PodcastState::initialize_at(&dir).unwrap();let parsed=parsed_fixture_with_episode_count(1);let id=parsed.episodes[0].id.clone();store_subscription(&state.db_path,parsed).unwrap();queue_download_job(&state.db_path,&id).unwrap();
+    let part=state.downloads_dir.join(format!("{id}.part"));fs::write(&part,b"ID3-part").unwrap();mark_download_started(&state.db_path,&id,8,Some(16)).unwrap();
+    clear_download_job_partial(&state,&id).unwrap();assert!(!part.exists());assert_eq!(list_download_jobs(&state.db_path).unwrap()[0].state,"paused");
+    let final_path=state.downloads_dir.join(format!("{id}.mp3"));fs::write(&final_path,b"ID3-complete").unwrap();mark_download_complete(&state.db_path,&id,final_path.to_str().unwrap(),12,Some(12)).unwrap();
+    assert!(clear_download_job_partial(&state,&id).is_err());assert!(final_path.exists());
+  }
   #[test]
   fn preferences_validate_and_preserve_corrupt_data() {
     let dir=test_directory("maintenance-settings"); let state=PodcastState::initialize_at(&dir).unwrap();

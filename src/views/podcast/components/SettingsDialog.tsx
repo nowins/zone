@@ -36,7 +36,7 @@ export function PodcastSettingsDialog({ feedId, title, onClose }: { feedId?: str
         </select></label>}
       <label className="podcast-setting-check"><input type="checkbox" checked={value.cleanupPlayed}
         onChange={event => setValue({ ...value, cleanupPlayed: event.target.checked })} />自动清理已听完下载</label>
-      <small>保留正在收听、稍后听和待播单集；达到空间上限后暂停新增下载。</small>
+      <small>保留正在收听、稍后听、手动列表和待播单集；上限计入断点文件，新设置在下载开始时应用。</small>
       <fieldset className="podcast-playback-settings"><legend>播放偏好</legend>
         {feedId && <label className="podcast-setting-check"><input type="checkbox" checked={value.inheritPlayback}
           onChange={event=>setValue({...value,inheritPlayback:event.target.checked})}/>使用默认播放设置</label>}

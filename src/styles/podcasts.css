@@ -2202,3 +2202,4 @@
 .podcast-show-groups label { display: flex; align-items: center; gap: 12px; }
 .podcast-show-groups select { min-height: 36px; max-width: 300px; padding: 6px; font: inherit; color: var(--text); background: var(--app-bg); border: 1px solid var(--quiet); color-scheme: dark; }
 .podcast-show-groups p { flex-basis: 100%; }
+.podcast-download-job-actions { display: flex; align-items: center; gap: 16px; }
