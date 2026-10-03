@@ -299,6 +299,8 @@ pub fn run() {
       podcast::podcast_pause_download_job,
       podcast::podcast_import_opml,
       podcast::podcast_export_opml,
+      podcast::podcast_export_backup,
+      podcast::podcast_restore_backup,
       podcast::podcast_list_feeds,
       podcast::podcast_set_following,
       podcast::podcast_list_home,
