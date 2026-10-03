@@ -123,6 +123,9 @@ fn import_table(db:&Connection,name:&str,data:&TableSnapshot)->Result<(),String>
       if name.starts_with("podcast_") && (column=="id" || ["episode_id","feed_id","playlist_id","group_id","resource_id"].contains(&column.as_str())) {validate_identifier(value.as_str().ok_or("备份标识无效")?)?;}
       if ["podcast_playlists","podcast_show_groups"].contains(&name)&&column=="name"{super::lists::collection_name(value.as_str().ok_or("备份名称无效")?)?;}
       if name=="podcast_playlists"&&column=="rules_json"{let rules:super::lists::PlaylistRules=serde_json::from_str(value.as_str().ok_or("备份条件无效")?).map_err(|_|"备份条件无效")?;super::lists::validate_rules(&rules)?;}
+      if name=="podcast_progress" && ["position_seconds","duration_seconds"].contains(&column.as_str()) && !(column=="duration_seconds"&&value.is_null()) && !value.as_f64().is_some_and(|n|n.is_finite()&&(0.0..=604800.0).contains(&n)){return Err("备份收听时间无效".into());}
+      if name=="podcast_progress" && column=="completed" && !value.as_i64().is_some_and(|n|n==0||n==1){return Err("备份收听状态无效".into());}
+      if name=="podcast_progress" && column=="updated_at" && !value.as_i64().is_some_and(|n|n>=0){return Err("备份收听更新时间无效".into());}
       if name=="podcast_bookmarks"&&column=="position_ms"&& !value.as_i64().is_some_and(|n|(0..=604800000).contains(&n)){return Err("备份书签时间无效".into());}
       if name=="podcast_bookmarks"&&column=="label"&& !value.as_str().is_some_and(|s|s.chars().count()<=200&&!s.chars().any(char::is_control)){return Err("备份书签备注无效".into());}
       if ["feed_url","enclosure_url"].contains(&column.as_str()) {validate_public_url_shape(value.as_str().ok_or("备份地址无效")?)?;}
@@ -247,6 +250,16 @@ mod tests {
     assert_eq!(super::super::bookmarks::list_bookmarks(&target.db_path,&id).unwrap()[0].label,"备份书签");
     assert_eq!(super::super::groups::show_groups(&target.db_path).unwrap()[0].name,"备份分组");
     let music:String=open_database(&target.db_path).unwrap().query_row("SELECT value_json FROM app_settings WHERE key='music.fixture'",[],|r|r.get(0)).unwrap();assert_eq!(music,"42");
+  }
+  #[test]
+  fn invalid_progress_from_backup_or_sync_rolls_back() {
+    let dir=test_directory("backup-progress-bounds");let state=PodcastState::initialize_at(&dir).unwrap();let parsed=parsed_fixture("https://example.com/a.mp3");let id=parsed.episodes[0].id.clone();store_subscription(&state.db_path,parsed).unwrap();
+    let db=open_database(&state.db_path).unwrap();db.execute("INSERT INTO podcast_progress VALUES (?1,30,300,0,50)",[&id]).unwrap();drop(db);
+    let path=dir.join("snapshot.zonepodcast");export_sync_backup(&state,&path).unwrap();let original=fs::read(&path).unwrap();
+    for (column,value) in [("position_seconds",Value::from(-1)),("position_seconds",Value::from(604801)),("duration_seconds",Value::from(-20)),("completed",Value::from(2)),("updated_at",Value::from(-1))] {
+      let mut snapshot:PodcastBackup=serde_json::from_slice(&original).unwrap();let table=snapshot.tables.get_mut("podcast_progress").unwrap();let index=table.columns.iter().position(|name|name==column).unwrap();table.rows[0][index]=value;fs::write(&path,serde_json::to_vec(&snapshot).unwrap()).unwrap();
+      assert!(restore_sync_backup(&state,&path).is_err());assert!(restore_backup(&state,&path).is_err());assert_eq!(get_episode_detail(&state.db_path,&state.downloads_dir,&id).unwrap().episode.progress_seconds,30.0);
+    }
   }
   #[test]
   fn corrupt_or_foreign_backup_rolls_back_and_preserves_original_progress() {
