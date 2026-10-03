@@ -200,8 +200,11 @@ async fn refresh_external_chapter_resource(
   resource: &StoredChapterResource,
   allow_private_network: bool,
 ) -> Result<PodcastChapterDocument, String> {
-  let raw_url = resource
-    .url
+  with_network_retries(PODCAST_CHAPTER_TIMEOUT, || refresh_external_chapter_resource_once(db_path, resource, allow_private_network)).await
+}
+
+async fn refresh_external_chapter_resource_once(db_path: &Path, resource: &StoredChapterResource, allow_private_network: bool) -> Result<PodcastChapterDocument, String> {
+  let raw_url = resource.url
     .as_deref()
     .ok_or_else(|| "播客章节来源地址无效".to_string())?;
   let url = validate_url_shape_with_policy(raw_url, allow_private_network)?;

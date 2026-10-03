@@ -154,20 +154,10 @@ fn apple_chart_url(limit: u8) -> String {
 }
 
 async fn request_apple_json(url: Url, limit: usize, label: &str) -> Result<Vec<u8>, String> {
-  for attempt in 0..2 {
-    match send_public_get(url.clone(), Duration::from_secs(15), None).await {
-      Ok(response) => {
-        if attempt == 0 && matches!(response.response.status().as_u16(), 502 | 503 | 504) {
-          tokio::time::sleep(Duration::from_millis(300)).await;
-          continue;
-        }
-        return read_limited(response.response, limit, label).await;
-      }
-      Err(_) if attempt == 0 => tokio::time::sleep(Duration::from_millis(300)).await,
-      Err(error) => return Err(error),
-    }
-  }
-  Err(format!("{label}暂不可用"))
+  with_network_retries(Duration::from_secs(15), || async {
+    let response = send_public_get(url.clone(), Duration::from_secs(15), None).await?;
+    read_limited(response.response, limit, label).await
+  }).await
 }
 
 fn parse_apple_discovery(

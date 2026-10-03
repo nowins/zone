@@ -773,6 +773,10 @@ async fn download_episode_with_network_policy(
   enclosure_type: Option<&str>,
   allow_private_network: bool,
 ) -> Result<PodcastDownloadResult, String> {
+  with_network_retries(Duration::from_secs(4 * 60 * 60), || download_episode_once(db_path, downloads_dir, episode_id, enclosure_url, enclosure_type, allow_private_network)).await
+}
+
+async fn download_episode_once(db_path: &Path, downloads_dir: &Path, episode_id: &str, enclosure_url: &str, enclosure_type: Option<&str>, allow_private_network: bool) -> Result<PodcastDownloadResult, String> {
   let url = validate_url_shape_with_policy(enclosure_url, allow_private_network)?;
   let part_path = downloads_dir.join(format!("{episode_id}.part"));
   let mut offset = tokio::fs::metadata(&part_path)
@@ -914,7 +918,7 @@ async fn download_episode_with_network_policy(
   while let Some(chunk) = response
     .chunk()
     .await
-    .map_err(|error| format!("无法读取播客音频响应：{error}"))?
+    .map_err(|error| format!("播客网络读取中断：无法读取播客音频响应：{error}"))?
   {
     downloaded_bytes = downloaded_bytes
       .checked_add(chunk.len() as u64)

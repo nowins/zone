@@ -64,6 +64,17 @@ async fn serve_podcast_stream_protocol_with_network_policy(
   request: Request<Vec<u8>>,
   allow_private_network: bool,
 ) -> Response<Vec<u8>> {
+  with_network_retries(PODCAST_STREAM_TIMEOUT, || async {
+    let response = serve_podcast_stream_once(state.clone(), request.clone(), allow_private_network).await;
+    if response.status() == StatusCode::BAD_GATEWAY {
+      let error = String::from_utf8_lossy(response.body()).into_owned();
+      return Err(error);
+    }
+    Ok(response)
+  }).await.unwrap_or_else(|error| podcast_stream_text_response(StatusCode::BAD_GATEWAY, &error))
+}
+
+async fn serve_podcast_stream_once(state: PodcastState, request: Request<Vec<u8>>, allow_private_network: bool) -> Response<Vec<u8>> {
   if request.method() == Method::OPTIONS {
     return podcast_stream_response_builder(StatusCode::NO_CONTENT, "text/plain", 0)
       .body(Vec::new())
@@ -357,7 +368,7 @@ async fn read_exact_stream_body(mut response: reqwest::Response, expected_length
   while let Some(chunk) = response
     .chunk()
     .await
-    .map_err(|error| format!("无法读取播客音频响应：{error}"))?
+    .map_err(|error| format!("播客网络读取中断：无法读取播客音频响应：{error}"))?
   {
     if body.len().saturating_add(chunk.len()) > expected_length as usize {
       return Err("播客音频范围响应长度不一致".to_string());

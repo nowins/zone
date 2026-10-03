@@ -8,6 +8,55 @@ use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use super::*;
 
+#[derive(Clone)]
+struct NetworkBudget {
+  deadline: tokio::time::Instant,
+  retries: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+  retry_after: std::sync::Arc<Mutex<Option<Duration>>>,
+}
+tokio::task_local! { static NETWORK_BUDGET: NetworkBudget; }
+
+fn transient_network_error(error: &str) -> bool {
+  ["播客来源响应超时", "播客来源解析超时", "无法解析播客来源地址", "无法连接播客来源：",
+    "播客网络读取中断：", "播客来源暂不可用"].iter().any(|prefix| error.starts_with(prefix))
+    && !error.to_ascii_lowercase().contains("certificate")
+}
+
+fn retry_after(headers: &HeaderMap) -> Option<Duration> {
+  let value = header_text(headers, header::RETRY_AFTER)?;
+  value.parse::<u64>().ok().map(Duration::from_secs).or_else(|| {
+    httpdate::parse_http_date(&value).ok()?.duration_since(std::time::SystemTime::now()).ok()
+  })
+}
+
+// A single operation shares two retry slots and one deadline across headers,
+// redirects, body reads and auxiliary probes. Dropping the future closes I/O.
+pub(crate) async fn with_network_retries<T, F, Fut>(timeout: Duration, mut action: F) -> Result<T, String>
+where F: FnMut() -> Fut, Fut: std::future::Future<Output = Result<T, String>> {
+  let now = tokio::time::Instant::now();
+  let budget = NETWORK_BUDGET.try_with(Clone::clone).unwrap_or_else(|_| NetworkBudget {
+    deadline: now + timeout,
+    retries: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+    retry_after: std::sync::Arc::new(Mutex::new(None)),
+  });
+  let budget = NetworkBudget { deadline: budget.deadline.min(now + timeout), ..budget };
+  NETWORK_BUDGET.scope(budget.clone(), async move {
+    loop {
+      let result = tokio::time::timeout_at(budget.deadline, action()).await
+        .map_err(|_| "播客来源响应超时".to_string())?;
+      let Err(error) = &result else { return result; };
+      if !transient_network_error(error) { return result; }
+      let Ok(attempt) = budget.retries.fetch_update(std::sync::atomic::Ordering::SeqCst,
+        std::sync::atomic::Ordering::SeqCst, |count| (count < 2).then_some(count + 1)) else { return result; };
+      let server_delay = budget.retry_after.lock().ok().and_then(|mut delay| delay.take());
+      let jitter = unix_time_millis().unsigned_abs() % 100;
+      let delay = server_delay.unwrap_or(Duration::from_millis((300 << attempt) + jitter));
+      if tokio::time::Instant::now() + delay >= budget.deadline { return result; }
+      tokio::time::sleep(delay).await;
+    }
+  }).await
+}
+
 pub(crate) struct PublicResponse {
   pub(crate) final_url: Url,
   pub(crate) response: reqwest::Response,
@@ -93,6 +142,16 @@ pub(crate) async fn send_public_get_with_policy(
 }
 
 pub(crate) async fn send_public_get_with_headers(
+  url: Url,
+  timeout: Duration,
+  range: Option<&str>,
+  allow_private_network: bool,
+  request_headers: &HeaderMap,
+) -> Result<PublicResponse, String> {
+  with_network_retries(timeout, || send_public_get_once(url.clone(), timeout, range, allow_private_network, request_headers)).await
+}
+
+async fn send_public_get_once(
   mut url: Url,
   timeout: Duration,
   range: Option<&str>,
@@ -100,7 +159,8 @@ pub(crate) async fn send_public_get_with_headers(
   request_headers: &HeaderMap,
 ) -> Result<PublicResponse, String> {
   let header_origin = url_origin(&url);
-  let deadline = tokio::time::Instant::now() + timeout;
+  let deadline = NETWORK_BUDGET.try_with(|budget| budget.deadline)
+    .unwrap_or_else(|_| tokio::time::Instant::now() + timeout);
   for redirect_count in 0..=PODCAST_REDIRECT_LIMIT {
     validate_url_with_policy(&url, allow_private_network)?;
     let addresses = tokio::time::timeout_at(deadline, resolve_public_addresses(&url, allow_private_network))
@@ -127,10 +187,18 @@ pub(crate) async fn send_public_get_with_headers(
       .map_err(|_| "播客来源响应超时".to_string())?.map_err(|error| {
       if error.is_timeout() {
         "播客来源响应超时".to_string()
-      } else {
+      } else if error.is_connect() {
         format!("无法连接播客来源：{error}")
+      } else {
+        format!("播客网络请求失败：{error}")
       }
     })?;
+    if matches!(response.status().as_u16(), 408 | 429 | 502 | 503 | 504) {
+      let _ = NETWORK_BUDGET.try_with(|budget| {
+        if let Ok(mut delay) = budget.retry_after.lock() { *delay = retry_after(response.headers()); }
+      });
+      return Err(format!("播客来源暂不可用（HTTP {}）", response.status().as_u16()));
+    }
     if response.status() == StatusCode::NOT_MODIFIED || !response.status().is_redirection() {
       return Ok(PublicResponse {
         final_url: url,
@@ -308,7 +376,7 @@ pub(crate) async fn read_limited(mut response: reqwest::Response, limit: usize, 
   while let Some(chunk) = response
     .chunk()
     .await
-    .map_err(|error| format!("无法读取{label}：{error}"))?
+    .map_err(|error| format!("播客网络读取中断：无法读取{label}：{error}"))?
   {
     if bytes.len().saturating_add(chunk.len()) > limit {
       return Err(format!("{label}超过大小限制"));
@@ -676,5 +744,53 @@ mod tests {
     server.abort();
     println!("configured_budget_ms=110, chain_elapsed_ms={}", elapsed.as_millis());
     assert!(elapsed <= Duration::from_millis(150), "redirects must share the request deadline: {elapsed:?}");
+  }
+
+  #[tokio::test]
+  async fn retries_share_slots_for_headers_and_interrupted_bodies() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = Url::parse(&format!("http://{}/body", listener.local_addr().unwrap())).unwrap();
+    let server = tokio::spawn(async move {
+      for reply in [
+        "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nx",
+        "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nhello",
+      ] {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0; 1024]; stream.read(&mut request).await.unwrap();
+        stream.write_all(reply.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+      }
+    });
+    let bytes = with_network_retries(Duration::from_secs(3), || async {
+      let response = send_public_get_with_policy(url.clone(), Duration::from_secs(3), None, true).await?;
+      read_limited(response.response, 10, "test").await
+    }).await.unwrap();
+    assert_eq!(bytes, b"hello"); server.await.unwrap();
+  }
+
+  #[tokio::test]
+  async fn retry_after_cannot_exceed_budget_and_security_errors_never_retry() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = Url::parse(&format!("http://{}/limit", listener.local_addr().unwrap())).unwrap();
+    let server = tokio::spawn(async move {
+      let (mut stream, _) = listener.accept().await.unwrap();
+      let mut request = [0; 1024]; stream.read(&mut request).await.unwrap();
+      stream.write_all(b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 3600\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+      assert!(tokio::time::timeout(Duration::from_millis(200), listener.accept()).await.is_err());
+    });
+    let start = std::time::Instant::now();
+    let error = send_public_get_with_policy(url, Duration::from_millis(500), None, true).await.err().unwrap();
+    assert!(error.contains("429")); assert!(start.elapsed() < Duration::from_millis(200));
+    server.await.unwrap();
+    let calls = std::sync::atomic::AtomicUsize::new(0);
+    let _ = with_network_retries(Duration::from_secs(1), || async {
+      calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+      Err::<(), _>("播客来源指向了不允许的网络地址".into())
+    }).await;
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let mut headers = HeaderMap::new();
+    headers.insert(header::RETRY_AFTER, header::HeaderValue::from_str(&httpdate::fmt_http_date(std::time::SystemTime::now() + Duration::from_secs(5))).unwrap());
+    assert!(retry_after(&headers).unwrap() <= Duration::from_secs(5));
   }
 }

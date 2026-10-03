@@ -94,6 +94,10 @@ pub(crate) async fn fetch_and_parse_feed(
   author_hint: Option<&str>,
   artwork_hint: Option<&str>,
 ) -> Result<ParsedPodcast, String> {
+  with_network_retries(Duration::from_secs(30), || fetch_and_parse_feed_once(feed_url, title_hint, author_hint, artwork_hint)).await
+}
+
+async fn fetch_and_parse_feed_once(feed_url: &str, title_hint: Option<&str>, author_hint: Option<&str>, artwork_hint: Option<&str>) -> Result<ParsedPodcast, String> {
   let url = validate_public_url_shape(feed_url)?;
   let public_response = send_public_get(url, Duration::from_secs(30), None).await?;
   if !public_response.response.status().is_success() {
@@ -145,7 +149,7 @@ pub(crate) async fn refresh_feed_target(
     }
   };
   let checked_at = unix_time_millis();
-  let result = async {
+  let result = with_network_retries(Duration::from_secs(30), || async {
     let url = validate_url_shape_with_policy(&target.feed_url, allow_private_network)?;
     let mut request_headers = HeaderMap::new();
     if let Some(value) = target.etag.as_deref().and_then(|value| HeaderValue::from_str(value).ok()) {
@@ -217,8 +221,7 @@ pub(crate) async fn refresh_feed_target(
       inserted: stored.inserted_count,
       updated: stored.updated_count,
     })
-  }
-  .await;
+  }).await;
 
   match result {
     Ok(outcome) => outcome,

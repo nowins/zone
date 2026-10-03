@@ -157,6 +157,10 @@ async fn fetch_podcast_artwork_bytes(
   url: Url,
   allow_private_network: bool,
 ) -> Result<FetchedPodcastArtwork, String> {
+  with_network_retries(PODCAST_ARTWORK_TIMEOUT, || fetch_podcast_artwork_bytes_once(url.clone(), allow_private_network)).await
+}
+
+async fn fetch_podcast_artwork_bytes_once(url: Url, allow_private_network: bool) -> Result<FetchedPodcastArtwork, String> {
   let cache_key = podcast_artwork_cache_key(&url, allow_private_network);
   if let Some((content_type, bytes)) = cached_podcast_artwork(&cache_key) {
     return Ok(FetchedPodcastArtwork { content_type, bytes });
