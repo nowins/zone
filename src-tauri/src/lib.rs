@@ -297,6 +297,8 @@ pub fn run() {
       podcast::podcast_list_download_jobs,
       podcast::podcast_enqueue_download,
       podcast::podcast_pause_download_job,
+      podcast::podcast_import_opml,
+      podcast::podcast_export_opml,
       podcast::podcast_list_feeds,
       podcast::podcast_set_following,
       podcast::podcast_list_home,

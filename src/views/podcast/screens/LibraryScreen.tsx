@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { DownloadJobs } from "../components/DownloadJobs";
+import { TransferActions } from "../components/TransferActions";
 import { isPodcastEpisodeNew } from "../../../utils/podcastListening";
 import { PODCAST_LIBRARY_SORTS, PODCAST_DOWNLOAD_BATCH_LIMIT } from "../constants";
 import { formatEpisodeDate, formatFileSize } from "../format";
@@ -157,6 +158,7 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
 
   return (
     <main className="podcast-screen podcast-library-screen">
+              <TransferActions />
               <DownloadJobs />
               <PodcastSection title="已关注" count={feeds.length}>
                 {libraryState === "loading" ? (

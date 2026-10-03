@@ -2138,6 +2138,9 @@
   }
 }
 .podcast-library-actions { display: flex; justify-content: flex-end; padding: 0 36px; }
+.podcast-transfer-actions { margin-bottom: 24px; font-size: 12px; }
+.podcast-transfer-actions > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.podcast-transfer-actions label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .podcast-settings-dialog { max-width: 600px; }
 .podcast-settings-fields { display: grid; gap: 20px; margin: 24px 0; }
 .podcast-settings-fields label { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 14px; }
