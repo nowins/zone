@@ -918,6 +918,7 @@ export function usePlaybackControls({
 
   function seek(value: number) {
     if (!audioRef.current) return;
+    podcast.cancelPendingPodcastAutofill();
     const podcastEpisode = activePodcastEpisodeRef.current;
     if (!podcastEpisode && activeTrackId) {
       pendingMusicResumeRef.current = null;

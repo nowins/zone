@@ -511,6 +511,22 @@ pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), Strin
         added_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS podcast_playlists (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('manual','smart')),
+        rules_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS podcast_playlist_items (
+        playlist_id TEXT NOT NULL REFERENCES podcast_playlists(id) ON DELETE CASCADE,
+        episode_id TEXT NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK(position >= 0),
+        added_at INTEGER NOT NULL,
+        PRIMARY KEY(playlist_id,episode_id)
+      );
+
       CREATE TABLE IF NOT EXISTS podcast_episode_resources (
         id TEXT PRIMARY KEY,
         episode_id TEXT NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,

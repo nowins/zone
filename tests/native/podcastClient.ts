@@ -3,7 +3,7 @@ declare global {interface Window {__zoneClientAuditStarted?: boolean}}
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 const until=async(check:()=>boolean,name:string,timeout=20000)=>{const started=Date.now();while(!check()){if(Date.now()-started>timeout)throw Error(`${name}: timeout`);await delay(50);}};
 const button=(text:string)=>Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(el=>el.textContent?.trim()===text);
-const click=async(text:string)=>{await until(()=>Boolean(button(text)),text);button(text)!.click();await delay(150);};
+const click=async(text:string)=>{await until(()=>Boolean(button(text)),text);button(text)!.scrollIntoView({block:"nearest"});button(text)!.click();await delay(150);};
 const assert=(condition:unknown,message:string)=>{if(!condition)throw Error(message);};
 const capture=async(name:string)=>{await delay(700);await invoke("client_capture",{name});};
 const inputValue=async(input:HTMLInputElement,value:string)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new Event("input",{bubbles:true}));await delay(100);};
@@ -68,6 +68,28 @@ async function run() {
       assert(document.querySelector('.podcast-transcript-cues li[aria-current="true"]'),"transcript does not follow actual progress");
       await capture("07-notes-transcript-920");checks.push("真实客户端富文本简介、时间码跳转保留显式片头位置、原生转写缓存、关键词查询、转写时间跳转与当前段落");
       document.querySelector<HTMLButtonElement>('.podcast-player button[title="暂停"]')!.click();
+      await click("加入播放列表");await until(()=>Boolean(document.querySelector('select[aria-label="选择播放列表"]')),"playlist picker");
+      const manualName=`验收手动 ${Date.now()}`;
+      await selectValue(document.querySelector('select[aria-label="选择播放列表"]')!,"");
+      await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="新列表名称"]')!,manualName);
+      await click("加入");await until(()=>!document.querySelector('[role=dialog]'),"episode added to named list");
+      await click("返回节目");await click("返回资料库");await click("播放列表");await click("我的列表");await click(manualName);await until(()=>Boolean(document.querySelector('.podcast-named-list-row')),"manual list member");
+      assert(document.querySelector('.podcast-named-list-row')?.textContent?.includes("离线单集"),"named list lost episode");
+      await invoke("client_window",{small:false});await capture("08-named-list-1180");
+      await click("新建列表");await until(()=>Boolean(document.querySelector('input[aria-label="播放列表名称"]')),"smart list editor");
+      const smartName=`验收智能 ${Date.now()}`;
+      await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="播放列表名称"]')!,smartName);
+      await selectValue(document.querySelector('select[aria-label="播放列表类型"]')!,"smart");
+      await selectValue(document.querySelector('select[aria-label="智能列表筛选"]')!,"downloaded");
+      await invoke("client_window",{small:true});await capture("09-smart-list-editor-920");
+      await click("保存");await until(()=>!document.querySelector('[role=dialog]'),"smart list saved");await until(()=>Boolean(document.querySelector('.podcast-named-list-row')),"smart downloaded match");
+      const playList=Array.from(document.querySelectorAll<HTMLButtonElement>('.podcast-named-list-heading button')).find(el=>el.textContent?.trim()==="播放列表")!;playList.click();
+      await until(()=>!audio.paused,"named list shared transport");assert(document.querySelectorAll('audio').length===1,"named list added another audio");
+      document.querySelector<HTMLButtonElement>('.podcast-player button[title="暂停"]')!.click();
+      await click(manualName);await click("删除列表");await until(()=>Boolean(document.querySelector('[role=dialog]')),"delete list dialog");
+      (document.querySelector('[role=dialog] button[type=submit]') as HTMLButtonElement).click();await until(()=>!document.querySelector('[role=dialog]'),"list deleted");
+      const lists=await invoke<Array<{name:string}>>("podcast_list_playlists");assert(!lists.some(list=>list.name===manualName),"deleted list remained");
+      checks.push("真实客户端新建手动列表、单集加入、智能已下载条件、列表共用播放、删除列表保护音频与资料、双窗口布局");
     }
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

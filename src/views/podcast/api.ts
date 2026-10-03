@@ -143,6 +143,15 @@ export type TranscriptDocument = {episodeId:string;language:string|null;cues:Tra
 export const getTranscript = (episodeId:string) => invokeNetwork<TranscriptDocument>("transcript","podcast_get_transcript",{episodeId});
 export const openPodcastLink = (url:string) => invoke<void>("podcast_open_link",{url});
 
+export type PodcastPlaylistRules = { filter: string; sort: string; feedIds: string[]; maxAgeDays: number | null };
+export type PodcastPlaylist = { id: string; name: string; kind: "manual" | "smart"; rules: PodcastPlaylistRules; updatedAt: number };
+export const listPodcastPlaylists = () => invoke<PodcastPlaylist[]>("podcast_list_playlists");
+export const savePodcastPlaylist = (list: {id?: string; name: string; kind: string; rules: PodcastPlaylistRules; expectedUpdatedAt?: number}) => invoke<PodcastPlaylist>("podcast_save_playlist", list);
+export const deletePodcastPlaylist = (id: string) => invoke<void>("podcast_delete_playlist", { id });
+export const podcastPlaylistPage = (id: string, offset: number, limit = 50) => invoke<EpisodeSearchPage>("podcast_playlist_page", { id, offset, limit });
+export const updatePlaylistItem = (id: string, episodeId: string, add: boolean) => invoke<void>("podcast_update_playlist_item", { id, episodeId, add });
+export const reorderPodcastPlaylist = (id: string, episodeIds: string[]) => invoke<void>("podcast_reorder_playlist", { id, episodeIds });
+
 export function getEpisodeDetail(episodeId: string) {
   return invoke<PodcastEpisodeDetail>("podcast_get_episode_detail", {
     episodeId,

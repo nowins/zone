@@ -1,3 +1,8 @@
+import { useState } from "react";
+import { Button } from "../../../components/Button";
+import { Presence } from "../../../motion/presence";
+import { MOTION_DURATIONS } from "../../../motion/tokens";
+import { PlaylistPicker } from "./NamedLists";
 import {
   Bookmark,
   CheckCircle2,
@@ -73,6 +78,7 @@ function EpisodeDetail({
   onPlayChapter: (positionSeconds: number) => void;
 }) {
   const { episode, feed } = detail;
+  const [addingToList, setAddingToList] = useState(false);
   const currentChapterIndex = active && chapterDocument
     ? findActivePodcastChapterIndex(
       chapterDocument.chapters,
@@ -160,6 +166,7 @@ function EpisodeDetail({
           <ListMusic size={16} />
           加入待播
         </button>
+        <Button variant="ghost" onClick={() => setAddingToList(true)}>加入播放列表</Button>
         <button
           type="button"
           onClick={onToggleSaved}
@@ -281,6 +288,9 @@ function EpisodeDetail({
         </section>
       ) : null}
       {detail.transcriptCount>0&&<TranscriptPanel key={episode.id} episodeId={episode.id} active={active} progress={activeProgress} onPlayAt={onPlayChapter}/>}
+      <Presence show={addingToList} exitDurationMs={MOTION_DURATIONS.micro}>
+        <PlaylistPicker episode={episode} onClose={() => setAddingToList(false)} />
+      </Presence>
     </article>
   );
 }

@@ -77,6 +77,7 @@ export type PodcastViewProps = {
   onReturnToNowPlaying: () => void;
   isPlaying: boolean;
   onPlayEpisode: (episode: PodcastPlayback) => void;
+  onPlayPlaylist?: (id: string) => Promise<void>;
   onPlayEpisodeAt: (episode: PodcastPlayback, positionSeconds: number) => void;
   onQueueEpisode: (
     episode: PodcastEpisode,

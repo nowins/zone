@@ -140,6 +140,7 @@ export function usePodcastViewModel({
   onReturnToNowPlaying,
   isPlaying,
   onPlayEpisode,
+  onPlayPlaylist,
   onPlayEpisodeAt,
   onQueueEpisode,
   onRemoveQueueEpisode,
@@ -2298,14 +2299,14 @@ export function usePodcastViewModel({
     : screen === "episode"
       ? "单集"
       : screen === "playlist"
-        ? "待播"
+        ? "播放列表"
         : "播客";
   const eyebrow = screen === "show"
     ? selectedFeed?.author || "节目"
     : screen === "episode"
       ? selectedEpisodeDetail?.feed.title || "单集详情"
       : screen === "playlist"
-        ? "正在播放与待播"
+        ? "待播与我的列表"
         : "音频节目";
 
   return {
@@ -2483,5 +2484,6 @@ export function usePodcastViewModel({
     episodes,
     activeEpisodeId,
     queue,
+    onPlayPlaylist,
   };
 }

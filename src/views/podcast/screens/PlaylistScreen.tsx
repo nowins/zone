@@ -1,4 +1,7 @@
 import { PODCAST_AUTO_QUEUE_MODES } from "../constants";
+import { useState } from "react";
+import { Button } from "../../../components/Button";
+import { NamedLists } from "../components/NamedLists";
 import { formatEpisodeDate, plainText } from "../format";
 import { MetroLoader } from "../../../components/MetroLoader";
 import { CurrentEpisodeRow } from "../components/EpisodeRows";
@@ -7,6 +10,7 @@ import { PodcastEmpty, PodcastSection } from "../components/primitives";
 import type { PodcastViewModel } from "../usePodcastViewModel";
 
 export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
+  const [tab, setTab] = useState<"queue" | "lists">("queue");
   const {
     // pull fields used by this screen (full bag is fine; unused locals are ok at runtime)
     ..._
@@ -149,6 +153,11 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
 
   return (
     <main className="podcast-screen podcast-playlist-screen">
+      <div className="podcast-list-pivots" role="group" aria-label="播放列表分类">
+        <Button variant="ghost" aria-pressed={tab === "queue"} onClick={() => setTab("queue")}>待播</Button>
+        <Button variant="ghost" aria-pressed={tab === "lists"} onClick={() => setTab("lists")}>我的列表</Button>
+      </div>
+      {tab === "lists" ? <NamedLists vm={vm} /> :
       <div className="podcast-playlist-content">
               <PodcastSection title="正在播放" className="podcast-playlist-current">
                 {knownActiveEpisode ? (
@@ -348,7 +357,7 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
                   <PodcastEmpty label="待播队列为空，可从单集详情加入" />
                 )}
               </PodcastSection>
-      </div>
+      </div>}
             </main>
   );
 }

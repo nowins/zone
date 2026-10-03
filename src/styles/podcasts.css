@@ -2179,3 +2179,22 @@
 .podcast-transcript-cues li[aria-current="true"] { color: var(--accent); background: rgba(255,255,255,0.035); }
 .podcast-transcript-cues li p { margin: 0; overflow-wrap: anywhere; }
 .podcast-transcript-cues li > span { color: var(--muted); font-size: 12px; }
+.podcast-list-pivots, .podcast-named-list-nav { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+.podcast-list-pivots button { font-size: 22px; }
+.podcast-list-pivots [aria-pressed="true"], .podcast-named-list-nav [aria-pressed="true"] { color: var(--accent); }
+.podcast-named-list-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; justify-content: space-between; margin: 24px 0; }
+.podcast-named-list-heading h2, .podcast-named-list-heading h3 { font-size: 22px; font-weight: 400; margin: 0; }
+.podcast-named-list-heading small, .podcast-named-list-nav small { font-size: 12px; color: var(--muted); margin-left: 10px; }
+.podcast-named-list-heading > div { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
+.podcast-named-list-order { display: flex; justify-content: flex-end; gap: 8px; }
+.playlist-dialog.podcast-collection-dialog { --dialog-offset-y: 0px; box-sizing: border-box; width: min(580px,calc(100vw - 48px)); max-height: calc(100vh - 100px); overflow: auto; color-scheme: dark; }
+.podcast-collection-fields { display: grid; gap: 18px; margin: 24px 0; }
+.playlist-dialog .podcast-collection-fields label { display: flex; gap: 16px; align-items: center; justify-content: space-between; font-size: 14px; }
+.playlist-dialog .podcast-collection-fields > label { white-space: nowrap; }
+.playlist-dialog .podcast-collection-fields > label input { width: min(340px,75%); min-width: 0; font-size: 16px; }
+.podcast-collection-dialog .playlist-dialog-actions { position: sticky; bottom: -28px; z-index: 1; background: #171118; padding: 16px 0; margin-top: 16px; border-top: 1px solid var(--faint); }
+.podcast-collection-fields select { min-width: 150px; height: 36px; padding: 6px; font: inherit; background: var(--app-bg); color: var(--text); border: 1px solid var(--quiet); }
+.podcast-collection-feeds { border: 1px solid var(--quiet); max-height: 150px; overflow: auto; padding: 12px; }
+.playlist-dialog .podcast-collection-feeds label { justify-content: flex-start; margin: 8px 0; }
+.playlist-dialog .podcast-collection-feeds input[type="checkbox"] { width: 16px; height: 16px; min-width: 16px; margin: 0; padding: 0; }
+.podcast-collection-fields small { font-size: 12px; line-height: 1.8; color: var(--muted); }

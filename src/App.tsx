@@ -198,6 +198,7 @@ export default function App() {
     podcastPlaybackStatus,
     podcastSessionHydrated,
     playPodcastEpisode,
+    playPodcastPlaylist,
     queuePodcastEpisode,
     removePodcastQueueEpisode,
     removePodcastQueueEpisodes,
@@ -1168,6 +1169,7 @@ export default function App() {
             pinnedPodcastFeedIds={pinnedPodcastFeedIds}
             onTogglePodcastPin={togglePodcastPin}
             onPlayEpisode={playPodcastEpisode}
+            onPlayPlaylist={playPodcastPlaylist}
             onPlayEpisodeAt={(episode, positionSeconds) =>
               playPodcastEpisode(episode, positionSeconds)}
             onQueueEpisode={queuePodcastEpisode}

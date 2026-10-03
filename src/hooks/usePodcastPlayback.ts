@@ -464,6 +464,25 @@ export function usePodcastPlayback({
       .catch(() => undefined);
   }
 
+  async function playPodcastPlaylist(id: string) {
+    const attempt = ++podcastAutoQueueAttemptRef.current;
+    cancelPendingQueueConsume();
+    const revision = beginPodcastQueueMutation(podcastQueueRef.current);
+    await serializePodcastQueueMutation(async () => {
+      if (attempt !== podcastAutoQueueAttemptRef.current) return;
+      try {
+        const items = await invoke<PodcastQueueItem[]>("podcast_activate_playlist", { id });
+        applyPodcastQueueResult(items, revision);
+        if (attempt === podcastAutoQueueAttemptRef.current && revision === podcastQueueRevisionRef.current && items[0]) {
+          playPodcastEpisode(podcastPlaybackForEpisode(items[0].episode));
+        }
+      } catch (error) {
+        await reloadPodcastQueue(revision);
+        throw error;
+      }
+    });
+  }
+
   function cancelPendingQueueConsume() {
     pendingPodcastQueueConsumeRef.current = null;
   }
@@ -1168,6 +1187,7 @@ export function usePodcastPlayback({
     podcastPlaybackStatus,
     podcastSessionHydrated,
     playPodcastEpisode,
+    playPodcastPlaylist,
     queuePodcastEpisode,
     removePodcastQueueEpisode,
     removePodcastQueueEpisodes,

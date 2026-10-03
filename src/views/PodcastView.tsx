@@ -165,7 +165,7 @@ export function PodcastView(props: PodcastViewProps) {
               className={screen === "playlist" ? "active" : ""}
               onClick={() => changeRootScreen("playlist")}
             >
-              待播
+              播放列表
             </button>
           </nav>
         )}

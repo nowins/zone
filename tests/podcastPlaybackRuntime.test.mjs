@@ -2,6 +2,38 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deferred, mountPodcastPlayback, podcastEpisode, podcastPlayback, podcastDetail, step } from "./helpers/podcastRuntime.mjs";
 
+test("playing a named list uses the shared transport and a later pause prevents delayed autoplay", async () => {
+  const pending = deferred();
+  const items = [{ episode: podcastEpisode("listed"), position: 0, addedAt: 1 }];
+  const h = await mountPodcastPlayback(async command => command === "podcast_activate_playlist" ? pending.promise : command === "podcast_list_queue" ? [] : undefined);
+  try {
+    let operation;
+    await step(() => { operation = h.api.playPodcastPlaylist("list"); });
+    await step(() => h.api.transport.cancelPendingPodcastAutofill());
+    await step(() => pending.resolve(items)); await operation;
+    assert.equal(h.api.podcastQueue[0].episode.id, "listed"); assert.equal(h.armed.length, 0);
+    await step(() => h.api.playPodcastPlaylist("list"));
+    assert.equal(h.api.activePodcastEpisode.episodeId, "listed"); assert.equal(h.armed.length, 1);
+  } finally { await h.close(); }
+});
+
+test("a queue edit after list playback starts wins over its delayed activation result", async () => {
+  const pending = deferred(); let queue = [];
+  const h = await mountPodcastPlayback(async command => {
+    if (command === "podcast_activate_playlist") { queue = await pending.promise; return queue; }
+    if (command === "podcast_queue_clear") { queue = []; return; }
+    if (command === "podcast_list_queue") return queue;
+  });
+  try {
+    let activation, clearing;
+    await step(() => { activation = h.api.playPodcastPlaylist("list"); });
+    await step(() => { clearing = h.api.clearPodcastQueue(); });
+    await step(() => pending.resolve([{ episode: podcastEpisode("listed"), position: 0, addedAt: 1 }]));
+    await Promise.all([activation, clearing]);
+    assert.deepEqual(h.api.podcastQueue, []); assert.equal(h.armed.length, 0);
+  } finally { await h.close(); }
+});
+
 test("show preferences load before binding, respect a later pause, and preserve the global rate",async()=>{
   const pending=deferred();
   const h=await mountPodcastPlayback(async()=>[],{playbackRate:1.25},{preferences:feed=>feed?pending.promise:{playbackRate:1.25}});
