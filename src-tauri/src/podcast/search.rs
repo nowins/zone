@@ -13,7 +13,7 @@ pub(crate) fn search_episodes(path:&Path,downloads:&Path,feed:Option<&str>,query
 fn search_episodes_scoped(path:&Path,downloads:&Path,feed:Option<&str>,query:&str,filter:&str,sort:&str,offset:usize,limit:usize,followed_only:bool)->Result<PodcastEpisodeSearchPage,String> {
   if let Some(id)=feed {validate_identifier(id)?;}
   if query.chars().count()>200 {return Err("搜索文字过长".into());}
-  let condition=match filter {"all"=>"1=1","unplayed"=>"COALESCE(p.completed,0)=0","in-progress"=>"p.position_seconds>0 AND p.completed=0","unstarted"=>"COALESCE(p.position_seconds,0)=0 AND COALESCE(p.completed,0)=0","played"=>"COALESCE(p.completed,0)=1","downloaded"=>"d.state='downloaded'","saved"=>"s.episode_id IS NOT NULL",_=>return Err("单集筛选无效".into())};
+  let condition=match filter {"all"=>"1=1","unplayed"=>"COALESCE(p.completed,0)=0","in-progress"=>"p.position_seconds>0 AND p.completed=0","unstarted"=>"COALESCE(p.position_seconds,0)=0 AND COALESCE(p.completed,0)=0","played"=>"COALESCE(p.completed,0)=1","downloaded"=>"d.state='downloaded'","saved"=>"s.episode_id IS NOT NULL","history"=>"(p.position_seconds>0 OR p.completed=1)",_=>return Err("单集筛选无效".into())};
   let order=match sort {"newest"=>"e.published_at IS NULL,e.published_at DESC,e.id","oldest"=>"e.published_at IS NULL,e.published_at ASC,e.id","title"=>"e.title COLLATE NOCASE,e.id","listened"=>"p.updated_at IS NULL,p.updated_at DESC,e.id",_=>return Err("单集排序无效".into())};
   let pattern=format!("%{}%",query.trim().replace('\\',"\\\\").replace('%',"\\%").replace('_',"\\_"));
   let from=format!("FROM podcast_episodes e JOIN podcast_feeds f ON f.id=e.feed_id
@@ -52,6 +52,7 @@ mod tests {
     let page=search_episodes(&state.db_path,&state.downloads_dir,None,"","unplayed","oldest",200,30).unwrap();assert_eq!(page.total,250);assert_eq!(page.episodes.len(),30);assert!(page.has_more);
     open_database(&state.db_path).unwrap().execute("INSERT INTO podcast_progress(episode_id,position_seconds,duration_seconds,completed,updated_at) VALUES(?1,1,1,1,1)",[found]).unwrap();
     assert_eq!(search_episodes(&state.db_path,&state.downloads_dir,None,"100%_","played","newest",0,50).unwrap().total,1);
+    assert_eq!(search_episodes(&state.db_path,&state.downloads_dir,None,"","history","listened",0,50).unwrap().total,1);
     assert!(search_episodes(&state.db_path,&state.downloads_dir,None,"","all","newest; DROP TABLE podcast_feeds",0,10).is_err());
   }
   #[test]

@@ -5,7 +5,7 @@ import { PodcastEmpty, PodcastLoading } from "./primitives";
 import { searchLocalEpisodes, type EpisodeSearchPage } from "../api";
 import type { PodcastViewModel } from "../usePodcastViewModel";
 
-const filters = [["all","全部"],["unplayed","未听完"],["in-progress","正在收听"],["unstarted","尚未开始"],["played","已听完"],["downloaded","已下载"],["saved","稍后听"]];
+const filters = [["all","全部"],["unplayed","未听完"],["in-progress","正在收听"],["unstarted","尚未开始"],["played","已听完"],["downloaded","已下载"],["saved","稍后听"],["history","收听历史"]];
 const browsing = new Map<string,{query:string;filter:string;sort:string;offset:number}>();
 export function EpisodeBrowser({ vm, feedId, requestedQuery, children, scope, initialFilter="all", initialSort="newest", followedOnly }: {vm:PodcastViewModel;feedId?:string;requestedQuery?:string;children?:ReactNode;scope?:string;initialFilter?:string;initialSort?:string;followedOnly?:boolean}) {
   const key=scope ?? feedId ?? "library";const restored=browsing.get(key);

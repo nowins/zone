@@ -36,10 +36,13 @@ async function run() {
     const preferences=await invoke<{storageLimitMb:number}>("podcast_get_preferences",{});
     assert(preferences.storageLimitMb===expected,"global settings not persisted through native SQLite");
     checks.push("完整 App 中打开下载设置、保存原生 SQLite、1180×760 与 920×620、对话框焦点隔离");
-    await click("清理断点");await until(()=>document.querySelector('.podcast-download-job')?.textContent?.includes("0 B") ?? false,"partial download space released");
+    await click("管理");await click("清理断点");await until(()=>document.querySelector('.podcast-download-job')?.textContent?.includes("0 B") ?? false,"partial download space released");
     const jobs=await invoke<Array<{state:string;downloadedBytes:number}>>("podcast_list_download_jobs");assert(jobs.some(job=>job.state==="paused"&&job.downloadedBytes===0),"partial cleanup must keep the task paused");
     checks.push("真实客户端暂停任务清理断点并释放占用，保持任务暂停避免自动重新下载");
+    await click("节目");await until(()=>Boolean(document.querySelector(".podcast-library-show-open")),"followed shows tab");
+    await capture("15-library-920");checks.push("真实客户端资料库分类、管理入口与历史未听完数量语义");
     const open=document.querySelector<HTMLButtonElement>(".podcast-library-show-open");
+    assert(open,"followed fixture show missing");
     if(open){open.click();await click("节目设置");await until(()=>Boolean(document.querySelector(".podcast-settings-fields select")),"feed settings");await capture("03-feed-settings");
       (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector("[role=dialog]"),"escape closes settings");checks.push("节目设置入口与 Escape 关闭且保留节目页");
       await until(()=>Boolean(document.querySelector(".podcast-search-page-status")),"native episode count");

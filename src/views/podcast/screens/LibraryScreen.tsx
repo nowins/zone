@@ -1,11 +1,10 @@
 import { usePodcastBrowsePosition } from "../components/BrowsePosition";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShowGroups } from "../components/ShowGroups";
 import { DownloadJobs } from "../components/DownloadJobs";
 import { TransferActions } from "../components/TransferActions";
 import { EpisodeBrowser } from "../components/EpisodeBrowser";
-import { isPodcastEpisodeNew } from "../../../utils/podcastListening";
 import { PODCAST_LIBRARY_SORTS, PODCAST_DOWNLOAD_BATCH_LIMIT } from "../constants";
 import { formatEpisodeDate, formatFileSize } from "../format";
 import { MetroLoader } from "../../../components/MetroLoader";
@@ -18,156 +17,23 @@ import {
 } from "../components/primitives";
 import type { PodcastViewModel } from "../usePodcastViewModel";
 
+let libraryTab="shows";
 export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
+  const [tab,setTab]=useState(libraryTab);
+  useEffect(()=>{libraryTab=tab;},[tab]);
   const [groupFeedIds, setGroupFeedIds] = useState<ReadonlySet<string> | null>(null);
   const groupedFeeds = vm.orderedFeeds.filter(feed => !groupFeedIds || groupFeedIds.has(feed.id));
   const pageRef=usePodcastBrowsePosition("library");
-  const {
-    // pull fields used by this screen (full bag is fine; unused locals are ok at runtime)
-    ..._
-  } = vm;
-  void _;
-  // Prefer explicit access via vm.* for readability of auto-extract; bind common names:
-  const {
-    continueListeningEpisodes,
-    latestEpisodes,
-    filteredLatestEpisodes,
-    listenFilter,
-    setListenFilter,
-    listenNewReferenceTime,
-    hasListenContent,
-    homeState,
-    loadHome,
-    currentEpisodeId,
-    isPlaying,
-    openEpisodeDetail,
-    playEpisode,
-    showEpisodeMenu,
-    downloadingId,
-    downloadEpisode,
-    feedById,
-    changeRootScreen,
-    query,
-    setQuery,
-    searchApple,
-    searchState,
-    discoveryTopic,
-    rssExpanded,
-    setRssExpanded,
-    rssUrl,
-    setRssUrl,
-    subscribeRss,
-    openingId,
-    searchHistory,
-    setSearchHistory,
-    repeatPodcastSearch,
-    browseDiscoveryTopic,
-    searchHeading,
-    searchResults,
-    showPopularDiscovery,
-    searchSort,
-    setSearchSort,
-    sortedSearchResults,
-    feeds,
-    searchHighlightQuery,
-    previewFeed,
-    discoveryState,
-    discoveryShows,
-    loadDiscovery,
-    libraryState,
-    librarySort,
-    setLibrarySort,
-    orderedFeeds,
-    openStoredFeed,
-    moveFollowedFeed,
-    savedEpisodes,
-    downloadedEpisodes,
-    recentlyPlayedEpisodes,
-    recentHistoryExpanded,
-    setRecentHistoryExpanded,
-    downloadLibraryState,
-    downloadGroups,
-    downloadedBytes,
-    downloadedCount,
-    downloadedFeedCount,
-    hasDownloadedLibraryPage,
-    downloadPage,
-    loadDownloadedLibrary,
-    loadingMoreDownloads,
-    downloadSelectionMode,
-    toggleDownloadSelectionMode,
-    toggleAllLoadedDownloads,
-    allLoadedDownloadsSelected,
-    loadedDownloadsExceedBatchLimit,
-    selectedDownloadIds,
-    toggleDownloadSelection,
-    requestSelectedDownloadDeletion,
-    setDownloadCleanupIntent,
-    knownActiveEpisode,
-    upNextQueue,
-    queueSelectionMode,
-    toggleQueueSelectionMode,
-    toggleAllQueueEpisodes,
-    allQueueEpisodesSelected,
-    selectedQueueIds,
-    selectedQueueEpisodes,
-    toggleQueueSelection,
-    downloadSelectedQueueEpisodes,
-    setSelectedQueueEpisodesPlayed,
-    requestSelectedQueueRemoval,
-    queueBatchAction,
-    queueAnnouncement,
-    setQueueAnnouncement,
-    autoQueueMode,
-    onAutoQueueMode,
-    onClearQueue,
-    draggedQueueEpisodeId,
-    queueDropTarget,
-    handleQueueDragStart,
-    handleQueueDragOver,
-    handleQueueDrop,
-    resetQueueDrag,
-    onMoveQueueEpisode,
-    onRemoveQueueEpisode,
-    onReorderQueueEpisode,
-    selectedFeed,
-    displayedEpisodes,
-    episodeState,
-    loadEpisodes,
-    refreshSelectedFeed,
-    following,
-    displayedEpisodeDetail,
-    detailState,
-    liveActiveEpisode,
-    activeProgress,
-    activeDuration,
-    detailQueuePosition,
-    detailAction,
-    updatingPlayedId,
-    chapterDocument,
-    chapterState,
-    chaptersOpen,
-    toggleEpisodeChapters,
-    loadEpisodeChapters,
-    playEpisodeAt,
-    onQueueEpisode,
-    toggleEpisodeSaved,
-    toggleEpisodePlayed,
-    deleteEpisodeDownload,
-    shareEpisode,
-    displayedRelatedEpisodes,
-    relatedState,
-    loadRelatedEpisodes,
-    openEpisodeShow,
-    episodes,
-    downloadCleanupAction,
-  } = vm;
+  const { currentEpisodeId, isPlaying, openEpisodeDetail, playEpisode, showEpisodeMenu, feeds, libraryState, librarySort, setLibrarySort, openStoredFeed, moveFollowedFeed, downloadLibraryState, downloadGroups, downloadedBytes, downloadedCount, downloadedFeedCount, downloadPage, loadDownloadedLibrary, loadingMoreDownloads, downloadSelectionMode, toggleDownloadSelectionMode, toggleAllLoadedDownloads, allLoadedDownloadsSelected, loadedDownloadsExceedBatchLimit, selectedDownloadIds, toggleDownloadSelection, requestSelectedDownloadDeletion, setDownloadCleanupIntent, episodes, downloadCleanupAction } = vm;
 
   return (
     <main ref={pageRef} className="podcast-screen podcast-library-screen">
-              <TransferActions />
-              <DownloadJobs />
-              <EpisodeBrowser vm={vm} />
+      <div className="podcast-library-tabs" role="group" aria-label="资料库分类">{[["shows","节目"],["episodes","单集"],["saved","稍后听"],["downloads","下载"],["history","历史"],["manage","管理"]].map(([id,label])=><button key={id} type="button" aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>
+      {tab==="manage" ? <><TransferActions /><DownloadJobs /></> : null}
+      {tab==="episodes" ? <EpisodeBrowser key="archive" vm={vm} scope="archive"/> : null}
+      {tab==="saved" ? <EpisodeBrowser key="saved" vm={vm} scope="saved" initialFilter="saved"/> : null}
+      {tab==="history" ? <EpisodeBrowser key="history" vm={vm} scope="history" initialFilter="history" initialSort="listened"/> : null}
+      {tab==="shows" ? <>
               <PodcastSection title="已关注" count={feeds.length}>
                 {libraryState === "loading" ? (
                   <PodcastLoading label="正在读取资料库" />
@@ -210,7 +76,7 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                               {feed.unplayedCount > 0 ? (
                                 <em
                                   className="podcast-unplayed-badge"
-                                  aria-label={`${feed.unplayedCount} 集未听`}
+                                  aria-label={`${feed.unplayedCount} 集未听完，包含历史单集`} title="未听完数量，包含历史单集"
                                 >
                                   {feed.unplayedCount > 99
                                     ? "99+"
@@ -219,7 +85,8 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                               ) : null}
                             </span>
                             <span className="podcast-library-show-copy">
-                              <strong>{feed.title}</strong>
+                              <strong title={feed.title}>{feed.title}</strong>
+                              <small>{feed.unplayedCount} 集未听完{feed.latestEpisodeAt && feed.latestEpisodeAt>=Date.now()-86400000 ? " · 24 小时内更新" : ""}</small>
                               <small>{feed.author || "未知作者"}</small>
                               <small className="podcast-library-updated">
                                 {feed.latestEpisodeAt
@@ -264,64 +131,8 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                 )}
               </PodcastSection>
 
-              {recentlyPlayedEpisodes.length > 0 ? (
-                <PodcastSection
-                  title="最近播放"
-                  count={recentlyPlayedEpisodes.length}
-                  actionLabel={recentlyPlayedEpisodes.length > 8
-                    ? recentHistoryExpanded ? "收起" : "查看全部"
-                    : undefined}
-                  onAction={recentlyPlayedEpisodes.length > 8
-                    ? () => setRecentHistoryExpanded((current) => !current)
-                    : undefined}
-                >
-                  <div className="podcast-home-episodes">
-                    {(recentHistoryExpanded
-                      ? recentlyPlayedEpisodes
-                      : recentlyPlayedEpisodes.slice(0, 8)
-                    ).map((episode) => (
-                      <EpisodeRow
-                        key={episode.id}
-                        episode={episode}
-                        active={currentEpisodeId === episode.id}
-                        isPlaying={isPlaying}
-                        downloading={downloadingId === episode.id}
-                        showFeed
-                        onOpen={() => openEpisodeDetail(episode, "library")}
-                        onPlay={() => playEpisode(episode)}
-                        onDownload={() => void downloadEpisode(episode)}
-                        onContextMenu={(event) =>
-                          showEpisodeMenu(event, episode)}
-                      />
-                    ))}
-                  </div>
-                </PodcastSection>
-              ) : null}
-
-              {savedEpisodes.length > 0 ? (
-                <PodcastSection title="稍后听" count={savedEpisodes.length}>
-                  <div className="podcast-home-episodes">
-                    {savedEpisodes.map((episode) => (
-                      <EpisodeRow
-                        key={episode.id}
-                        episode={episode}
-                        active={currentEpisodeId === episode.id}
-                        isPlaying={isPlaying}
-                        downloading={downloadingId === episode.id}
-                        showFeed
-                        onOpen={() => openEpisodeDetail(episode, "library")}
-                        onPlay={() => playEpisode(episode)}
-                        onDownload={() => void downloadEpisode(episode)}
-                        onContextMenu={(event) =>
-                          showEpisodeMenu(event, episode)}
-                      />
-                    ))}
-                  </div>
-                </PodcastSection>
-              ) : null}
-
-              {downloadedCount > 0 || downloadLibraryState === "loading"
-                || downloadLibraryState === "error" ? (
+      </> : null}
+              {tab==="downloads" ? (
                 <PodcastSection
                   title="已下载"
                   count={downloadedCount}
@@ -441,7 +252,7 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                     </>
                   ) : downloadLibraryState === "loading" ? (
                     <PodcastLoading label="正在读取下载资料库" />
-                  ) : (
+                  ) : downloadLibraryState === "error" ? (
                     <div className="podcast-inline-state">
                       <span>暂时无法读取下载资料库</span>
                       <button
@@ -451,7 +262,7 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                         重试
                       </button>
                     </div>
-                  )}
+                  ) : <PodcastEmpty label="还没有下载，选择单集下载后可离线收听" />}
                 </PodcastSection>
               ) : null}
             </main>

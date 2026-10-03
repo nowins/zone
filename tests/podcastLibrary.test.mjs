@@ -151,8 +151,8 @@ test("podcast library exposes durable sorting, unread state, history, and groupe
   assert.match(podcastViewSource, /zone-podcast-library-v1/);
   assert.match(podcastViewSource, /aria-label="已关注节目排序"/);
   assert.match(podcastViewSource, /podcast-unplayed-badge/);
-  assert.match(podcastViewSource, /recentHistoryExpanded/);
-  assert.match(podcastViewSource, /recentlyPlayedEpisodes\.slice\(0, 8\)/);
+  assert.match(podcastViewSource, /scope="history" initialFilter="history" initialSort="listened"/);
+  assert.match(podcastViewSource, /aria-label="资料库分类"/);
   assert.match(
     podcastViewSource,
     /groupPodcastDownloads\(libraryDownloadedEpisodes\)/,

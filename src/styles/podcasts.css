@@ -2254,3 +2254,7 @@
 .podcast-detail-more[open] { flex-basis: 100%; }
 .podcast-detail-more > div { display: flex; gap: 20px; flex-wrap: wrap; padding-bottom: 8px; }
 .podcast-detail-downloaded { color: var(--muted); font-size: 12px; }
+
+.podcast-library-tabs { display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 22px; }
+.podcast-library-tabs button { min-height: 40px; color: var(--muted); font-size: 15px; border-bottom: 2px solid transparent; }
+.podcast-library-tabs button[aria-pressed="true"] { color: #fff; border-bottom-color: var(--accent); }
