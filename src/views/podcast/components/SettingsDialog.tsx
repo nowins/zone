@@ -3,6 +3,7 @@ import { Button } from "../../../components/Button";
 import { Dialog } from "../../../components/Dialog";
 import { MetroLoader } from "../../../components/MetroLoader";
 import { getPodcastPreferences, setPodcastPreferences, type PodcastPreferences } from "../api";
+import { PODCAST_PLAYBACK_RATES } from "../../../app/podcastPlaybackSettings";
 
 export function PodcastSettingsDialog({ feedId, title, onClose }: { feedId?: string; title: string; onClose: () => void }) {
   const [value, setValue] = useState<PodcastPreferences | null>(null);
@@ -36,6 +37,16 @@ export function PodcastSettingsDialog({ feedId, title, onClose }: { feedId?: str
       <label className="podcast-setting-check"><input type="checkbox" checked={value.cleanupPlayed}
         onChange={event => setValue({ ...value, cleanupPlayed: event.target.checked })} />自动清理已听完下载</label>
       <small>保留正在收听、稍后听和待播单集；达到空间上限后暂停新增下载。</small>
+      <fieldset className="podcast-playback-settings"><legend>播放偏好</legend>
+        {feedId && <label className="podcast-setting-check"><input type="checkbox" checked={value.inheritPlayback}
+          onChange={event=>setValue({...value,inheritPlayback:event.target.checked})}/>使用默认播放设置</label>}
+        <div className="podcast-playback-setting-grid">
+          <label>播放速度<select disabled={Boolean(feedId&&value.inheritPlayback)} aria-label="节目播放速度" value={value.playbackRate??0} onChange={event=>setValue({...value,playbackRate:Number(event.target.value)||null})}>
+            <option value={0}>沿用默认倍速</option>{Array.from(new Set([...PODCAST_PLAYBACK_RATES,...(value.playbackRate?[value.playbackRate]:[])])).sort((a,b)=>a-b).map(rate=><option key={rate} value={rate}>{rate}×</option>)}</select></label>
+          {([["introSeconds","跳过片头",0,3600],["outroSeconds","跳过片尾",0,3600],["backwardSeconds","后退间隔",1,300],["forwardSeconds","前进间隔",1,300]] as const).map(([key,label,min,max])=><label key={key}>{label}<span><input disabled={Boolean(feedId&&value.inheritPlayback)} type="number" aria-label={label} min={min} max={max} step={1} value={value[key]} onChange={event=>setValue({...value,[key]:Number(event.target.value)})}/> 秒</span></label>)}
+          <label>同节目续播<select disabled={Boolean(feedId&&value.inheritPlayback)} aria-label="节目播放顺序" value={value.oldestFirst?"oldest":"newest"} onChange={event=>setValue({...value,oldestFirst:event.target.value==="oldest"})}><option value="newest">由新到旧</option><option value="oldest">由旧到新</option></select></label>
+        </div>
+      </fieldset>
     </div> : error ? null : <p role="status"><MetroLoader />正在读取设置</p>}
     {error && <p role="alert">{error}</p>}
   </Dialog>;

@@ -18,6 +18,9 @@ export type PodcastTransportBridge = {
   activePodcastEpisode: PodcastPlayback | null;
   podcastPlaybackRate: number;
   podcastSessionHydrated: boolean;
+  podcastPreferencesReady?: boolean;
+  resolvePodcastIntro?: (position:number,duration:number,explicit:boolean)=>number;
+  handlePodcastClock?: (position:number,duration:number)=>boolean;
 
   setPodcastPlaybackStatus: (status: PodcastPlaybackStatus) => void;
   cancelPodcastSessionRestore: () => void;

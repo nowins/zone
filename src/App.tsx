@@ -874,6 +874,8 @@ export default function App() {
         duration={duration}
         volume={volume}
         status={podcastPlaybackStatus}
+        backwardSeconds={podcast.podcastPreferences.backwardSeconds}
+        forwardSeconds={podcast.podcastPreferences.forwardSeconds}
         onPlayPause={togglePlay}
         onRetry={retryPodcastPlayback}
         onSeek={seek}
@@ -1196,6 +1198,8 @@ export default function App() {
               duration={duration}
               volume={volume}
               playbackRate={podcastPlaybackRate}
+              backwardSeconds={podcast.podcastPreferences.backwardSeconds}
+              forwardSeconds={podcast.podcastPreferences.forwardSeconds}
               sleepTimer={podcastSleepTimer}
               onBack={() => requestNavigation(previousPageRef.current)}
               onPlayPause={togglePlay}

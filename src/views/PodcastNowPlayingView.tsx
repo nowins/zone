@@ -75,6 +75,8 @@ export function PodcastNowPlayingView({
   onToggleSaved,
   onNext,
   onRetry,
+  backwardSeconds = 15,
+  forwardSeconds = 30,
 }: {
   episode: PodcastPlayback;
   queue: PodcastQueueItem[];
@@ -104,6 +106,8 @@ export function PodcastNowPlayingView({
   onToggleSaved: () => void;
   onNext: () => void;
   onRetry: () => void;
+  backwardSeconds?: number;
+  forwardSeconds?: number;
 }) {
   const [activeMenu, setActiveMenu] = useState<PodcastNowMenu>(null);
   const [queueOpen, setQueueOpen] = useState(false);
@@ -725,11 +729,11 @@ export function PodcastNowPlayingView({
           <div className="podcast-now-primary-controls">
             <button
               type="button"
-              onClick={() => onSeek(Math.max(0, safeProgress - 15))}
-              title="后退 15 秒"
+              onClick={() => onSeek(Math.max(0, safeProgress - backwardSeconds))}
+              title={`后退 ${backwardSeconds} 秒`}
             >
               <RotateCcw size={20} />
-              <span>15</span>
+              <span>{backwardSeconds}</span>
             </button>
             <button
               type="button"
@@ -747,11 +751,11 @@ export function PodcastNowPlayingView({
             </button>
             <button
               type="button"
-              onClick={() => onSeek(Math.min(mediaDuration || safeProgress + 30, safeProgress + 30))}
-              title="前进 30 秒"
+              onClick={() => onSeek(Math.min(mediaDuration || safeProgress + forwardSeconds, safeProgress + forwardSeconds))}
+              title={`前进 ${forwardSeconds} 秒`}
             >
               <RotateCw size={20} />
-              <span>30</span>
+              <span>{forwardSeconds}</span>
             </button>
             <button
               type="button"

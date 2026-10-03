@@ -1,5 +1,6 @@
 import { recordDiagnostic } from "../utils/diagnostics";
-import { downloadPodcastEpisode } from "../views/podcast/api";
+import { downloadPodcastEpisode, getPodcastPreferences, setPodcastPreferences } from "../views/podcast/api";
+import { DEFAULT_PODCAST_PREFERENCES, effectivePodcastPreferences, podcastIntroPosition, podcastOutroReached, type PodcastPreferences } from "../utils/podcastPreferences.js";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -84,7 +85,14 @@ export function usePodcastPlayback({
     nonce: number;
     returnToNowPlaying?: boolean;
   } | null>(null);
-  const [podcastPlaybackRate, setPodcastPlaybackRate] = useState(readPodcastPlaybackRate);
+  const [podcastPlaybackRate, applyPodcastPlaybackRate] = useState(readPodcastPlaybackRate);
+  const defaultPlaybackRateRef=useRef(podcastPlaybackRate);
+  const preferencesMutationRef=useRef<Promise<void>>(Promise.resolve());
+  const manualRatePendingRef=useRef(0);
+  const [preferencesRevision,setPreferencesRevision]=useState(0);
+  const [episodePreferences,setEpisodePreferences]=useState<{episodeId:string;value:PodcastPreferences;custom:boolean}|null>(null);
+  const episodePreferencesRef=useRef(episodePreferences);episodePreferencesRef.current=episodePreferences;
+  const completedBoundaryRef=useRef<string|null>(null);
   const [podcastAutoQueueMode, setPodcastAutoQueueMode] =
     useState<PodcastAutoQueueMode>(readPodcastAutoQueueMode);
   const podcastAutoQueueModeRef = useRef(podcastAutoQueueMode);
@@ -95,6 +103,45 @@ export function usePodcastPlayback({
   activePodcastEpisodeRef.current = activePodcastEpisode;
   podcastQueueRef.current = podcastQueue;
   podcastAutoQueueModeRef.current = podcastAutoQueueMode;
+
+  useEffect(()=>{
+    const episode=activePodcastEpisode;if(!episode)return;
+    let disposed=false;
+    void Promise.all([getPodcastPreferences(),getPodcastPreferences(episode.feedId)]).then(([global,feed])=>{
+      if(disposed)return;
+      const value=effectivePodcastPreferences(global,feed);
+      if(!manualRatePendingRef.current && global?.playbackRate)defaultPlaybackRateRef.current=global.playbackRate;
+      setEpisodePreferences({episodeId:episode.episodeId,value,custom:feed?.inheritPlayback===false});
+      if(!manualRatePendingRef.current)applyPodcastPlaybackRate(value.playbackRate ?? defaultPlaybackRateRef.current);
+    }).catch(()=>{
+      if(disposed)return;
+      setEpisodePreferences({episodeId:episode.episodeId,value:DEFAULT_PODCAST_PREFERENCES,custom:false});
+      applyPodcastPlaybackRate(defaultPlaybackRateRef.current);
+      showActionNotice("播放设置读取失败，使用默认播放设置");
+    });
+    return()=>{disposed=true;};
+  },[activePodcastEpisode?.episodeId,preferencesRevision]);
+
+  useEffect(()=>{
+    let disposed=false;let stop:(()=>void)|undefined;
+    void listen<string|null>("podcast-preferences-changed",event=>{
+      if(!event.payload || event.payload===activePodcastEpisodeRef.current?.feedId)setPreferencesRevision(value=>value+1);
+    }).then(unlisten=>{if(disposed)unlisten();else stop=unlisten;}).catch(()=>{});
+    return()=>{disposed=true;stop?.();};
+  },[]);
+
+  function setPodcastPlaybackRate(rate:number) {
+    if(!Number.isFinite(rate)||rate<0.5||rate>3)return;
+    applyPodcastPlaybackRate(rate);
+    const current=activePodcastEpisodeRef.current;const custom=episodePreferencesRef.current?.episodeId===current?.episodeId && episodePreferencesRef.current?.custom;
+    const feedId=custom?current?.feedId:undefined;
+    if(!custom){defaultPlaybackRateRef.current=rate;patchPodcastPlaybackSettings({playbackRate:rate});}
+    manualRatePendingRef.current++;
+    preferencesMutationRef.current=preferencesMutationRef.current.then(async()=>{
+      const previous=await getPodcastPreferences(feedId);
+      await setPodcastPreferences({...DEFAULT_PODCAST_PREFERENCES,...previous,playbackRate:rate},feedId);
+    }).catch(()=>showActionNotice("倍速已应用，本次设置未能保存")).finally(()=>{manualRatePendingRef.current--;});
+  }
 
   useEffect(() => {
     let disposed = false;
@@ -192,7 +239,7 @@ export function usePodcastPlayback({
   useEffect(() => {
     if (!podcastSessionHydratedRef.current) return;
     patchPodcastPlaybackSettings({
-      playbackRate: podcastPlaybackRate,
+      playbackRate: defaultPlaybackRateRef.current,
       activeEpisodeId: activePodcastEpisode?.episodeId ?? null,
       autoQueueMode: podcastAutoQueueMode,
     });
@@ -342,6 +389,7 @@ export function usePodcastPlayback({
     episode: PodcastPlayback,
     positionSeconds?: number,
   ) {
+    completedBoundaryRef.current=null;
     cancelPodcastSessionRestore();
     podcastAutoQueueAttemptRef.current += 1;
     const requestedPosition = Number.isFinite(positionSeconds)
@@ -843,6 +891,8 @@ export function usePodcastPlayback({
   }
 
   function markPodcastPlaying() {
+    const audio=audioRef.current;
+    if(audio && audio.currentTime < audio.duration-1)completedBoundaryRef.current=null;
     if (activePodcastEpisodeRef.current) setPodcastPlaybackStatus("playing");
   }
 
@@ -874,6 +924,8 @@ export function usePodcastPlayback({
   function handleEpisodeEnded(audioDuration: number) {
     const endedEpisodeId = activePodcastEpisodeRef.current?.episodeId;
     if (!endedEpisodeId) return;
+    if(completedBoundaryRef.current===endedEpisodeId)return;
+    completedBoundaryRef.current=endedEpisodeId;
     const progressSaved = persistPodcastProgress(audioDuration, audioDuration, true);
     markEpisodeCompletedOnEnd(audioDuration || 0);
     void progressSaved.finally(() => {
@@ -977,6 +1029,7 @@ export function usePodcastPlayback({
     }
     const positionSeconds = Number.isFinite(currentTime) ? Math.max(0, currentTime) : 0;
     const durationSeconds = Number.isFinite(trackDuration) ? Math.max(0, trackDuration) : 0;
+    if(force && durationSeconds>0 && positionSeconds<durationSeconds-1)completedBoundaryRef.current=null;
     // Keep every clock update, including throttled writes, independent of the
     // view's older list snapshots. Explicit rewinds and played markers supersede it.
     const lastSessionProgress = podcastSessionProgressRef.current.get(episode.episodeId);
@@ -1088,6 +1141,16 @@ export function usePodcastPlayback({
     cancelPendingQueueConsume,
     cancelPendingPodcastAutofill,
     handleEpisodeEnded,
+    podcastPreferencesReady: !activePodcastEpisode || episodePreferences?.episodeId===activePodcastEpisode.episodeId,
+    resolvePodcastIntro: (position,duration,explicit)=>{
+      const preferences=episodePreferencesRef.current?.value ?? DEFAULT_PODCAST_PREFERENCES;
+      return podcastIntroPosition(position,duration,preferences.introSeconds,preferences.outroSeconds,explicit);
+    },
+    handlePodcastClock: (position,duration)=>{
+      const preferences=episodePreferencesRef.current?.value ?? DEFAULT_PODCAST_PREFERENCES;
+      if(audioRef.current?.paused || !podcastOutroReached(position,duration,preferences.introSeconds,preferences.outroSeconds))return false;
+      audioRef.current?.pause();if(audioRef.current)audioRef.current.currentTime=duration;handleEpisodeEnded(duration);return true;
+    },
   };
 
   return {
@@ -1097,6 +1160,7 @@ export function usePodcastPlayback({
     podcastLibraryRevision,
     podcastEpisodeRequest,
     podcastPlaybackRate,
+    podcastPreferences: episodePreferences?.value ?? DEFAULT_PODCAST_PREFERENCES,
     setPodcastPlaybackRate,
     podcastAutoQueueMode,
     podcastSleepTimer,

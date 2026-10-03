@@ -17,6 +17,8 @@ export function PodcastPlayerBar({
   onVolume,
   onOpenPodcasts,
   onOpenNowPlaying,
+  backwardSeconds = 15,
+  forwardSeconds = 30,
 }: {
   episode: PodcastPlayback;
   isPlaying: boolean;
@@ -30,6 +32,8 @@ export function PodcastPlayerBar({
   onVolume: (value: number) => void;
   onOpenPodcasts: () => void;
   onOpenNowPlaying: () => void;
+  backwardSeconds?: number;
+  forwardSeconds?: number;
 }) {
   const artworkSrc = podcastArtworkSrc(episode.artworkUrl);
   return (
@@ -59,9 +63,9 @@ export function PodcastPlayerBar({
 
       <div className="player-transport">
         <div className="zune-controls podcast-controls">
-          <button onClick={() => onSeek(Math.max(0, progress - 15))} title="后退 15 秒">
+          <button onClick={() => onSeek(Math.max(0, progress - backwardSeconds))} title={`后退 ${backwardSeconds} 秒`} aria-label={`后退 ${backwardSeconds} 秒`}>
             <RotateCcw size={16} />
-            <span>15</span>
+            <span>{backwardSeconds}</span>
           </button>
           <button
             className="zune-play"
@@ -70,9 +74,9 @@ export function PodcastPlayerBar({
           >
             {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
           </button>
-          <button onClick={() => onSeek(Math.min(duration || progress + 30, progress + 30))} title="前进 30 秒">
+          <button onClick={() => onSeek(Math.min(duration || progress + forwardSeconds, progress + forwardSeconds))} title={`前进 ${forwardSeconds} 秒`} aria-label={`前进 ${forwardSeconds} 秒`}>
             <RotateCw size={16} />
-            <span>30</span>
+            <span>{forwardSeconds}</span>
           </button>
         </div>
         <VolumeControl volume={volume} onVolume={onVolume} />

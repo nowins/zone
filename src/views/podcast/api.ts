@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { cancelPodcastNetworkRequest, newPodcastNetworkRequestId } from "../../utils/podcastNetwork.js";
+export type { PodcastPreferences } from "../../utils/podcastPreferences.js";
+import type { PodcastPreferences } from "../../utils/podcastPreferences.js";
 import type {
   PodcastChapterDocument,
   PodcastDiscoveryShow,
@@ -57,12 +59,6 @@ export function listPodcastFeeds() {
   return invoke<PodcastFeed[]>("podcast_list_feeds");
 }
 
-export type PodcastPreferences = {
-  autoDownloadCount: number; cleanupPlayed: boolean; storageLimitMb: number;
-  playbackRate: number | null; introSeconds: number; outroSeconds: number;
-  backwardSeconds: number; forwardSeconds: number; oldestFirst: boolean;
-  normalizeVoice: boolean; trimSilence: boolean;
-};
 export type PodcastDownloadJob = {
   episodeId: string; title: string; state: "queued" | "running" | "paused" | "failed";
   attempts: number; error: string | null; downloadedBytes: number; totalBytes: number | null;

@@ -645,8 +645,6 @@ test("podcast now playing is a dedicated branch with podcast transport and recov
   );
 
   for (const control of [
-    "后退 15 秒",
-    "前进 30 秒",
     "onPlaybackRate",
     "onSleepTimer",
     "onRetry",
@@ -657,6 +655,10 @@ test("podcast now playing is a dedicated branch with podcast transport and recov
       `podcast now playing is missing ${control}`,
     );
   }
+  assert.ok(podcastNowPlayingSource.includes('title={`后退 ${backwardSeconds} 秒`}'));
+  assert.ok(podcastNowPlayingSource.includes('title={`前进 ${forwardSeconds} 秒`}'));
+  includes(podcastNowPlayingSource,/backwardSeconds = 15/,'default backward interval must remain 15 seconds');
+  includes(podcastNowPlayingSource,/forwardSeconds = 30/,'default forward interval must remain 30 seconds');
 });
 
 test("episode detail preserves the full-screen now-playing return path and live progress", () => {

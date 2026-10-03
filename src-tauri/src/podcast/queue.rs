@@ -225,6 +225,9 @@ pub(crate) fn queue_autofill(
   mode: PodcastQueueAutofillMode,
 ) -> Result<Option<String>, String> {
   validate_identifier(current_episode_id)?;
+  let feed:String=open_database(db_path)?.query_row("SELECT feed_id FROM podcast_episodes WHERE id=?1",[current_episode_id],|r|r.get(0)).map_err(|e|e.to_string())?;
+  let specific=read_preferences(db_path,Some(&feed))?;
+  let oldest_first=if specific.inherit_playback {read_preferences(db_path,None)?.oldest_first}else{specific.oldest_first};
   let mut connection = open_database(db_path)?;
   let transaction = connection
     .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -257,18 +260,20 @@ pub(crate) fn queue_autofill(
           AND COALESCE(p.completed, 0) = 0
           AND TRIM(e.enclosure_url) != ''
           AND (
-            COALESCE(e.published_at, e.first_seen_at) < current.episode_time
+            (?2=0 AND COALESCE(e.published_at, e.first_seen_at) < current.episode_time)
+            OR (?2=1 AND COALESCE(e.published_at, e.first_seen_at) > current.episode_time)
             OR (
               COALESCE(e.published_at, e.first_seen_at) = current.episode_time
               AND e.id > current.episode_id
             )
           )
         ORDER BY
-          COALESCE(e.published_at, e.first_seen_at) DESC,
+          CASE WHEN ?2=0 THEN COALESCE(e.published_at, e.first_seen_at) END DESC,
+          CASE WHEN ?2=1 THEN COALESCE(e.published_at, e.first_seen_at) END ASC,
           e.id
         LIMIT 1
         ",
-        [current_episode_id],
+        params![current_episode_id,i64::from(oldest_first)],
         |row| row.get::<_, String>(0),
       )
       .optional()
@@ -358,6 +363,13 @@ pub(crate) fn list_queue(db_path: &Path, downloads_dir: &Path) -> Result<Vec<Pod
 #[cfg(test)]
 mod tests {
   use super::*;
+  #[test]
+  fn customized_show_order_continues_towards_newer_episodes() {
+    let dir=test_directory("queue-show-order");let state=PodcastState::initialize_at(&dir).unwrap();let parsed=parsed_fixture_with_episode_count(3);
+    let oldest=parsed.episodes[2].id.clone();let next=parsed.episodes[1].id.clone();let feed=parsed.feed.id.clone();store_subscription(&state.db_path,parsed).unwrap();
+    write_preferences(&state.db_path,Some(&feed),&PodcastPreferences{inherit_playback:false,oldest_first:true,..Default::default()}).unwrap();
+    assert_eq!(queue_autofill(&state.db_path,&oldest,PodcastQueueAutofillMode::SameFeed).unwrap(),Some(next));
+  }
   use crate::podcast::test_support::*;
 
   #[test]

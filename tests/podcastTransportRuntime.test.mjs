@@ -5,7 +5,7 @@ import { mountPodcastHook, runtime, podcastEpisode, podcastPlayback, step } from
 test("late media pause, waiting and canplay events retain a failed podcast until explicit retry", async () => {
   const statuses = [];
   const audio = { currentTime: 0, duration: 1000, paused: true, error: null,
-    pause() { this.paused = true; }, removeAttribute() {}, load() { this.error = null; },
+    pause() { this.paused = true; }, removeAttribute() {}, load() { this.error = null; this.playbackRate=1; },
     play() { this.paused = false; return Promise.resolve(); } };
   const noop = () => {};
   const props = { audioRef: { current: audio }, showActionNotice: noop,
@@ -32,5 +32,14 @@ test("late media pause, waiting and canplay events retain a failed podcast until
     await step(() => harness.api.retryPodcastPlayback());
     assert.equal(audio.error, null);
     assert.equal(statuses.at(-1), "playing");
+    await step(()=>harness.api.armPodcastPlay({episodeId:"b",positionSeconds:2}));
+    const pending={...props,podcast:{...props.podcast,activePodcastEpisode:podcastPlayback(podcastEpisode("b")),podcastPreferencesReady:false}};
+    await harness.render(pending);
+    await step(()=>harness.api.togglePlay());
+    await harness.render({...pending,podcast:{...pending.podcast,podcastPreferencesReady:true,podcastPlaybackRate:2,resolvePodcastIntro:(position,_duration,explicit)=>explicit?position:10}});
+    await step(()=>harness.api.handleLoadedMetadata(audio));
+    assert.equal(audio.currentTime,2,"waiting for preferences must preserve an explicit chapter timestamp");
+    assert.equal(audio.paused,true,"preferences must not revive a paused play request");
+    assert.equal(audio.playbackRate,2,"load() must not silently reset the effective playback rate");
   } finally { await harness.close(); }
 });

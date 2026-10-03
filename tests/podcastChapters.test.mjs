@@ -112,8 +112,9 @@ test("chapter seeks reuse the shared audio and distinguish explicit starts from 
   );
   assert.match(
     appSource,
-    /const resumePosition = resolvePodcastResumePosition\(pending, episode, nextDuration\)/,
+    /const restoredPosition = resolvePodcastResumePosition\(pending, episode, nextDuration\)/,
   );
+  assert.match(appSource,/podcast\.resolvePodcastIntro\?\.\(restoredPosition,nextDuration,Boolean\(pending\.explicit\)\)/);
   assert.equal((appSource.match(/<audio\b/g) ?? []).length, 1);
   assert.doesNotMatch(viewSource, /<audio\b/);
 });

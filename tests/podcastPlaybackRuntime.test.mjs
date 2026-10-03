@@ -2,6 +2,31 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deferred, mountPodcastPlayback, podcastEpisode, podcastPlayback, podcastDetail, step } from "./helpers/podcastRuntime.mjs";
 
+test("show preferences load before binding, respect a later pause, and preserve the global rate",async()=>{
+  const pending=deferred();
+  const h=await mountPodcastPlayback(async()=>[],{playbackRate:1.25},{preferences:feed=>feed?pending.promise:{playbackRate:1.25}});
+  try{
+    await step(()=>h.api.playPodcastEpisode(podcastPlayback(podcastEpisode("custom"))));
+    assert.equal(h.api.transport.podcastPreferencesReady,false);
+    h.playbackControlsRef.current.setPlaybackIntent(false);
+    await step(()=>pending.resolve({inheritPlayback:false,playbackRate:2,introSeconds:10,outroSeconds:20,backwardSeconds:10,forwardSeconds:45}));
+    assert.equal(h.api.transport.podcastPreferencesReady,true);assert.equal(h.api.podcastPlaybackRate,2);assert.equal(h.intent,false);assert.equal(h.armed.length,1);
+    assert.equal(JSON.parse(localStorage.getItem("zone-podcast-playback-v1")).playbackRate,1.25);
+    assert.equal(h.api.transport.resolvePodcastIntro(0,300,false),10);assert.equal(h.api.transport.resolvePodcastIntro(2,300,true),2);
+  }finally{await h.close();}
+});
+
+test("outro completion happens once and a late preferences response cannot revive another episode",async()=>{
+  const pending=deferred();const h=await mountPodcastPlayback(async()=>[],{}, {preferences:feed=>feed?pending.promise:{}});
+  try{
+    await step(()=>h.api.playPodcastEpisode(podcastPlayback(podcastEpisode("first"))));await step(()=>h.api.transport.clearActivePodcast());
+    await step(()=>pending.resolve({inheritPlayback:false,playbackRate:3}));assert.equal(h.api.activePodcastEpisode,null);assert.equal(h.api.podcastPlaybackRate,1);
+    await step(()=>h.api.playPodcastEpisode(podcastPlayback(podcastEpisode("second"))));
+    await step(()=>h.api.transport.handleEpisodeEnded(1000));await step(()=>h.api.transport.handleEpisodeEnded(1000));
+    assert.equal(h.api.activePodcastEpisode.completed,true);
+  }finally{await h.close();}
+});
+
 test("native current episode overrides an older WebView setting and restores paused", async () => {
   const requested = []; const saved = [];
   const harness = await mountPodcastPlayback(async (command, args) => {

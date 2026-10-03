@@ -234,10 +234,10 @@ export function usePlaybackControls({
   );
   const activePlayback: ActivePlayback = useMemo(() => {
     if (!podcastSessionHydrated) return null;
-    if (activePodcastEpisode) return { kind: "podcast" as const, episode: activePodcastEpisode };
+    if (activePodcastEpisode) return podcast.podcastPreferencesReady===false ? null : { kind: "podcast" as const, episode: activePodcastEpisode };
     if (activeTrack) return { kind: "music" as const, track: activeTrack };
     return null;
-  }, [activePodcastEpisode, activeTrack, podcastSessionHydrated]);
+  }, [activePodcastEpisode, activeTrack, podcastSessionHydrated, podcast.podcastPreferencesReady]);
   const activePlaybackSourceKey = activePlayback?.kind === "podcast"
     ? `podcast\0${activePlayback.episode.episodeId}\0${activePlayback.episode.playbackLocalPath ?? "stream"}`
     : activePlayback
@@ -411,6 +411,14 @@ export function usePlaybackControls({
     audioPlayAttemptRef.current = playAttempt;
     activeAudioSourceKeyRef.current = sourceKey;
     if (!activePlayback) {
+      if(activePodcastEpisodeRef.current && podcast.podcastPreferencesReady===false) {
+        podcastAudioEpisodeRef.current=null;
+        pendingPodcastResumeRef.current=null;
+        audio.pause();audio.removeAttribute("src");audio.load();
+        setIsPlaying(false);
+        setPodcastPlaybackStatus(podcastPlaybackIntentRef.current?"loading":"paused");
+        return;
+      }
       podcastAudioEpisodeRef.current = null;
       podcastPlaybackStartedEpisodeRef.current = null;
       pendingPodcastStartRef.current = null;
@@ -484,8 +492,8 @@ export function usePlaybackControls({
     );
     audio.crossOrigin = "anonymous";
     audio.src = sourceUrl;
-    audio.playbackRate = activePlayback.kind === "podcast" ? podcastPlaybackRate : 1;
     audio.load();
+    audio.playbackRate = activePlayback.kind === "podcast" ? podcastPlaybackRate : 1;
 
     const shouldAutoplay = activePlayback.kind === "music" ? musicPlaybackIntentRef.current : podcastPlaybackIntentRef.current;
     if (!shouldAutoplay) {
@@ -823,6 +831,7 @@ export function usePlaybackControls({
         return;
       }
       setProgress(currentTime);
+      if(podcast.handlePodcastClock?.(currentTime,trackDuration)){setProgress(trackDuration);return;}
       persistPodcastProgress(currentTime, trackDuration);
       return;
     }
@@ -929,6 +938,7 @@ export function usePlaybackControls({
     recordDiagnostic({ domain: activePodcastEpisodeRef.current ? "podcast" : "music", event: "metadata_ready" });
     const nextDuration = Number.isFinite(audio.duration) ? Math.max(0, audio.duration) : 0;
     setDuration(nextDuration);
+    audio.playbackRate=activePodcastEpisodeRef.current?podcastPlaybackRate:1;
     const pending = pendingPodcastResumeRef.current;
     const episode = activePodcastEpisodeRef.current;
     if (!episode && pendingMusicResumeRef.current?.trackId === activeTrackId) {
@@ -942,7 +952,8 @@ export function usePlaybackControls({
     }
     if (!pending || !episode || pending.episodeId !== episode.episodeId) return;
     pendingPodcastResumeRef.current = null;
-    const resumePosition = resolvePodcastResumePosition(pending, episode, nextDuration);
+    const restoredPosition = resolvePodcastResumePosition(pending, episode, nextDuration);
+    const resumePosition = podcast.resolvePodcastIntro?.(restoredPosition,nextDuration,Boolean(pending.explicit)) ?? restoredPosition;
     if (resumePosition > 0) audio.currentTime = resumePosition;
     setProgress(resumePosition);
   }
@@ -992,6 +1003,11 @@ export function usePlaybackControls({
   function togglePlay() {
     podcast.cancelPendingPodcastAutofill();
     const audio = audioRef.current;
+    if(audio && activePodcastEpisodeRef.current && podcast.podcastPreferencesReady===false) {
+      podcastPlaybackIntentRef.current=!podcastPlaybackIntentRef.current;
+      beginPlayAttempt();audio.pause();setIsPlaying(false);
+      setPodcastPlaybackStatus(podcastPlaybackIntentRef.current?"loading":"paused");return;
+    }
     if (!audio || !activePlayback) return;
 
     if (audio.paused) {

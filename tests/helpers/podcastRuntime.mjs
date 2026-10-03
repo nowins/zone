@@ -77,6 +77,8 @@ export async function mountPodcastPlayback(invoke, settings = {}, session = {}) 
   }, async (command, args) => {
     if (command === "podcast_load_active_episode") return session.load ? session.load() : null;
     if (command === "podcast_save_active_episode") return session.save?.(args.episodeId);
+    if (command === "podcast_get_preferences") return session.preferences ? session.preferences(args.feedId) : {};
+    if (command === "podcast_set_preferences") return session.setPreferences?.(args);
     return invoke(command, args);
   }, settings);
   return { ...mounted, get api() { return mounted.api; }, audioRef, playbackControlsRef,

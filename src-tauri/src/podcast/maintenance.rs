@@ -17,13 +17,14 @@ pub struct PodcastPreferences {
   pub oldest_first: bool,
   pub normalize_voice: bool,
   pub trim_silence: bool,
+  pub inherit_playback: bool,
 }
 
 impl Default for PodcastPreferences {
   fn default() -> Self {
     Self { auto_download_count: 0, cleanup_played: false, storage_limit_mb: 0,
       playback_rate: None, intro_seconds: 0, outro_seconds: 0, backward_seconds: 15,
-      forward_seconds: 30, oldest_first: false, normalize_voice: false, trim_silence: false }
+      forward_seconds: 30, oldest_first: false, normalize_voice: false, trim_silence: false, inherit_playback: true }
   }
 }
 
@@ -195,8 +196,9 @@ pub async fn podcast_get_preferences(state: State<'_,PodcastState>,feed_id: Opti
   state.ensure_ready()?; read_preferences(&state.db_path,feed_id.as_deref())
 }
 #[tauri::command]
-pub async fn podcast_set_preferences(state: State<'_,PodcastState>,feed_id: Option<String>,preferences: PodcastPreferences) -> Result<(),String> {
-  state.ensure_ready()?; write_preferences(&state.db_path,feed_id.as_deref(),&preferences)
+pub async fn podcast_set_preferences(app:tauri::AppHandle,state: State<'_,PodcastState>,feed_id: Option<String>,preferences: PodcastPreferences) -> Result<(),String> {
+  state.ensure_ready()?; write_preferences(&state.db_path,feed_id.as_deref(),&preferences)?;
+  let _=app.emit("podcast-preferences-changed",feed_id);Ok(())
 }
 #[tauri::command]
 pub async fn podcast_list_download_jobs(state: State<'_,PodcastState>) -> Result<Vec<PodcastDownloadJob>,String> {
