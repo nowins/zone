@@ -654,7 +654,7 @@ export function usePodcastPlayback({
       direction,
       activePodcastEpisodeRef.current?.episodeId,
     );
-    if (next === podcastQueueRef.current) return;
+    if (next === podcastQueueRef.current) return false;
     const revision = beginPodcastQueueMutation(next);
     return serializePodcastQueueMutation(async () => {
       try {
@@ -662,10 +662,12 @@ export function usePodcastPlayback({
           episodeIds: next.map((item) => item.episode.id),
         });
         applyPodcastQueueResult(items, revision);
+        return podcastQueueRevisionRef.current === revision;
       } catch (reason) {
         await reloadPodcastQueue(revision);
         showActionNotice("无法调整待播顺序");
         if (import.meta.env.DEV) console.warn("[podcast] queue reorder failed", reason);
+        return false;
       }
     });
   }

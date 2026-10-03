@@ -89,7 +89,7 @@ export type PodcastViewProps = {
   onMoveQueueEpisode: (
     episodeId: string,
     direction: -1 | 1,
-  ) => void | Promise<void>;
+  ) => boolean | Promise<boolean>;
   onReorderQueueEpisode: (
     episodeId: string,
     targetEpisodeId: string,

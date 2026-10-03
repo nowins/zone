@@ -317,6 +317,26 @@ test("queue removal undo is serialized and new queue actions invalidate the prev
  try{await step(()=>h.api.removePodcastQueueEpisode("first"));assert.equal(h.api.queueUndoAvailable,true);await step(()=>h.api.undoPodcastQueueRemoval());assert.deepEqual(restores[0].expectedIds,["second"]);assert.deepEqual(h.api.podcastQueue.map(item=>item.episode.id),["first","second"]);await step(()=>h.api.clearPodcastQueue());assert.equal(h.api.queueUndoAvailable,true);await step(()=>h.api.queuePodcastEpisode(podcastEpisode("first"),false));assert.equal(h.api.queueUndoAvailable,false);await step(()=>h.api.undoPodcastQueueRemoval());assert.equal(restores.length,1);}finally{await h.close();}
 });
 
+test("queue movement reports success only after persistence and restores order on failure", async () => {
+ const pending=deferred();let fail=false;
+ let queue=["first","second"].map((id,position)=>({episode:podcastEpisode(id),position,addedAt:1}));
+ const h=await mountPodcastPlayback(async(command,args)=>{
+   if(command==="podcast_list_queue")return queue;
+   if(command==="podcast_queue_reorder"){
+     await pending.promise;if(fail)throw Error("write failed");
+     queue=args.episodeIds.map((id,position)=>({episode:podcastEpisode(id),position,addedAt:1}));return queue;
+   }
+ });
+ try{
+   let operation;await step(()=>{operation=h.api.movePodcastQueueEpisode("first",1);});
+   assert.deepEqual(h.api.podcastQueue.map(item=>item.episode.id),["second","first"]);
+   await step(()=>pending.resolve());assert.equal(await operation,true);
+   fail=true;let failed;await step(async()=>{failed=await h.api.movePodcastQueueEpisode("first",-1);});
+   assert.equal(failed,false);assert.deepEqual(h.api.podcastQueue.map(item=>item.episode.id),["second","first"]);
+   assert.ok(h.notices.includes("无法调整待播顺序"));
+ }finally{await h.close();}
+});
+
 test("a paused streaming episode adopts its completed download without autoplay and resumes locally",async()=>{
  const h=await mountPodcastPlayback(async()=>[]);const episode=podcastEpisode("offline-switch",{progressSeconds:60});
  try{await step(()=>h.api.playPodcastEpisode(podcastPlayback(episode)));h.audioRef.current.currentTime=62;h.audioRef.current.paused=true;const downloaded={...episode,localPath:"C:/fixture/episode.mp3",downloadState:"downloaded"};await step(()=>h.api.updatePodcastEpisode(downloaded));assert.equal(h.api.activePodcastEpisode.playbackLocalPath,downloaded.localPath);assert.equal(h.api.activePodcastEpisode.savedProgressSeconds,62);assert.equal(h.audioRef.current.paused,true);await step(()=>h.api.playPodcastEpisode(podcastPlayback(downloaded)));assert.equal(h.audioRef.current.paused,false);assert.equal(h.armed.length,1);}finally{await h.close();}

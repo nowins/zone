@@ -330,11 +330,12 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
                             onOpen={() =>
                               openEpisodeDetail(item.episode, "playlist")}
                             onPlay={() => playEpisode(item.episode)}
-                            onMove={(direction) => {
-                              void onMoveQueueEpisode(
+                            onMove={async (direction) => {
+                              const moved = await onMoveQueueEpisode(
                                 item.episode.id,
                                 direction,
                               );
+                              if (!moved) return;
                               setQueueAnnouncement(
                                 `已将“${item.episode.title}”移到第 ${
                                   index + direction + 1
