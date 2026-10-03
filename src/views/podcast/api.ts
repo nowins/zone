@@ -151,6 +151,10 @@ export const deletePodcastPlaylist = (id: string) => invoke<void>("podcast_delet
 export const podcastPlaylistPage = (id: string, offset: number, limit = 50) => invoke<EpisodeSearchPage>("podcast_playlist_page", { id, offset, limit });
 export const updatePlaylistItem = (id: string, episodeId: string, add: boolean) => invoke<void>("podcast_update_playlist_item", { id, episodeId, add });
 export const reorderPodcastPlaylist = (id: string, episodeIds: string[]) => invoke<void>("podcast_reorder_playlist", { id, episodeIds });
+export type PodcastShowGroup = { id: string; name: string; feedIds: string[]; updatedAt: number };
+export const listShowGroups = () => invoke<PodcastShowGroup[]>("podcast_list_show_groups");
+export const saveShowGroup = (group: {id?: string; name: string; feedIds: string[]; expectedUpdatedAt?: number}) => invoke<PodcastShowGroup>("podcast_save_show_group", group);
+export const deleteShowGroup = (id: string) => invoke<void>("podcast_delete_show_group", {id});
 
 export function getEpisodeDetail(episodeId: string) {
   return invoke<PodcastEpisodeDetail>("podcast_get_episode_detail", {

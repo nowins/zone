@@ -1004,13 +1004,14 @@ export function usePodcastViewModel({
     setNotice(null);
   }
 
-  function moveFollowedFeed(feedId: string, direction: -1 | 1) {
+  function moveFollowedFeed(feedId: string, direction: -1 | 1, visibleFeedIds?: readonly string[]) {
     const order = normalizePodcastFeedOrder(customFeedOrder, feeds);
-    const index = order.indexOf(feedId);
+    const visible = visibleFeedIds ? order.filter(id => visibleFeedIds.includes(id)) : order;
+    const index = visible.indexOf(feedId);
     const targetIndex = index + direction;
-    if (index < 0 || targetIndex < 0 || targetIndex >= order.length) return;
+    if (index < 0 || targetIndex < 0 || targetIndex >= visible.length) return;
     setCustomFeedOrder(
-      movePodcastFeedOrder(order, feedId, order[targetIndex]),
+      movePodcastFeedOrder(order, feedId, visible[targetIndex]),
     );
     setLibrarySort("custom");
     const feed = feeds.find((candidate) => candidate.id === feedId);

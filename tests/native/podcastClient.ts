@@ -90,6 +90,17 @@ async function run() {
       (document.querySelector('[role=dialog] button[type=submit]') as HTMLButtonElement).click();await until(()=>!document.querySelector('[role=dialog]'),"list deleted");
       const lists=await invoke<Array<{name:string}>>("podcast_list_playlists");assert(!lists.some(list=>list.name===manualName),"deleted list remained");
       checks.push("真实客户端新建手动列表、单集加入、智能已下载条件、列表共用播放、删除列表保护音频与资料、双窗口布局");
+      await click("资料库");await click("新建分组");await until(()=>Boolean(document.querySelector('input[aria-label="节目分组名称"]')),"group editor");
+      const groupName=`验收分组 ${Date.now()}`;
+      await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="节目分组名称"]')!,groupName);
+      document.querySelector<HTMLInputElement>('.podcast-collection-feeds input[type=checkbox]')!.click();await click("保存");await until(()=>!document.querySelector('[role=dialog]'),"group saved");
+      await until(()=>Boolean(Array.from(document.querySelectorAll('select[aria-label="节目分组"] option')).find(el=>el.textContent?.includes(groupName))),"group selection");
+      await capture("10-show-group-920");assert(document.querySelectorAll('.podcast-library-show').length===1,"group should retain matching followed show");
+      await click("编辑分组");await until(()=>Boolean(document.querySelector('input[aria-label="节目分组名称"]')),"edit group");
+      document.querySelector<HTMLInputElement>('.podcast-collection-feeds input[type=checkbox]')!.click();await click("保存");await until(()=>document.body.textContent?.includes("这个分组还没有关注的节目") ?? false,"empty group filter");
+      await click("编辑分组");await click("删除分组");await until(()=>!document.querySelector('input[aria-label="节目分组名称"]'),"group delete confirmation");
+      (document.querySelector('[role=dialog] button[type=submit]') as HTMLButtonElement).click();await until(()=>!document.querySelector('[role=dialog]'),"group deleted");await until(()=>document.querySelectorAll('.podcast-library-show').length===1,"unfollow unaffected");
+      checks.push("真实客户端节目分组创建、成员过滤、空组编辑、删除分组保护关注状态");
     }
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

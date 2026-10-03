@@ -1,4 +1,6 @@
 import { ArrowLeft, ArrowRight } from "lucide-react";
+import { useState } from "react";
+import { ShowGroups } from "../components/ShowGroups";
 import { DownloadJobs } from "../components/DownloadJobs";
 import { TransferActions } from "../components/TransferActions";
 import { EpisodeBrowser } from "../components/EpisodeBrowser";
@@ -16,6 +18,8 @@ import {
 import type { PodcastViewModel } from "../usePodcastViewModel";
 
 export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
+  const [groupFeedIds, setGroupFeedIds] = useState<ReadonlySet<string> | null>(null);
+  const groupedFeeds = vm.orderedFeeds.filter(feed => !groupFeedIds || groupFeedIds.has(feed.id));
   const {
     // pull fields used by this screen (full bag is fine; unused locals are ok at runtime)
     ..._
@@ -183,8 +187,10 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                         </button>
                       ))}
                     </div>
+                    <ShowGroups feeds={feeds} revision={vm.libraryRevision} onFilter={setGroupFeedIds} />
+                    {groupedFeeds.length === 0 ? <PodcastEmpty label="这个分组还没有关注的节目" /> : null}
                     <div className="podcast-library-grid">
-                      {orderedFeeds.map((feed, index) => (
+                      {groupedFeeds.map((feed, index) => (
                         <article
                           key={feed.id}
                           className="podcast-library-show"
@@ -229,7 +235,7 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                             >
                               <button
                                 type="button"
-                                onClick={() => moveFollowedFeed(feed.id, -1)}
+                                onClick={() => moveFollowedFeed(feed.id, -1, groupedFeeds.map(feed => feed.id))}
                                 disabled={index === 0}
                                 title="前移"
                                 aria-label={`将“${feed.title}”前移`}
@@ -238,8 +244,8 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => moveFollowedFeed(feed.id, 1)}
-                                disabled={index === orderedFeeds.length - 1}
+                                onClick={() => moveFollowedFeed(feed.id, 1, groupedFeeds.map(feed => feed.id))}
+                                disabled={index === groupedFeeds.length - 1}
                                 title="后移"
                                 aria-label={`将“${feed.title}”后移`}
                               >
