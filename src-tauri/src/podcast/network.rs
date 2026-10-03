@@ -89,28 +89,41 @@ struct PodcastClientKey {
   host: String,
   addresses: Vec<SocketAddr>,
   allow_private_network: bool,
+  proxy: Option<super::proxy::ProxyEndpoint>,
+}
+
+#[derive(Clone)]
+struct PublicClient {
+  client: reqwest::Client,
+  bridge: Option<std::sync::Arc<super::proxy::ProxyBridge>>,
 }
 
 const PODCAST_CLIENT_CACHE_LIMIT: usize = 16;
 
-static PODCAST_CLIENT_CACHE: OnceLock<Mutex<HashMap<PodcastClientKey, reqwest::Client>>> =
+static PODCAST_CLIENT_CACHE: OnceLock<Mutex<HashMap<PodcastClientKey, PublicClient>>> =
   OnceLock::new();
 
 fn shared_public_client(
+  scheme: &str,
   host: &str,
   addresses: &[SocketAddr],
   allow_private_network: bool,
-) -> Result<reqwest::Client, String> {
+) -> Result<PublicClient, String> {
+  let proxy = if allow_private_network { None } else { super::proxy::configured_proxy(scheme, host)? };
   let key = PodcastClientKey {
     host: host.to_string(),
     addresses: addresses.to_vec(),
     allow_private_network,
+    proxy: proxy.clone(),
   };
   let cache = PODCAST_CLIENT_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
   {
-    let clients = cache
+    let mut clients = cache
       .lock()
       .map_err(|_| "播客网络客户端缓存不可用".to_string())?;
+    if clients.get(&key).is_some_and(|client| client.bridge.as_ref().is_some_and(|bridge| bridge.is_finished())) {
+      clients.remove(&key);
+    }
     if let Some(client) = clients.get(&key) {
       return Ok(client.clone());
     }
@@ -122,6 +135,11 @@ fn shared_public_client(
     .read_timeout(Duration::from_secs(30))
     .redirect(reqwest::redirect::Policy::none())
     .no_proxy();
+  let bridge = proxy.as_ref().map(|proxy| super::proxy::start_proxy_bridge(proxy, host, addresses)).transpose()?;
+  if let Some(bridge) = &bridge {
+    client_builder = client_builder.proxy(reqwest::Proxy::all(&bridge.url)
+      .map_err(|_| "无法建立播客代理通道".to_string())?);
+  }
   if host.parse::<IpAddr>().is_err() {
     client_builder = client_builder.resolve_to_addrs(host, addresses);
   }
@@ -134,7 +152,7 @@ fn shared_public_client(
   if clients.len() >= PODCAST_CLIENT_CACHE_LIMIT {
     clients.clear();
   }
-  Ok(clients.entry(key).or_insert(client).clone())
+  Ok(clients.entry(key).or_insert(PublicClient { client, bridge }).clone())
 }
 
 pub(crate) async fn send_public_get(url: Url, timeout: Duration, range: Option<&str>) -> Result<PublicResponse, String> {
@@ -184,8 +202,8 @@ async fn send_public_get_once(
       .await?.map_err(|_| "播客来源解析超时".to_string())??;
     let raw_host = url.host_str().ok_or_else(|| "播客请求地址缺少主机名".to_string())?;
     let host = host_without_ipv6_brackets(raw_host);
-    let client = shared_public_client(host, &addresses, allow_private_network)?;
-    let mut request = client
+    let client = shared_public_client(url.scheme(), host, &addresses, allow_private_network)?;
+    let mut request = client.client
       .get(url.clone())
       .header(header::ACCEPT, "*/*")
       .timeout(deadline.saturating_duration_since(tokio::time::Instant::now()));
@@ -200,7 +218,7 @@ async fn send_public_get_once(
     // Header wait is bounded separately for long downloads; reqwest keeps the
     // remaining overall deadline active while the body is being consumed.
     let header_deadline = deadline.min(tokio::time::Instant::now() + Duration::from_secs(30));
-    let response = network_io(tokio::time::timeout_at(header_deadline, request.send())).await?
+    let mut response = network_io(tokio::time::timeout_at(header_deadline, request.send())).await?
       .map_err(|_| "播客来源响应超时".to_string())?.map_err(|error| {
       if error.is_timeout() {
         "播客来源响应超时".to_string()
@@ -210,6 +228,9 @@ async fn send_public_get_once(
         format!("播客网络请求失败：{error}")
       }
     })?;
+    // Retain the bridge through the body, even if the bounded client cache is
+    // evicted by other origins while this response is in flight.
+    if let Some(bridge) = client.bridge { response.extensions_mut().insert(bridge); }
     if matches!(response.status().as_u16(), 408 | 429 | 502 | 503 | 504) {
       let _ = NETWORK_BUDGET.try_with(|budget| {
         if let Ok(mut delay) = budget.retry_after.lock() { *delay = retry_after(response.headers()); }

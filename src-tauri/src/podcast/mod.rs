@@ -12,6 +12,7 @@ mod commands;
 mod downloads;
 mod feed_parse;
 mod network;
+mod proxy;
 mod tasks;
 mod query;
 mod queue;
