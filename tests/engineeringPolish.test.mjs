@@ -84,5 +84,7 @@ test("system media keys map play/pause/previous/next and debounce repeats", () =
   assert.ok(smtc.includes("SystemMediaTransportControlsButton::Pause"));
   assert.ok(smtc.includes("SystemMediaTransportControlsButton::Previous"));
   assert.ok(smtc.includes("SystemMediaTransportControlsButton::Next"));
-  assert.ok(systemMedia.includes("lastCommandAtRef"));
+  assert.ok(systemMedia.includes("lastCommandRef"));
+  assert.match(systemMedia, /\["toggle", "previous", "next", "favorite"\]\.includes\(payload\.action\)/);
+  assert.match(systemMedia, /previous\?\.action === payload\.action/);
 });

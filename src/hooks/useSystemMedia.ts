@@ -59,7 +59,7 @@ export function useSystemMedia({
   });
   const lastTimelineUpdateRef = useRef(0);
   const lastTimelineTrackRef = useRef<string | null>(null);
-  const lastCommandAtRef = useRef(0);
+  const lastCommandRef = useRef<{ action: SystemMediaCommand["action"]; at: number } | null>(null);
 
   callbacksRef.current = {
     onPlay,
@@ -77,10 +77,12 @@ export function useSystemMedia({
 
     void listen<SystemMediaCommand>("system-media-command", ({ payload }) => {
       const callbacks = callbacksRef.current;
-      // Debounce rapid hardware key repeats so adaptive-previous can observe progress.
+      // Debounce only repeated relative commands; explicit pause must never be lost.
       const now = performance.now();
-      if (payload.action !== "seek" && now - lastCommandAtRef.current < 120) return;
-      lastCommandAtRef.current = now;
+      const previous = lastCommandRef.current;
+      if (["toggle", "previous", "next", "favorite"].includes(payload.action)
+        && previous?.action === payload.action && now - previous.at < 120) return;
+      lastCommandRef.current = { action: payload.action, at: now };
       switch (payload.action) {
         case "play":
           callbacks.onPlay();
