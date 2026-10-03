@@ -56,11 +56,19 @@ fn copy_verified(source:&Path,destination:&Path,bytes:u64,hash:&str,copied:&mut 
 }
 
 pub(crate) fn export_backup(state:&PodcastState,path:&Path,frontend:BTreeMap<String,String>,include_audio:bool)->Result<(),String> {
+  export_backup_inner(state,path,frontend,include_audio,false)
+}
+pub(crate) fn export_sync_backup(state:&PodcastState,path:&Path)->Result<(),String>{export_backup_inner(state,path,BTreeMap::new(),false,true)}
+fn export_backup_inner(state:&PodcastState,path:&Path,frontend:BTreeMap<String,String>,include_audio:bool,sync:bool)->Result<(),String> {
   validate_frontend(&frontend)?;
   let mut copied=CopiedFiles{files:vec![],directories:vec![],committed:false};
   let mut db=open_database(&state.db_path)?;let tx=db.transaction().map_err(|e|e.to_string())?;
-  let mut saved=BTreeMap::new();for table in tables(&tx)? {saved.insert(table.clone(),snapshot(&tx,&format!("SELECT * FROM \"{table}\""))?);}
-  let settings=snapshot(&tx,"SELECT * FROM app_settings WHERE key LIKE 'podcast.%'")?;
+  let mut saved=BTreeMap::new();for table in tables(&tx)? {
+    if sync && !["podcast_feeds","podcast_episodes","podcast_progress"].contains(&table.as_str()){continue;}
+    let query=if sync&&table=="podcast_episodes"{"SELECT * FROM podcast_episodes WHERE id IN(SELECT episode_id FROM podcast_progress)".into()}else if sync&&table=="podcast_feeds"{"SELECT * FROM podcast_feeds WHERE subscribed=1 OR following_updated_at>0 OR id IN(SELECT e.feed_id FROM podcast_episodes e JOIN podcast_progress p ON p.episode_id=e.id)".into()}else{format!("SELECT * FROM \"{table}\"")};
+    saved.insert(table.clone(),snapshot(&tx,&query)?);
+  }
+  let settings=snapshot(&tx,if sync{"SELECT * FROM app_settings WHERE 0"}else{"SELECT * FROM app_settings WHERE key LIKE 'podcast.%' AND key NOT LIKE 'podcast.sync.%'"})?;
   let mut backup=PodcastBackup{format:"ZonePodcastBackup".into(),version:1,tables:saved,settings,frontend,media_directory:None,media:BTreeMap::new()};
   let mut sources=Vec::new();
   if let Some(downloads)=backup.tables.get_mut("podcast_downloads") {
@@ -105,12 +113,13 @@ fn import_table(db:&Connection,name:&str,data:&TableSnapshot)->Result<(),String>
   let expected=snapshot(db,&format!("SELECT * FROM \"{name}\" LIMIT 0"))?.columns;
   if data.columns.is_empty()||data.columns.len()>expected.len()||data.rows.len()>200_000||data.columns.iter().any(|c|!expected.contains(c))||data.columns.iter().collect::<HashSet<_>>().len()!=data.columns.len() {return Err("备份表结构不兼容".into());}
   let quoted=data.columns.iter().map(|c|format!("\"{c}\"")).collect::<Vec<_>>().join(",");let placeholders=vec!["?";data.columns.len()].join(",");
-  let suffix=if name=="podcast_progress" {" ON CONFLICT(episode_id) DO UPDATE SET position_seconds=excluded.position_seconds,duration_seconds=excluded.duration_seconds,completed=excluded.completed,updated_at=excluded.updated_at WHERE excluded.updated_at>podcast_progress.updated_at"}else if name=="app_settings" {" ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at WHERE excluded.updated_at>app_settings.updated_at"}else{" ON CONFLICT DO NOTHING"};
+  let suffix=if name=="podcast_progress" {" ON CONFLICT(episode_id) DO UPDATE SET position_seconds=excluded.position_seconds,duration_seconds=excluded.duration_seconds,completed=excluded.completed,updated_at=excluded.updated_at WHERE excluded.updated_at>podcast_progress.updated_at"}else if name=="podcast_feeds"{" ON CONFLICT(id) DO UPDATE SET subscribed=excluded.subscribed,subscribed_at=excluded.subscribed_at,following_updated_at=excluded.following_updated_at WHERE excluded.following_updated_at>podcast_feeds.following_updated_at"}else if name=="app_settings" {" ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at WHERE excluded.updated_at>app_settings.updated_at"}else{" ON CONFLICT DO NOTHING"};
   let mut q=db.prepare(&format!("INSERT INTO \"{name}\" ({quoted}) VALUES ({placeholders}){suffix}")).map_err(|e|e.to_string())?;
   for row in &data.rows {
     if row.len()!=data.columns.len() {return Err("备份行结构无效".into());}
     for (column,value) in data.columns.iter().zip(row) {
       if name=="app_settings" && column=="key" && !value.as_str().is_some_and(|key|key.starts_with("podcast.")) {return Err("备份包含其他类别设置".into());}
+      if name=="app_settings" && column=="key" && value.as_str().is_some_and(|key|key.starts_with("podcast.sync.")){return Err("备份不能配置本机同步目录".into());}
       if name.starts_with("podcast_") && (column=="id" || ["episode_id","feed_id","playlist_id","group_id","resource_id"].contains(&column.as_str())) {validate_identifier(value.as_str().ok_or("备份标识无效")?)?;}
       if ["podcast_playlists","podcast_show_groups"].contains(&name)&&column=="name"{super::lists::collection_name(value.as_str().ok_or("备份名称无效")?)?;}
       if name=="podcast_playlists"&&column=="rules_json"{let rules:super::lists::PlaylistRules=serde_json::from_str(value.as_str().ok_or("备份条件无效")?).map_err(|_|"备份条件无效")?;super::lists::validate_rules(&rules)?;}
@@ -131,9 +140,18 @@ fn validate_restored_collections(db:&Connection)->Result<(),String>{
   Ok(())
 }
 
-pub(crate) fn restore_backup(state:&PodcastState,path:&Path)->Result<BTreeMap<String,String>,String> {
+fn read_backup(path:&Path)->Result<PodcastBackup,String>{
   if fs::metadata(path).map_err(|e|e.to_string())?.len()>MANIFEST_LIMIT {return Err("备份文件过大".into());}
-  let mut backup:PodcastBackup=serde_json::from_slice(&fs::read(path).map_err(|e|e.to_string())?).map_err(|_|"备份格式无效")?;
+  let mut bytes=Vec::new();fs::File::open(path).map_err(|e|e.to_string())?.take(MANIFEST_LIMIT+1).read_to_end(&mut bytes).map_err(|e|e.to_string())?;if bytes.len() as u64>MANIFEST_LIMIT{return Err("备份文件过大".into());}
+  serde_json::from_slice(&bytes).map_err(|_|"备份格式无效".into())
+}
+pub(crate) fn restore_backup(state:&PodcastState,path:&Path)->Result<BTreeMap<String,String>,String> {restore_backup_data(state,path,read_backup(path)?,false).map(|result|result.0)}
+pub(crate) fn restore_sync_backup(state:&PodcastState,path:&Path)->Result<bool,String>{
+  let backup=read_backup(path)?;
+  if backup.tables.keys().any(|name|!["podcast_feeds","podcast_episodes","podcast_progress"].contains(&name.as_str()))||!backup.settings.rows.is_empty()||!backup.frontend.is_empty()||!backup.media.is_empty()||backup.media_directory.is_some(){return Err("同步快照包含其他类别资料".into());}
+  restore_backup_data(state,path,backup,true).map(|result|result.1)
+}
+fn restore_backup_data(state:&PodcastState,path:&Path,mut backup:PodcastBackup,sync:bool)->Result<(BTreeMap<String,String>,bool),String> {
   if backup.format!="ZonePodcastBackup"||backup.version!=1 {return Err("备份版本不支持".into());}validate_frontend(&backup.frontend)?;
   let mut db=open_database(&state.db_path)?;let allowed=tables(&db)?;
   if backup.tables.keys().any(|name|!allowed.contains(name)) {return Err("备份包含不支持的资料表".into());}
@@ -165,6 +183,7 @@ pub(crate) fn restore_backup(state:&PodcastState,path:&Path)->Result<BTreeMap<St
   }
   let result=(||{
     let tx=db.transaction_with_behavior(TransactionBehavior::Immediate).map_err(|e|e.to_string())?;
+    let initial_changes=tx.total_changes();
     tx.execute_batch("PRAGMA defer_foreign_keys=ON").map_err(|e|e.to_string())?;
     for (name,table) in &backup.tables {import_table(&tx,name,table)?;}
     import_table(&tx,"app_settings",&backup.settings)?;
@@ -180,14 +199,14 @@ pub(crate) fn restore_backup(state:&PodcastState,path:&Path)->Result<BTreeMap<St
       tx.execute("UPDATE podcast_downloads SET local_path=?2,state='downloaded',downloaded_bytes=?3,total_bytes=?3,error_message=NULL,resume_metadata=NULL WHERE episode_id=?1 AND (state<>'downloaded' OR local_path=?2)",params![id,path.to_string_lossy(),bytes]).map_err(|e|e.to_string())?;
       let referenced:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM podcast_downloads WHERE episode_id=?1 AND local_path=?2 AND state='downloaded')",params![id,path.to_string_lossy()],|r|r.get(0)).map_err(|e|e.to_string())?;if !referenced{copied.discard(&path)?;}
     }
-    let mut q=tx.prepare("SELECT episode_id FROM podcast_queue ORDER BY position,added_at,episode_id").map_err(|e|e.to_string())?;
+    if !sync {let mut q=tx.prepare("SELECT episode_id FROM podcast_queue ORDER BY position,added_at,episode_id").map_err(|e|e.to_string())?;
     let queue=q.query_map([],|r|r.get::<_,String>(0)).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;drop(q);
     if queue.len()>PODCAST_QUEUE_LIMIT {return Err("恢复后的待播队列过大".into());}
-    for (position,id) in queue.iter().enumerate() {tx.execute("UPDATE podcast_queue SET position=?2 WHERE episode_id=?1",params![id,position as i64]).map_err(|e|e.to_string())?;}
-    tx.commit().map_err(|e|e.to_string())?;Ok::<_,String>(())
+    for (position,id) in queue.iter().enumerate() {tx.execute("UPDATE podcast_queue SET position=?2 WHERE episode_id=?1",params![id,position as i64]).map_err(|e|e.to_string())?;}}
+    let changed=tx.total_changes()>initial_changes;tx.commit().map_err(|e|e.to_string())?;Ok::<_,String>(changed)
   })();
-  result?;copied.committed=true;
-  Ok(backup.frontend)
+  let changed=result?;copied.committed=true;
+  Ok((backup.frontend,changed))
 }
 
 #[tauri::command]

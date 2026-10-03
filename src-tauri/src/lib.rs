@@ -202,6 +202,7 @@ pub fn run() {
         }
       };
       podcast::start_podcast_maintenance(app.handle().clone(), podcast_state.clone());
+      podcast::start_podcast_sync(app.handle().clone(), podcast_state.clone());
       app.manage(podcast_state);
       let metadata_state = match metadata::MetadataState::initialize(app.handle()) {
         Ok(state) => state,
@@ -316,6 +317,10 @@ pub fn run() {
       podcast::podcast_list_bookmarks,
       podcast::podcast_add_bookmark,
       podcast::podcast_remove_bookmark,
+      podcast::podcast_sync_status,
+      podcast::podcast_choose_sync_folder,
+      podcast::podcast_stop_sync,
+      podcast::podcast_sync_now,
       podcast::podcast_delete_show_group,
       podcast::podcast_open_link,
       podcast::podcast_list_feeds,

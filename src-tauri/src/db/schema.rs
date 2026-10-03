@@ -613,6 +613,7 @@ pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), Strin
     "resume_metadata",
     "resume_metadata TEXT",
   )?;
+  ensure_database_column(connection,"podcast_feeds","following_updated_at","following_updated_at INTEGER NOT NULL DEFAULT 0")?;
   ensure_database_column(
     connection,
     "podcast_feeds",

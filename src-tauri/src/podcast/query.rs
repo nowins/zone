@@ -155,6 +155,7 @@ pub(crate) fn set_following(db_path: &Path, feed_id: &str, following: bool) -> R
     .execute(
       "
       UPDATE podcast_feeds SET
+        following_updated_at = CASE WHEN subscribed <> ?2 THEN MAX(?3,following_updated_at+1) ELSE following_updated_at END,
         subscribed = ?2,
         subscribed_at = CASE
           WHEN ?2 = 0 THEN NULL

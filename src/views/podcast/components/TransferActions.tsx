@@ -4,6 +4,7 @@ import { Button } from "../../../components/Button";
 import { Dialog } from "../../../components/Dialog";
 import { Presence, useLastNonNull } from "../../../motion/presence";
 import { MOTION_DURATIONS } from "../../../motion/tokens";
+import { PodcastSyncSettings } from "./SyncSettings";
 
 export function TransferActions() {
   const [busy,setBusy]=useState<string|null>(null);
@@ -36,6 +37,7 @@ export function TransferActions() {
       <Button variant="ghost" disabled={busy!==null} onClick={()=>setConfirmRestore(true)}>恢复资料</Button>
       <label><input type="checkbox" checked={includeAudio} disabled={busy!==null} onChange={event=>setIncludeAudio(event.target.checked)} />包含已下载音频</label></div>
     {message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}
+    <PodcastSyncSettings />
     <Presence show={confirmRestore} exitDurationMs={MOTION_DURATIONS.micro}>{restoreSnapshot?<Dialog titleId="podcast-restore-title" kicker="资料恢复" title="合并播客资料" busy={busy==="restore"}
       onCancel={()=>setConfirmRestore(false)} onSubmit={event=>{event.preventDefault();void run("restore");}}
       actions={<><Button type="submit" variant="primary" busy={busy==="restore"}>选择备份</Button><Button disabled={busy==="restore"} onClick={()=>setConfirmRestore(false)} autoFocus>取消</Button></>}>

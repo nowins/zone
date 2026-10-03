@@ -2211,3 +2211,8 @@
 .podcast-bookmarks li { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .podcast-bookmarks li > :first-child { flex: 1; min-width: 0; text-align: left; overflow-wrap: anywhere; }
 .podcast-bookmarks time { color: var(--accent); font-variant-numeric: tabular-nums; }
+.podcast-sync-settings { max-width: 720px; margin: 18px 0; }
+.podcast-sync-settings h3 { margin: 0 0 8px; }
+.podcast-sync-settings > div { display: flex; flex-wrap: wrap; gap: 10px; }
+.podcast-sync-settings > p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.podcast-sync-path { overflow-wrap: anywhere; }

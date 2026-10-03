@@ -97,6 +97,7 @@ fn store_feed(
   };
   feed.last_checked_at = Some(feed.last_checked_at.unwrap_or(feed.last_fetched_at));
   feed.last_refresh_error = None;
+  let following_changed = feed.subscribed && !existing_subscribed;
   transaction
     .execute(
       "
@@ -137,6 +138,7 @@ fn store_feed(
       ],
     )
     .map_err(|error| format!("无法保存播客订阅：{error}"))?;
+  if following_changed { transaction.execute("UPDATE podcast_feeds SET following_updated_at=MAX(?2,following_updated_at+1) WHERE id=?1",params![feed.id,unix_time_millis()]).map_err(|e|e.to_string())?; }
 
   let mut inserted_count = 0usize;
   let mut updated_count = 0usize;
