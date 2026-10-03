@@ -201,6 +201,7 @@ pub fn run() {
           podcast::PodcastState::unavailable(error)
         }
       };
+      podcast::start_podcast_maintenance(app.handle().clone(), podcast_state.clone());
       app.manage(podcast_state);
       let metadata_state = match metadata::MetadataState::initialize(app.handle()) {
         Ok(state) => state,
@@ -291,6 +292,11 @@ pub fn run() {
       podcast::podcast_subscribe,
       podcast::podcast_preview_feed,
       podcast::podcast_refresh_feeds,
+      podcast::podcast_get_preferences,
+      podcast::podcast_set_preferences,
+      podcast::podcast_list_download_jobs,
+      podcast::podcast_enqueue_download,
+      podcast::podcast_pause_download_job,
       podcast::podcast_list_feeds,
       podcast::podcast_set_following,
       podcast::podcast_list_home,

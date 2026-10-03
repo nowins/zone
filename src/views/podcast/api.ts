@@ -57,6 +57,22 @@ export function listPodcastFeeds() {
   return invoke<PodcastFeed[]>("podcast_list_feeds");
 }
 
+export type PodcastPreferences = {
+  autoDownloadCount: number; cleanupPlayed: boolean; storageLimitMb: number;
+  playbackRate: number | null; introSeconds: number; outroSeconds: number;
+  backwardSeconds: number; forwardSeconds: number; oldestFirst: boolean;
+  normalizeVoice: boolean; trimSilence: boolean;
+};
+export type PodcastDownloadJob = {
+  episodeId: string; title: string; state: "queued" | "running" | "paused" | "failed";
+  attempts: number; error: string | null; downloadedBytes: number; totalBytes: number | null;
+};
+export const getPodcastPreferences = (feedId?: string) => invoke<PodcastPreferences>("podcast_get_preferences", { feedId });
+export const setPodcastPreferences = (preferences: PodcastPreferences, feedId?: string) => invoke<void>("podcast_set_preferences", { feedId, preferences });
+export const listDownloadJobs = () => invoke<PodcastDownloadJob[]>("podcast_list_download_jobs");
+export const enqueueDownload = (episodeId: string) => invoke<void>("podcast_enqueue_download", { episodeId });
+export const pauseDownloadJob = (episodeId: string) => invoke<void>("podcast_pause_download_job", { episodeId });
+
 export function listPodcastHome() {
   return invoke<PodcastHome>("podcast_list_home");
 }

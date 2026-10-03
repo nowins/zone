@@ -1,4 +1,7 @@
 import { Button } from "../components/Button";
+import { useState } from "react";
+import { useLastNonNull } from "../motion/presence";
+import { PodcastSettingsDialog } from "./podcast/components/SettingsDialog";
 import {
   ArrowLeft,
   Check,
@@ -25,6 +28,8 @@ import { EpisodeScreen } from "./podcast/screens/EpisodeScreen";
 
 export function PodcastView(props: PodcastViewProps) {
   const vm = usePodcastViewModel(props);
+  const [settings, setSettings] = useState<{ feedId?: string; title: string } | null>(null);
+  const lastSettings = useLastNonNull(settings);
   const {
     screen,
     returnScreen,
@@ -82,6 +87,7 @@ export function PodcastView(props: PodcastViewProps) {
 
         {screen === "show" ? (
           <div className="podcast-show-chrome">
+            <Button variant="ghost" onClick={() => selectedFeed && setSettings({ feedId: selectedFeed.id, title: selectedFeed.title })}>节目设置</Button>
             <button type="button" onClick={closeShow}>
               <ArrowLeft size={16} />
               返回{rootScreenLabel(returnScreen)}
@@ -166,6 +172,7 @@ export function PodcastView(props: PodcastViewProps) {
       </header>
 
       {screen === "listen" ? <ListenScreen vm={vm} /> : null}
+      {screen === "library" && <div className="podcast-library-actions"><Button variant="ghost" onClick={() => setSettings({title:"下载与存储"})}>播客设置</Button></div>}
       {screen === "discover" ? <DiscoverScreen vm={vm} /> : null}
       {screen === "library" ? <LibraryScreen vm={vm} /> : null}
       {screen === "playlist" ? <PlaylistScreen vm={vm} /> : null}
@@ -206,6 +213,10 @@ export function PodcastView(props: PodcastViewProps) {
             onConfirm={() => void confirmDownloadCleanup()}
           />
         ) : <span style={{ display: "none" }} />}
+      </Presence>
+
+      <Presence show={settings !== null} exitDurationMs={MOTION_DURATIONS.micro}>
+        {lastSettings ? <PodcastSettingsDialog {...lastSettings} onClose={() => setSettings(null)} /> : <span style={{display:"none"}} />}
       </Presence>
 
       <Presence

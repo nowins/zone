@@ -418,6 +418,14 @@ pub async fn podcast_download_episode(
   episode_id: String,
   request_id: Option<String>,
 ) -> Result<PodcastDownloadResult, String> {
+  run_download_episode(&state, episode_id, request_id).await
+}
+
+pub(crate) async fn run_download_episode(
+  state: &PodcastState,
+  episode_id: String,
+  request_id: Option<String>,
+) -> Result<PodcastDownloadResult, String> {
   state.ensure_ready()?;
   validate_identifier(&episode_id)?;
   let _file_guard = EpisodeFileGuard::acquire(&state.active_downloads, &episode_id)?;
@@ -431,6 +439,8 @@ pub async fn podcast_download_episode(
   if let Some(local_path) = source.local_path.as_deref() {
     let path = PathBuf::from(local_path);
     if path.is_file() && is_managed_download_path(&downloads_dir, &episode_id, &path) {
+      begin_download_job(&state.db_path, &episode_id, request_id.as_deref())?;
+      finish_download_job(&state.db_path, &episode_id, None)?;
       return Ok(PodcastDownloadResult {
         episode_id,
         local_path: path.to_string_lossy().to_string(),
@@ -440,6 +450,11 @@ pub async fn podcast_download_episode(
     }
   }
 
+  begin_download_job(&state.db_path, &episode_id, request_id.as_deref())?;
+  if let Err(error) = check_download_capacity(state, &episode_id) {
+    finish_download_job(&state.db_path, &episode_id, Some(&error))?;
+    return Err(error);
+  }
   let result = run_network_task(request_id.as_deref(), download_episode(
     &state.db_path,
     &downloads_dir,
@@ -464,6 +479,7 @@ pub async fn podcast_download_episode(
     .await;
   }
 
+  finish_download_job(&state.db_path, &episode_id, result.as_ref().err().map(String::as_str))?;
   result
 }
 

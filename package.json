@@ -13,6 +13,7 @@
     "test": "npm run test:visualizer",
     "test:visualizer": "node packaging/check-version.mjs && tsc -p tsconfig.test.json && node --test tests/*.test.mjs",
     "test:podcast:stability": "node tests/run-podcast-stability.mjs",
+    "test:podcast:client": "node tests/run-podcast-client.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

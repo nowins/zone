@@ -361,6 +361,8 @@ fn prune_missing_feed_episodes(
             FROM podcast_downloads
             WHERE episode_id = ?1
               AND state IN ('downloaded', 'downloading')
+          ) OR EXISTS(
+            SELECT 1 FROM podcast_download_jobs WHERE episode_id = ?1 AND state <> 'complete'
           )
         ",
         [&episode_id],

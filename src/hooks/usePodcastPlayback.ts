@@ -2,6 +2,7 @@ import { recordDiagnostic } from "../utils/diagnostics";
 import { downloadPodcastEpisode } from "../views/podcast/api";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { movePodcastQueueItem, podcastPlaybackForEpisode } from "../utils/podcastPlayback";
 import { shouldConsumePendingQueueEpisode } from "../utils/playbackTransport";
 import { createPodcastProgressWriteGate } from "../utils/podcastProgress";
@@ -94,6 +95,17 @@ export function usePodcastPlayback({
   activePodcastEpisodeRef.current = activePodcastEpisode;
   podcastQueueRef.current = podcastQueue;
   podcastAutoQueueModeRef.current = podcastAutoQueueMode;
+
+  useEffect(() => {
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    void listen("podcast-library-changed", event => {
+      setPodcastLibraryRevision(value => value + 1);
+      if (event.payload === true) void reloadPodcastQueue(podcastQueueRevisionRef.current);
+    })
+      .then(unlisten => { if (disposed) unlisten(); else stop = unlisten; }).catch(() => {});
+    return () => { disposed = true; stop?.(); };
+  }, []);
 
   useEffect(() => {
     podcastActiveSessionMountedRef.current = true;
