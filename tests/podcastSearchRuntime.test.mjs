@@ -24,3 +24,14 @@ test("local episode browser ignores late pages after a new query and reads nativ
  const h=await mount(async(command,args)=>{if(command==="podcast_search_episodes")return args.query==="旧"?late.promise:{episodes:[fresh],total:123,hasMore:true};return [];},vm=>React.createElement(runtime.EpisodeBrowser,{vm,requestedQuery:vm.query}));
  try{await step(()=>h.api.setQuery("旧"));await step(()=>new Promise(resolve=>setTimeout(resolve,230)));await step(()=>h.api.setQuery("新"));await step(()=>new Promise(resolve=>setTimeout(resolve,230)));await step(()=>late.resolve({episodes:[podcastEpisode("stale")],total:1,hasMore:false}));assert.match(document.body.textContent,/共 123 集/);assert.match(document.body.textContent,/fresh/);assert.doesNotMatch(document.body.textContent,/stale/);}finally{await h.close();}
 });
+
+test("background archive refresh keeps the existing row and keyboard focus while pending",async()=>{
+ const late=deferred();let count=0;
+ const h=await mount(async(command)=>command==="podcast_search_episodes"?(++count===1?{episodes:[podcastEpisode("stable")],total:1,hasMore:false}:late.promise):[],vm=>React.createElement(runtime.EpisodeBrowser,{vm,feedId:"refresh-focus"}));
+ try{await step(()=>new Promise(resolve=>setTimeout(resolve,230)));const row=document.querySelector('.podcast-episode-open');row.focus();await h.render({...props,libraryRevision:1});await step(()=>new Promise(resolve=>setTimeout(resolve,230)));assert.equal(document.querySelector('.podcast-episode-open'),row);assert.equal(document.activeElement,row);await step(()=>late.resolve({episodes:[podcastEpisode("stable")],total:1,hasMore:false}));assert.equal(document.activeElement,row);}finally{await h.close();}
+});
+test("archive pagination returns to the stored page after visiting details",async()=>{
+ const offsets=[];let show=true;
+ const h=await mount(async(command,args)=>{if(command==="podcast_search_episodes"){offsets.push(args.offset);return {episodes:[podcastEpisode(`episode-${args.offset}`)],total:100,hasMore:args.offset===0};}return [];},vm=>show?React.createElement(runtime.EpisodeBrowser,{vm,feedId:"restore-page"}):null);
+ try{await step(()=>new Promise(resolve=>setTimeout(resolve,230)));await step(()=>Array.from(document.querySelectorAll('button')).find(el=>el.textContent==="下一页").click());await step(()=>new Promise(resolve=>setTimeout(resolve,230)));show=false;await h.render({...props});show=true;await h.render({...props});await step(()=>new Promise(resolve=>setTimeout(resolve,230)));assert.equal(offsets.at(-1),50);assert.match(document.body.textContent,/第 51/);}finally{await h.close();}
+});

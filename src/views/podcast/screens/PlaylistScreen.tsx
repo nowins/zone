@@ -1,3 +1,4 @@
+import { usePodcastBrowsePosition } from "../components/BrowsePosition";
 import { PODCAST_AUTO_QUEUE_MODES } from "../constants";
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/Button";
@@ -9,9 +10,12 @@ import { QueueEpisodeRow } from "../components/QueueEpisodeRow";
 import { PodcastEmpty, PodcastSection } from "../components/primitives";
 import type { PodcastViewModel } from "../usePodcastViewModel";
 
+let rememberedTab: "queue" | "lists"="queue";
 export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
-  const [tab, setTab] = useState<"queue" | "lists">("queue");
+  const [tab, setTab] = useState<"queue" | "lists">(rememberedTab);
+  useEffect(()=>{rememberedTab=tab;},[tab]);
   useEffect(()=>{if(vm.queueFocusRequest>0)setTab("queue");},[vm.queueFocusRequest]);
+  const pageRef=usePodcastBrowsePosition("playlist");
   const {
     // pull fields used by this screen (full bag is fine; unused locals are ok at runtime)
     ..._
@@ -153,7 +157,7 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
   } = vm;
 
   return (
-    <main className="podcast-screen podcast-playlist-screen">
+    <main ref={pageRef} className="podcast-screen podcast-playlist-screen">
       <div className="podcast-list-pivots" role="group" aria-label="播放列表分类">
         <Button variant="ghost" aria-pressed={tab === "queue"} onClick={() => setTab("queue")}>待播</Button>
         <Button variant="ghost" aria-pressed={tab === "lists"} onClick={() => setTab("lists")}>我的列表</Button>

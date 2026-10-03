@@ -68,6 +68,7 @@ function EpisodeRow({
         active ? " active" : ""
       }${selecting ? " selecting" : ""}${selected ? " selected" : ""
       }`}
+      data-podcast-episode={episode.id}
       onContextMenu={onContextMenu}
     >
       {showArtwork ? (

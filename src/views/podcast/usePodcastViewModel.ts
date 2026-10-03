@@ -938,7 +938,7 @@ export function usePodcastViewModel({
   useEffect(() => {
     if (screen !== "show" && screen !== "episode") return;
     const frame = window.requestAnimationFrame(() => {
-      headingRef.current?.focus({ preventScroll: true });
+      if (!document.activeElement?.closest("[data-podcast-episode]")) headingRef.current?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [screen, selectedEpisodeId, selectedFeed?.id]);

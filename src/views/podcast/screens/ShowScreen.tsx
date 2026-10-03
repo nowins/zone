@@ -1,4 +1,5 @@
-import { memo, type MouseEvent } from "react";
+import { usePodcastBrowsePosition } from "../components/BrowsePosition";
+import { memo, useState, type MouseEvent } from "react";
 import { useEvent } from "../../../hooks/useEvent";
 import type { PodcastEpisode } from "../../../types";
 import { Button } from "../../../components/Button";
@@ -15,6 +16,8 @@ import {
 import type { PodcastViewModel } from "../usePodcastViewModel";
 
 export function ShowScreen({ vm }: { vm: PodcastViewModel }) {
+  const [expanded, setExpanded]=useState(false);
+  const pageRef=usePodcastBrowsePosition(`show:${vm.selectedFeed?.id}`);
   const { selectedFeed, refreshSelectedFeed, openingId, displayedEpisodes, episodeState, episodes,
     currentEpisodeId, isPlaying, downloadingId, hasMoreEpisodes, loadingEpisodePage, loadMoreEpisodes } = vm;
   const open = useEvent((episode: PodcastEpisode) => vm.openEpisodeDetail(episode, "show"));
@@ -24,7 +27,7 @@ export function ShowScreen({ vm }: { vm: PodcastViewModel }) {
   if (!selectedFeed) return null;
 
   return (
-    <main className="podcast-screen podcast-show-screen">
+    <main ref={pageRef} className="podcast-screen podcast-show-screen">
               <section className="podcast-show-hero">
                 <PodcastArtwork
                   url={selectedFeed.artworkUrl}
@@ -36,7 +39,7 @@ export function ShowScreen({ vm }: { vm: PodcastViewModel }) {
                   <h2>{selectedFeed.title}</h2>
                   <strong>{selectedFeed.author || "未知作者"}</strong>
                   {selectedFeed.description
-                    ? <p>{plainText(selectedFeed.description)}</p>
+                    ? <><p id="podcast-show-description" className={expanded?"expanded":""}>{plainText(selectedFeed.description)}</p><Button variant="ghost" size="sm" aria-expanded={expanded} aria-controls="podcast-show-description" onClick={()=>setExpanded(value=>!value)}>{expanded?"收起简介":"展开简介"}</Button></>
                     : null}
                 </div>
                 <button

@@ -1,3 +1,4 @@
+import { usePodcastBrowsePosition } from "../components/BrowsePosition";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { ShowGroups } from "../components/ShowGroups";
@@ -20,6 +21,7 @@ import type { PodcastViewModel } from "../usePodcastViewModel";
 export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
   const [groupFeedIds, setGroupFeedIds] = useState<ReadonlySet<string> | null>(null);
   const groupedFeeds = vm.orderedFeeds.filter(feed => !groupFeedIds || groupFeedIds.has(feed.id));
+  const pageRef=usePodcastBrowsePosition("library");
   const {
     // pull fields used by this screen (full bag is fine; unused locals are ok at runtime)
     ..._
@@ -162,7 +164,7 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
   } = vm;
 
   return (
-    <main className="podcast-screen podcast-library-screen">
+    <main ref={pageRef} className="podcast-screen podcast-library-screen">
               <TransferActions />
               <DownloadJobs />
               <EpisodeBrowser vm={vm} />

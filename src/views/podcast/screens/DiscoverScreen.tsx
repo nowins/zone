@@ -1,3 +1,4 @@
+import { usePodcastBrowsePosition } from "../components/BrowsePosition";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Search, Rss } from "lucide-react";
 import { MetroLoader } from "../../../components/MetroLoader";
@@ -18,6 +19,7 @@ import {
 import type { PodcastViewModel } from "../usePodcastViewModel";
 
 export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
+  const pageRef=usePodcastBrowsePosition("discover");
   const {
     query,
     setQuery,
@@ -145,7 +147,7 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
   }
 
   return (
-    <main className="podcast-screen podcast-discover-screen">
+    <main ref={pageRef} className="podcast-screen podcast-discover-screen">
       <div className="podcast-discovery-search" ref={searchFieldRef}>
         <div className="podcast-discovery-search-row">
           <div className="podcast-search-field">

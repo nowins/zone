@@ -56,6 +56,9 @@ async function run() {
       for(const [label,value] of [["跳过片头","10"],["跳过片尾","20"],["后退间隔","10"],["前进间隔","45"]])await inputValue(document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!,value);
       for(const label of ["均衡语音音量","加速静音段落"]){const option=Array.from(document.querySelectorAll<HTMLInputElement>('.podcast-settings-fields input[type=checkbox]')).find(el=>el.parentElement?.textContent?.includes(label))!;assert(option,`${label} setting missing`);if(!option.checked)option.click();await delay(100);}
       await capture("05-playback-settings-920");await click("保存");await until(()=>!document.querySelector("[role=dialog]"),"playback settings saved");
+      await click("展开简介");assert(document.querySelector('.podcast-show-hero p.expanded'),"show description cannot expand");await click("收起简介");
+      const openRow=document.querySelector<HTMLButtonElement>('.podcast-episode-open')!;openRow.focus();openRow.click();await until(()=>Boolean(document.querySelector('.podcast-detail')),"browse detail");await click("返回节目");await until(()=>Boolean(document.querySelector('.podcast-episode-open')),"restore show search");assert((document.querySelector('select[aria-label="单集排序"]') as HTMLSelectElement).value==="oldest","show sort lost after returning");
+      checks.push("真实客户端节目简介展开与收起、返回节目保留筛选排序与单集焦点");
       const row=Array.from(document.querySelectorAll(".podcast-episode")).find(el=>el.textContent?.includes("离线单集"))!;
       row.scrollIntoView({block:"center"});(row.querySelector(".podcast-play-action") as HTMLButtonElement).click();
       const audio=document.querySelector("audio")!;
@@ -72,6 +75,7 @@ async function run() {
       (refreshedRow.querySelector('.podcast-episode-open') as HTMLButtonElement).click();await until(()=>Boolean(document.querySelector('.podcast-detail-description')),"episode reading");
       const note=document.querySelector<HTMLButtonElement>('.podcast-note-timecode')!;assert(note,"shownote timecode not actionable");note.scrollIntoView({block:"center"});note.click();
       await until(()=>!audio.paused&&audio.currentTime>=2&&audio.currentTime<8,"explicit note timestamp must bypass intro");
+      assert(document.querySelectorAll(".podcast-transcript-panel").length===1,"progress updates duplicate transcript panels");
       const transcript=button("转写 · 展开")!;transcript.scrollIntoView({block:"center"});transcript.click();await until(()=>Boolean(document.querySelector('.podcast-transcript-cues li')),"cached native transcript");
       await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="搜索转写内容"]')!,"关键词");await until(()=>document.querySelectorAll('.podcast-transcript-cues li').length===1,"transcript search");
       document.querySelector<HTMLButtonElement>('.podcast-transcript-cues li button')!.click();await until(()=>audio.currentTime>=10&&audio.currentTime<18,"transcript timestamp");
@@ -85,7 +89,7 @@ async function run() {
       const remove=Array.from(document.querySelectorAll<HTMLButtonElement>('.podcast-bookmarks ol button')).find(el=>el.textContent?.trim()==="删除")!;remove.click();await until(()=>!document.querySelector('.podcast-bookmarks ol'),"remove native bookmark");
       checks.push("真实客户端时间书签保存、共用音频跳转、带时间复制分享与删除");
       document.querySelector<HTMLButtonElement>('.podcast-player button[title="暂停"]')!.click();
-      await click("加入播放列表");await until(()=>Boolean(document.querySelector('select[aria-label="选择播放列表"]')),"playlist picker");
+      (document.querySelector(".podcast-detail-more summary") as HTMLElement).click();await click("加入播放列表");await until(()=>Boolean(document.querySelector('select[aria-label="选择播放列表"]')),"playlist picker");
       const manualName=`验收手动 ${Date.now()}`;
       await selectValue(document.querySelector('select[aria-label="选择播放列表"]')!,"");
       await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="新列表名称"]')!,manualName);

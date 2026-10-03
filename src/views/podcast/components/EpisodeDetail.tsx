@@ -167,7 +167,6 @@ function EpisodeDetail({
           <ListMusic size={16} />
           加入待播
         </button>
-        <Button variant="ghost" onClick={() => setAddingToList(true)}>加入播放列表</Button>
         <button
           type="button"
           onClick={onToggleSaved}
@@ -179,7 +178,18 @@ function EpisodeDetail({
             : <Bookmark size={16} fill={episode.saved ? "currentColor" : "none"} />}
           {episode.saved ? "移出稍后听" : "稍后听"}
         </button>
-        {episode.localPath ? (
+        {episode.localPath ? <span className="podcast-detail-downloaded">已下载</span> : (
+          <button type="button" onClick={onDownload} disabled={downloading}>
+            {downloading
+              ? <MetroLoader size={16} />
+              : <Download size={16} />}
+            {downloading
+              ? `正在下载${downloadProgressLabel ? ` ${downloadProgressLabel}` : ""}`
+              : "下载"}
+          </button>
+        )}
+        <details className="podcast-detail-more"><summary>更多操作</summary><div>        <Button variant="ghost" onClick={() => setAddingToList(true)}>加入播放列表</Button>
+{episode.localPath ? (
           <button
             type="button"
             onClick={onDeleteDownload}
@@ -190,16 +200,7 @@ function EpisodeDetail({
               : <Trash2 size={16} />}
             删除下载
           </button>
-        ) : (
-          <button type="button" onClick={onDownload} disabled={downloading}>
-            {downloading
-              ? <MetroLoader size={16} />
-              : <Download size={16} />}
-            {downloading
-              ? `正在下载${downloadProgressLabel ? ` ${downloadProgressLabel}` : ""}`
-              : "下载"}
-          </button>
-        )}
+        ) : null}
         <button
           type="button"
           onClick={onTogglePlayed}
@@ -211,10 +212,9 @@ function EpisodeDetail({
               ? <RefreshCw size={16} />
               : <CheckCircle2 size={16} />}
           {episode.completed ? "标记为未播放" : "标记为已播放"}
-        </button>
+        </button></div></details>
       </div>
 
-      <EpisodeBookmarks key={episode.id} episode={episode} position={active ? activeProgress : episode.progressSeconds} onPlayAt={onPlayChapter}/>
       <section className="podcast-detail-description">
         <h3>简介</h3>
         {episode.description?<PodcastNotes source={episode.description} base={episode.webpageUrl??feed.feedUrl} duration={episode.durationSeconds} onPlayAt={onPlayChapter}/>:<p>这集暂时没有简介。</p>}
@@ -289,7 +289,8 @@ function EpisodeDetail({
           ) : null}
         </section>
       ) : null}
-      {detail.transcriptCount>0&&<TranscriptPanel key={episode.id} episodeId={episode.id} active={active} progress={activeProgress} onPlayAt={onPlayChapter}/>}
+      {detail.transcriptCount>0&&<TranscriptPanel key={`transcript-${episode.id}`} episodeId={episode.id} active={active} progress={activeProgress} onPlayAt={onPlayChapter}/>}
+      <EpisodeBookmarks key={`bookmarks-${episode.id}`} episode={episode} position={active ? activeProgress : episode.progressSeconds} onPlayAt={onPlayChapter}/>
       <Presence show={addingToList} exitDurationMs={MOTION_DURATIONS.micro}>
         <PlaylistPicker episode={episode} onClose={() => setAddingToList(false)} />
       </Presence>

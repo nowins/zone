@@ -48,12 +48,14 @@ export function PlaylistPicker({ episode, onClose }: { episode: PodcastEpisode; 
   </Dialog>;
 }
 
+let rememberedList: {selected:string|null;offset:number}={selected:null,offset:0};
 export function NamedLists({ vm }: { vm: PodcastViewModel }) {
-  const [lists, setLists] = useState<PodcastPlaylist[] | null>(null); const [selected, setSelected] = useState<string | null>(null);
-  const [page, setPage] = useState<EpisodeSearchPage | null>(null); const [offset, setOffset] = useState(0);
+  const [lists, setLists] = useState<PodcastPlaylist[] | null>(null); const [selected, setSelected] = useState<string | null>(rememberedList.selected);
+  const [page, setPage] = useState<EpisodeSearchPage | null>(null); const [offset, setOffset] = useState(rememberedList.offset);
   const [revision, setRevision] = useState(0); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [editor, setEditor] = useState<PodcastPlaylist | "new" | null>(null); const editorSnapshot = useLastNonNull(editor);
   const [deleting, setDeleting] = useState<PodcastPlaylist | null>(null); const deletingSnapshot = useLastNonNull(deleting);
+  useEffect(()=>{rememberedList={selected,offset};},[selected,offset]);
   const requestRef = useRef(0); const selectedList = lists?.find(list => list.id === selected);
   useEffect(() => { let disposed = false; void listPodcastPlaylists().then(result => { if (disposed) return; setLists(result); setSelected(old => result.some(list => list.id === old) ? old : result[0]?.id ?? null); }).catch(reason => { if (!disposed) setError(message(reason)); }); return () => { disposed = true; }; }, [revision, vm.libraryRevision]);
   useEffect(() => { const request = ++requestRef.current; setPage(null); setError(""); if (!selected) return; void podcastPlaylistPage(selected, offset).then(result => { if (requestRef.current !== request) return; if (offset > 0 && offset >= result.total) { setOffset(Math.max(0, Math.floor((result.total - 1) / 50) * 50)); return; } setPage(result); }).catch(reason => { if (requestRef.current === request) setError(message(reason)); }); return () => { requestRef.current++; }; }, [selected, offset, revision, vm.libraryRevision]);
