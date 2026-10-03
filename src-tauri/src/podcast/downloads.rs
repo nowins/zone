@@ -808,7 +808,7 @@ async fn download_episode_with_network_policy(
     .transpose()?.unwrap_or(url.clone());
   let mut public_response = send_public_get_with_headers(
     resume_url,
-    Duration::from_secs(30 * 60),
+    Duration::from_secs(4 * 60 * 60),
     range.as_deref(),
     allow_private_network,
     &headers,
@@ -824,7 +824,7 @@ async fn download_episode_with_network_policy(
     offset = 0;
     public_response = send_public_get_with_policy(
       validate_url_shape_with_policy(enclosure_url, allow_private_network)?,
-      Duration::from_secs(30 * 60),
+      Duration::from_secs(4 * 60 * 60),
       None,
       allow_private_network,
     )

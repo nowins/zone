@@ -53,6 +53,7 @@ fn shared_public_client(
   let mut client_builder = reqwest::Client::builder()
     .user_agent(USER_AGENT)
     .connect_timeout(Duration::from_secs(10))
+    .read_timeout(Duration::from_secs(30))
     .redirect(reqwest::redirect::Policy::none())
     .no_proxy();
   if host.parse::<IpAddr>().is_err() {
@@ -99,16 +100,18 @@ pub(crate) async fn send_public_get_with_headers(
   request_headers: &HeaderMap,
 ) -> Result<PublicResponse, String> {
   let header_origin = url_origin(&url);
+  let deadline = tokio::time::Instant::now() + timeout;
   for redirect_count in 0..=PODCAST_REDIRECT_LIMIT {
     validate_url_with_policy(&url, allow_private_network)?;
-    let addresses = resolve_public_addresses(&url, allow_private_network).await?;
+    let addresses = tokio::time::timeout_at(deadline, resolve_public_addresses(&url, allow_private_network))
+      .await.map_err(|_| "播客来源解析超时".to_string())??;
     let raw_host = url.host_str().ok_or_else(|| "播客请求地址缺少主机名".to_string())?;
     let host = host_without_ipv6_brackets(raw_host);
     let client = shared_public_client(host, &addresses, allow_private_network)?;
     let mut request = client
       .get(url.clone())
       .header(header::ACCEPT, "*/*")
-      .timeout(timeout);
+      .timeout(deadline.saturating_duration_since(tokio::time::Instant::now()));
     if url_origin(&url) == header_origin {
       request = request.headers(request_headers.clone());
     }
@@ -117,7 +120,11 @@ pub(crate) async fn send_public_get_with_headers(
         .header(header::RANGE, range)
         .header(header::ACCEPT_ENCODING, "identity");
     }
-    let response = request.send().await.map_err(|error| {
+    // Header wait is bounded separately for long downloads; reqwest keeps the
+    // remaining overall deadline active while the body is being consumed.
+    let header_deadline = deadline.min(tokio::time::Instant::now() + Duration::from_secs(30));
+    let response = tokio::time::timeout_at(header_deadline, request.send()).await
+      .map_err(|_| "播客来源响应超时".to_string())?.map_err(|error| {
       if error.is_timeout() {
         "播客来源响应超时".to_string()
       } else {
@@ -644,5 +651,30 @@ mod tests {
     assert_eq!(detect_audio_extension(&mp3).await.expect("MP3"), "mp3");
     assert_eq!(detect_audio_extension(&m4a).await.expect("M4A"), "m4a");
     fs::remove_dir_all(directory).expect("cleanup test directory");
+  }
+
+  #[tokio::test]
+  async fn redirects_share_the_dns_header_and_body_deadline() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = Url::parse(&format!("http://{}/0", listener.local_addr().unwrap())).unwrap();
+    let server = tokio::spawn(async move {
+      for index in 0..3 {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0u8; 2048];
+        stream.read(&mut request).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(70)).await;
+        let reply = if index < 2 {
+          format!("HTTP/1.1 302 Found\r\nLocation: /{}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", index + 1)
+        } else { "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string() };
+        stream.write_all(reply.as_bytes()).await.unwrap();
+        stream.shutdown().await.unwrap();
+      }
+    });
+    let started = std::time::Instant::now();
+    assert!(send_public_get_with_policy(url, Duration::from_millis(110), None, true).await.is_err());
+    let elapsed = started.elapsed();
+    server.abort();
+    println!("configured_budget_ms=110, chain_elapsed_ms={}", elapsed.as_millis());
+    assert!(elapsed <= Duration::from_millis(150), "redirects must share the request deadline: {elapsed:?}");
   }
 }
