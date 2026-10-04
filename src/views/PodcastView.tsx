@@ -20,6 +20,7 @@ import {
 } from "./podcast/components/Dialogs";
 import { usePodcastViewModel } from "./podcast/usePodcastViewModel";
 import { ListenScreen } from "./podcast/screens/ListenScreen";
+import { DiscoverSearch } from "./podcast/components/DiscoverSearch";
 import { DiscoverScreen } from "./podcast/screens/DiscoverScreen";
 import { LibraryScreen } from "./podcast/screens/LibraryScreen";
 import { PlaylistScreen } from "./podcast/screens/PlaylistScreen";
@@ -79,8 +80,8 @@ export function PodcastView(props: PodcastViewProps) {
     <section className="content-band podcast-page">
       <p className="podcast-ghost" aria-hidden="true">podcasts</p>
 
-      <header className={`podcast-header ${screen === "show" || screen === "episode" ? "podcast-header-detail" : ""}`}>
-        <div className="podcast-heading">
+      <header className={`podcast-header ${screen === "show" || screen === "episode" ? "podcast-header-detail" : "podcast-header-root"}`}>
+        <div className={screen === "show" || screen === "episode" ? "podcast-heading" : "podcast-heading podcast-heading-hidden"}>
           <span>{eyebrow}</span>
           <h1 ref={headingRef} tabIndex={-1}>{heading}</h1>
         </div>
@@ -169,6 +170,7 @@ export function PodcastView(props: PodcastViewProps) {
             </button>
           </nav>
         )}
+        {screen === "discover" && <DiscoverSearch vm={vm} />}
       </header>
 
       {screen === "listen" ? <ListenScreen vm={vm} /> : null}

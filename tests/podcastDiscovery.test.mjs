@@ -25,6 +25,7 @@ const viewSource = [
   "src/views/podcast/api.ts",
   "src/views/podcast/screens/ListenScreen.tsx",
   "src/views/podcast/screens/DiscoverScreen.tsx",
+  "src/views/podcast/components/DiscoverSearch.tsx",
   "src/views/podcast/screens/LibraryScreen.tsx",
   "src/views/podcast/screens/PlaylistScreen.tsx",
   "src/views/podcast/screens/ShowScreen.tsx",
@@ -37,15 +38,17 @@ const stylesSource = readFileSync("src/styles/podcasts.css", "utf8");
 const typesSource = readFileSync("src/types.ts", "utf8");
 const rustSource = readFileSync("src-tauri/src/podcast/apple.rs", "utf8");
 
-test("podcast discovery offers low-friction topics and focus-scoped recent searches", () => {
+test("podcast discovery offers visible categories without duplicate topic navigation and keeps focus-scoped recent searches", () => {
   assert.match(viewSource, /PODCAST_DISCOVERY_STORAGE_KEY = "zone-podcast-discovery-v1"/);
   assert.match(viewSource, /label: "热门"/);
   assert.match(viewSource, /label: "商业", query: "商业"/);
   assert.match(viewSource, /label: "科技", query: "科技"/);
   assert.match(viewSource, /label: "人文", query: "人文"/);
   assert.match(viewSource, /label: "英语", query: "英语"/);
-  assert.match(viewSource, /aria-label="按主题浏览"/);
-  assert.match(viewSource, /aria-pressed=\{discoveryTopic === topic\.id\}/);
+  assert.match(viewSource, /aria-label="发现节目分类"/);
+  assert.match(viewSource, /aria-pressed=\{genre === value\}/);
+  assert.doesNotMatch(viewSource, /aria-label="按主题浏览"/);
+  assert.doesNotMatch(viewSource, /<select aria-label="发现节目分类"/);
   assert.match(viewSource, /addPodcastSearchHistory\(current, cleanQuery\)/);
   assert.match(viewSource, /searchHistory: normalizePodcastSearchHistory\(searchHistory\)/);
   assert.match(

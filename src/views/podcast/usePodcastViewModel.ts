@@ -1606,6 +1606,7 @@ export function usePodcastViewModel({
     setNotice(null);
     try {
       const result = await podcastApi.subscribePodcastFeed(cleanUrl);
+      setRssExpanded(false);
       setRssUrl("");
       setNotice(`已关注“${result.feed.title}”`);
       await loadFeeds();
