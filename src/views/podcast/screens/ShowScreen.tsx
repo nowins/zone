@@ -38,8 +38,10 @@ export function ShowScreen({ vm }: { vm: PodcastViewModel }) {
                 <div>
                   <span>{selectedFeed.subscribed ? "已加入资料库" : "公开播客"}</span>
                   <h2>{selectedFeed.title}</h2>
-                  <strong>{selectedFeed.author || "未知作者"}</strong>
-                  {selectedFeed.subscribed && <ShowGroupAction feed={selectedFeed} />}
+                  <div className="podcast-show-byline">
+                    <strong>{selectedFeed.author || "未知作者"}</strong>
+                    {selectedFeed.subscribed && <ShowGroupAction feed={selectedFeed} />}
+                  </div>
                   {selectedFeed.description
                     ? <><p id="podcast-show-description" className={expanded?"expanded":""}>{plainText(selectedFeed.description)}</p><Button variant="ghost" size="sm" aria-expanded={expanded} aria-controls="podcast-show-description" onClick={()=>setExpanded(value=>!value)}>{expanded?"收起简介":"展开简介"}</Button></>
                     : null}

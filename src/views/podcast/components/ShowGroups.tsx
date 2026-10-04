@@ -45,7 +45,7 @@ function ShowGroupPicker({ feed, onClose }: { feed: PodcastFeed; onClose: () => 
 
 export function ShowGroupAction({ feed }: { feed: PodcastFeed }) {
   const [open, setOpen] = useState(false);
-  return <><Button variant="ghost" onClick={() => setOpen(true)}>加入分组</Button>
+  return <><Button variant="ghost" size="sm" onClick={() => setOpen(true)}>加入分组</Button>
     <Presence show={open} exitDurationMs={MOTION_DURATIONS.micro}><ShowGroupPicker key={feed.id} feed={feed} onClose={() => setOpen(false)} /></Presence></>;
 }
 
