@@ -137,7 +137,11 @@ pub fn client_add_update(app:tauri::AppHandle)->Result<String,String> {
 #[tauri::command]
 pub fn client_backup_tick(app:tauri::AppHandle)->Result<bool,String>{
   let state=app.state::<crate::podcast::PodcastState>();
-  crate::podcast::run_scheduled_backup(state.inner(),crate::podcast::unix_time_millis()+8*86_400_000)
+  let path=crate::db::initialize_zone_database(&app.path().app_data_dir().map_err(|e|e.to_string())?)?;
+  let json:Option<String>=crate::podcast::open_database(&path)?.query_row("SELECT value_json FROM app_settings WHERE key='podcast.backup.local.v1'",[],|r|r.get(0)).ok();
+  let last=json.and_then(|value|serde_json::from_str::<serde_json::Value>(&value).ok()).and_then(|value|value["lastAutomatic"].as_i64()).unwrap_or(0);
+  // Repeated audits advance from the previously persisted synthetic tick.
+  crate::podcast::run_scheduled_backup(state.inner(),crate::podcast::unix_time_millis().max(last)+8*86_400_000)
 }
 
 #[tauri::command]

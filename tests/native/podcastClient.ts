@@ -2,8 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 declare global {interface Window {__zoneClientAuditStarted?: boolean}}
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 const until=async(check:()=>boolean,name:string,timeout=20000)=>{const started=Date.now();while(!check()){if(Date.now()-started>timeout)throw Error(`${name}: timeout`);await delay(50);}};
-const button=(text:string)=>Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(el=>el.textContent?.trim()===text);
-const click=async(text:string)=>{await until(()=>Boolean(button(text)),text);button(text)!.scrollIntoView({block:"nearest"});button(text)!.click();await delay(150);};
+const button=(text:string)=>Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(el=>el.textContent?.trim()===text&&el.getClientRects().length>0&&!el.closest('[hidden],[inert],[aria-hidden="true"],.motion-exit,.motion-departure'));
+const click=async(text:string)=>{await until(()=>Boolean(button(text))&&!button(text)!.matches(':disabled'),text);button(text)!.scrollIntoView({block:"nearest"});button(text)!.click();await delay(150);};
 const assert=(condition:unknown,message:string)=>{if(!condition)throw Error(message);};
 const capture=async(name:string)=>{await delay(700);await invoke("client_capture",{name});};
 const inputValue=async(input:HTMLInputElement,value:string)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new Event("input",{bubbles:true}));await delay(100);};
@@ -73,7 +73,7 @@ async function run() {
     document.querySelector<HTMLElement>('.podcast-backup-schedule summary')!.click();
     await selectValue(document.querySelector('[role=combobox][aria-label="自动备份频率"]')!,"1");await selectValue(document.querySelector('[role=combobox][aria-label="自动快照保留"]')!,"3");await click("保存备份计划");
     await until(()=>document.querySelector('.podcast-backup-schedule summary')?.textContent?.includes('每天')??false,"native backup schedule saved");await capture("41-backup-schedule-920");
-    await invoke("client_backup_tick");await click("节目");await click("管理");await click("备份历史");await until(()=>document.querySelector('.podcast-backup-history')?.textContent?.includes('自动快照')??false,"automatic snapshot history");
+    assert(await invoke<boolean>("client_backup_tick"),"due backup must create a new automatic snapshot");await click("节目");await click("管理");await click("备份历史");await until(()=>document.querySelector('.podcast-backup-history')?.textContent?.includes('自动快照')??false,"automatic snapshot history");
     await capture("42-backup-history-920");await invoke("client_window",{small:false});await capture("42-backup-history-1180");await invoke("client_window",{small:true});
     document.querySelector<HTMLButtonElement>('.podcast-backup-history button')!.click();await until(()=>Boolean(document.querySelector('.podcast-restore-summary')),"managed snapshot native preview");
     assert(document.querySelector('.podcast-backup-file')?.textContent?.startsWith('Zone播客备份-'),"managed history chose another file");await capture("43-backup-history-preview-920");await click("取消");
