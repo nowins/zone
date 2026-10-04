@@ -51,15 +51,19 @@ fn show_update_notification(app:&tauri::AppHandle,feed_id:&str,title:&str,body:&
   use windows::core::HSTRING;
   use windows::Data::Xml::Dom::XmlDocument;
   use windows::Foundation::TypedEventHandler;
-  use windows::UI::Notifications::{ToastNotification,ToastNotificationManager,NotificationSetting};
+  use windows::UI::Notifications::{ToastNotification,ToastNotificationManager};
+  let phase=std::cell::Cell::new("identity");
   let send=||->windows::core::Result<()> {
-    // The packaged overload retains the installed MSIX identity; desktop builds
-    // use the AUMID already registered by the native media integration.
-    let notifier=ToastNotificationManager::CreateToastNotifier().or_else(|_|ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(app.config().identifier.as_str())))?;
-    if notifier.Setting()?!=NotificationSetting::Enabled {return Err(windows::core::Error::from_hresult(windows::core::HRESULT(0x80070005u32 as i32)));}
+    // The parameterless overload is not supported for desktop apps. Use the
+    // installed package's actual AUMID, or the registered desktop identity.
+    let identity=notification_identity(&app.config().identifier)?;
+    phase.set("notifier");let notifier=ToastNotificationManager::CreateToastNotifierWithId(&identity)?;
+    phase.set("setting");
+    check_notification_setting(notifier.Setting())?;
+    phase.set("xml");
     let document=XmlDocument::new()?;
     document.LoadXml(&HSTRING::from(format!("<toast><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual><audio silent=\"true\"/></toast>",xml_escape(title),xml_escape(body))))?;
-    let toast=ToastNotification::CreateToastNotification(&document)?;
+    phase.set("toast");let toast=ToastNotification::CreateToastNotification(&document)?;
     toast.SetTag(&HSTRING::from(&hash_identifier("update",&[feed_id])[..16]))?;
     toast.SetGroup(&HSTRING::from("podcast-updates"))?;
     let app=app.clone();let id=feed_id.to_owned();
@@ -68,9 +72,33 @@ fn show_update_notification(app:&tauri::AppHandle,feed_id:&str,title:&str,body:&
       if id!="test" {let _=app.emit("podcast-update-open",&id);}
       Ok(())
     }))?;
-    notifier.Show(&toast)
+    phase.set("show");notifier.Show(&toast)
   };
-  send().map_err(|_|"Windows 未能发送提醒，请检查 Zone 的通知权限或免打扰设置。磁贴更新提示仍会保留。".into())
+  send().map_err(|error|{eprintln!("[podcast] Windows notification failed at {}: HRESULT {:08x}",phase.get(),error.code().0 as u32);"Windows 未能发送提醒，请检查 Zone 的通知权限或免打扰设置。磁贴更新提示仍会保留。".into()})
+}
+#[cfg(target_os="windows")]
+fn check_notification_setting(setting:windows::core::Result<windows::UI::Notifications::NotificationSetting>)->windows::core::Result<()> {
+  use windows::{core::{Error,HRESULT},UI::Notifications::NotificationSetting};
+  match setting {
+    Ok(NotificationSetting::Enabled)=>Ok(()),
+    Ok(_)=>Err(Error::from_hresult(HRESULT(0x80070005u32 as i32))),
+    // A newly registered desktop identity can have no stored notification
+    // setting yet. Let Show initialize it and enforce the OS policy itself.
+    Err(error) if error.code().0 as u32==0x80070490=>Ok(()),
+    Err(error)=>Err(error),
+  }
+}
+#[cfg(target_os="windows")]
+fn notification_identity(desktop:&str)->windows::core::Result<windows::core::HSTRING>{
+  use windows::core::{HSTRING,PWSTR};
+  use windows::Win32::Foundation::{APPMODEL_ERROR_NO_APPLICATION,ERROR_INSUFFICIENT_BUFFER,ERROR_SUCCESS};
+  use windows::Win32::Storage::Packaging::Appx::GetCurrentApplicationUserModelId;
+  let mut length=0;let status=unsafe{GetCurrentApplicationUserModelId(&mut length,None)};
+  if status==APPMODEL_ERROR_NO_APPLICATION {return Ok(HSTRING::from(desktop));}
+  if status!=ERROR_INSUFFICIENT_BUFFER||length==0||length>512 {return Err(windows::core::Error::from_hresult(status.to_hresult()));}
+  let mut buffer=vec![0u16;length as usize];let status=unsafe{GetCurrentApplicationUserModelId(&mut length,Some(PWSTR(buffer.as_mut_ptr())))};
+  if status!=ERROR_SUCCESS{return Err(windows::core::Error::from_hresult(status.to_hresult()));}
+  Ok(HSTRING::from_wide(&buffer[..length.saturating_sub(1) as usize]))
 }
 #[cfg(not(target_os="windows"))]
 fn show_update_notification(_app:&tauri::AppHandle,_feed_id:&str,_title:&str,_body:&str)->Result<(),String> {Err("此平台暂不支持系统提醒，首页磁贴仍会显示更新。".into())}
@@ -95,4 +123,12 @@ mod tests {
     drop(db);fs::remove_dir_all(dir).unwrap();
   }
   #[test]fn notification_text_is_xml_safe_and_bounded(){assert_eq!(xml_escape("A<&\"\u{0}"),"A&lt;&amp;&quot;");assert_eq!(xml_escape(&"字".repeat(1000)).chars().count(),500);}
+  #[cfg(target_os="windows")]
+  #[test]fn notification_setting_preserves_blocks_and_allows_first_desktop_delivery(){
+    use windows::{core::{Error,HRESULT},UI::Notifications::NotificationSetting};
+    assert!(check_notification_setting(Ok(NotificationSetting::Enabled)).is_ok());
+    for blocked in [NotificationSetting::DisabledForApplication,NotificationSetting::DisabledForUser,NotificationSetting::DisabledByGroupPolicy,NotificationSetting::DisabledByManifest]{assert!(check_notification_setting(Ok(blocked)).is_err());}
+    assert!(check_notification_setting(Err(Error::from_hresult(HRESULT(0x80070490u32 as i32)))).is_ok());
+    assert_eq!(check_notification_setting(Err(Error::from_hresult(HRESULT(0x80070005u32 as i32)))).unwrap_err().code().0 as u32,0x80070005);
+  }
 }
