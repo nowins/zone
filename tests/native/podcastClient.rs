@@ -46,6 +46,7 @@ pub fn initialize(app: &tauri::AppHandle) -> Result<(),String> {
     let music=app.state::<crate::music::MusicState>();
     crate::music::scan_and_store_library_controlled(music.inner(),vec![crate::library::MusicFolder{path:folder.to_string_lossy().into(),name:"客户端音乐验收".into()}],&||false,&|_|{})?;
   }
+  connection.execute("UPDATE podcast_feeds SET description='<p>一档关于音乐、生活与声音的播客。</p><p>每集围绕一个主题展开交流，保留嘉宾的不同观点。</p><h3>节目内容</h3><ul><li>音乐与生活</li><li>故事与访谈</li></ul>' WHERE feed_url='https://example.com/client-podcast.xml'",[]).map_err(|e|e.to_string())?;
   let resource="1111111111111111111111111111111111111111111111111111111111111111";
   connection.execute("INSERT OR IGNORE INTO podcast_episode_resources(id,episode_id,kind,source_kind,url,mime_type,language,ordinal,fetched_at) VALUES(?1,?2,'transcript','podcast-transcript','https://example.com/client.vtt','text/vtt','zh-CN',0,?3)",rusqlite::params![resource,offline,crate::podcast::unix_time_millis()]).map_err(|e|e.to_string())?;
   connection.execute("UPDATE podcast_episodes SET description='<p>客户端简介，<strong>重点</strong>与 00:02 时间码。</p><p>资料：<a href=\"https://example.com/notes\">相关链接</a></p>' WHERE id=?1",[&offline]).map_err(|e|e.to_string())?;
