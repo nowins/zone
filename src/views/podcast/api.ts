@@ -268,3 +268,6 @@ export const getCloudSettings = () => invoke<CloudSettings>("podcast_get_cloud_s
 export const saveCloudSettings = (settings:CloudSettings,key?:string,clearKey=false) => invoke<CloudSettings>("podcast_set_cloud_settings",{settings,key,clearKey});
 export const transcriptSources = (episodeId:string) => invoke<string[]>("podcast_transcript_sources",{episodeId});
 export const generateTranscript = (episodeId:string,mode:string,source:string,expectedBaseUrl:string) => invokeNetwork<TranscriptDocument>("cloud","podcast_generate_transcript",{episodeId,mode,source,expectedBaseUrl});
+
+export type ListeningStats = {totalSeconds:number;recentSeconds:number;episodeCount:number;feedCount:number;days:Array<{day:string;seconds:number}>};
+export const getListeningStats = () => invoke<ListeningStats>("podcast_listening_stats");

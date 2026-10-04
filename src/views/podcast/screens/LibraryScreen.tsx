@@ -1,3 +1,4 @@
+import { ListeningStats } from "../components/ListeningStats";
 import { usePodcastBrowsePosition } from "../components/BrowsePosition";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -34,7 +35,7 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
       {tab==="downloads" ? <><DownloadStorage revision={vm.libraryRevision} /><DownloadJobs /></> : null}
       {tab==="episodes" ? <EpisodeBrowser key="archive" vm={vm} scope="archive"/> : null}
       {tab==="saved" ? <EpisodeBrowser key="saved" vm={vm} scope="saved" initialFilter="saved"/> : null}
-      {tab==="history" ? <EpisodeBrowser key="history" vm={vm} scope="history" initialFilter="history" initialSort="listened"/> : null}
+      {tab==="history" ? <><ListeningStats revision={vm.libraryRevision}/><EpisodeBrowser key="history" vm={vm} scope="history" initialFilter="history" initialSort="listened"/></> : null}
       {tab==="shows" ? <>
               <PodcastSection title="已关注" count={feeds.length}>
                 {libraryState === "loading" ? (

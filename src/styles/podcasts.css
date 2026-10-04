@@ -2429,3 +2429,9 @@
 .podcast-cloud-dialog { width: min(540px, calc(100vw - 48px)); }
 .podcast-cloud-dialog p { line-height: 1.65; margin: 12px 0; overflow-wrap: anywhere; color: var(--muted); }
 .podcast-cloud-dialog .podcast-cloud-target { color: var(--accent); user-select: text; }
+
+.podcast-listening-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); }
+.podcast-stats-total { font-size: 40px; font-weight: 200; margin: 16px 0; }
+.podcast-stats-note { font-size: 12px; color: var(--muted); line-height: 1.65; }
+.podcast-stats-days { max-height: 220px; overflow: auto; font-size: 13px; }
+.podcast-stats-days div { display: flex; justify-content: space-between; padding: 6px 0; }

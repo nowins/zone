@@ -670,6 +670,7 @@ pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), Strin
   }
   ensure_database_column(connection,"podcast_episode_resources","origin","origin TEXT NOT NULL DEFAULT 'rss' CHECK(origin IN ('rss','generated','translated'))")?;
   ensure_database_column(connection,"podcast_episode_resources","enclosure_binding","enclosure_binding TEXT")?;
+  connection.execute_batch("CREATE TABLE IF NOT EXISTS podcast_listening_daily(day TEXT NOT NULL,episode_id TEXT NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,seconds REAL NOT NULL CHECK(seconds>=0),PRIMARY KEY(day,episode_id));CREATE TABLE IF NOT EXISTS podcast_listening_batches(id TEXT PRIMARY KEY NOT NULL,recorded_at INTEGER NOT NULL);") .map_err(|e|e.to_string())?;
   connection
     .execute_batch(
       "

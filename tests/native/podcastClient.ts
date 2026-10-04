@@ -294,6 +294,10 @@ async function run() {
     await selectValue(document.querySelector('[role=combobox][aria-label="转写版本"]')!,"translated");await until(()=>document.querySelector('.podcast-transcript-cues')?.textContent?.includes('客户端生成转写的中文翻译')??false,"translated cache uses existing timed reader");await capture("47-cloud-translation-1180");
     await click("生成转写");await until(()=>Boolean(document.querySelector('.podcast-cloud-dialog')),"cloud upload review");await until(()=>document.querySelector('.podcast-cloud-dialog')?.textContent?.includes('请先在 设置')??false,"unconfigured service is actionable");assert(button("确认上传并处理")!.disabled,"unconfigured cloud must not upload");await invoke("client_window",{small:true});await capture("48-cloud-confirm-920");document.querySelector('.podcast-cloud-dialog')!.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await until(()=>!document.querySelector('.podcast-cloud-dialog'),"cloud Escape restores reader");
     assert(document.querySelectorAll('audio').length===1,"cloud reader created a second player");checks.push("真实客户端在统一设置保存／清除 Windows 保护的密钥、不返回密钥，上传范围确认与未配置阻止、生成／翻译缓存共用原有时间段阅读与单一音频；缓存夹具不代表真实云端转写成功");
+    await click("返回节目");await click("返回资料库");await click("历史");await until(()=>Boolean(document.querySelector('.podcast-listening-summary span')),"actual listening overview");
+    const statsBefore=await invoke<{totalSeconds:number;episodeCount:number}>("podcast_listening_stats");assert(statsBefore.totalSeconds>2&&statsBefore.episodeCount>0,"real audio did not record listening time");await delay(1000);const statsAfter=await invoke<typeof statsBefore>("podcast_listening_stats");assert(Math.abs(statsAfter.totalSeconds-statsBefore.totalSeconds)<0.1,"paused audio increased listening statistics");
+    await click("收听统计");await until(()=>Boolean(document.querySelector('.podcast-stats-total')),"actual statistics dialog");await invoke("client_window",{small:true});await capture("49-listening-stats-920");await invoke("client_window",{small:false});await capture("49-listening-stats-1180");await click("完成");
+    checks.push("真实音频累计独立播客收听统计，暂停保持计数、音乐实际播放不计入播客，历史入口与统计浮层双窗口验收；拖动／倍速／缓冲／长时空档另由纯逻辑测试覆盖");
     await snapshot();
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}
@@ -316,6 +320,7 @@ async function musicSwitchAudit(checks:string[]) {
   await invoke("client_media",{action:"pause"});await until(()=>audio.paused,"unfinished replay pause");await delay(800);
   const before=await invoke<{episode:{progressSeconds:number}}>("podcast_get_episode_detail",{episodeId:active.activeEpisodeId});
   assert(before.episode.progressSeconds>=45&&before.episode.progressSeconds<48,"unfinished replay progress not saved");
+  const listeningBefore=await invoke<{totalSeconds:number}>("podcast_listening_stats");
   await click("收藏");await click("歌曲");
   await until(()=>Boolean(Array.from(document.querySelectorAll<HTMLButtonElement>('.collection-track-row button')).find(el=>el.title.startsWith("Zone-client-music"))),"real music fixture row");
   Array.from(document.querySelectorAll<HTMLButtonElement>('.collection-track-row button')).find(el=>el.title.startsWith("Zone-client-music"))!.click();
@@ -325,13 +330,14 @@ async function musicSwitchAudit(checks:string[]) {
   const started=audio.currentTime;await delay(1000);assert(audio.currentTime>started+0.5,"music media clock did not advance");
   await capture("17-real-music-playback-920");audio.currentTime=90;await delay(250);
   await click("播客");await until(()=>Boolean(document.querySelector('.podcast-detail')),"restored podcast detail after music");
+  const listeningAfter=await invoke<{totalSeconds:number}>("podcast_listening_stats");assert(Math.abs(listeningAfter.totalSeconds-listeningBefore.totalSeconds)<0.25,"music must not increment podcast listening statistics");
   await click("继续收听");
   await until(()=>!audio.paused&&Boolean(document.querySelector('.podcast-player'))&&audio.currentTime>=before.episode.progressSeconds-1&&audio.currentTime<before.episode.progressSeconds+8,"independent podcast resume after music");
   assert(audio.playbackRate===1.5,"show rate not restored after music");
   assert(document.querySelectorAll('audio').length===1&&document.querySelector('audio')===audio,"podcast switch replaced the unique audio");
   await capture("18-podcast-resume-after-music-920");
   document.querySelector<HTMLButtonElement>('.podcast-player button[title="暂停"]')!.click();await until(()=>audio.paused,"pause after music switch");
-  checks.push("完整客户端真实本地音乐与播客双向切换：唯一 audio、音乐正常倍速与时钟、音乐 90 秒不污染播客进度、节目倍速恢复");
+  checks.push("完整客户端真实本地音乐与播客双向切换：唯一 audio、音乐正常倍速与时钟、音乐实际播放并定位 90 秒不污染播客进度、节目倍速恢复");
 }
 
 async function snapshot(){await delay(800);const active=await invoke<{activeEpisodeId:string}>("podcast_load_active_episode");const detail=await invoke("podcast_get_episode_detail",{episodeId:active.activeEpisodeId});const queue=await invoke("podcast_list_queue");await invoke("client_record",{value:{kind:"snapshot",active,detail,queue}});}

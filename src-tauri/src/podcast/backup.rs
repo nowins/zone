@@ -79,7 +79,7 @@ fn export_backup_inner(state:&PodcastState,path:&Path,frontend:BTreeMap<String,S
   let mut db=open_database(&state.db_path)?;let tx=db.transaction().map_err(|e|e.to_string())?;
   if sync {bootstrap_collection_versions(&tx)?;}
   let mut saved=BTreeMap::new();for table in tables(&tx)? {
-    if ["podcast_episode_updates","podcast_sync_control","podcast_sync_versions"].contains(&table.as_str()) {continue;}
+    if ["podcast_episode_updates","podcast_sync_control","podcast_sync_versions","podcast_listening_batches"].contains(&table.as_str()) {continue;}
     if sync && !["podcast_feeds","podcast_episodes","podcast_progress"].contains(&table.as_str()){continue;}
     let query=if sync&&table=="podcast_episodes"{"SELECT * FROM podcast_episodes WHERE id IN(SELECT episode_id FROM podcast_progress UNION SELECT episode_id FROM podcast_saved_episodes UNION SELECT episode_id FROM podcast_bookmarks UNION SELECT episode_id FROM podcast_playlist_items)".into()}else{format!("SELECT * FROM \"{table}\"")};
     saved.insert(table.clone(),snapshot(&tx,&query)?);
@@ -145,6 +145,8 @@ pub(crate) fn import_table(db:&Connection,name:&str,data:&TableSnapshot)->Result
       if name=="podcast_progress" && ["position_seconds","duration_seconds"].contains(&column.as_str()) && !(column=="duration_seconds"&&value.is_null()) && !value.as_f64().is_some_and(|n|n.is_finite()&&(0.0..=604800.0).contains(&n)){return Err("备份收听时间无效".into());}
       if name=="podcast_progress" && column=="completed" && !value.as_i64().is_some_and(|n|n==0||n==1){return Err("备份收听状态无效".into());}
       if name=="podcast_progress" && column=="updated_at" && !value.as_i64().is_some_and(|n|n>=0){return Err("备份收听更新时间无效".into());}
+      if name=="podcast_listening_daily"&&column=="seconds"&&!value.as_f64().is_some_and(|n|n.is_finite()&&(0.0..=172800.0).contains(&n)){return Err("备份实际收听时长无效".into());}
+      if name=="podcast_listening_daily"&&column=="day"&&!value.as_str().is_some_and(|day|day.len()==10&&parse_iso8601_millis(day).is_some()){return Err("备份统计日期无效".into());}
       if name=="podcast_bookmarks"&&column=="position_ms"&& !value.as_i64().is_some_and(|n|(0..=604800000).contains(&n)){return Err("备份书签时间无效".into());}
       if name=="podcast_bookmarks"&&column=="label"&& !value.as_str().is_some_and(|s|s.chars().count()<=200&&!s.chars().any(char::is_control)){return Err("备份书签备注无效".into());}
       if ["feed_url","enclosure_url"].contains(&column.as_str()) {validate_public_url_shape(value.as_str().ok_or("备份地址无效")?)?;}
@@ -180,7 +182,7 @@ fn restore_backup_data(state:&PodcastState,path:&Path,mut backup:PodcastBackup,s
   if backup.format!="ZonePodcastBackup"||backup.version!=1 {return Err("备份版本不支持".into());}validate_frontend(&backup.frontend)?;
   let mut db=open_database(&state.db_path)?;let allowed=tables(&db)?;
   if backup.tables.keys().any(|name|!allowed.contains(name)) {return Err("备份包含不支持的资料表".into());}
-  if backup.tables.keys().any(|name|["podcast_sync_control","podcast_sync_versions"].contains(&name.as_str()))||(!sync&&!backup.sync_entities.is_empty()){return Err("备份包含运行中的同步状态".into());}
+  if backup.tables.keys().any(|name|["podcast_sync_control","podcast_sync_versions","podcast_listening_batches"].contains(&name.as_str()))||(!sync&&!backup.sync_entities.is_empty()){return Err("备份包含运行中的同步状态".into());}
   let ids=backup.media.keys().cloned().collect::<Vec<_>>();for id in &ids {validate_identifier(id)?;}
   let _guards=EpisodeFileGuard::acquire_many(&state.active_downloads,&ids)?;
   let mut copied=CopiedFiles{files:Vec::new(),directories:vec![],committed:false};let mut restored_media=BTreeMap::new();

@@ -1,4 +1,5 @@
 import { recordDiagnostic } from "../utils/diagnostics";
+import { createPodcastListeningMeter } from "../utils/podcastListeningStats.js";
 import { recordEpisodeBookmark, downloadPodcastEpisode, getPodcastPreferences, setPodcastPreferences } from "../views/podcast/api";
 import { formatTime } from "../utils/music";
 import { DEFAULT_PODCAST_PREFERENCES, effectivePodcastPreferences, podcastIntroPosition, podcastOutroReached, type PodcastPreferences } from "../utils/podcastPreferences.js";
@@ -108,6 +109,34 @@ export function usePodcastPlayback({
   activePodcastEpisodeRef.current = activePodcastEpisode;
   podcastQueueRef.current = podcastQueue;
   podcastAutoQueueModeRef.current = podcastAutoQueueMode;
+
+  useEffect(()=>{
+    const element=audioRef.current;if(!element)return;const audio:HTMLAudioElement=element;
+    const meter=createPodcastListeningMeter();
+    const pending:Array<{episodeId:string;seconds:number;batchId:string}>=[];
+    let writing=false,failed=false,lastFlush=performance.now(),disposed=false;
+    async function write(){
+      if(writing||!pending.length)return;writing=true;
+      try{while(pending.length){const batch=pending[0];await invoke("podcast_record_listening",batch);pending.shift();}failed=false;}
+      catch{if(!failed){recordDiagnostic({domain:"podcast",event:"listening_save",outcome:"error"});showActionNotice("收听统计暂未保存，将自动重试");}failed=true;}
+      finally{writing=false;}
+    }
+    function flush(){
+      if(pending.length>=100){meter.reset();lastFlush=performance.now();void write();return;}
+      for(const batch of meter.drain()) {if(batch.seconds>0&&pending.length<100)pending.push({...batch,batchId:crypto.randomUUID().replace(/-/g,"")+crypto.randomUUID().replace(/-/g,"")});}
+      lastFlush=performance.now();void write();
+    }
+    function sample(){
+      if(disposed)return;
+      if(pending.length>=100){meter.reset();void write();return;}
+      meter.sample({episodeId:activePodcastEpisodeRef.current?.episodeId??null,clockMs:performance.now(),position:audio.currentTime,rate:audio.playbackRate,playing:!audio.paused&&!audio.ended&&audio.readyState>=2&&!audio.error,seeking:audio.seeking});
+      if(audio.paused||performance.now()-lastFlush>=15000)flush();
+    }
+    const events=["timeupdate","play","pause","seeking","seeked","emptied","ended","ratechange"];
+    events.forEach(event=>audio.addEventListener(event,sample));
+    window.addEventListener("pagehide",flush);
+    return()=>{disposed=true;events.forEach(event=>audio.removeEventListener(event,sample));window.removeEventListener("pagehide",flush);flush();};
+  },[audioRef]);
 
   useEffect(()=>{
     const episode=activePodcastEpisode;if(!episode)return;
