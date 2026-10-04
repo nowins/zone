@@ -25,7 +25,7 @@ async function run() {
     document.querySelector('[role=menu]')!.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=menu]'),"more menu escape");
     await click("查看全部");await until(()=>Boolean(document.querySelector('.podcast-search-page-status')),"complete continue listening list");await capture("11-continue-all-1180");await click("返回收听");
     checks.push("真实客户端收听剩余时长、上次时间、完整资料库继续收听和可见更多操作");
-    await click("资料库"); await click("播客设置");await until(()=>Boolean(document.querySelector(".podcast-settings-fields select")),"global settings");
+    await click("资料库"); await click("播客设置");await click("下载与清理");await until(()=>Boolean(document.querySelector(".podcast-settings-fields select")),"global settings");
     const select=document.querySelector<HTMLSelectElement>(".podcast-settings-fields select")!;
     const checkbox=document.querySelector<HTMLInputElement>(".podcast-settings-fields input[type=checkbox]")!;
     assert(checkbox.getBoundingClientRect().width<=24&&checkbox.getBoundingClientRect().height<=24,"checkbox inherited oversized text field styling");
@@ -53,6 +53,9 @@ async function run() {
     const open=document.querySelector<HTMLButtonElement>(".podcast-library-show-open");
     assert(open,"followed fixture show missing");
     if(open){open.click();await click("节目设置");await until(()=>Boolean(document.querySelector(".podcast-settings-fields select")),"feed settings");await capture("03-feed-settings");
+      const inheritedOption=document.querySelector<HTMLInputElement>('.podcast-playback-settings input[type=checkbox]')!;if(!inheritedOption.checked)inheritedOption.click();await delay(100);
+      const globalPlayback=await invoke<{introSeconds:number}>("podcast_get_preferences",{});assert(document.querySelector<HTMLInputElement>('input[aria-label="跳过片头"]')!.value===String(globalPlayback.introSeconds),"inherited settings show stale custom values");assert(document.querySelector<HTMLSelectElement>('select[aria-label="节目播放速度"]')!.disabled,"inherited controls must be read only");await capture("25-inherited-settings-920");
+      checks.push("默认／节目设置分类、继承显示实际生效值且保留独立偏好");
       (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector("[role=dialog]"),"escape closes settings");checks.push("节目设置入口与 Escape 关闭且保留节目页");
       await click("加入分组");await until(()=>Boolean(document.querySelector('input[aria-label="新分组名称"]')),"show group picker");const fromShowName=`节目入口 ${Date.now()}`;
       await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="新分组名称"]')!,fromShowName);await capture("19-show-group-entry-920");await click("加入");await until(()=>!document.querySelector('[role=dialog]'),"show group saved");
