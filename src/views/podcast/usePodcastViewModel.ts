@@ -1535,6 +1535,7 @@ export function usePodcastViewModel({
     setError(null);
     setNotice(null);
     await loadEpisodes(feed);
+    void podcastApi.acknowledgePodcastUpdates(feed.id).catch(()=>{});
   }
 
   async function previewFeed(

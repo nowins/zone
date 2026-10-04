@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../../../components/Button";
 import { Dialog } from "../../../components/Dialog";
 import { MetroLoader } from "../../../components/MetroLoader";
-import { getPodcastPreferences, setPodcastPreferences, type PodcastPreferences } from "../api";
+import { getPodcastPreferences, setPodcastPreferences, testPodcastNotification, type PodcastPreferences } from "../api";
 import { PODCAST_PLAYBACK_RATES, readPodcastPlaybackSettings } from "../../../app/podcastPlaybackSettings";
 import { effectivePodcastPreferences } from "../../../utils/podcastPreferences.js";
 
@@ -17,7 +17,7 @@ function PreferenceToggle({label, value, disabled, onChange}: {label:string;valu
 function PodcastPreferencesEditor({ feedId, title, onClose, embedded = false }: { feedId?: string; title: string; onClose?: () => void; embedded?: boolean }) {
   const [value, setValue] = useState<PodcastPreferences | null>(null);
   const [defaults, setDefaults] = useState<PodcastPreferences | null>(null);
-  const [tab, setTab] = useState<"playback" | "downloads">("playback");
+  const [tab, setTab] = useState<"playback" | "downloads" | "updates">("playback");
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [dirty, setDirty] = useState(false), [saved, setSaved] = useState(false);
@@ -45,9 +45,15 @@ function PodcastPreferencesEditor({ feedId, title, onClose, embedded = false }: 
     <div className="podcast-settings-tabs podcast-library-tabs" role="group" aria-label="设置分类">
       <Button variant="ghost" disabled={busy} aria-pressed={tab === "playback"} onClick={() => setTab("playback")}>播放偏好</Button>
       <Button variant="ghost" disabled={busy} aria-pressed={tab === "downloads"} onClick={() => setTab("downloads")}>下载与清理</Button>
+      <Button variant="ghost" disabled={busy} aria-pressed={tab === "updates"} onClick={() => setTab("updates")}>更新提醒</Button>
     </div>
     {value && displayed ? <div className="podcast-settings-fields">
-      {tab === "downloads" ? <>
+      {tab === "updates" ? <>
+        {feedId && <PreferenceToggle label="使用默认提醒设置" value={value.notifyNewEpisodes == null} disabled={busy} onChange={()=>update({...value,notifyNewEpisodes:value.notifyNewEpisodes==null?(defaults?.notifyNewEpisodes??false):null})}/>}
+        <PreferenceToggle label="Windows 新单集通知" value={Boolean(value.notifyNewEpisodes??defaults?.notifyNewEpisodes)} disabled={busy||Boolean(feedId&&value.notifyNewEpisodes==null)} onChange={()=>update({...value,notifyNewEpisodes:!value.notifyNewEpisodes})}/>
+        <small>首页已固定的节目始终显示更新角标。打开节目后清除提示；收听进度保持不变。</small>
+        <Button variant="ghost" disabled={busy} onClick={()=>{setBusy(true);setError(null);void testPodcastNotification().then(()=>setSaved(true)).catch(reason=>setError(String(reason))).finally(()=>setBusy(false));}}>发送测试提醒</Button>
+      </> : tab === "downloads" ? <>
         {feedId ? <label>自动下载最新单集
           <Select disabled={busy} aria-label="自动下载最新单集" value={value.autoDownloadCount} onValueChange={nextValue => update({ ...value, autoDownloadCount: Number(nextValue) })}>
             {[0,1,3,5,10,20,50].map(n => <option key={n} value={n}>{n ? n + " 集" : "关闭"}</option>)}

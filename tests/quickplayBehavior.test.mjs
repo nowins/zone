@@ -32,6 +32,13 @@ test("podcast-only quickplay survives StrictMode and opens its show after hydrat
     await act(async () => button.click());
     assert.equal(opened, "feed");
     assert.equal(document.querySelector(".quickplay-empty-content"), null);
+    assert.equal(document.querySelector('.quick-pin-badge'),null,'historical unplayed episodes are not new update alerts');
+    for (const size of ['small','medium','wide']) {
+      await act(async()=>root.render(React.createElement(React.StrictMode,null,React.createElement(QuickplayView,{...props,homePins:[{...props.homePins[0],size,live:false}],podcastFeeds:[{id:'feed',title:'测试节目',unplayedCount:30,newEpisodeCount:2}]}))));
+      assert.equal(document.querySelector('.quick-pin-badge')?.textContent,'2');
+      assert.ok(document.querySelector('.quick-pin-badge')?.parentElement.classList.contains('quick-pin'),'badge remains outside animated tile faces');
+      assert.ok(document.querySelector('button[title="打开节目 测试节目，2 集更新"]'));
+    }
   } finally {
     await act(async () => root.unmount());
     dom.window.close();

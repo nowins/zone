@@ -505,6 +505,12 @@ pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), Strin
         saved_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS podcast_episode_updates (
+        episode_id TEXT PRIMARY KEY REFERENCES podcast_episodes(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        delivered INTEGER NOT NULL DEFAULT 0
+      );
+
       CREATE TABLE IF NOT EXISTS podcast_queue (
         episode_id TEXT PRIMARY KEY NOT NULL REFERENCES podcast_episodes(id) ON DELETE CASCADE,
         position INTEGER NOT NULL CHECK(position >= 0),

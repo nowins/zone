@@ -305,6 +305,7 @@ export type PodcastDiscoveryPage = {
 };
 
 export type PodcastFeed = {
+  newEpisodeCount?: number;
   id: string;
   feedUrl: string;
   title: string;

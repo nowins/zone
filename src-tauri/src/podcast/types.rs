@@ -54,6 +54,7 @@ pub struct PodcastFeed {
   pub(crate) last_refresh_error: Option<String>,
   pub(crate) latest_episode_at: Option<i64>,
   pub(crate) unplayed_count: u64,
+  pub(crate) new_episode_count: u64,
   /// Title of the newest episode, resolved alongside the other feed stats so
   /// surfaces like quickplay pins can show a live headline per show.
   pub(crate) latest_episode_title: Option<String>,

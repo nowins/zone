@@ -66,6 +66,7 @@ pub(crate) fn get_recent_preview(
           latest_episode_at: row.get(11)?,
           unplayed_count: row.get::<_, i64>(12)?.max(0) as u64,
           latest_episode_title: row.get(14)?,
+          new_episode_count: 0,
         },
           episode_count: usize::try_from(episode_count).unwrap_or(usize::MAX),
           inserted_count: 0,
@@ -141,12 +142,16 @@ pub(crate) fn list_feeds_with_policy(
           latest_episode_at: row.get(11)?,
           unplayed_count: row.get::<_, i64>(12)?.max(0) as u64,
           latest_episode_title: row.get(13)?,
+          new_episode_count: 0,
         })
     })
     .map_err(|error| format!("无法读取播客订阅：{error}"))?;
-  rows
+  let mut feeds=rows
     .collect::<Result<Vec<_>, _>>()
-    .map_err(|error| format!("无法读取播客订阅：{error}"))
+    .map_err(|error| format!("无法读取播客订阅：{error}"))?;
+  let mut counts=connection.prepare("SELECT COUNT(*) FROM podcast_episode_updates u JOIN podcast_episodes e ON e.id=u.episode_id WHERE e.feed_id=?1").map_err(|e|e.to_string())?;
+  for feed in &mut feeds {feed.new_episode_count=counts.query_row([&feed.id],|r|r.get::<_,i64>(0)).map_err(|e|e.to_string())?.max(0) as u64;}
+  Ok(feeds)
 }
 
 pub(crate) fn set_following(db_path: &Path, feed_id: &str, following: bool) -> Result<(), String> {
@@ -170,6 +175,7 @@ pub(crate) fn set_following(db_path: &Path, feed_id: &str, following: bool) -> R
   if changed == 0 {
     return Err("播客节目不存在".to_string());
   }
+  if !following {acknowledge_updates(&connection,feed_id)?;}
   Ok(())
 }
 
@@ -763,6 +769,7 @@ pub(crate) fn podcast_episode_detail_from_row(
       latest_episode_at: row.get(32)?,
       unplayed_count: row.get::<_, i64>(33)?.max(0) as u64,
       latest_episode_title: row.get(36)?,
+      new_episode_count: 0,
     },
     expected_bytes,
     download_error: row.get(21)?,

@@ -247,6 +247,19 @@ async function run() {
     await until(()=>!document.querySelector('audio')!.paused&&document.querySelector('audio')!.currentTime>=10&&document.querySelector('audio')!.currentTime<14,"archive match actual seek/play");
     await invoke("client_media",{action:"pause"});await capture("38-content-search-920");await invoke("client_window",{small:false});await capture("38-content-search-1180");await invoke("client_window",{small:true});
     checks.push("全库已缓存转写与书签检索，来源片段与时间码、真实音频定位及单一 audio");
+    await click("节目");document.querySelector<HTMLButtonElement>('.podcast-library-show-open')!.click();
+    await until(()=>Boolean(button("固定")||button("已固定")),"show pin control");if(button("固定"))await click("固定");
+    await click("节目设置");await click("更新提醒");
+    assert(document.querySelector('[role=switch][aria-label="使用默认提醒设置"]'),"per-show notification inheritance missing");
+    await capture("39-update-preferences-920");await click("取消");await click("quickplay");
+    const updatedFeed=await invoke<string>("client_add_update");
+    await until(()=>Boolean(document.querySelector('.quick-pin-badge[aria-label="1 集更新"]')),"static update tile badge");
+    await invoke("client_motion",{reduce:true});await capture("40-tile-update-920");await invoke("client_window",{small:false});await capture("40-tile-update-1180");
+    const pin=document.querySelector<HTMLButtonElement>('.quick-pin button[title*="1 集更新"]')!;assert(pin,"accessible update tile");pin.click();
+    await until(()=>Boolean(document.querySelector('.podcast-show-hero')),"update tile opens same show");
+    const markerDeadline=Date.now()+5000;while(true){const feeds=await invoke<Array<{id:string;newEpisodeCount:number}>>("podcast_list_feeds");if(feeds.find(feed=>feed.id===updatedFeed)!.newEpisodeCount===0)break;assert(Date.now()<markerDeadline,"updated show acknowledgement timed out");await delay(100);}
+    await invoke("client_motion",{reduce:false});
+    checks.push("真实原生刷新记录新单集，已固定首页磁贴静态更新角标、两种尺寸与减少动态效果、打开节目清除提示且不修改收听状态");
     await snapshot();
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

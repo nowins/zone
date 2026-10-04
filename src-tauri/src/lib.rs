@@ -335,6 +335,8 @@ pub fn run() {
       podcast::podcast_delete_show_group,
       podcast::podcast_open_link,
       podcast::podcast_list_feeds,
+      podcast::podcast_acknowledge_updates,
+      podcast::podcast_test_notification,
       podcast::podcast_set_following,
       podcast::podcast_list_home,
       podcast::podcast_list_downloads,

@@ -3,6 +3,7 @@ export type PodcastPreferences = {
   playbackRate: number | null; introSeconds: number; outroSeconds: number;
   backwardSeconds: number; forwardSeconds: number; oldestFirst: boolean;
   normalizeVoice: boolean; trimSilence: boolean; inheritPlayback: boolean;
+  notifyNewEpisodes?: boolean | null;
 };
 export const DEFAULT_PODCAST_PREFERENCES: PodcastPreferences = {
   autoDownloadCount: 0, cleanupPlayed: false, storageLimitMb: 0, playbackRate: null,

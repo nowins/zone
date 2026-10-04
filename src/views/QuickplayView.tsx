@@ -257,7 +257,7 @@ export function QuickplayView({
           payload: null,
           size: homePinSize(pin),
           isSmart: false,
-          liveLine: feed.unplayedCount > 0
+          liveLine: (feed.newEpisodeCount ?? 0)>0 ? `${feed.newEpisodeCount} 集更新` : feed.unplayedCount > 0
             ? `${feed.unplayedCount} 集未听`
             : "全部已听完",
           podcastFeed: feed,

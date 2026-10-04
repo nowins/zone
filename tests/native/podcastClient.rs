@@ -121,3 +121,13 @@ pub async fn client_motion(app:tauri::AppHandle,reduce:bool)->Result<(),String>{
 
 #[tauri::command]
 pub fn client_context()->serde_json::Value{serde_json::json!({"mode":std::env::var("ZONE_PODCAST_CLIENT_MODE").unwrap_or_else(|_|"core".into()),"report":directory(),"expected":std::env::var("ZONE_PODCAST_CLIENT_EXPECTED").ok().and_then(|v|serde_json::from_str::<serde_json::Value>(&v).ok())})}
+
+#[tauri::command]
+pub fn client_add_update(app:tauri::AppHandle)->Result<String,String> {
+  let path=crate::db::initialize_zone_database(&app.path().app_data_dir().map_err(|e|e.to_string())?)?;
+  let feed=crate::podcast::list_feeds(&path)?.into_iter().find(|f|f.feed_url=="https://example.com/client-podcast.xml").ok_or("fixture missing")?;
+  let xml=format!("<rss version=\"2.0\"><channel><title>客户端验证节目</title><item><guid>update-{}</guid><title>刚刚更新的验收单集</title><enclosure url=\"https://example.com/new-episode.mp3\" type=\"audio/mpeg\"/></item></channel></rss>",crate::podcast::unix_time_millis());
+  let mut parsed=crate::podcast::parse_feed_bytes(xml.as_bytes(),&feed.feed_url,None,None,None,None,None)?;
+  parsed.feed=feed.clone();crate::podcast::store_subscription(&path,parsed)?;
+  app.emit("podcast-library-changed",()).map_err(|e|e.to_string())?;Ok(feed.id)
+}

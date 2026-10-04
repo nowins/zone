@@ -432,6 +432,14 @@ export default function App() {
     requestNavigation("podcasts");
   }
 
+  useEffect(() => {
+    let disposed=false;let stop:(()=>void)|undefined;
+    void listen<string>("podcast-update-open",event=>{
+      setPodcastFeedRequest({feedId:event.payload,nonce:Date.now()});requestNavigation("podcasts");
+    }).then(unlisten=>{if(disposed)unlisten();else stop=unlisten;}).catch(()=>{});
+    return()=>{disposed=true;stop?.();};
+  }, [requestNavigation]);
+
   useEffect(() => () => {
     if (actionNoticeTimerRef.current) window.clearTimeout(actionNoticeTimerRef.current);
     void flushPodcastProgress();

@@ -65,6 +65,8 @@ export type PodcastDownloadJob = {
 };
 export const getPodcastPreferences = (feedId?: string) => invoke<PodcastPreferences>("podcast_get_preferences", { feedId });
 export const setPodcastPreferences = (preferences: PodcastPreferences, feedId?: string) => invoke<void>("podcast_set_preferences", { feedId, preferences });
+export const acknowledgePodcastUpdates = (feedId: string) => invoke<void>("podcast_acknowledge_updates", {feedId});
+export const testPodcastNotification = () => invoke<void>("podcast_test_notification");
 export const listDownloadJobs = () => invoke<PodcastDownloadJob[]>("podcast_list_download_jobs");
 export type PodcastDownloadStorage = { completedBytes: number; partialBytes: number; limitBytes: number; reclaimableBytes: number; reclaimableCount: number };
 export const getDownloadStorage = () => invoke<PodcastDownloadStorage>("podcast_download_storage");

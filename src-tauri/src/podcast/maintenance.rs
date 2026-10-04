@@ -18,13 +18,14 @@ pub struct PodcastPreferences {
   pub normalize_voice: bool,
   pub trim_silence: bool,
   pub inherit_playback: bool,
+  pub notify_new_episodes: Option<bool>,
 }
 
 impl Default for PodcastPreferences {
   fn default() -> Self {
     Self { auto_download_count: 0, cleanup_played: false, storage_limit_mb: 0,
       playback_rate: None, intro_seconds: 0, outro_seconds: 0, backward_seconds: 15,
-      forward_seconds: 30, oldest_first: false, normalize_voice: false, trim_silence: false, inherit_playback: true }
+      forward_seconds: 30, oldest_first: false, normalize_voice: false, trim_silence: false, inherit_playback: true, notify_new_episodes: None }
   }
 }
 
@@ -181,7 +182,8 @@ pub fn start_podcast_maintenance(app: tauri::AppHandle, state: PodcastState) {
       if last_plan.elapsed()>=Duration::from_secs(60) {
         last_plan=std::time::Instant::now();
         let planning_state=state.clone();
-        let _=tauri::async_runtime::spawn_blocking(move || { cleanup_managed_downloads(&planning_state)?; plan_automatic_downloads(&planning_state) }).await;
+        let planning_app=app.clone();
+        let _=tauri::async_runtime::spawn_blocking(move || { let _=deliver_episode_updates(&planning_app,&planning_state.db_path); cleanup_managed_downloads(&planning_state)?; plan_automatic_downloads(&planning_state) }).await;
       }
       if state.ensure_ready().is_ok() {
         if let Ok(jobs)=list_download_jobs(&state.db_path) {

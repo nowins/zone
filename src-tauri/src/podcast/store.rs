@@ -142,6 +142,8 @@ fn store_feed(
   if following_changed { transaction.execute("UPDATE podcast_feeds SET following_updated_at=MAX(?2,following_updated_at+1) WHERE id=?1",params![feed.id,unix_time_millis()]).map_err(|e|e.to_string())?; }
 
   let mut inserted_count = 0usize;
+  let previous_latest: Option<i64> = transaction.query_row("SELECT MAX(published_at) FROM podcast_episodes WHERE feed_id=?1",[&feed.id],|r|r.get(0)).map_err(|e|e.to_string())?;
+  if following_changed { acknowledge_updates(&transaction,&feed.id)?; }
   let mut updated_count = 0usize;
   {
     let mut insert = transaction
@@ -209,6 +211,9 @@ fn store_feed(
         .execute(values)
         .map_err(|error| format!("无法保存播客单集：{error}"))?;
       inserted_count += inserted;
+      if inserted>0 && existing_subscribed && episode.published_at.is_none_or(|date| previous_latest.is_none_or(|latest|date>=latest)) {
+        record_episode_update(&transaction,episode,feed.last_fetched_at)?;
+      }
       if inserted == 0 {
         // Progress may contain a copy of old feed metadata (e.g. mark as played
         // before the audio was loaded). Correct only that copy, preserving a

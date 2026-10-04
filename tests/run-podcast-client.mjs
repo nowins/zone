@@ -24,11 +24,16 @@ config.build.frontendDist=path.relative(workspace,path.join(root,'dist')).replac
 delete config.build.devUrl;
 config.bundle.resources={[path.join(root,'packaging','THIRD_PARTY_NOTICES.txt')]:'THIRD_PARTY_NOTICES.txt'};
 await fs.writeFile(path.join(workspace,'tauri.conf.json'),JSON.stringify(config,null,2));
+// Native shell integration must not replace the user's installed Zone shortcut.
+const mediaModule=path.join(workspace,'src','system_media','windows_impl','mod.rs');
+await fs.writeFile(mediaModule,replaceOnce(await fs.readFile(mediaModule,'utf8'),'const APP_USER_MODEL_ID: &str = "com.zone.player";',`const APP_USER_MODEL_ID: &str = "${config.identifier}";`));
+const identityModule=path.join(workspace,'src','system_media','windows_impl','identity.rs');
+await fs.writeFile(identityModule,replaceOnce(await fs.readFile(identityModule,'utf8'),'shortcut_directory.join("Zone.lnk")','shortcut_directory.join("Zone Podcast Client Review.lnk")'));
 await fs.copyFile(path.join(root,'tests','native','podcastClient.rs'),path.join(workspace,'src','podcastClient.rs'));
 const manifest=path.join(workspace,'Cargo.toml');await fs.writeFile(manifest,(await fs.readFile(manifest,'utf8')).replace('[dependencies]','[dependencies]\nwebview2-com = "0.38.2"'));
 const lib=path.join(workspace,'src','lib.rs');let source=await fs.readFile(lib,'utf8');
 source='#[path = "podcastClient.rs"] mod podcast_client;\n'+source;
-source=replaceOnce(source,'.invoke_handler(tauri::generate_handler![','.invoke_handler(tauri::generate_handler![podcast_client::client_record,podcast_client::client_capture,podcast_client::client_window,podcast_client::client_media,podcast_client::client_motion,podcast_client::client_context,');
+source=replaceOnce(source,'.invoke_handler(tauri::generate_handler![','.invoke_handler(tauri::generate_handler![podcast_client::client_record,podcast_client::client_capture,podcast_client::client_window,podcast_client::client_media,podcast_client::client_motion,podcast_client::client_context,podcast_client::client_add_update,');
 source=replaceOnce(source,'app.manage(music_state);','app.manage(music_state);\n      podcast_client::initialize(app.handle()).map_err(std::io::Error::other)?;');
 source=replaceOnce(source,'.on_page_load(move |webview, payload| {','.on_page_load(move |webview, payload| { if payload.event()==tauri::webview::PageLoadEvent::Finished && payload.url().scheme()!="about" { let _=webview.eval(include_str!("podcastClient.js")); }');
 await fs.writeFile(lib,source);

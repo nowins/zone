@@ -295,7 +295,7 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
             <FlipTile size={item.size} variant={item.podcastFeed || item.size === "wide" ? "peek" : "flip"}
               className="quick-pin-tile" paused={editing} disabled={editing} asButton={!editing}
               live={item.pin.live !== false && item.size !== "small"}
-              title={item.podcastFeed ? `打开节目 ${item.title}` : `播放 ${item.title}`}
+              title={item.podcastFeed ? `打开节目 ${item.title}${(item.podcastFeed.newEpisodeCount??0)>0?`，${item.podcastFeed.newEpisodeCount} 集更新`:""}` : `播放 ${item.title}`}
               onPress={() => { if (!editing) onActivate(item); }}
               front={<PinFront item={item} index={index} paused={editing || item.pin.live === false} />}
               back={<>
@@ -304,6 +304,7 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
                 <span className="tile-back-live">{[item.podcastRecency, item.liveLine].filter(Boolean).join(" · ")}</span>
                 {(item.pin.kind === "track" || item.pin.kind === "album") && <small>{item.subtitle}</small>}
               </>} />
+            {(item.podcastFeed?.newEpisodeCount??0)>0 && <span className="quick-pin-badge" aria-label={`${item.podcastFeed!.newEpisodeCount} 集更新`}>{item.podcastFeed!.newEpisodeCount!>99?"99+":item.podcastFeed!.newEpisodeCount}</span>}
             {editing && selectedId === item.pin.id && <div className="quick-pin-edit-tools">
               <button className="quick-pin-unpin" title={`取消固定 ${item.title}`} onClick={() => { captureLayout(); onUnpin(item); }}><PinOff size={15} /></button>
               <button className="quick-pin-resize" title={`调整为${SIZE_LABELS[nextHomePinSize(item.size)]}磁贴`}
@@ -335,9 +336,8 @@ function PinFront({ item, index, paused }: { item: ResolvedPin; index: number; p
         </div>}
     </span>
     {item.size !== "small" && (item.podcastFeed ? <span className="quick-pin-front-band">
-      <strong>{item.title}</strong><small>{item.podcastFeed.unplayedCount > 0 ? item.liveLine : item.subtitle}</small>
+      <strong>{item.title}</strong><small>{(item.podcastFeed.newEpisodeCount??0)>0 || item.podcastFeed.unplayedCount > 0 ? item.liveLine : item.subtitle}</small>
     </span> : <strong className="quick-pin-front-title">{item.title}</strong>)}
-    {item.size === "small" && (item.podcastFeed?.unplayedCount ?? 0) > 0 && <span className="quick-pin-badge">{item.podcastFeed!.unplayedCount > 99 ? "99+" : item.podcastFeed!.unplayedCount}</span>}
   </>;
 }
 
