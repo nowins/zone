@@ -125,6 +125,7 @@
 - `PlayerBar` / `PodcastPlayerBar`：底部 74px 常驻；媒体源二选一，互斥。
 - `TransportControls`、`PlaybackProgress`：极简线性控制；图标切换用 `motion-icon-swap`，收藏确认用 `motion-confirm`。
 - 播客倍速以 `PodcastRateButton` 直接循环常用速度，当前值即入口，底栏、全屏与小屏共用。睡眠独立打开设置；不使用旋钮或倍速按钮阵列。
+- 正在播放的简介、节目、章节、转写、书签在封面旁原位阅读，阅读区单独滚动，控制区常驻。
 - 节目／单集正文复用安全段落排版，保留空行、列表、标题与可选择文本。
 
 ### 小屏模式
@@ -160,7 +161,7 @@
 - 播客：`src/views/podcast/` 按 screens/components 分层，加载态全部走 `PodcastLoading`（内含 `MetroLoader`）。
 - 播客 hover 语言（已登记）：封面卡用第 4 级（封面降 opacity、轻抬 2px），列表行只做文字即时提亮，均无行级背景，详见 `design/motion-system.md` Hover 反馈分级。
 - 播客文本动作条（单集详情 `.podcast-detail-actions`、下载/待播批量条）：hover 纯白、`.primary` 实心 accent、`.danger` 文本红，是播客页面级语言，不走 `Button` variant；新增播客行内动作沿用同一模式。
-- 播客正在播放的队列面板与倍速/睡眠 popover：进退场规则就近放在 `podcast-now-playing.css`（token 时长 + `Presence` 生命周期与共享表一致），reduced-motion 仍由 `motion.css` 统一块收敛。
+- 播客正在播放的队列面板与睡眠 popover：进退场规则就近放在 `podcast-now-playing.css`（token 时长 + `Presence` 生命周期与共享表一致），reduced-motion 仍由 `motion.css` 统一块收敛。原位阅读使用 content 档的短入场，不切换整个舞台，减少动态效果时直接显示。
 - 发现页最近搜索是输入框聚焦时的建议层，不占页面行；进退场走 `Presence` + `motion.css` 的 context-menu 表，reduced-motion 仍由统一块收敛。
 - 播客屏内容走 feather 入场：区块（`.podcast-content-section`）、单集行、节目卡、继续收听卡与待播行都在 `motion.css` feather 组与播客错峰表；与收藏浏览共用 `BROWSE_MOTION`（320ms、standard 曲线、24ms 错峰步进与 144ms 封顶），参数以 `tokens.ts` 为准，详见 [动效系统](motion-system.md)。行键稳定，进度刷新不会重播入场。
 - 播客 chrome 按压：正在播放的返回/走带/倍速/睡眠触发与行内播放按钮（`.podcast-play-action`）都在 `motion.css` 按压组（micro 过渡 + `:active scale(0.97)`）；播客底栏直接复用音乐 chrome 类（`.zune-controls` 等），不另起按钮样式。

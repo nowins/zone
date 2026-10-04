@@ -31,6 +31,7 @@ import { Button } from "../components/Button";
 import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
 import { PodcastRateButton } from "../components/PodcastRateButton";
+import { NowEpisodeContent } from "./podcast/components/NowEpisodeContent";
 import type {
   PodcastPlayback,
   PodcastPlaybackStatus,
@@ -115,7 +116,9 @@ export function PodcastNowPlayingView({
 }) {
   const [activeMenu, setActiveMenu] = useState<PodcastNowMenu>(null);
   const [queueOpen, setQueueOpen] = useState(false);
-  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [contentOpen, setContentOpen] = useState(false);
+  const [contentEntry, setContentEntry] = useState<"notes" | "show">("notes");
+  const contentTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [draggedQueueEpisodeId, setDraggedQueueEpisodeId] = useState<string | null>(null);
   const [queueDropTarget, setQueueDropTarget] = useState<PodcastQueueDropTarget | null>(null);
@@ -146,7 +149,7 @@ export function PodcastNowPlayingView({
   const statusLabel = playbackStatusLabel(status);
 
   useEffect(() => {
-    setDescriptionExpanded(false);
+    setContentOpen(false);
     setActiveMenu(null);
     setDraggedQueueEpisodeId(null);
     setQueueDropTarget(null);
@@ -185,7 +188,7 @@ export function PodcastNowPlayingView({
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       if (activeMenu) {
         event.preventDefault();
         closeActiveMenu(true);
@@ -196,11 +199,16 @@ export function PodcastNowPlayingView({
         closeQueue(true);
         return;
       }
+      if (contentOpen) {
+        event.preventDefault();
+        closeContent();
+        return;
+      }
       onBack();
     }
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [activeMenu, onBack, queueOpen]);
+  }, [activeMenu, onBack, queueOpen, contentOpen]);
 
   function closeActiveMenu(restoreFocus = false) {
     const menu = activeMenu;
@@ -209,6 +217,11 @@ export function PodcastNowPlayingView({
     window.requestAnimationFrame(() => {
       sleepTriggerRef.current?.focus();
     });
+  }
+
+  function closeContent() {
+    setContentOpen(false);
+    window.requestAnimationFrame(() => contentTriggerRef.current?.focus());
   }
 
   function closeQueue(restoreFocus = false) {
@@ -589,9 +602,9 @@ export function PodcastNowPlayingView({
           )}
         </div>
 
-        <section className="podcast-now-copy" aria-labelledby="podcast-now-title">
+        <section className={`podcast-now-copy${contentOpen ? " content-open" : ""}`} aria-labelledby="podcast-now-title">
           <div className="podcast-now-eyebrow">
-            <button type="button" onClick={onOpenEpisode}>{episode.podcastTitle}</button>
+            <button type="button" onClick={() => { setContentEntry("show"); setContentOpen(true); }}>{episode.podcastTitle}</button>
             {episode.publishedAt ? <span>{formatEpisodeDate(episode.publishedAt)}</span> : null}
           </div>
           <h1 id="podcast-now-title">{episode.title}</h1>
@@ -601,27 +614,13 @@ export function PodcastNowPlayingView({
             {mediaDuration > 0 ? <span>{formatTime(mediaDuration)}</span> : null}
           </div>
 
-          {description ? (
-            <div
-              className={`podcast-now-description${descriptionExpanded ? " expanded" : ""}`}
-            >
-              <p>{description}</p>
-              <button
-                type="button"
-                aria-expanded={descriptionExpanded}
-                onClick={() => setDescriptionExpanded((current) => !current)}
-              >
-                {descriptionExpanded ? "收起简介" : "展开简介"}
-              </button>
-            </div>
-          ) : (
-            <button className="podcast-now-open-episode" type="button" onClick={onOpenEpisode}>
-              查看单集信息
-            </button>
-          )}
+          {contentOpen ? <NowEpisodeContent key={episode.episodeId} episode={episode} progress={safeProgress}
+            initialReading={contentEntry} onSeek={onSeek} onMore={onOpenEpisode} onClose={closeContent} />
+            : description ? <div className="podcast-now-description"><p>{description}</p></div> : null}
 
           <div className="podcast-now-copy-actions">
-            <button type="button" onClick={onOpenEpisode}>单集信息</button>
+            {!contentOpen && <button ref={contentTriggerRef} type="button" aria-expanded={false} aria-controls="podcast-now-content"
+              onClick={() => { setContentEntry("notes"); setContentOpen(true); }}>单集信息</button>}
             {onRecordMoment && <Button variant="ghost" onClick={onRecordMoment}>记录此刻</Button>}
             <button
               type="button"
@@ -647,7 +646,7 @@ export function PodcastNowPlayingView({
           label={`${episode.title} · ${episode.podcastTitle}`}
           progress={safeProgress}
           duration={mediaDuration}
-          onLabelClick={onOpenEpisode}
+          onLabelClick={() => { setContentEntry("notes"); setContentOpen(true); }}
           onSeek={onSeek}
         />
 

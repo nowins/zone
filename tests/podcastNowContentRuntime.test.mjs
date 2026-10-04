@@ -1,0 +1,61 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import React, { act } from "react";
+import { JSDOM } from "jsdom";
+import { build } from "esbuild";
+const dom = new JSDOM('<audio></audio><div id="root"></div>', { url: "http://localhost", pretendToBeVisual: true });
+for (const key of ["window", "document", "HTMLElement", "HTMLButtonElement", "Element"]) globalThis[key] = dom.window[key];
+globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const { createRoot } = await import("react-dom/client");
+const methods = ["getEpisodeDetail", "getEpisodeChapters", "cancelPodcastRequest", "openPodcastLink", "getTranscript", "listEpisodeBookmarks", "addEpisodeBookmark", "removeEpisodeBookmark", "restoreEpisodeBookmark", "updateEpisodeBookmark"];
+await build({ entryPoints: ["src/views/PodcastNowPlayingView.tsx"], outfile: ".tmp/podcastNowContent/view.mjs", bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent", plugins: [{ name: "controlled-native-data", setup(b) {
+  b.onLoad({ filter: /[\\/]podcast[\\/]api\.ts$/ }, () => ({ contents: methods.map(name => `export const ${name} = (...args) => globalThis.nativeData.${name}(...args);`).join("\n"), loader: "ts" }));
+  b.onLoad({ filter: /PodcastNowBackdrop\.tsx$/ }, () => ({ contents: 'export function PodcastNowBackdrop(){return null}', loader: "tsx" }));
+} }] });
+const { PodcastNowPlayingView } = await import("../.tmp/podcastNowContent/view.mjs");
+const episode = { id: "a", episodeId: "a", feedId: "show", podcastTitle: "节目名称", title: "本集名称", durationSeconds: 300, progressSeconds: 30, saved: false, description: '<p>第一段 <strong>重点</strong></p><p>第二段 00:02</p>' };
+const detail = { episode, feed: { title: "节目名称", description: '<p>节目第一段</p><p>第二段</p><ul><li>内容</li></ul>', feedUrl: "https://example.com/rss" }, transcriptCount: 0, hasChapters: false };
+const noop = () => {};
+const props = { episode, queue: [], status: "paused", isPlaying: false, progress: 30, duration: 300, volume: .8, playbackRate: 1, sleepTimer: null, onBack: noop, onPlayPause: noop, onSeek: noop, onVolume: noop, onPlaybackRate: noop, onSleepTimer: noop, onPlayQueueItem: noop, onRemoveQueueItem: noop, onMoveQueueItem: noop, onReorderQueueItem: noop, onClearQueue: noop, onOpenEpisode: noop, onToggleSaved: noop, onNext: noop, onRetry: noop };
+const button = text => [...document.querySelectorAll("button")].find(b => b.textContent === text);
+const click = async text => act(async () => { button(text).click(); });
+const settle = async () => act(() => new Promise(resolve => setTimeout(resolve, 40)));
+async function mount(t, overrides = {}) {
+  globalThis.nativeData = Object.fromEntries(methods.map(name => [name, async () => []]));
+  nativeData.getEpisodeDetail = async () => detail;
+  const root = createRoot(document.getElementById("root"));
+  await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(PodcastNowPlayingView, { ...props, ...overrides }))));
+  t.after(async () => act(() => root.unmount()));
+  return root;
+}
+test("episode content opens beside its unchanged artwork and closes before leaving the player", async t => {
+  let navigated = 0, seek = null, back = 0;
+  await mount(t, { onOpenEpisode: () => navigated++, onBack: () => back++, onSeek: value => { seek = value; } });
+  const cover = document.querySelector(".podcast-now-artwork"), title = document.getElementById("podcast-now-title");
+  await click("单集信息");
+  assert.equal(navigated, 0); assert.equal(document.querySelector(".podcast-now-artwork"), cover); assert.equal(document.getElementById("podcast-now-title"), title);
+  assert.equal(document.querySelectorAll("audio").length, 1);
+  assert.equal(document.querySelectorAll(".podcast-now-reading-body .podcast-notes > p").length, 2);
+  await click("00:02"); assert.equal(seek, 2);
+  await act(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" })));
+  await settle(); assert.equal(document.querySelector(".podcast-now-content"), null); assert.equal(back, 0);
+  assert.equal(document.activeElement, button("单集信息"));
+  await act(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" })));
+  assert.equal(back, 1);
+});
+test("show title reveals structured show notes locally and tabs retain a bookmark draft", async t => {
+  let navigated = 0;
+  await mount(t, { onOpenEpisode: () => navigated++ });
+  await click("节目名称");
+  assert.equal(button("节目").getAttribute("aria-pressed"), "true");
+  assert.equal(document.querySelectorAll(".podcast-now-reading-body .podcast-notes > p").length, 2);
+  assert.equal(document.querySelectorAll(".podcast-now-reading-body .podcast-notes li").length, 1);
+  await click("书签"); const input = document.querySelector('input[aria-label="书签备注"]');
+  await act(() => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(input, "保存草稿"); input.dispatchEvent(new window.Event("input", { bubbles: true })); });
+  await click("简介"); await click("书签"); assert.equal(input.value, "保存草稿"); assert.ok(input.isConnected);
+  assert.equal(navigated, 0);
+  await click("节目"); await click("更多单集与操作"); assert.equal(navigated, 1);
+});
+test.after(() => dom.window.close());

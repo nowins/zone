@@ -500,6 +500,7 @@ button.tilt-pressed {
   .podcast-opening-state,
   .metro-loader > span,
   .podcast-now-playing-stage,
+  .podcast-now-reading-body,
   .motion-page-enter,
   .motion-page-exit,
   .tiles-enter .tile {
