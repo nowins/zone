@@ -1,5 +1,6 @@
 import { NAVIGATION_MOTION, MOTION_EASINGS, MOTION_DURATIONS } from "./tokens.js";
 import type { PageTransition } from "./pageTransition.js";
+import { captureContentFrames, contentEntranceItems, playContentEntrance, suspendContentAnchoring, type ContentFrames } from "./contentEntrance.js";
 
 type Frame = { transform: string; opacity: string };
 type Surface = { key: string; node: HTMLElement; layer: HTMLElement; animation: Animation };
@@ -32,13 +33,16 @@ export function snapshotSurface(node: HTMLElement): { layer: HTMLElement; node: 
     if (source.matches(".collection-track-scroll") && first?.matches(".collection-track-row") && second?.matches(".collection-track-row")) {
       // Track rows are uniform single-line rows. Two measurements bound the
       // snapshot independently of library size, preserving the full scroll range.
-      const firstRect = first.getBoundingClientRect(), stride = second.getBoundingClientRect().top - firstRect.top;
+      const firstRect = first.getBoundingClientRect();
+      // Staggered row translations are visual offsets, not the layout stride.
+      const firstTop = firstRect.top - surfaceOffset(first as HTMLElement).y;
+      const stride = second.getBoundingClientRect().top - surfaceOffset(second as HTMLElement).y - firstTop;
       const owner = source.closest("[data-collection-scroll]") ?? source;
       const clip = owner.getBoundingClientRect();
       if (stride > 0) {
         const count = source.children.length;
-        const start = Math.max(0, Math.min(count, Math.floor((Math.max(0, clip.top) - firstRect.top) / stride) - NAVIGATION_MOTION.snapshotOverscanRows));
-        const end = Math.max(start, Math.min(count, Math.ceil((Math.min(window.innerHeight, clip.bottom) - firstRect.top) / stride) + NAVIGATION_MOTION.snapshotOverscanRows));
+        const start = Math.max(0, Math.min(count, Math.floor((Math.max(0, clip.top) - firstTop) / stride) - NAVIGATION_MOTION.snapshotOverscanRows));
+        const end = Math.max(start, Math.min(count, Math.ceil((Math.min(window.innerHeight, clip.bottom) - firstTop) / stride) + NAVIGATION_MOTION.snapshotOverscanRows));
         const spacer = (height: number) => {
           if (height <= 0) return;
           const gap = document.createElement("div");
@@ -104,6 +108,10 @@ export class SurfaceTransition {
   private outgoing: Surface | null = null;
   private incoming: Animation[] = [];
   private returning: Frame[] | null = null;
+  private returningContent: ContentFrames | null = null;
+  private sourceContent: ContentFrames | null = null;
+  private removeInputListeners: (() => void) | null = null;
+  private restoreAnchoring: (() => void) | null = null;
   private source: HTMLElement | null = null;
   private plan: PageTransition | null = null;
 
@@ -125,9 +133,12 @@ export class SurfaceTransition {
     enabled = enabled && typeof this.host.animate === "function";
     const returning = this.outgoing?.key === to
       ? [this.outgoing.node, ...this.groups(this.outgoing.node)].map(frame) : null;
+    const returningContent = returning && this.outgoing ? captureContentFrames(this.outgoing.node) : null;
     const snapshot = source && enabled ? snapshotSurface(source) : null;
     this.stop();
     this.returning = returning;
+    this.returningContent = returningContent;
+    this.sourceContent = snapshot ? captureContentFrames(snapshot.node) : null;
     this.source = source;
     this.plan = enabled ? plan : null;
     if (!snapshot) return;
@@ -153,14 +164,20 @@ export class SurfaceTransition {
     this.plan = null;
     const source = this.source;
     this.source = null;
-    if (!plan || root.matches(".now-playing-stage")) { this.returning = null; return true; } // Its Canvas and FLIP own stage arrival.
+    if (!plan || root.matches(".now-playing-stage")) { this.returning = null; this.returningContent = null; this.sourceContent = null; return true; } // Its Canvas and FLIP own stage arrival.
     // Suppress only this mount's legacy feathers. Later internal changes still
     // get their own entrance, without replaying every row on page arrival.
     root.querySelectorAll<HTMLElement>(".quick-group,.quick-album,.folder-list > div,.settings-section-heading,.settings-sidebar > section,.podcast-content-section,.podcast-episode,.podcast-show-card,.podcast-continue-card,.podcast-queue-episode")
       .forEach(node => { node.style.animation = "none"; });
     const groups = this.groups(root);
+    // Measure the settled layout before starting any parent transform.
+    const contentItems = contentEntranceItems(root);
+    this.restoreAnchoring = suspendContentAnchoring(contentItems);
     const starts = root === source ? [root, ...groups].map(frame) : this.returning;
+    const contentStarts = root === source ? this.sourceContent : this.returningContent;
     this.returning = null;
+    this.returningContent = null;
+    this.sourceContent = null;
     const animate = (node: HTMLElement, frames: Keyframe[], duration: number, delay = 0) => {
       const animation = node.animate(frames, { duration, delay, easing, fill: "backwards" });
       this.incoming.push(animation);
@@ -168,6 +185,10 @@ export class SurfaceTransition {
         animation.onfinish = null;
         animation.cancel();
         this.incoming = this.incoming.filter(item => item !== animation);
+        if (!this.incoming.length) {
+          this.removeInputListeners?.(); this.removeInputListeners = null;
+          this.restoreAnchoring?.(); this.restoreAnchoring = null;
+        }
       };
     };
     animate(root, [
@@ -179,6 +200,26 @@ export class SurfaceTransition {
       { transform: starts?.[index + 1]?.transform ?? `translate3d(${plan.direction * NAVIGATION_MOTION.groupDrift}px,0,0)` },
       { transform: "none" },
     ], plan.enterMs, Math.min(index, 2) * NAVIGATION_MOTION.stagger));
+    playContentEntrance(contentItems, animate, contentStarts);
+    if (contentItems.length) {
+      const positions = new Map([...root.querySelectorAll<HTMLElement>("[data-collection-scroll]")].map(area => [area, { top: area.scrollTop, left: area.scrollLeft }]));
+      const settle = () => this.settle();
+      const onScroll = (event: Event) => {
+        const area = event.target as HTMLElement, saved = positions.get(area);
+        if (saved && saved.top === area.scrollTop && saved.left === area.scrollLeft) return;
+        settle();
+      };
+      root.addEventListener("pointerdown", settle, { capture: true, passive: true });
+      root.addEventListener("wheel", settle, { capture: true, passive: true });
+      root.addEventListener("keydown", settle, true);
+      root.addEventListener("scroll", onScroll, { capture: true, passive: true });
+      this.removeInputListeners = () => {
+        root.removeEventListener("pointerdown", settle, true);
+        root.removeEventListener("wheel", settle, true);
+        root.removeEventListener("keydown", settle, true);
+        root.removeEventListener("scroll", onScroll, true);
+      };
+    }
     return true;
   }
 
@@ -186,15 +227,26 @@ export class SurfaceTransition {
   settle(): void {
     const nodes = new Set(this.incoming.map(animation => (animation.effect as KeyframeEffect).target as HTMLElement));
     const starts = [...nodes].filter(node => this.host.contains(node)).map(node => ({ node, start: frame(node) }));
+    const restoreAnchoring = this.restoreAnchoring;
+    this.restoreAnchoring = null;
     this.stop();
+    this.restoreAnchoring = restoreAnchoring;
+    if (!starts.length) { this.restoreAnchoring?.(); this.restoreAnchoring = null; }
     for (const { node, start } of starts) {
       const animation = node.animate([start, { transform: "none", opacity: 1 }], { duration: MOTION_DURATIONS.press, easing, fill: "backwards" });
       this.incoming.push(animation);
-      animation.onfinish = () => { animation.onfinish = null; animation.cancel(); this.incoming = this.incoming.filter(item => item !== animation); };
+      animation.onfinish = () => {
+        animation.onfinish = null; animation.cancel(); this.incoming = this.incoming.filter(item => item !== animation);
+        if (!this.incoming.length) { this.restoreAnchoring?.(); this.restoreAnchoring = null; }
+      };
     }
   }
 
   stop(): void {
+    this.restoreAnchoring?.();
+    this.restoreAnchoring = null;
+    this.removeInputListeners?.();
+    this.removeInputListeners = null;
     for (const animation of this.incoming) { animation.onfinish = null; animation.cancel(); }
     this.incoming = [];
     if (this.outgoing) {
@@ -206,5 +258,7 @@ export class SurfaceTransition {
     this.plan = null;
     this.source = null;
     this.returning = null;
+    this.returningContent = null;
+    this.sourceContent = null;
   }
 }

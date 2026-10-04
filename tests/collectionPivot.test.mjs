@@ -44,18 +44,18 @@ function environment(t) {
   };
   const root = document.createElement("div");
   root.innerHTML = '<div class="collection-track-head"></div><div class="collection-track-scroll" data-collection-scroll="songs">' + Array.from({ length: 80 }, (_, i) =>
-    `<div class="collection-track-row" data-row="${Math.floor(i / 2)}">歌曲 ${i}</div>`).join("") + '</div>';
+    `<div class="collection-track-row" data-collection-anchor="${i}" data-row="${i}">歌曲 ${i}</div>`).join("") + '</div>';
   document.body.append(root);
   return { window, document, root, animations, rect };
 }
 
-test("content regions move once without row scaling or library-sized layout work", t => {
+test("horizontal regions own transport while content measurement stays bounded", t => {
   const { root, animations, rect } = environment(t);
   let rowReads = 0;
   root.querySelectorAll('.collection-track-row').forEach(node => { node.getBoundingClientRect = () => { rowReads++; return rect(100, 40); }; });
   const stop = playCollectionPivot(root, -1);
   assert.equal(animations.length, 2, "only heading and list move, irrespective of row count");
-  assert.equal(rowReads, 0, "no per-track rectangle scan");
+  assert.equal(rowReads, 2, "uniform rows need two measurements, never a library-wide scan");
   assert.equal(animations[0].frames[0].transform, "translate3d(-96px, 0, 0)");
   assert.equal(animations[1].frames[0].transform, "translate3d(-64px, 0, 0)");
   assert.deepEqual(animations.map(a => a.options.delay), [0, COLLECTION_PIVOT_MOTION.stagger]);
@@ -96,11 +96,12 @@ test("interaction, resize, hiding and cleanup settle an unfinished entrance with
     assert.ok(original.every(a => a.cancelled), event);
     if (["wheel", "pointerdown", "scroll", "keydown"].includes(event)) {
       const settling = animations.slice(original.length);
-      assert.equal(settling.length, original.length);
+      const targets = new Set(original.map(a => a.node));
+      assert.equal(settling.length, targets.size, "opacity and movement share one sampled settle per item");
       assert.ok(settling.every(a => a.frames[0].transform === "matrix(1, 0, 0, 1, 6, 0)" && a.frames[0].opacity === "0.6"));
       assert.ok(settling.every(a => a.options.duration === COLLECTION_PIVOT_MOTION.settle));
       target.dispatchEvent(input);
-      assert.equal(animations.length, original.length * 2, "continuing input does not restart the settle");
+      assert.equal(animations.length, original.length + targets.size, "continuing input does not restart the settle");
     } else assert.ok(animations.every(a => a.cancelled));
     stop();
     assert.ok(animations.every(a => a.cancelled));
@@ -110,7 +111,7 @@ test("interaction, resize, hiding and cleanup settle an unfinished entrance with
   playCollectionPivot(root, 1);
   toolbar.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
   assert.ok(animations.slice(0, 2).every(a => a.cancelled), "keyboard entry samples the old frame");
-  assert.ok(animations.slice(2).every(a => a.options.duration === COLLECTION_PIVOT_MOTION.settle), "focus does not erase motion with a snap");
+  assert.ok(animations.filter(a => !a.cancelled).every(a => a.options.duration === COLLECTION_PIVOT_MOTION.settle), "focus does not erase motion with a snap");
   animations.length = 0;
   Object.defineProperty(document, "hidden", { configurable: true, value: true });
   playCollectionPivot(root, 1);
@@ -128,7 +129,7 @@ test("queued restoration scroll events do not erase the return animation, while 
   area.scrollTop = 160;
   area.dispatchEvent(new window.Event("scroll"));
   assert.ok(animations.slice(0, 2).every(a => a.cancelled));
-  assert.ok(animations.slice(2).every(a => a.options.duration === COLLECTION_PIVOT_MOTION.settle));
+  assert.ok(animations.filter(a => !a.cancelled).every(a => a.options.duration === COLLECTION_PIVOT_MOTION.settle));
 });
 
 test("podcasts retain feather tokens while collection groups have a visible flat arrival", t => {
@@ -223,4 +224,39 @@ test("detail panel changes animate in both directions without replaying the head
   assert.ok(animations.filter(a => !a.cancelled).every(a => a.frames[0].transform.includes("-96px")));
   await act(async () => root.unmount());
   assert.ok(animations.every(a => a.cancelled));
+});
+
+test("capture and repeated restoration exclude an item's active entrance translation", async t => {
+  const { window, document } = environment(t);
+  for (const key of ["window", "document", "HTMLElement", "Element", "Node"]) globalThis[key] = key === "window" ? window : window[key];
+  window.DOMMatrixReadOnly = class {
+    constructor(value) { const numbers = value?.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? []; this.m41 = numbers[4] ?? 0; this.m42 = numbers[5] ?? 0; }
+  };
+  const { createRoot } = await import("react-dom/client");
+  const { useCollectionNavigation } = await import("../.tmp/collection-pivot-hooks.js");
+  let navigation;
+  function Fixture() {
+    navigation = useCollectionNavigation();
+    return React.createElement('section', { ref: navigation.rootRef }, React.createElement('div', { 'data-collection-scroll': 'songs' },
+      Array.from({ length: 80 }, (_, i) => React.createElement('div', { key: i, 'data-collection-anchor': `${i}` }, `歌曲 ${i}`))));
+  }
+  const mounted = createRoot(document.getElementById('mount'));
+  await act(async () => mounted.render(React.createElement(React.StrictMode, null, React.createElement(Fixture))));
+  const area = document.querySelector('#mount [data-collection-scroll]');
+  area.getBoundingClientRect = () => ({ top: 100 });
+  area.scrollTop = 440;
+  [...area.children].forEach((row, i) => {
+    row.style.transform = 'matrix(1, 0, 0, 1, 0, 18)';
+    row.getBoundingClientRect = () => ({ top: 100 + i * 44 - area.scrollTop + 18, bottom: 144 + i * 44 - area.scrollTop + 18 });
+  });
+  await act(async () => navigation.remember());
+  const saved = navigation.location.surface.scrolls.songs;
+  assert.equal(saved.top, 440);
+  assert.equal(saved.offset, -44, 'the temporarily visible preceding row is stored at its static offset');
+  navigation.restore(); navigation.restore();
+  assert.equal(area.scrollTop, 440, 'StrictMode restoration cannot add the entrance translation to scrollTop');
+  area.scrollTop = 400;
+  navigation.restore();
+  assert.equal(area.scrollTop, 440);
+  await act(async () => mounted.unmount());
 });

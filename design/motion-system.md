@@ -57,6 +57,8 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 播客的 feather 使用 `BROWSE_MOTION`。页面导航使用独立的 `NAVIGATION_MOTION`：位移 640ms、淡入 170ms、退场 180ms、入场/退场 96/64px；最多三档 46ms 错峰，完整编排最长 732ms。收藏的 `COLLECTION_PIVOT_MOTION` 使用 560ms 减速尾段、96/64px 分级位移和三档 46ms 错峰，完整入场最长 652ms；输入打断后的收稳为 110ms。淡入很早完成，目标内容从挂载起可操作。数值是针对 Zone 的调校，不是原版逐帧测量结果，事实源均为 `tokens.ts`。
 
+收藏首屏内容另外使用 `CONTENT_ENTRANCE_MOTION`：表头先到，歌曲行、艺术家条目、专辑封面和播放列表再按阅读顺序快速展开。条目向上收拢 18px，位移 360ms、淡入 140ms，从 54ms 开始以 24ms 错峰，额外等待封顶 192ms；全部首屏内容最迟 386ms 显现、606ms 收稳。它与页面／区域的横向交接分工，均匀列表与规则网格每区只测两个条目，依照恢复后的滚动位置选择可见内容，最多 12 区、48 项。不增加加载等待，不给屏外曲目启动动画。
+
 正在播放闲置隐藏是自动退隐的刻意例外：返回、队列、底部控制区共用 chrome 档 700ms 与 dissolve 曲线，在原位同步降低透明度；唤回用 content 档 220ms 与 standard 曲线，CSS transition 从中间值反向接续，不重新挂载或重播入场。歌曲信息不随闲置状态变暗。用户主动隐藏队列仍走 micro 档 Presence；reduced-motion 下两类过渡均收缩至 instant 档。暂停、焦点和操作中的计时保护见 [播放视觉规范](engineering/playback-visuals.md)。
 
 `tokens.ts` 中的 `TILE_MOTION` 统一维护磁贴长按、首次更新、后续更新间隔、背面停留、peek／flip／单格翻面及入场错峰参数。当前首轮更新在可见后 6–14 秒，后续间隔 24–48 秒，背面停留 5 秒，各磁贴独立错峰。小磁贴与关闭动态的磁贴不循环；`useTileActivity` 统一监听可视区、页面可见性与悬停／聚焦，编辑切换 DOM 宿主时重新绑定。reduced-motion 下停止自动翻面和封面替换，重排直接落到终态。
@@ -78,6 +80,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 - `presence.tsx` — `<Presence show exitDurationMs exitClassName?>`：show 转 false 时保留子树、挂退场类、超时卸载；`useLastNonNull(value)` 冻结关闭前快照供退场窗口渲染（退场窗口内 props 冻结不刷新，窗口应保持在 micro 档，不要拉长）。当前歌词设置面板和在线来源搜索面板也采用这条链路。
 - `pageTransition.ts` — `resolvePageTransition(from, to)`：同级 pivot、进入正在播放 push、返回 pop，定义成对的方向、时长及行程。`surfaceTransition.ts` 在导航意图提交时冻结旧画面，`useNavigation` 的 layout effect 为已挂载目标执行分组入场；延迟加载的页面通过 MutationObserver 在实际内容挂载时接续。原页面正常卸载，唯一主音频不参与复制；长歌曲列表仅复制可见行和少量边缘行，保留滚动范围；正在播放入场仍由舞台和封面 FLIP 负责。
 - `collectionPivot.ts` — 收藏分类、对象详情及返回的方向解析和可见内容分组入场；`useCollectionPivot` 连接浏览 revision，`useCollectionPanelMotion` 连接详情标签及播放列表选择，两者共用 reduced-motion 与卸载清理，使用 Web Animations API 执行有限的 transform／opacity 过渡。
+- `contentEntrance.ts` — 顶层收藏入场与内部 Pivot 共用的首屏条目展开；先测静态布局再启动父级位移，使用有界的可见区选择和独立的早淡入，网格间隙中的完整屏外行不占错峰顺序。展开期间暂停滚动锚定，重叠控制器全部释放后恢复原样式。生命周期交给所属页面／Pivot 控制器，快速反向时复用退场快照冻结的条目帧，已显现条目不重新隐藏；快照的行距与滚动范围按扣除条目位移后的静态位置计算。
 - `useReducedMotion.ts` — `useReducedMotion()` hook，JS/rAF 侧统一入口。
 
 ## 接入指南
@@ -85,6 +88,8 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 ### 给新列表/内容块加入场
 
 把元素类名加进 `motion.css` 的 feather 选择器组即可（`animation: motion-feather-in var(--motion-content) ... backwards; animation-delay: var(--stagger, 0ms)`），并在 stagger 表里补 `:nth-child` 行。重要内容需要更大幅度时，在该元素的规则里设 `--motion-drift: var(--motion-drift-l)`。
+
+收藏浏览由页面与 Pivot 控制器统一调用 `contentEntrance.ts`，不启用整库 CSS feather。新增同类列表先确认等高行／规则网格契约，维护可见区选择器、稳定 `data-collection-anchor` 和相应运行时测试；普通数据刷新不触发新的入场。
 
 ### 给新浮层加入场 + 退场
 
@@ -157,7 +162,8 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - CSS/结构守卫（`nowPlayingCss.test.mjs` 等）会因类名/编排变化失败，按新结构同步，不放宽语义。
 - `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、内容停留、隐藏／编辑／reduced-motion 停转与恢复，以及长按、键盘和外观设置行为。
 - `tests/panoramaBehavior.test.mjs`：首页分组与视差边界、滚轮归属，以及真实 hook 在 StrictMode 下的滚轮接力、键盘打断、滚动条显隐／拖拽、滚动恢复、窗口变化、reduced-motion 与隐藏／卸载清理。
-- `tests/collectionPivot.test.mjs`：分类／详情／返回方向、可见区域分组与数量上限、无逐行布局扫描、输入从当前帧收稳与恢复滚动事件的区分，以及真实导航／面板动效 hook 的 StrictMode、快速连切和 reduced-motion 清理。
+- `tests/collectionPivot.test.mjs`：分类／详情／返回方向、可见区域分组与数量上限、有界条目测量、输入从当前帧收稳与恢复滚动事件的区分，以及真实导航／面板动效 hook 的 StrictMode、快速连切和 reduced-motion 清理。
+- `tests/contentEntrance.test.mjs`：长列表与网格的滚动恢复、首屏选择、常数布局读取、错峰封顶、总量上限和条目当前帧反向。
 - `tests/surfaceTransition.test.mjs`：成对交接、当前帧反向、有限退场层、延迟挂载、主音频唯一性与长歌曲列表的有界复制。
 - `tests/navigationMotion.test.mjs` / `tests/wheelScroll.test.mjs`：顶层导航立即挂载、同批次反向与快捷键焦点，以及粗步进识别、滚轮目标接力／反向／边界、原生输入接管和真实 hook 的 reduced-motion／卸载清理。
 - `tests/uiBehavior.test.mjs` / `tests/canvasLifecycle.test.mjs`：真实 React 组件在 StrictMode 下的焦点、入场清理与 Canvas 停转/唤醒行为。
@@ -165,7 +171,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 
 ## 收藏对象浏览
 
-顶层页面走 `requestNavigation`。收藏分类借鉴 [WP 8.1 Pivot 的分组滑入](https://blogs.windows.com/windowsdeveloper/2014/07/22/tips-and-tricks-for-using-xaml-controls-in-your-universal-windows-apps/)：分类顺序由 `COLLECTION_CATEGORY_ORDER` 维护，分类标签、搜索和数量保持原位，内容按目标的左右方向交接。`useCollectionNavigation` 在提交新 revision 前复制旧内容的可见画面，`useCollectionPivot` 为新内容执行少量语义区域的滑入；不缩放文字、不逐行扫描布局或叠加旧的行级 feather。参数来自 `COLLECTION_PIVOT_MOTION`，最多 12 个可见区域和三档错峰。
+顶层页面走 `requestNavigation`。收藏分类借鉴 [WP 8.1 Pivot 的分组滑入](https://blogs.windows.com/windowsdeveloper/2014/07/22/tips-and-tricks-for-using-xaml-controls-in-your-universal-windows-apps/)：分类顺序由 `COLLECTION_CATEGORY_ORDER` 维护，分类标签、搜索和数量保持原位，内容按目标的左右方向交接。`useCollectionNavigation` 在提交新 revision 前复制旧内容的可见画面，`useCollectionPivot` 为新内容执行少量语义区域的滑入，并与顶层入场共用首屏条目的快速展开；不缩放文字、不逐行扫描整库布局或重播旧的 CSS feather。横向参数来自 `COLLECTION_PIVOT_MOTION`，最多 12 个可见区域和三档错峰；条目纵向与淡入参数来自 `CONTENT_ENTRANCE_MOTION`。
 
 快速切换不排队等待；旧画面从当前帧退场，退场窗口内反向返回时接续它的可见位置。每次最多一层内容退场，旧 React 子树照常卸载。历史返回先恢复滚动锚点、选择和焦点；恢复产生的同位置滚动事件不会打断动画。滚动、指针和键盘输入从当前 transform/opacity 用短过渡收稳，不吞掉输入或反复启动；窗口调整、隐藏、卸载及 reduced-motion 开启清理动画与退场层。首次挂载由顶层入场负责，普通数据更新不重播。
 
@@ -175,5 +181,5 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 
 - [Zune 桌面前端负责人的项目记录](https://www.heysroons.com/projects/zune-music-player)说明其排版、媒体内容和运动属于同一体验；[同期实测](https://www.gsmarena.com/zune_software-review-539p2.php)记录 quickplay 通过大小、透明度和前后层次交接。Zone 保留自己的桌面布局及全景视差。
 - [WP 导航原始文档](https://learn.microsoft.com/en-us/archive/msdn-magazine/2011/april/msdn-magazine-mobile-matters-windows-phone-navigation-part-2-advanced-recipes)区分空间切换、共享元素连续性和浮层运动，强调成对交接；不把 Turnstile 强行套在每次列表浏览上。
-- [WinJS 动画源码](https://github.com/winjs/winjs/blob/master/src/js/WinJS/Animations.js)的 `enterPage` 将 1000ms 位移与 170ms 淡入分开，使用 `(0.1,0.9,0.2,1)` 缓动及有上限的错峰；Zone 借鉴这种早显现、长减速的节奏，并单独调校行程与时长。
+- [WinJS 动画源码](https://github.com/winjs/winjs/blob/master/src/js/WinJS/Animations.js)的 `enterPage` 将 1000ms 位移与 170ms 淡入分开，使用 `(0.1,0.9,0.2,1)` 缓动及有上限的错峰；`enterContent` 则独立采用 28px 纵向位移、550ms 收稳和 170ms 淡入。Zone 借鉴页面交接与内容进入分别编排的方式，单独调校首屏条目的行程、时长与错峰；这些值不是 Zune 原版的测量参数。
 - [Rune 的动效实验](https://github.com/Losses/rune)可作为现代复刻的编排参考，其 Turnstile 实验采用 600ms 及分组区间；它不能证明原版参数。

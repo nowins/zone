@@ -82,6 +82,7 @@
   - `flip.ts` / `coverFlip.ts`：FLIP registry 与封面共享元素飞行编排（播放条 ↔ 正在播放曲目卡，`cover:{trackId}`）。
   - `presence.tsx`：`<Presence>` 浮层退场存在组件与 `useLastNonNull`。
   - `pageTransition.ts`：页面切换编排表（pivot/push/pop），由 App 的 `requestNavigation` 消费。
+  - `surfaceTransition.ts` / `collectionPivot.ts`：顶层页面与收藏浏览的静态退场画面、分组入场、快速反向和输入接管；`contentEntrance.ts` 共享首屏条目的有界选择、早淡入与展开，并协调重叠控制器的滚动锚定生命周期。
   - `useReducedMotion.ts`：reduced-motion 统一 hook。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`controls`（Button 原语变体与尺寸）、`collection`、`podcasts`、`podcast-now-playing`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`tiles`（Metro 磁贴系统）、`motion`（动效原语层：feather 入场、页面/浮层出入场、反馈动画、共享 `.tilt-pressed` 倾斜规则、唯一 reduced-motion 块）、`animations-responsive`（正在播放入场编排与响应式）。
 - `src-tauri/src/lib.rs`：应用初始化接线。包含系统托盘、`update_system_media`/`update_system_media_timeline` 薄命令与 `pub fn run()`（协议注册、状态初始化、命令注册）；业务命令按模块注册，例如 `music::music_scan_library`。

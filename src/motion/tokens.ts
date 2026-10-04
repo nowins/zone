@@ -68,6 +68,12 @@ export const NAVIGATION_MOTION = {
   snapshotOverscanRows: 2,
 } as const;
 
+/** First-screen content builds in quickly while the page continues decelerating. */
+export const CONTENT_ENTRANCE_MOTION = {
+  move: 360, fade: 140, drift: 18, delay: 54, step: 24, maxDelay: 192,
+  maxItems: 48, maxRegions: 12,
+} as const;
+
 export type MotionDurationName = keyof typeof MOTION_DURATIONS;
 
 /**
@@ -95,7 +101,7 @@ export const MOTION_STAGGER = { step: 24, max: 144 } as const;
 
 /** Podcast feather entrance; collection uses flat semantic groups. */
 export const BROWSE_MOTION = { duration: 320, scale: 0.96 } as const;
-/** At most three timing groups, without translating both a parent and its rows. */
+/** At most three horizontal timing groups; visible items have a separate vertical build-in. */
 export const COLLECTION_PIVOT_MOTION = { duration: 560, drift: 96, secondaryDrift: 64, stagger: 46, settle: MOTION_DURATIONS.press, maxGroups: 12, staggerGroups: 3 } as const;
 /** Coarse vertical wheel signals only; fine gestures retain native momentum. */
 export const SCROLL_MOTION = { coarseDelta: 50, linePixels: 32 } as const;

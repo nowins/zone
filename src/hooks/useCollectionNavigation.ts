@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, type SetStateAction } from "react";
 import type { ViewMode } from "../types";
 import type { CollectionEntityRef } from "../utils/collectionEntities";
 import { prepareCollectionPivot } from "../motion/collectionPivot";
+import { surfaceOffset } from "../motion/surfaceTransition";
 import { emptyCollectionSurface, initialCollectionHistory, pushCollectionLocation, travelCollectionHistory,
   type CollectionHistory, type CollectionLocation, type CollectionSurface } from "../utils/collectionNavigation";
 
@@ -31,7 +32,7 @@ export function useCollectionNavigation(onTransition?: () => void) {
       const anchor = [...area.querySelectorAll<HTMLElement>("[data-collection-anchor]")].find(node =>
         node.closest("[data-collection-scroll]") === area && node.getBoundingClientRect().bottom > top);
       surface.scrolls[area.dataset.collectionScroll!] = { top: area.scrollTop, left: area.scrollLeft,
-        anchor: anchor?.dataset.collectionAnchor, offset: anchor ? anchor.getBoundingClientRect().top - top : undefined };
+        anchor: anchor?.dataset.collectionAnchor, offset: anchor ? anchor.getBoundingClientRect().top - top - surfaceOffset(anchor).y : undefined };
     }
     for (const list of root.querySelectorAll<HTMLElement>("[data-collection-list]")) {
       const selected = list.dataset.collectionSelection;
@@ -88,7 +89,7 @@ export function useCollectionNavigation(onTransition?: () => void) {
       area.scrollLeft = saved.left;
       const anchor = [...area.querySelectorAll<HTMLElement>("[data-collection-anchor]")]
         .find(node => node.dataset.collectionAnchor === saved.anchor && node.closest("[data-collection-scroll]") === area);
-      if (anchor && saved.offset !== undefined) area.scrollTop += anchor.getBoundingClientRect().top - area.getBoundingClientRect().top - saved.offset;
+      if (anchor && saved.offset !== undefined) area.scrollTop += anchor.getBoundingClientRect().top - area.getBoundingClientRect().top - surfaceOffset(anchor).y - saved.offset;
     }
     const focus = [...root.querySelectorAll<HTMLElement>("[data-collection-focus]")]
       .find(node => node.dataset.collectionFocus === surface.focus);
