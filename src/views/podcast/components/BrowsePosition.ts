@@ -7,17 +7,18 @@ export function usePodcastBrowsePosition(key: string) {
     if (!root) return;
     const saved = positions.get(key);
     let restoring = Boolean(saved);
+    let restoringFocus = false;
     let episode = saved?.episode ?? null;
     const observer = new MutationObserver(restore);
     function restore() {
       if (!root || !saved || !restoring) return;
       root.scrollTop = saved.top;
       const target = saved.episode ? Array.from(root.querySelectorAll<HTMLElement>("[data-podcast-episode]")).find(el => el.dataset.podcastEpisode === saved.episode)?.querySelector<HTMLButtonElement>(".podcast-episode-open") : null;
-      if (target) target.focus({ preventScroll: true });
+      if (target) { restoringFocus = true; target.focus({ preventScroll: true }); restoringFocus = false; }
       if (root.scrollHeight - root.clientHeight >= saved.top && (!saved.episode || target)) { restoring = false; observer.disconnect(); }
     }
     function takeControl() { restoring = false; observer.disconnect(); }
-    function focus(event: FocusEvent) { const target = event.target; if (target instanceof Element) episode = target.closest<HTMLElement>("[data-podcast-episode]")?.dataset.podcastEpisode ?? episode; }
+    function focus(event: FocusEvent) { if (!restoringFocus) takeControl(); const target = event.target; if (target instanceof Element) episode = target.closest<HTMLElement>("[data-podcast-episode]")?.dataset.podcastEpisode ?? episode; }
     root.addEventListener("wheel", takeControl, { passive: true });
     root.addEventListener("pointerdown", takeControl);
     root.addEventListener("keydown", takeControl);

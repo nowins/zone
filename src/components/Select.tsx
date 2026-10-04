@@ -20,7 +20,14 @@ function SelectMenu({ id, label, options, active, selected, position, onChoose }
     const menu = ref.current;
     if (menu?.showPopover) { menu.setAttribute("popover", "manual"); menu.showPopover(); return () => menu.hidePopover(); }
   }, []);
-  useLayoutEffect(() => { ref.current?.querySelector('[data-active="true"]')?.scrollIntoView?.({ block: "nearest" }); }, [active]);
+  useLayoutEffect(() => {
+    const menu = ref.current, option = menu?.querySelector<HTMLElement>('[data-active="true"]');
+    if (!menu || !option) return;
+    // Scroll only the popup. scrollIntoView can move its DOM ancestors even in the top layer.
+    const top = option.offsetTop, bottom = top + option.offsetHeight;
+    if (top < menu.scrollTop) menu.scrollTop = top;
+    else if (bottom > menu.scrollTop + menu.clientHeight) menu.scrollTop = bottom - menu.clientHeight;
+  }, [active]);
   return <div ref={ref} id={id} className="select-menu" role="listbox" aria-label={label} style={position}
     onMouseDown={event => event.preventDefault()} onClick={event => { event.preventDefault(); event.stopPropagation(); }}>
     {options.map((option, index) => <div key={option.value} id={`${id}-${index}`} className="select-option" role="option"

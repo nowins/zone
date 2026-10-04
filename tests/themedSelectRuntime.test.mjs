@@ -52,6 +52,19 @@ test("a select inside a form label commits without reopening or submitting", asy
   await click(document.querySelector('[role="option"][data-value="b"]'));
   assert.equal(trigger.dataset.value, 'b'); assert.equal(trigger.getAttribute('aria-expanded'), 'false'); assert.equal(submits, 0);
 });
+test("keyboard navigation scrolls only the popup and never its outer reading page", async t => {
+  let ancestorScrolls = 0;
+  const previous = window.HTMLElement.prototype.scrollIntoView;
+  window.HTMLElement.prototype.scrollIntoView = () => { ancestorScrolls++; document.dispatchEvent(new window.Event('scroll')); };
+  t.after(() => { window.HTMLElement.prototype.scrollIntoView = previous; });
+  await mount(t, h(Selector)); const trigger = document.querySelector('[role="combobox"]'); trigger.focus();
+  await key(trigger, 'ArrowDown'); const menu = document.querySelector('[role="listbox"]');
+  Object.defineProperty(menu, 'clientHeight', { value: 60 });
+  const last = menu.querySelector('[data-value="b"]');
+  Object.defineProperty(last, 'offsetTop', { value: 200 }); Object.defineProperty(last, 'offsetHeight', { value: 34 });
+  await key(trigger, 'ArrowDown');
+  assert.equal(ancestorScrolls, 0); assert.equal(menu.scrollTop, 174); assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+});
 test("dropdown flips upward inside a dialog and first Escape dismisses only its list", async t => {
   let closed = 0;
   await mount(t, h(Dialog, { titleId: "title", title: "设置", kicker: "播客", onCancel: () => closed++, onSubmit: () => {} }, h(Selector)));
