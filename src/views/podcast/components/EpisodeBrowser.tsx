@@ -5,6 +5,7 @@ import { EpisodeRow } from "./EpisodeRows";
 import { PodcastEmpty, PodcastLoading } from "./primitives";
 import { searchLocalEpisodes, type EpisodeSearchPage } from "../api";
 import type { PodcastViewModel } from "../usePodcastViewModel";
+import { formatTime } from "../../../utils/music";
 
 const filters = [["all","全部"],["unplayed","未听完"],["in-progress","正在收听"],["unstarted","尚未开始"],["played","已听完"],["downloaded","已下载"],["saved","稍后听"],["history","收听历史"]];
 const browsing = new Map<string,{query:string;filter:string;sort:string;offset:number}>();
@@ -30,7 +31,7 @@ export function EpisodeBrowser({ vm, feedId, requestedQuery, children, scope, in
   },[actualQuery,filter,sort,offset,feedId,active,vm.libraryRevision,followedOnly]);
   return <div className="podcast-episode-browser">
     {requestedQuery===undefined && <div className="podcast-episode-filters">
-      <input type="search" value={query} onChange={event=>{setQuery(event.target.value);if(!composing.current)setCommittedQuery(event.target.value);}} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={event=>{composing.current=false;setCommittedQuery(event.currentTarget.value);}} aria-label={feedId?"搜索节目单集":"搜索本地播客资料库"} placeholder={feedId?"搜索单集标题与简介":"搜索本地节目、单集和简介"}/>
+      <input type="search" value={query} onChange={event=>{setQuery(event.target.value);if(!composing.current)setCommittedQuery(event.target.value);}} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={event=>{composing.current=false;setCommittedQuery(event.currentTarget.value);}} aria-label={feedId?"搜索节目单集":"搜索本地播客资料库"} placeholder={feedId?"搜索标题、简介、已缓存转写与书签":"搜索节目、单集、已缓存转写与书签"}/>
       <Select aria-label="单集筛选" value={filter} onValueChange={value=>setFilter(value)}>{filters.map(([id,title])=><option key={id} value={id}>{title}</option>)}</Select>
       <Select aria-label="单集排序" value={sort} onValueChange={value=>setSort(value)}><option value="newest">最新在前</option><option value="oldest">最早在前</option><option value="title">按标题</option><option value="listened">最近收听</option></Select>
     </div>}
@@ -38,8 +39,15 @@ export function EpisodeBrowser({ vm, feedId, requestedQuery, children, scope, in
       {error?<p role="alert">{error}</p>:null}
       {busy&&!page?<PodcastLoading label="正在搜索本地单集"/>:page?.episodes.length?<>
         <p className="podcast-search-page-status" role="status">本地单集 · 共 {page.total} 集 {busy?"· 更新中 ":""}· 第 {offset+1}–{offset+page.episodes.length} 集</p>
-        {page.episodes.map(episode=><EpisodeRow key={episode.id} episode={episode} active={vm.currentEpisodeId===episode.id} isPlaying={vm.currentEpisodeId===episode.id&&vm.isPlaying} downloading={vm.downloadingId===episode.id} showFeed={!feedId}
-          onOpen={()=>vm.openEpisodeDetail(episode,feedId?"show":"library")} onPlay={()=>vm.playEpisode(episode)} onDownload={()=>void vm.downloadEpisode(episode)} onContextMenu={event=>vm.showEpisodeMenu(event,episode)}/>)}
+        {page.episodes.map(episode=><div key={episode.id}><EpisodeRow episode={episode} active={vm.currentEpisodeId===episode.id} isPlaying={vm.currentEpisodeId===episode.id&&vm.isPlaying} downloading={vm.downloadingId===episode.id} showFeed={!feedId}
+          onOpen={()=>vm.openEpisodeDetail(episode,feedId?"show":"library")} onPlay={()=>vm.playEpisode(episode)} onDownload={()=>void vm.downloadEpisode(episode)} onContextMenu={event=>vm.showEpisodeMenu(event,episode)}/>
+          {(page.matches??[]).filter(hit=>hit.episodeId===episode.id).map((hit,index)=><div className="podcast-search-content-hit" key={index}>
+            <span>{hit.kind==="bookmark"?"书签":"已缓存转写"}</span>
+            <Button variant="ghost" aria-label={`${episode.title} · ${hit.positionSeconds===null?"查看内容":"从 "+formatTime(hit.positionSeconds)+" 播放"}`}
+              onClick={()=>hit.positionSeconds===null?vm.openEpisodeDetail(episode,feedId?"show":"library"):vm.playEpisodeAt(episode,hit.positionSeconds)}>{hit.positionSeconds===null?"查看内容":formatTime(hit.positionSeconds)}</Button>
+            <p>{hit.text}</p>
+          </div>)}
+        </div>)}
         <div className="podcast-search-page-actions"><Button disabled={busy||offset===0} onClick={()=>setOffset(value=>Math.max(0,value-50))}>上一页</Button><Button disabled={busy||!page.hasMore} onClick={()=>setOffset(value=>value+50)}>下一页</Button></div>
       </>:<PodcastEmpty label="没有匹配的本地单集"/>}
     </section>:children}

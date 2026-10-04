@@ -2409,3 +2409,7 @@
 .podcast-notes li + li { margin-top: 5px; }
 .podcast-notes blockquote { margin: 14px 0; padding-left: 16px; border-left: 2px solid var(--faint); }
 .podcast-notes pre { overflow-x: auto; white-space: pre; }
+.podcast-search-content-hit { margin: -4px 0 14px 76px; max-width: 760px; color: var(--muted); font-size: 12px; }
+.podcast-search-content-hit > span { margin-right: 12px; color: var(--quiet); }
+.podcast-search-content-hit .button { min-height: 32px; padding: 2px 0; color: var(--accent); }
+.podcast-search-content-hit p { margin: 2px 0 0; line-height: 1.7; overflow-wrap: anywhere; user-select: text; }

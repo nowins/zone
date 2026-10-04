@@ -108,7 +108,8 @@ export function listPodcastEpisodes(feedId: string, offset = 0, limit = 100) {
   return invoke<PodcastEpisode[]>("podcast_list_episodes", { feedId, offset, limit });
 }
 
-export type EpisodeSearchPage = { episodes: PodcastEpisode[]; total: number; hasMore: boolean };
+export type PodcastContentMatch = { episodeId: string; kind: "bookmark" | "transcript"; positionSeconds: number | null; text: string };
+export type EpisodeSearchPage = { episodes: PodcastEpisode[]; total: number; hasMore: boolean; matches?: PodcastContentMatch[] };
 export const searchLocalEpisodes = (options: { feedId?: string; query: string; filter: string; sort: string; offset: number; limit: number; followedOnly?: boolean }) =>
   invoke<EpisodeSearchPage>("podcast_search_episodes", options);
 

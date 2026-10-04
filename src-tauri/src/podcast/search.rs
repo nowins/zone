@@ -5,7 +5,19 @@ use tauri::State;
 
 #[derive(Serialize)]
 #[serde(rename_all="camelCase")]
-pub struct PodcastEpisodeSearchPage {pub episodes:Vec<PodcastEpisode>,pub total:usize,pub has_more:bool}
+pub struct PodcastEpisodeSearchPage {pub episodes:Vec<PodcastEpisode>,pub total:usize,pub has_more:bool,pub matches:Vec<PodcastContentMatch>}
+
+#[derive(Serialize)]
+#[serde(rename_all="camelCase")]
+pub struct PodcastContentMatch {pub episode_id:String,pub kind:String,pub position_seconds:Option<f64>,pub text:String}
+
+fn content_excerpt(text:&str,query:&str)->String {
+  let lowered=text.to_lowercase();
+  let index=lowered.find(&query.to_lowercase()).map(|index|lowered[..index].chars().count()).unwrap_or(0);
+  let start=index.saturating_sub(55);
+  let excerpt:String=text.chars().skip(start).take(170).collect();
+  format!("{}{}{}",if start>0{"…"}else{""},excerpt,if text.chars().count()>start+170{"…"}else{""})
+}
 
 pub(crate) fn search_episodes(path:&Path,downloads:&Path,feed:Option<&str>,query:&str,filter:&str,sort:&str,offset:usize,limit:usize)->Result<PodcastEpisodeSearchPage,String> {
   search_episodes_scoped(path,downloads,feed,query,filter,sort,offset,limit,false)
@@ -21,7 +33,10 @@ fn search_episodes_scoped(path:&Path,downloads:&Path,feed:Option<&str>,query:&st
     LEFT JOIN podcast_saved_episodes s ON s.episode_id=e.id
     WHERE (?1 IS NULL OR e.feed_id=?1) AND {condition} AND {} AND
     (e.title LIKE ?2 ESCAPE '\\' OR COALESCE(e.description,'') LIKE ?2 ESCAPE '\\'
-    OR f.title LIKE ?2 ESCAPE '\\' OR COALESCE(f.author,'') LIKE ?2 ESCAPE '\\')",if followed_only{"f.subscribed=1"}else{"1=1"});
+    OR f.title LIKE ?2 ESCAPE '\\' OR COALESCE(f.author,'') LIKE ?2 ESCAPE '\\'
+    OR EXISTS(SELECT 1 FROM podcast_bookmarks b WHERE b.episode_id=e.id AND b.label LIKE ?2 ESCAPE '\\')
+    OR EXISTS(SELECT 1 FROM podcast_episode_resources r JOIN podcast_transcript_cues c ON c.resource_id=r.id
+      WHERE r.episode_id=e.id AND r.kind='transcript' AND c.text LIKE ?2 ESCAPE '\\'))",if followed_only{"f.subscribed=1"}else{"1=1"});
   let db=open_database(path)?;
   let total=db.query_row(&format!("SELECT COUNT(*) {from}"),params![feed,pattern],|r|r.get::<_,i64>(0)).map_err(|e|e.to_string())?.max(0) as usize;
   let sql=format!("SELECT e.id,e.feed_id,e.title,e.description,e.published_at,
@@ -32,7 +47,20 @@ fn search_episodes_scoped(path:&Path,downloads:&Path,feed:Option<&str>,query:&st
   let mut statement=db.prepare(&sql).map_err(|e|e.to_string())?;
   let episodes=statement.query_map(params![feed,pattern,limit.clamp(1,100) as i64,offset.min(200_000) as i64],|r|query::podcast_episode_from_row(r,downloads))
     .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
-  let has_more=offset.saturating_add(episodes.len())<total;Ok(PodcastEpisodeSearchPage{episodes,total,has_more})
+  let mut matches=Vec::new();
+  if !query.trim().is_empty() {
+    let mut hit_query=db.prepare("SELECT kind,position_ms,text FROM (
+      SELECT 'bookmark' AS kind,b.position_ms,b.label AS text FROM podcast_bookmarks b WHERE b.episode_id=?1 AND b.label LIKE ?2 ESCAPE '\\'
+      UNION SELECT 'transcript',c.start_ms,c.text FROM podcast_episode_resources r JOIN podcast_transcript_cues c ON c.resource_id=r.id
+      WHERE r.episode_id=?1 AND r.kind='transcript' AND c.text LIKE ?2 ESCAPE '\\') ORDER BY kind,position_ms LIMIT 3").map_err(|e|e.to_string())?;
+    for episode in &episodes {
+      let rows=hit_query.query_map(params![episode.id,pattern],|row|Ok((row.get::<_,String>(0)?,row.get::<_,Option<i64>>(1)?,row.get::<_,String>(2)?))).map_err(|e|e.to_string())?;
+      for row in rows {let (kind,position,text)=row.map_err(|e|e.to_string())?;
+        matches.push(PodcastContentMatch{episode_id:episode.id.clone(),kind,position_seconds:position.map(|ms|ms.max(0) as f64/1000.0),text:content_excerpt(&text,query.trim())});
+      }
+    }
+  }
+  let has_more=offset.saturating_add(episodes.len())<total;Ok(PodcastEpisodeSearchPage{episodes,total,has_more,matches})
 }
 
 #[tauri::command]
@@ -44,6 +72,28 @@ pub async fn podcast_search_episodes(state:State<'_,PodcastState>,feed_id:Option
 #[cfg(test)]
 mod tests {
   use super::*;use crate::podcast::test_support::*;
+  #[test]
+  fn cached_transcripts_and_bookmarks_search_the_archive_with_timed_matches() {
+    let dir=test_directory("content-search");let state=PodcastState::initialize_at(&dir).unwrap();
+    let parsed=parsed_fixture_with_episode_count(260);let id=parsed.episodes[230].id.clone();let feed=parsed.feed.id.clone();
+    store_subscription(&state.db_path,parsed).unwrap();let db=open_database(&state.db_path).unwrap();
+    db.execute("INSERT INTO podcast_episode_resources(id,episode_id,kind,source_kind) VALUES('search-cues',?1,'transcript','podcast-transcript')",[&id]).unwrap();
+    db.execute("INSERT INTO podcast_transcript_cues(resource_id,ordinal,start_ms,text) VALUES('search-cues',0,42500,'声音记忆 100%_'),('search-cues',1,NULL,'无时间的声音记忆')",[]).unwrap();
+    db.execute("INSERT INTO podcast_bookmarks(id,episode_id,position_ms,label,updated_at) VALUES('search-bookmark',?1,62000,'声音记忆备注',1)",[&id]).unwrap();
+    let page=search_episodes(&state.db_path,&state.downloads_dir,None,"声音记忆","all","newest",0,50).unwrap();
+    assert_eq!(page.total,1);assert_eq!(page.episodes[0].id,id);assert_eq!(page.matches.len(),3);
+    assert!(page.matches.iter().any(|hit|hit.kind=="bookmark"&&hit.position_seconds==Some(62.0)));
+    assert!(page.matches.iter().any(|hit|hit.kind=="transcript"&&hit.position_seconds==Some(42.5)));
+    assert!(page.matches.iter().any(|hit|hit.position_seconds.is_none()));
+    assert_eq!(search_episodes(&state.db_path,&state.downloads_dir,None,"100%_","all","newest",0,50).unwrap().total,1);
+    assert_eq!(search_episodes(&state.db_path,&state.downloads_dir,None,"100__","all","newest",0,50).unwrap().total,0);
+    assert!(search_episodes(&state.db_path,&state.downloads_dir,None,"","all","newest",0,50).unwrap().matches.is_empty());
+    set_following(&state.db_path,&feed,false).unwrap();
+    assert_eq!(search_episodes_scoped(&state.db_path,&state.downloads_dir,None,"声音记忆","all","newest",0,50,true).unwrap().total,0);
+    assert_eq!(search_episodes(&state.db_path,&state.downloads_dir,None,"声音记忆","all","newest",50,50).unwrap().total,1);
+    drop(db);
+    fs::remove_dir_all(dir).unwrap();
+  }
   #[test]
   fn local_search_pages_the_entire_archive_and_escapes_wildcards() {
     let dir=test_directory("search");let state=PodcastState::initialize_at(&dir).unwrap();let mut parsed=parsed_fixture_with_episode_count(250);

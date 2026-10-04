@@ -239,6 +239,14 @@ async function run() {
     checks.push("真实客户端榜单来源与更新时间、完整标题、排行与已关注标记并存、筛选空状态");
     await invoke("client_motion",{reduce:true});await until(()=>matchMedia('(prefers-reduced-motion: reduce)').matches,"native reduced motion");await click("资料库");await click("节目");document.querySelector<HTMLButtonElement>('.podcast-library-show-open')!.click();await click("节目设置");await until(()=>Boolean(document.querySelector('.podcast-settings-dialog')),"reduced motion settings");const modal=document.querySelector<HTMLElement>('.podcast-settings-dialog')!;await delay(100);assert(getComputedStyle(modal).animationName==="none"||parseFloat(getComputedStyle(modal).animationDuration)<0.02,"reduced motion retains rotating dialog animation");const focusables=Array.from(modal.querySelectorAll<HTMLButtonElement>('button')).filter(el=>!el.disabled);focusables.at(-1)!.focus();focusables.at(-1)!.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));assert(modal.contains(document.activeElement),"Tab escaped modal");await capture("16-reduced-motion-settings-920");modal.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=dialog]'),"reduced motion closes immediately");await invoke("client_motion",{reduce:false});checks.push("真实 WebView2 减少动态效果媒体条件、浮层动画停用与焦点 Tab／Escape 隔离（系统按键仍需手工补充）");
     await click("返回资料库");await musicSwitchAudit(checks);
+    await click("返回节目");await click("返回资料库");await click("单集");
+    const archiveInput=document.querySelector<HTMLInputElement>('input[aria-label="搜索本地播客资料库"]')!;
+    await inputValue(archiveInput,"关键词");await until(()=>Boolean(document.querySelector('.podcast-search-content-hit')),"archive transcript keyword match");
+    assert(document.querySelector('.podcast-search-content-hit')!.textContent!.includes('已缓存转写'),"search match origin absent");
+    document.querySelector<HTMLButtonElement>('.podcast-search-content-hit button')!.click();
+    await until(()=>!document.querySelector('audio')!.paused&&document.querySelector('audio')!.currentTime>=10&&document.querySelector('audio')!.currentTime<14,"archive match actual seek/play");
+    await invoke("client_media",{action:"pause"});await capture("38-content-search-920");await invoke("client_window",{small:false});await capture("38-content-search-1180");await invoke("client_window",{small:true});
+    checks.push("全库已缓存转写与书签检索，来源片段与时间码、真实音频定位及单一 audio");
     await snapshot();
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

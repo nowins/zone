@@ -35,3 +35,9 @@ test("archive pagination returns to the stored page after visiting details",asyn
  const h=await mount(async(command,args)=>{if(command==="podcast_search_episodes"){offsets.push(args.offset);return {episodes:[podcastEpisode(`episode-${args.offset}`)],total:100,hasMore:args.offset===0};}return [];},vm=>show?React.createElement(runtime.EpisodeBrowser,{vm,feedId:"restore-page"}):null);
  try{await step(()=>new Promise(resolve=>setTimeout(resolve,230)));await step(()=>Array.from(document.querySelectorAll('button')).find(el=>el.textContent==="下一页").click());await step(()=>new Promise(resolve=>setTimeout(resolve,230)));show=false;await h.render({...props});show=true;await h.render({...props});await step(()=>new Promise(resolve=>setTimeout(resolve,230)));assert.equal(offsets.at(-1),50);assert.match(document.body.textContent,/第 51/);}finally{await h.close();}
 });
+
+test("archive content matches show their origin and seek the matched episode time",async()=>{
+ const episode=podcastEpisode("matched"),calls=[];
+ const h=await mount(async command=>command==="podcast_search_episodes"?{episodes:[episode],total:1,hasMore:false,matches:[{episodeId:episode.id,kind:"transcript",positionSeconds:42.5,text:"声音记忆段落"},{episodeId:episode.id,kind:"bookmark",positionSeconds:62,text:"声音记忆备注"}]}:[],vm=>React.createElement(runtime.EpisodeBrowser,{vm:{...vm,playEpisodeAt:(item,time)=>calls.push([item.id,time])},requestedQuery:"声音记忆"}));
+ try{await step(()=>new Promise(resolve=>setTimeout(resolve,230)));assert.match(document.body.textContent,/已缓存转写/);assert.match(document.body.textContent,/声音记忆备注/);const buttons=document.querySelectorAll('.podcast-search-content-hit button');await step(()=>buttons[0].click());await step(()=>buttons[1].click());assert.deepEqual(calls,[["matched",42.5],["matched",62]]);}finally{await h.close();}
+});

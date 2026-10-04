@@ -200,6 +200,7 @@ fn page_in(
     .collect::<Result<Vec<_>, _>>()
     .map_err(|e| e.to_string())?;
   Ok(PodcastEpisodeSearchPage {
+    matches: Vec::new(),
     has_more: offset.saturating_add(episodes.len()) < total,
     episodes,
     total,
