@@ -190,7 +190,7 @@ fn page_in(
     .map_err(|e| e.to_string())?
     .max(0) as usize;
   let mut statement=db.prepare(&format!("SELECT e.id,e.feed_id,e.title,e.description,e.published_at,COALESCE(NULLIF(p.duration_seconds,0),e.duration_seconds),e.enclosure_url,e.enclosure_type,e.artwork_url,
-    COALESCE(d.state,'none'),d.local_path,COALESCE(d.downloaded_bytes,0),d.total_bytes,COALESCE(p.position_seconds,0),COALESCE(p.completed,0),f.title,f.artwork_url,CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,e.first_seen_at,e.webpage_url,p.updated_at AS last_listened_at
+    COALESCE(d.state,'none'),d.local_path,COALESCE(d.downloaded_bytes,0),d.total_bytes,COALESCE(p.position_seconds,0),COALESCE(p.completed,0),f.title,f.artwork_url,CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,e.first_seen_at,e.webpage_url,p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
     {from} ORDER BY {order} LIMIT ?3 OFFSET ?4")).map_err(|e|e.to_string())?;
   let episodes = statement
     .query_map(params![key, age, limit as i64, offset as i64], |r| {
@@ -200,6 +200,7 @@ fn page_in(
     .collect::<Result<Vec<_>, _>>()
     .map_err(|e| e.to_string())?;
   Ok(PodcastEpisodeSearchPage {
+    series: None,
     matches: Vec::new(),
     has_more: offset.saturating_add(episodes.len()) < total,
     episodes,

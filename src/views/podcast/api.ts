@@ -111,8 +111,8 @@ export function listPodcastEpisodes(feedId: string, offset = 0, limit = 100) {
 }
 
 export type PodcastContentMatch = { episodeId: string; kind: "bookmark" | "transcript"; positionSeconds: number | null; text: string };
-export type EpisodeSearchPage = { episodes: PodcastEpisode[]; total: number; hasMore: boolean; matches?: PodcastContentMatch[] };
-export const searchLocalEpisodes = (options: { feedId?: string; query: string; filter: string; sort: string; offset: number; limit: number; followedOnly?: boolean }) =>
+export type EpisodeSearchPage = { episodes: PodcastEpisode[]; total: number; hasMore: boolean; matches?: PodcastContentMatch[]; series?: {seasons: number[]; types: string[]; numbered: boolean} | null };
+export const searchLocalEpisodes = (options: { feedId?: string; query: string; filter: string; sort: string; offset: number; limit: number; followedOnly?: boolean; season?: number; episodeType?: string }) =>
   invoke<EpisodeSearchPage>("podcast_search_episodes", options);
 
 export async function searchCatalogPodcasts(query: string): Promise<PodcastSearchResult[]> {

@@ -152,8 +152,8 @@ fn store_feed(
         INSERT INTO podcast_episodes (
           id, feed_id, identity_key, guid, title, description, published_at,
           duration_seconds, enclosure_url, enclosure_type, artwork_url, expected_bytes,
-          first_seen_at, webpage_url
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+          first_seen_at, webpage_url, season, episode_number, episode_type
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
         ON CONFLICT(id) DO NOTHING
         ",
       )
@@ -172,7 +172,7 @@ fn store_feed(
           enclosure_type = ?10,
           artwork_url = ?11,
           expected_bytes = ?12,
-          webpage_url = ?14
+          webpage_url = ?14, season = ?15, episode_number = ?16, episode_type = ?17
         WHERE id = ?1 AND feed_id = ?2
           AND (
             identity_key IS NOT ?3
@@ -185,7 +185,7 @@ fn store_feed(
             OR enclosure_type IS NOT ?10
             OR artwork_url IS NOT ?11
             OR expected_bytes IS NOT ?12
-            OR webpage_url IS NOT ?14
+            OR webpage_url IS NOT ?14 OR season IS NOT ?15 OR episode_number IS NOT ?16 OR episode_type IS NOT ?17
           )
         ",
       )
@@ -205,7 +205,7 @@ fn store_feed(
         episode.artwork_url,
         episode.expected_bytes.and_then(|value| i64::try_from(value).ok()),
         feed.last_fetched_at,
-        episode.webpage_url,
+        episode.webpage_url, episode.season, episode.episode_number, episode.episode_type,
       ];
       let inserted = insert
         .execute(values)
@@ -252,7 +252,7 @@ fn store_feed(
           episode.artwork_url,
           episode.expected_bytes.and_then(|value| i64::try_from(value).ok()),
           feed.last_fetched_at,
-          episode.webpage_url,
+          episode.webpage_url, episode.season, episode.episode_number, episode.episode_type,
           ])
           .map_err(|error| format!("无法更新播客单集：{error}"))?;
       }

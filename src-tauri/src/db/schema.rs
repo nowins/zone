@@ -665,6 +665,9 @@ pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), Strin
     "webpage_url TEXT",
   )?;
 
+  for (name, definition) in [("season", "season INTEGER CHECK(season BETWEEN 1 AND 100000)"), ("episode_number", "episode_number INTEGER CHECK(episode_number BETWEEN 1 AND 100000)"), ("episode_type", "episode_type TEXT CHECK(episode_type IN ('full','trailer','bonus'))")] {
+    ensure_database_column(connection, "podcast_episodes", name, definition)?;
+  }
   connection
     .execute_batch(
       "

@@ -346,6 +346,9 @@ export type PodcastEpisode = {
   feedArtworkUrl?: string | null;
   firstSeenAt: number;
   webpageUrl?: string | null;
+  season?: number | null;
+  episodeNumber?: number | null;
+  episodeType?: "full" | "trailer" | "bonus" | null;
 };
 
 export type PodcastSubscribeResult = {

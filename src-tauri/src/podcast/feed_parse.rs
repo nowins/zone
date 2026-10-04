@@ -36,6 +36,9 @@ pub(crate) struct ParsedPodcastEpisode {
   pub(crate) expected_bytes: Option<u64>,
   pub(crate) webpage_url: Option<String>,
   pub(crate) resources: Option<Vec<ParsedEpisodeResource>>,
+  pub(crate) season: Option<i64>,
+  pub(crate) episode_number: Option<i64>,
+  pub(crate) episode_type: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -66,6 +69,9 @@ pub(crate) struct ParsedEpisodeExtensions {
   // Some(None) means an explicit but invalid duration: do not fall back to
   // feed-rs's permissive NPT parser (which treats MM:SS as seconds).
   pub(crate) duration_seconds: Option<Option<f64>>,
+  pub(crate) season: Option<i64>,
+  pub(crate) episode_number: Option<i64>,
+  pub(crate) episode_type: Option<String>,
 }
 #[derive(Clone, Debug)]
 pub(crate) struct PodcastRefreshTarget {
@@ -640,13 +646,19 @@ fn extract_episode_extensions(
           continue;
         };
         if namespace_is(namespace_uri.as_deref(), b"http://www.itunes.com/dtds/podcast-1.0.dtd")
-          && local_name.as_ref() == b"duration"
+          && matches!(local_name.as_ref(), b"duration" | b"season" | b"episode" | b"episodeType")
         {
           let text = reader.read_text(element.name()).ok()?;
           let text = text.decode().ok()?;
-          extensions[entry_index].duration_seconds = Some(
-            parse_podcast_duration_xml(&text),
-          );
+          let entry = &mut extensions[entry_index];
+          let number = || text.trim().parse::<i64>().ok().filter(|value| (1..=100_000).contains(value));
+          match local_name.as_ref() {
+            b"duration" => entry.duration_seconds = Some(parse_podcast_duration_xml(&text)),
+            b"season" => entry.season = number(),
+            b"episode" => entry.episode_number = number(),
+            b"episodeType" => entry.episode_type = Some(text.trim().to_ascii_lowercase()).filter(|value| matches!(value.as_str(), "full" | "trailer" | "bonus")),
+            _ => {}
+          }
           base_stack.pop(); // read_text consumed the matching End event.
           continue;
         }
@@ -1119,7 +1131,7 @@ fn normalize_feed(
 
   let mut episodes = Vec::new();
   for (index, entry) in parsed.entries.iter().enumerate() {
-    if let Some(episode) = normalize_episode(
+    if let Some(mut episode) = normalize_episode(
       entry,
       &feed_id,
       artwork_url.as_deref(),
@@ -1133,6 +1145,11 @@ fn normalize_feed(
             .unwrap_or_default()
         }),
     ) {
+      if let Some(extension) = episode_extensions.and_then(|entries| entries.get(index)) {
+        episode.season = extension.season;
+        episode.episode_number = extension.episode_number;
+        episode.episode_type = extension.episode_type.clone();
+      }
       episodes.push(episode);
     }
   }
@@ -1223,6 +1240,9 @@ fn normalize_episode(
     expected_bytes: enclosure.length,
     webpage_url,
     resources,
+    season: None,
+    episode_number: None,
+    episode_type: None,
   })
 }
 
@@ -1320,6 +1340,15 @@ fn is_possible_audio_enclosure(content_type: Option<&str>, url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+  #[test]
+  fn series_metadata_requires_the_itunes_namespace_and_valid_values() {
+    let document = |fields: &str| format!(r#"<rss version="2.0" xmlns:show="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel><title>Series</title><link>https://example.test</link><description>Series</description><item><guid>one</guid><title>One</title>{fields}<enclosure url="https://example.test/one.mp3" type="audio/mpeg"/></item></channel></rss>"#);
+    for (fields, expected) in [("<show:season>2</show:season><show:episode>14</show:episode><show:episodeType>trailer</show:episodeType>", (Some(2),Some(14),Some("trailer"))), ("<season>2</season><episode>14</episode><episodeType>bonus</episodeType>",(None,None,None)), ("<show:season>-1</show:season><show:episode>1.5</show:episode><show:episodeType>other</show:episodeType>",(None,None,None)), ("",(None,None,None))] {
+      let parsed = super::parse_feed_bytes(document(fields).as_bytes(), "https://example.test/rss", None,None,None,None,None).unwrap();
+      let episode=&parsed.episodes[0];
+      assert_eq!((episode.season,episode.episode_number,episode.episode_type.as_deref()),expected);
+    }
+  }
   use super::*;
   use crate::podcast::test_support::*;
   use tokio::io::AsyncReadExt;

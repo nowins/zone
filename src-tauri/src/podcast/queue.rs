@@ -341,7 +341,7 @@ pub(crate) fn list_queue(db_path: &Path, downloads_dir: &Path) -> Result<Vec<Pod
         f.title, f.artwork_url,
         CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
         e.first_seen_at, e.webpage_url,
-        q.position, q.added_at, p.updated_at AS last_listened_at
+        q.position, q.added_at, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
       FROM podcast_queue q
       JOIN podcast_episodes e ON e.id = q.episode_id
       JOIN podcast_feeds f ON f.id = e.feed_id

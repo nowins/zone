@@ -84,6 +84,9 @@ pub struct PodcastEpisode {
   pub(crate) saved: bool,
   pub(crate) first_seen_at: i64,
   pub(crate) webpage_url: Option<String>,
+  pub(crate) season: Option<i64>,
+  pub(crate) episode_number: Option<i64>,
+  pub(crate) episode_type: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]

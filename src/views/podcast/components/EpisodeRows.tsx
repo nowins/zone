@@ -121,6 +121,7 @@ function EpisodeRow({
           <span className="podcast-episode-feed">{episode.feedTitle}</span>
         ) : null}
         <strong>{episode.title}</strong>
+        {(episode.season || episode.episodeNumber || episode.episodeType) && <span className="podcast-episode-meta">{[episode.season?`第 ${episode.season} 季`:null,episode.episodeNumber?`第 ${episode.episodeNumber} 集`:null,episode.episodeType==="trailer"?"预告":episode.episodeType==="bonus"?"加更":episode.episodeType==="full"?"正片":null].filter(Boolean).join(" · ")}</span>}
         {episode.description ? <p>{plainText(episode.description)}</p> : null}
         {!showArtwork && (episode.progressSeconds > 0 || episode.completed) ? (
           <small>
@@ -225,6 +226,7 @@ function CurrentEpisodeRow({
       >
         <span>{episode.feedTitle || "播客"}</span>
         <strong>{episode.title}</strong>
+        {(episode.season || episode.episodeNumber || episode.episodeType) && <span className="podcast-episode-meta">{[episode.season?`第 ${episode.season} 季`:null,episode.episodeNumber?`第 ${episode.episodeNumber} 集`:null,episode.episodeType==="trailer"?"预告":episode.episodeType==="bonus"?"加更":episode.episodeType==="full"?"正片":null].filter(Boolean).join(" · ")}</span>}
         <small>
           {episode.completed
             ? "已播放"

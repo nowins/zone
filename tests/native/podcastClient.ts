@@ -275,9 +275,17 @@ async function run() {
     const syncedBookmarks=await invoke<Array<{label:string}>>("podcast_list_bookmarks",{episodeId:syncFixture.episodeId});assert(syncedBookmarks.some(item=>item.label==='客户端同步备注'),"peer bookmark missing");
     const syncedDetail=await invoke<{episode:{saved:boolean}}>("podcast_get_episode_detail",{episodeId:syncFixture.episodeId});assert(syncedDetail.episode.saved,"peer saved state missing");
     await click("播放列表");await click("我的列表");await selectValue(document.querySelector('[role=combobox][aria-label="当前播放列表"]')!,syncFixture.playlistId);await until(()=>document.querySelector('.podcast-named-list-row')?.textContent?.includes('离线单集')??false,"synced collection appears in real UI");
-    await capture("44-synced-collection-920");await invoke("client_window",{small:false});await capture("44-synced-collection-1180");await invoke("client_window",{small:true});
+    await invoke("client_window",{small:true});await capture("44-synced-collection-920");await invoke("client_window",{small:false});await capture("44-synced-collection-1180");await invoke("client_window",{small:true});
     await click("资料库");await click("管理");await click("停止同步");await until(()=>document.querySelector('.podcast-sync-status')?.textContent?.includes('未开启')??false,"fixture sync stopped");
     checks.push("真实客户端通过正式共享目录命令合并另一份独立数据库的稍后听、书签、列表成员与节目分组，并在实际列表界面显示；并发和删除传播由 Rust 双设备测试覆盖");
+    await click("quickplay");await until(()=>Boolean(document.querySelector('.quick-pin button')),"series show pin");document.querySelector<HTMLButtonElement>('.quick-pin button')!.click();
+    await until(()=>Boolean(document.querySelector('[role=combobox][aria-label="按季筛选"]')),"source seasons present");
+    await selectValue(document.querySelector('[role=combobox][aria-label="按季筛选"]')!,"2");await until(()=>document.querySelector('.podcast-search-page-status')?.textContent?.includes('共 1 集')??false,"complete archive season filter");
+    assert(document.querySelector('.podcast-episode-meta')?.textContent?.includes('预告'),"source trailer label missing");await invoke("client_window",{small:true});await capture("45-series-920");await invoke("client_window",{small:false});await capture("45-series-1180");
+    await selectValue(document.querySelector('[role=combobox][aria-label="按季筛选"]')!,"all");await selectValue(document.querySelector('[role=combobox][aria-label="单集类型"]')!,"full");await until(()=>document.querySelector('.podcast-search-page-status')?.textContent?.includes('共 1 集')??false,"source type filter");
+    await selectValue(document.querySelector('[role=combobox][aria-label="单集类型"]')!,"all");await selectValue(document.querySelector('[role=combobox][aria-label="单集排序"]')!,"series");
+    await until(()=>document.querySelector('.podcast-episode strong')?.textContent?.includes('离线单集')??false,"source numbered ordering");
+    checks.push("真实客户端依据源元数据显示季集与预告／加更，按季及类型查询完整归档并按季集排序，两种窗口布局；无元数据和不合法数据由原生解析测试覆盖");
     await snapshot();
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

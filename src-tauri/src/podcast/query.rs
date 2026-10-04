@@ -203,7 +203,7 @@ pub(crate) fn list_episode_page(
         COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
         f.title, f.artwork_url,
         CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
-        e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at
+        e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
       FROM podcast_episodes e
       JOIN podcast_feeds f ON f.id = e.feed_id
       LEFT JOIN podcast_downloads d ON d.episode_id = e.id
@@ -249,7 +249,7 @@ pub(crate) fn list_related_episodes(
         COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
         f.title, f.artwork_url,
         CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
-        e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at
+        e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
       FROM podcast_episodes e
       JOIN current_episode current ON current.feed_id = e.feed_id
       JOIN podcast_feeds f ON f.id = e.feed_id
@@ -292,7 +292,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
       CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
-      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at
+      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
     FROM podcast_episodes e
     JOIN podcast_feeds f ON f.id = e.feed_id
     JOIN podcast_progress p ON p.episode_id = e.id
@@ -316,7 +316,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
       CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
-      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at
+      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
     FROM podcast_episodes e
     JOIN podcast_feeds f ON f.id = e.feed_id
     LEFT JOIN podcast_downloads d ON d.episode_id = e.id
@@ -340,7 +340,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
       CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
-      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at
+      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
     FROM podcast_episodes e
     JOIN podcast_feeds f ON f.id = e.feed_id
     LEFT JOIN podcast_downloads d ON d.episode_id = e.id
@@ -366,7 +366,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
       CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
-      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at
+      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
     FROM podcast_episodes e
     JOIN podcast_feeds f ON f.id = e.feed_id
     LEFT JOIN podcast_downloads d ON d.episode_id = e.id
@@ -398,7 +398,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
       CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
-      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at
+      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
     FROM podcast_episodes e
     JOIN podcast_feeds f ON f.id = e.feed_id
     JOIN podcast_downloads d ON d.episode_id = e.id
@@ -426,7 +426,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
       1,
-      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at
+      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
     FROM podcast_saved_episodes s
     JOIN podcast_episodes e ON e.id = s.episode_id
     JOIN podcast_feeds f ON f.id = e.feed_id
@@ -449,7 +449,7 @@ pub(crate) fn list_home(db_path: &Path, downloads_dir: &Path) -> Result<PodcastH
       COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
       f.title, f.artwork_url,
       CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
-      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at
+      e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
     FROM podcast_progress p
     JOIN podcast_episodes e ON e.id = p.episode_id
     JOIN podcast_feeds f ON f.id = e.feed_id
@@ -528,7 +528,7 @@ pub(crate) fn list_downloads(
           COALESCE(p.position_seconds, 0), COALESCE(p.completed, 0),
           f.title, f.artwork_url,
           CASE WHEN s.episode_id IS NULL THEN 0 ELSE 1 END,
-          e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at
+          e.first_seen_at, e.webpage_url, p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
         FROM podcast_downloads d
         JOIN podcast_episodes e ON e.id = d.episode_id
         JOIN podcast_feeds f ON f.id = e.feed_id
@@ -683,6 +683,9 @@ pub(crate) fn podcast_episode_from_row(
     saved: row.get::<_, i64>(17)? != 0,
     first_seen_at: row.get(18)?,
     webpage_url: row.get(19)?,
+    season: row.get("season").unwrap_or(None),
+    episode_number: row.get("episode_number").unwrap_or(None),
+    episode_type: row.get("episode_type").unwrap_or(None),
   })
 }
 
@@ -731,7 +734,7 @@ pub(crate) const PODCAST_EPISODE_DETAIL_SELECT: &str = "
       WHERE latest.feed_id = f.id
       ORDER BY COALESCE(latest.published_at, latest.first_seen_at) DESC, latest.id
       LIMIT 1
-    ), p.updated_at AS last_listened_at
+    ), p.updated_at AS last_listened_at, e.season, e.episode_number, e.episode_type
   FROM podcast_episodes e
   JOIN podcast_feeds f ON f.id = e.feed_id
   LEFT JOIN podcast_downloads d ON d.episode_id = e.id

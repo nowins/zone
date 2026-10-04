@@ -85,8 +85,8 @@ pub(crate) const PODCAST_DOWNLOAD_PROGRESS_MIN_INTERVAL: Duration = Duration::fr
 pub(crate) const PODCAST_DOWNLOAD_PROGRESS_MAX_INTERVAL: Duration = Duration::from_secs(2);
 pub(crate) const PODCAST_REDIRECT_LIMIT: usize = 5;
 pub(crate) const PODCAST_DESCRIPTION_LIMIT: usize = 20_000;
-// Stored in the legacy duration_parser_version column; v2 also preserves notes.
-pub(crate) const PODCAST_FEED_PARSER_VERSION: i64 = 2;
+// Stored in the legacy duration_parser_version column; v3 adds source series metadata.
+pub(crate) const PODCAST_FEED_PARSER_VERSION: i64 = 3;
 pub(crate) const PODCAST_TITLE_LIMIT: usize = 500;
 pub(crate) const PODCAST_STREAM_TIMEOUT: Duration = Duration::from_secs(60);
 pub(crate) const PODCAST_ARTWORK_TIMEOUT: Duration = Duration::from_secs(30);
