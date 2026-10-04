@@ -126,3 +126,19 @@
   color: var(--accent);
   background: none;
 }
+
+/* A stepped control, with direct pointer feedback rather than inertial spin. */
+.podcast-rate-dial-control { display: grid; justify-items: center; gap: 4px; }
+.podcast-rate-dial-row { display: flex; align-items: center; gap: 12px; }
+.podcast-rate-dial-row > .button { width: 32px; min-height: 32px; justify-content: center; }
+.podcast-rate-dial { position: relative; width: 90px; height: 90px; touch-action: none; cursor: ns-resize; border-radius: 50%; }
+.podcast-rate-dial svg { width: 100%; height: 100%; overflow: visible; }
+.podcast-rate-dial circle { fill: rgba(255,255,255,.025); stroke: rgba(255,255,255,.18); stroke-width: 1; }
+.podcast-rate-dial line { stroke: rgba(255,255,255,.4); stroke-width: 1; }
+.podcast-rate-dial .podcast-rate-dial-needle { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; }
+.podcast-rate-dial > span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 2px; font-size: 26px; font-weight: 300; font-variant-numeric: tabular-nums; pointer-events: none; }
+.podcast-rate-dial small { font-size: 14px; color: var(--muted); }
+.podcast-rate-dial:hover circle, .podcast-rate-dial:focus-visible circle { stroke: var(--accent); }
+.podcast-rate-dial:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.podcast-rate-dial-control > .button { min-height: 28px; font-size: 12px; }
+.podcast-rate-dial[aria-disabled="true"] { opacity: .4; cursor: default; }

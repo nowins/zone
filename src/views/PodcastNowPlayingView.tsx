@@ -31,7 +31,7 @@ import { MetroLoader } from "../components/MetroLoader";
 import { Button } from "../components/Button";
 import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
-import { PODCAST_PLAYBACK_RATES } from "../app/podcastPlaybackSettings";
+import { PodcastRateDial } from "../components/PodcastRateDial";
 import type {
   PodcastPlayback,
   PodcastPlaybackStatus,
@@ -175,7 +175,7 @@ export function PodcastNowPlayingView({
         item.getAttribute("aria-checked") === "true"
         || item.classList.contains("active")
       );
-      (selected ?? items[0])?.focus();
+      (menu?.querySelector<HTMLElement>('[role="slider"]') ?? selected ?? items[0])?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeMenu]);
@@ -335,35 +335,14 @@ export function PodcastNowPlayingView({
   }
 
   const rateMenuElement = activeMenu === "rate" ? (
-    <div
-      ref={rateMenuRef}
-      id="podcast-rate-menu"
-      className="podcast-now-popover podcast-rate-popover"
-      role="menu"
-      aria-label="播放速度"
-      onKeyDown={handleMenuKeyDown}
-    >
+    <div ref={rateMenuRef} id="podcast-rate-menu" className="podcast-now-popover podcast-rate-popover"
+      role="dialog" aria-label="播放速度" onKeyDown={event => {
+        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeActiveMenu(true); }
+        if (event.key === "Tab") setActiveMenu(null);
+      }}>
       <strong>播放速度</strong>
       <p className="podcast-rate-scope">{rateScope === "show" ? "本节目独立倍速" : "默认倍速 · 用于继承设置的节目"}</p>
-      <div className="podcast-rate-options">
-        {PODCAST_PLAYBACK_RATES.map((rate) => (
-          <button
-            key={rate}
-            type="button"
-            role="menuitemradio"
-            tabIndex={-1}
-            aria-checked={playbackRate === rate}
-            className={playbackRate === rate ? "active" : ""}
-            onClick={() => {
-              onPlaybackRate(rate);
-              closeActiveMenu(true);
-            }}
-          >
-            <span>{formatPlaybackRate(rate)}</span>
-            {playbackRate === rate ? <Check size={14} aria-hidden="true" /> : null}
-          </button>
-        ))}
-      </div>
+      <PodcastRateDial value={playbackRate} onChange={onPlaybackRate} />
     </div>
   ) : null;
 
@@ -697,7 +676,7 @@ export function PodcastNowPlayingView({
                 ref={rateTriggerRef}
                 type="button"
                 className={activeMenu === "rate" ? "active" : ""}
-                aria-haspopup="menu"
+                aria-haspopup="dialog"
                 aria-controls="podcast-rate-menu"
                 aria-expanded={activeMenu === "rate"}
                 onClick={() =>

@@ -745,17 +745,10 @@
   font-weight: 540;
 }
 
-.podcast-rate-options,
 .podcast-sleep-options {
   display: grid;
 }
 
-.podcast-rate-options {
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3px;
-}
-
-.podcast-rate-options button,
 .podcast-sleep-options button {
   min-height: 28px;
   display: flex;
@@ -768,14 +761,7 @@
   text-align: left;
 }
 
-.podcast-rate-options button {
-  justify-content: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.podcast-rate-options button:hover,
 .podcast-sleep-options button:hover,
-.podcast-rate-options button.active,
 .podcast-sleep-options button.active {
   color: #fff;
   background: rgba(255, 255, 255, 0.055);
@@ -903,3 +889,5 @@
     bottom: 18px;
   }
 }
+
+.podcast-rate-popover { width: 192px; }

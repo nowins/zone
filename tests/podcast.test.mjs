@@ -953,12 +953,12 @@ test("podcast detail, menus, and full-screen layout cover keyboard and minimum-w
   }
   assert.equal(
     occurrences(podcastNowPlayingSource, /aria-haspopup="menu"/g),
-    2,
-    "speed and sleep triggers must expose menu semantics",
+    1,
+    "sleep trigger must expose menu semantics",
   );
   includes(
     podcastNowPlayingSource,
-    /\(selected\s*\?\?\s*items\[0\]\)\?\.focus\(\)/,
+    /menu\?\.querySelector<HTMLElement>\([\s\S]{0,45}role="slider"[\s\S]{0,50}selected\s*\?\?\s*items\[0\]/,
     "opening a playback menu must focus its selected or first item",
   );
   includes(
