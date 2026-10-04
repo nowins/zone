@@ -49,6 +49,10 @@ async function run() {
     assert(open,"followed fixture show missing");
     if(open){open.click();await click("节目设置");await until(()=>Boolean(document.querySelector(".podcast-settings-fields select")),"feed settings");await capture("03-feed-settings");
       (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector("[role=dialog]"),"escape closes settings");checks.push("节目设置入口与 Escape 关闭且保留节目页");
+      await click("加入分组");await until(()=>Boolean(document.querySelector('input[aria-label="新分组名称"]')),"show group picker");const fromShowName=`节目入口 ${Date.now()}`;
+      await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="新分组名称"]')!,fromShowName);await capture("19-show-group-entry-920");await click("加入");await until(()=>!document.querySelector('[role=dialog]'),"show group saved");
+      const fromShowGroups=await invoke<Array<{name:string;feedIds:string[]}>>("podcast_list_show_groups");assert(fromShowGroups.some(group=>group.name===fromShowName&&group.feedIds.length===1),"show entry failed to persist membership");
+      checks.push("节目页直接创建分组并保存原生成员关系，分组搜索与可见批量选择");
       await until(()=>Boolean(document.querySelector(".podcast-search-page-status")),"native episode count");
       const search=document.querySelector<HTMLInputElement>(".podcast-episode-filters input[type=search]")!;
       const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!;
@@ -121,7 +125,9 @@ async function run() {
       await click("资料库");await click("新建分组");await until(()=>Boolean(document.querySelector('input[aria-label="节目分组名称"]')),"group editor");
       const groupName=`验收分组 ${Date.now()}`;
       await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="节目分组名称"]')!,groupName);
-      document.querySelector<HTMLInputElement>('.podcast-collection-feeds input[type=checkbox]')!.click();await click("保存");await until(()=>!document.querySelector('[role=dialog]'),"group saved");
+      await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="搜索节目范围"]')!,"没有这样的节目");assert(document.querySelectorAll('.podcast-collection-feeds input[type=checkbox]').length===0,"group search ignores query");
+      await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="搜索节目范围"]')!,"客户端验证");await click("选中可见节目");assert(document.querySelector('.podcast-feed-picker-tools')?.textContent?.includes("已选 1 / 1"),"group selection count");
+      await capture("19-group-picker-920");await click("保存");await until(()=>!document.querySelector('[role=dialog]'),"group saved");
       await until(()=>Boolean(Array.from(document.querySelectorAll('select[aria-label="节目分组"] option')).find(el=>el.textContent?.includes(groupName))),"group selection");
       await capture("10-show-group-920");assert(document.querySelectorAll('.podcast-library-show').length===1,"group should retain matching followed show");
       await click("编辑分组");await until(()=>Boolean(document.querySelector('input[aria-label="节目分组名称"]')),"edit group");

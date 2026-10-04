@@ -2198,6 +2198,10 @@
 .podcast-collection-dialog .playlist-dialog-actions { position: sticky; bottom: -28px; z-index: 1; background: #171118; padding: 16px 0; margin-top: 16px; border-top: 1px solid var(--faint); }
 .podcast-collection-fields select { min-width: 150px; height: 36px; padding: 6px; font: inherit; background: var(--app-bg); color: var(--text); border: 1px solid var(--quiet); }
 .podcast-collection-feeds { border: 1px solid var(--quiet); max-height: 150px; overflow: auto; padding: 12px; }
+.podcast-feed-picker { border: 0; padding: 0; margin: 0; min-width: 0; }
+.podcast-feed-picker legend { font-size: 14px; margin-bottom: 10px; }
+.playlist-dialog .podcast-feed-picker > input { width: 100%; box-sizing: border-box; height: 36px; font-size: 14px; }
+.podcast-feed-picker-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 8px 0; font-size: 12px; color: var(--muted); }
 .playlist-dialog .podcast-collection-feeds label { justify-content: flex-start; margin: 8px 0; }
 .playlist-dialog .podcast-collection-feeds input[type="checkbox"] { width: 16px; height: 16px; min-width: 16px; margin: 0; padding: 0; }
 .podcast-collection-fields small { font-size: 12px; line-height: 1.8; color: var(--muted); }
