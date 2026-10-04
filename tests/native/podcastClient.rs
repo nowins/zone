@@ -39,6 +39,8 @@ pub fn initialize(app: &tauri::AppHandle) -> Result<(),String> {
   for(i,v)in wav[44..].chunks_exact_mut(2).enumerate(){let seconds=i as f64/rate as f64;let level=if(60.0..70.0).contains(&seconds){0.0}else{1000.0};let signal=((seconds*220.0*std::f64::consts::TAU).sin()*level)as i16;v.copy_from_slice(&signal.to_le_bytes());}
   fs::write(data.join("podcast-downloads").join(format!("{offline}.wav")),wav).map_err(|e|e.to_string())?;
   if std::env::var("ZONE_PODCAST_CLIENT_MODE").unwrap_or_else(|_|"core".into())=="core" {
+    // The isolated manual audit may add public subscriptions; keep core fixtures deterministic.
+    connection.execute("UPDATE podcast_feeds SET subscribed=CASE WHEN feed_url='https://example.com/client-podcast.xml' THEN 1 ELSE 0 END",[]).map_err(|e|e.to_string())?;
     let folder=data.join("client-music");fs::create_dir_all(&folder).map_err(|e|e.to_string())?;
     fs::copy(data.join("podcast-downloads").join(format!("{offline}.wav")),folder.join("Zone-client-music.wav")).map_err(|e|e.to_string())?;
     let music=app.state::<crate::music::MusicState>();

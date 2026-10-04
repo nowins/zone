@@ -2143,7 +2143,7 @@
 .podcast-library-actions { display: flex; justify-content: flex-end; padding: 0 36px; }
 .podcast-transfer-actions { margin-bottom: 24px; font-size: 13px; }
 .podcast-management-section { margin: 0 0 28px; padding: 0 0 22px; border-bottom: 1px solid var(--faint); }
-.podcast-management-section h2 { font-size: 22px; font-weight: 400; margin: 0 0 14px; }
+.podcast-management-section h2 { font-size: 21px; font-weight: 330; line-height: 1.1; letter-spacing: -.018em; margin: 0 0 14px; }
 .podcast-management-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; }
 .podcast-management-section label { display: inline-flex; align-items: center; gap: 8px; }
 .podcast-management-section summary { cursor: pointer; color: var(--muted); min-height: 32px; font-size: 13px; }
@@ -2177,7 +2177,7 @@
 .podcast-download-job strong { font-size: 14px; overflow-wrap: anywhere; }
 .podcast-download-job span,.podcast-download-job small { color: var(--muted); font-size: 12px; }
 .podcast-storage-summary { margin-bottom: 24px; }
-.podcast-storage-summary h2 { font-size: 22px; font-weight: 400; margin: 0 0 12px; }
+.podcast-storage-summary h2 { font-size: 21px; font-weight: 330; line-height: 1.1; letter-spacing: -.018em; margin: 0 0 12px; }
 .podcast-storage-summary p { font-size: 13px; color: var(--muted); margin: 6px 0; }
 .podcast-download-jobs { margin-bottom: 28px; }
 .podcast-playback-settings { border: 0; padding: 12px 0 0; margin: 0; border-top: 1px solid var(--quiet); }
@@ -2260,7 +2260,11 @@
 /* Timestamp bookmarks use the same restrained episode reading column. */
 .podcast-bookmarks { margin: 28px 0; }
 .podcast-bookmark-entry { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-.podcast-bookmark-entry input { width: min(300px, 100%); min-width: 0; }
+.podcast-bookmark-entry input { box-sizing: border-box; width: min(300px, 100%); min-width: 0; min-height: 36px; padding: 8px 10px; border: 1px solid var(--quiet); font: inherit; font-size: 13px; color: var(--text); background: var(--app-bg); color-scheme: dark; }
+.podcast-bookmark-entry input:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.podcast-bookmarks h3 { font-size: 21px; font-weight: 330; line-height: 1.1; letter-spacing: -.018em; }
+.podcast-management-section input[type="checkbox"], .podcast-transcript-panel input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+.podcast-sync-status { display: flex; align-items: center; gap: 8px; }
 .podcast-bookmarks ol { list-style: none; padding: 0; }
 .podcast-bookmarks li { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .podcast-bookmarks li > :first-child { flex: 1; min-width: 0; text-align: left; overflow-wrap: anywhere; }
@@ -2286,9 +2290,9 @@
 .podcast-bar-sleep input { width: 80px; }
 .playlist-dialog-overlay.podcast-bar-options-overlay { inset: 28px 0 76px; padding: 0 28px; align-items: end; justify-items: start; }
 .playlist-dialog.podcast-bar-options-dialog { --dialog-offset-y: 0px; box-sizing: border-box; width: min(420px, calc(100vw - 56px)); max-height: calc(100vh - 110px); padding: 18px 20px 12px; overflow: auto; color-scheme: dark; }
-.podcast-bar-options-dialog h2 { font-size: 26px; margin-bottom: 14px; }
-.podcast-bar-options-dialog .playlist-dialog-actions { position: sticky; bottom: -12px; padding-block: 12px; margin-top: 0; background: #171118; }
-.podcast-bar-options-dialog fieldset { border: 0; border-top: 1px solid rgba(255,255,255,.16); padding: 16px 0; margin-inline: 0; min-width: 0; font-size: 13px; }
+.playlist-dialog.podcast-bar-options-dialog h2 { font-size: 26px; margin: 8px 0 12px; }
+.podcast-bar-options-dialog .playlist-dialog-actions { padding-top: 8px; margin-top: 0; }
+.podcast-bar-options-dialog fieldset { border: 0; border-top: 1px solid rgba(255,255,255,.16); padding: 10px 0; margin: 0; min-width: 0; font-size: 13px; }
 .podcast-bar-options-dialog legend { padding-right: 10px; color: var(--muted); font-size: 12px; }
 .podcast-bar-options-dialog .podcast-bar-rates .button { min-width: 42px; min-height: 36px; }
 .podcast-bar-options-dialog .podcast-bar-sleep label { display: flex; width: 140px; align-items: center; gap: 12px; margin: 0; }
@@ -2297,6 +2301,7 @@
 .podcast-bar-options-dialog .podcast-bar-sleep > div { margin-bottom: 10px; }
 .podcast-rate-scope { font-size: 12px; line-height: 1.6; color: var(--muted); margin: 0 0 10px; }
 .podcast-sleep-countdown, .podcast-bar-countdown { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.podcast-sleep-countdown { margin: 8px 0; line-height: 1.6; color: var(--accent); }
 
 .podcast-card-rank { left: 6px; right: auto; }
 .podcast-card-followed { display: flex; align-items: center; gap: 3px; font-size: 10px; padding: 2px 4px; background: rgba(0,0,0,.65); }

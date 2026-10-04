@@ -6,6 +6,7 @@ import { MOTION_DURATIONS } from "../../../motion/tokens";
 import type { PodcastFeed } from "../../../types";
 import { deleteShowGroup, listShowGroups, saveShowGroup, type PodcastShowGroup } from "../api";
 import { FeedPicker } from "./FeedPicker";
+import { PodcastLoading } from "./primitives";
 
 let previousSelection = "";
 const errorMessage = (reason: unknown) => typeof reason === "string" ? reason : "节目分组读取或保存失败，请重试";
@@ -37,7 +38,7 @@ function ShowGroupPicker({ feed, onClose }: { feed: PodcastFeed; onClose: () => 
     actions={<><Button onClick={onClose} disabled={busy}>取消</Button><Button type="submit" variant="primary" busy={busy} disabled={!groups || (!id && !name.trim())}>{alreadyAdded ? "完成" : "加入"}</Button></>}>
     {groups ? <div className="podcast-collection-fields"><label>分组<select aria-label="选择节目分组" disabled={busy} value={id} onChange={event => setId(event.target.value)}><option value="">新建分组</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}{group.feedIds.includes(feed.id) ? " · 已加入" : ""}</option>)}</select></label>
       {!id && <label>名称<input aria-label="新分组名称" maxLength={80} required disabled={busy} value={name} onChange={event => setName(event.target.value)} /></label>}
-      {alreadyAdded && <p role="status">这个节目已在所选分组中</p>}</div> : <p role="status">正在读取分组</p>}
+      {alreadyAdded && <p role="status">这个节目已在所选分组中</p>}</div> : !error && <PodcastLoading label="正在读取分组" />}
     {error && <p role="alert">{error}{!groups && <Button onClick={() => setRevision(value => value + 1)}>重试</Button>}</p>}
   </Dialog>;
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "../../../components/Button";
 import { getDownloadStorage, type PodcastDownloadStorage } from "../api";
 import { formatFileSize } from "../format";
+import { PodcastLoading } from "./primitives";
 
 export function DownloadStorage({ revision }: { revision: number }) {
   const [storage, setStorage] = useState<PodcastDownloadStorage | null>(null);
@@ -14,6 +15,7 @@ export function DownloadStorage({ revision }: { revision: number }) {
   }, [revision, retry]);
   return <section className="podcast-storage-summary" aria-label="下载空间">
     <h2>下载空间</h2>
+    {!storage && !error && <PodcastLoading label="正在统计下载空间" />}
     {storage && <><p>已占用 {formatFileSize(storage.completedBytes + storage.partialBytes)} · 上限 {storage.limitBytes ? formatFileSize(storage.limitBytes) : "不限"}</p>
       <p>完整音频 {formatFileSize(storage.completedBytes)} · 未完成文件 {formatFileSize(storage.partialBytes)}</p>
       <p>清理已听完可释放约 {formatFileSize(storage.reclaimableBytes)} · {storage.reclaimableCount} 集</p>

@@ -31,5 +31,21 @@ test("partial sync reports the actual devices and clears its error only after a 
     assert.equal(document.querySelector('[role="alert"]'), null);
     assert.match(document.body.textContent, /已检查 3 台其他设备 · 资料无变化/);
     assert.match(document.querySelector('[role="status"]').textContent, /已同步/);
+    let finishChoice, finishStop;
+    window.__TAURI_INTERNALS__.invoke = async command => {
+      calls.push(command);
+      if (command === "podcast_choose_sync_folder") return new Promise(resolve => { finishChoice = resolve; });
+      if (command === "podcast_stop_sync") return new Promise(resolve => { finishStop = resolve; });
+      return partial;
+    };
+    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === "更换同步目录").click());
+    await act(async () => document.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
+    assert.match(document.querySelector('.podcast-sync-status').textContent, /正在选择同步目录/);
+    assert.doesNotMatch(document.querySelector('.podcast-sync-status').textContent, /正在同步$/);
+    await act(async () => finishChoice({ ...partial, error: null }));
+    await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === "停止同步").click());
+    assert.match(document.querySelector('.podcast-sync-status').textContent, /正在停止同步/);
+    await act(async () => finishStop({ folder: null, syncing: false }));
+    assert.match(document.querySelector('.podcast-sync-status').textContent, /同步未开启/);
   } finally { await act(async () => root.unmount()); dom.window.close(); }
 });
