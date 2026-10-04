@@ -137,3 +137,23 @@ pub fn client_backup_tick(app:tauri::AppHandle)->Result<bool,String>{
   let state=app.state::<crate::podcast::PodcastState>();
   crate::podcast::run_scheduled_backup(state.inner(),crate::podcast::unix_time_millis()+8*86_400_000)
 }
+
+#[tauri::command]
+pub fn client_prepare_sync(app:tauri::AppHandle)->Result<serde_json::Value,String>{
+  let state=app.state::<crate::podcast::PodcastState>();let folder=directory().join("shared-sync");fs::create_dir_all(&folder).map_err(|e|e.to_string())?;
+  let peer_dir=directory().join("peer-data");let peer=crate::podcast::PodcastState::initialize_at_with_artwork_cache(&peer_dir,peer_dir.join("podcast-artwork"))?;
+  let seed=directory().join("sync-seed.zonepodcast");crate::podcast::export_sync_backup(state.inner(),&seed)?;crate::podcast::restore_sync_backup(&peer,&seed)?;
+  let path=crate::db::initialize_zone_database(&peer_dir)?;let db=crate::podcast::open_database(&path)?;
+  let episode:String=db.query_row("SELECT id FROM podcast_episodes WHERE title LIKE '离线单集%' LIMIT 1",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+  let bookmark=crate::podcast::hash_identifier("bookmark",&["client-sync"]);let playlist=crate::podcast::hash_identifier("playlist",&["client-sync"]);let group=crate::podcast::hash_identifier("group",&["client-sync"]);
+  let now=crate::podcast::unix_time_millis();
+  db.execute("INSERT OR REPLACE INTO podcast_saved_episodes VALUES(?1,?2)",rusqlite::params![episode,now]).map_err(|e|e.to_string())?;
+  db.execute("INSERT INTO podcast_bookmarks VALUES(?1,?2,88000,'客户端同步备注',?3) ON CONFLICT(episode_id,position_ms) DO UPDATE SET label=excluded.label,updated_at=excluded.updated_at",rusqlite::params![bookmark,episode,now]).map_err(|e|e.to_string())?;
+  db.execute("INSERT INTO podcast_playlists VALUES(?1,'来自其他设备的列表','manual','{}',?2,?2) ON CONFLICT(id) DO UPDATE SET name=excluded.name,updated_at=excluded.updated_at",rusqlite::params![playlist,now]).map_err(|e|e.to_string())?;
+  db.execute("INSERT OR REPLACE INTO podcast_playlist_items VALUES(?1,?2,0,?3)",rusqlite::params![playlist,episode,now]).map_err(|e|e.to_string())?;
+  db.execute("INSERT INTO podcast_show_groups VALUES(?1,'来自其他设备的分组',?2,?2) ON CONFLICT(id) DO UPDATE SET name=excluded.name,updated_at=excluded.updated_at",rusqlite::params![group,now]).map_err(|e|e.to_string())?;
+  db.execute("INSERT OR REPLACE INTO podcast_show_group_members SELECT ?1,feed_id FROM podcast_episodes WHERE id=?2",rusqlite::params![group,episode]).map_err(|e|e.to_string())?;
+  crate::podcast::export_sync_backup(&peer,&folder.join(format!("zone-podcast-sync-{}.zonepodcast",crate::podcast::hash_identifier("device",&["client-peer"]))))?;
+  crate::podcast::configure_sync_directory(state.inner(),&folder)?;
+  Ok(serde_json::json!({"episodeId":episode,"playlistId":playlist,"groupId":group}))
+}

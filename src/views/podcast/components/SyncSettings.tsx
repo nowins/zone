@@ -38,22 +38,22 @@ export function PodcastSyncSettings() {
   const syncing = Boolean(busy || status?.syncing);
   const label = busy === "choose" ? "正在选择同步目录" : busy === "stop" ? "正在停止同步" : busy === "load" ? "正在读取同步状态" : syncing ? "正在同步" : problem ? "同步需要处理" : !status ? "正在读取同步状态" : !status.folder ? "同步未开启" : !status.lastSynced ? "等待首次同步" : "已同步";
   return <section className="podcast-sync-settings podcast-management-section" aria-label="跨设备同步">
-    <div className="podcast-management-heading"><h2>跨设备同步</h2><p>关注状态与收听进度</p></div>
+    <div className="podcast-management-heading"><h2>跨设备同步</h2><p>关注、进度、书签与列表</p></div>
     <div className="podcast-management-body">
     <p className="podcast-sync-status" role="status">{(syncing || (!status && !error)) && <MetroLoader />}{label}</p>
     {status?.folder && <><p className="podcast-sync-path" title={displayFolder(status.folder)}>{displayFolder(status.folder)}</p>
       {status.lastSynced && <p>最近同步 {new Date(status.lastSynced).toLocaleString("zh-CN")}</p>}
-      {status.report && <p>已检查 {status.report.devicesRead} 台其他设备 · {status.report.changed ? "已更新关注与进度" : "资料无变化"}{status.report.failedDevices > 0 ? " · " + status.report.failedDevices + " 台暂未合并" : ""}</p>}</>}
+      {status.report && <p>已检查 {status.report.devicesRead} 台其他设备 · {status.report.changed ? "已更新播客资料" : "资料无变化"}{status.report.failedDevices > 0 ? " · " + status.report.failedDevices + " 台暂未合并" : ""}</p>}</>}
     <div className="podcast-management-actions"><Button disabled={Boolean(syncing)} onClick={() => setSetup(true)}>{status?.folder ? "更换同步目录" : "设置同步"}</Button>
       {status?.folder && <><Button disabled={syncing} busy={busy === "sync"} onClick={() => void run("sync", syncPodcastsNow)}>{problem ? "重试同步" : "立即同步"}</Button><Button variant="ghost" disabled={syncing} busy={busy === "stop"} onClick={() => void run("stop", stopPodcastSync)}>停止同步</Button></>}
       {!status && error && <Button disabled={syncing} busy={busy === "load"} onClick={() => void run("load", getPodcastSyncStatus)}>重试读取</Button>}
     </div>
     {problem && <p role="alert">{problem}</p>}
-    {status?.folder && <details><summary>同步范围</summary><p>关注状态与收听进度每分钟合并，以最新修改为准。请保持设备时间准确。</p></details>}
+    {status?.folder && <details><summary>同步范围</summary><p>关注、进度、稍后听、书签、节目分组、我的列表与播放偏好每分钟合并。删除也会同步；请保持设备时间准确。</p><p>下载文件、待播、通知、下载与清理偏好保留在本机。所有设备需升级至支持完整资料同步的版本。</p></details>}
     </div>
     <Presence show={setup} exitDurationMs={MOTION_DURATIONS.micro}><Dialog titleId="podcast-sync-setup" kicker="跨设备同步" title="设置共享目录" className="podcast-collection-dialog" busy={busy !== null} onCancel={() => setSetup(false)} onSubmit={event => { event.preventDefault(); void run("choose", choosePodcastSyncFolder); }}
       actions={<><Button disabled={busy !== null} onClick={() => setSetup(false)}>取消</Button><Button type="submit" variant="primary" busy={busy === "choose"}>选择同步目录</Button></>}>
-      <ol className="podcast-sync-steps"><li>在网盘或共享盘中准备一个播客专用目录。</li><li>每台设备的 Zone 都选择这个目录。</li><li>网盘完成文件传输后，Zone 会合并关注与进度。</li></ol>
+      <ol className="podcast-sync-steps"><li>在网盘或共享盘中准备一个播客专用目录。</li><li>每台设备的 Zone 都选择这个目录。</li><li>网盘完成文件传输后，Zone 会合并播客资料和播放偏好。</li></ol>
       <p>同步每分钟进行一次，也可手动立即同步。设备以最新修改为准，请保持系统时间准确。</p>
       {error && <p role="alert">{error}</p>}
     </Dialog></Presence>

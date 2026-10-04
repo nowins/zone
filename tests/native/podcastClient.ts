@@ -270,6 +270,14 @@ async function run() {
     const markerDeadline=Date.now()+5000;while(true){const feeds=await invoke<Array<{id:string;newEpisodeCount:number}>>("podcast_list_feeds");if(feeds.find(feed=>feed.id===updatedFeed)!.newEpisodeCount===0)break;assert(Date.now()<markerDeadline,"updated show acknowledgement timed out");await delay(100);}
     await invoke("client_motion",{reduce:false});
     checks.push("真实原生刷新记录新单集，已固定首页磁贴静态更新角标、两种尺寸与减少动态效果、打开节目清除提示且不修改收听状态");
+    const syncFixture=await invoke<{episodeId:string;playlistId:string;groupId:string}>("client_prepare_sync");await click("返回资料库");await click("管理");await click("立即同步");
+    await until(()=>document.querySelector('.podcast-sync-settings')?.textContent?.includes('已检查 1 台其他设备')??false,"native peer snapshot merged");
+    const syncedBookmarks=await invoke<Array<{label:string}>>("podcast_list_bookmarks",{episodeId:syncFixture.episodeId});assert(syncedBookmarks.some(item=>item.label==='客户端同步备注'),"peer bookmark missing");
+    const syncedDetail=await invoke<{episode:{saved:boolean}}>("podcast_get_episode_detail",{episodeId:syncFixture.episodeId});assert(syncedDetail.episode.saved,"peer saved state missing");
+    await click("播放列表");await click("我的列表");await selectValue(document.querySelector('[role=combobox][aria-label="当前播放列表"]')!,syncFixture.playlistId);await until(()=>document.querySelector('.podcast-named-list-row')?.textContent?.includes('离线单集')??false,"synced collection appears in real UI");
+    await capture("44-synced-collection-920");await invoke("client_window",{small:false});await capture("44-synced-collection-1180");await invoke("client_window",{small:true});
+    await click("资料库");await click("管理");await click("停止同步");await until(()=>document.querySelector('.podcast-sync-status')?.textContent?.includes('未开启')??false,"fixture sync stopped");
+    checks.push("真实客户端通过正式共享目录命令合并另一份独立数据库的稍后听、书签、列表成员与节目分组，并在实际列表界面显示；并发和删除传播由 Rust 双设备测试覆盖");
     await snapshot();
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

@@ -436,6 +436,8 @@ fn ensure_metadata_entity_links_field_merge_migration(
 }
 
 pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), String> {
+  // Collection change tracking belongs to the podcast schema, including legacy
+  // databases that acquire the tables through this unified migration entry.
   connection
     .execute_batch(
       "
@@ -684,6 +686,7 @@ pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), Strin
       ",
     )
     .map_err(|error| format!("无法迁移播客兼容字段：{error}"))?;
+  crate::podcast::ensure_collection_sync_schema(connection)?;
   Ok(())
 }
 
