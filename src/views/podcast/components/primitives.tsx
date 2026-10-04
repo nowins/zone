@@ -10,6 +10,7 @@ function PodcastSection({
   actionLabel,
   onAction,
   className,
+  action,
   children,
 }: {
   title: string;
@@ -17,6 +18,7 @@ function PodcastSection({
   actionLabel?: string;
   onAction?: () => void;
   className?: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -24,6 +26,7 @@ function PodcastSection({
       <div className="podcast-section-title">
         <h2>{title}</h2>
         {typeof count === "number" && count > 0 ? <span>{count}</span> : null}
+        {action}
         {actionLabel && onAction ? (
           <button type="button" onClick={onAction}>{actionLabel}</button>
         ) : null}

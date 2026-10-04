@@ -429,14 +429,16 @@
 }
 
 .podcast-discovery-source {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  margin: -6px 0 18px;
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
   color: var(--muted);
   font-size: 13px;
 }
+.podcast-section-title .podcast-discovery-info { margin-left: 2px; padding: 8px; color: var(--muted); }
+.podcast-section-title .podcast-discovery-info:hover { color: var(--text); }
+.playlist-dialog.podcast-discovery-info-dialog { width: min(420px, calc(100vw - 48px)); }
+.playlist-dialog.podcast-discovery-info-dialog h2 { font-size: 28px; }
 
 .podcast-show-shelf {
   display: grid;

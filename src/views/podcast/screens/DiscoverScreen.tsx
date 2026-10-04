@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { usePodcastBrowsePosition } from "../components/BrowsePosition";
 import { PODCAST_DISCOVERY_SORTS } from "../constants";
-import { DiscoveryShelf, ShowCard } from "../components/ShowCards";
+import { DiscoveryInfo, DiscoveryShelf, ShowCard } from "../components/ShowCards";
 import { EpisodeBrowser } from "../components/EpisodeBrowser";
 import { PodcastEmpty, PodcastLoading, PodcastSection } from "../components/primitives";
 import type { PodcastViewModel } from "../usePodcastViewModel";
@@ -75,13 +75,12 @@ export function DiscoverScreen({ vm }: { vm: PodcastViewModel }) {
         </PodcastSection>
         </>
       ) : (
-        <PodcastSection title="热门节目" count={visibleDiscoveryShows.length}>
+        <PodcastSection title="热门节目" count={visibleDiscoveryShows.length} action={<DiscoveryInfo
+          sourceLabel={discoverySourceLabel} fetchedAt={vm.discoveryFetchedAt} refreshing={discoveryRefreshing}
+          onRefresh={() => void loadDiscovery(true)} />}>
           <DiscoveryShelf
             state={discoveryState}
             shows={visibleDiscoveryShows}
-            sourceLabel={discoverySourceLabel}
-            fetchedAt={vm.discoveryFetchedAt}
-            refreshing={discoveryRefreshing}
             feeds={feeds}
             openingId={openingId}
             onOpen={(show) => void previewFeed(show, "discover")}

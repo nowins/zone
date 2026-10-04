@@ -1,5 +1,9 @@
-import { Check } from "lucide-react";
+import { useState } from "react";
+import { Check, Info } from "lucide-react";
 import { Button } from "../../../components/Button";
+import { Dialog } from "../../../components/Dialog";
+import { Presence } from "../../../motion/presence";
+import { MOTION_DURATIONS } from "../../../motion/tokens";
 import { MetroLoader } from "../../../components/MetroLoader";
 import { splitPodcastSearchMatch } from "../../../utils/podcastDiscovery";
 import type { PodcastDiscoveryShow, PodcastFeed } from "../../../types";
@@ -14,9 +18,6 @@ import {
 function DiscoveryShelf({
   state,
   shows,
-  sourceLabel,
-  fetchedAt,
-  refreshing,
   feeds,
   openingId,
   onOpen,
@@ -24,9 +25,6 @@ function DiscoveryShelf({
 }: {
   state: RequestState;
   shows: PodcastDiscoveryShow[];
-  sourceLabel: string;
-  fetchedAt: number | null;
-  refreshing: boolean;
   feeds: PodcastFeed[];
   openingId: string | null;
   onOpen: (show: PodcastDiscoveryShow) => void;
@@ -45,12 +43,6 @@ function DiscoveryShelf({
   }
   return (
     <>
-    <div className="podcast-discovery-source">
-      <span>{sourceLabel}{fetchedAt && Number.isFinite(new Date(fetchedAt).getTime()) ? <time dateTime={new Date(fetchedAt).toISOString()} title={new Date(fetchedAt).toLocaleString("zh-CN")} > · 更新于 {new Date(fetchedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time> : null}</span>
-      <Button variant="ghost" size="sm" busy={refreshing} onClick={onRetry}>
-        {refreshing ? "刷新中" : "刷新榜单"}
-      </Button>
-    </div>
     {shows.length === 0 ? <PodcastEmpty label="当前条件下没有热门节目" /> : null}
     <div className="podcast-show-shelf">
       {shows.map((show) => (
@@ -65,6 +57,24 @@ function DiscoveryShelf({
     </div>
     </>
   );
+}
+
+function DiscoveryInfo({ sourceLabel, fetchedAt, refreshing, onRefresh }: {
+  sourceLabel: string; fetchedAt: number | null; refreshing: boolean; onRefresh: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const date = fetchedAt && Number.isFinite(new Date(fetchedAt).getTime()) ? new Date(fetchedAt) : null;
+  return <>
+    <Button variant="ghost" className="podcast-discovery-info" aria-label="榜单信息" aria-haspopup="dialog" aria-expanded={open}
+      title={`${sourceLabel}${date ? " · " + date.toLocaleString("zh-CN") : ""}`} onClick={() => setOpen(true)}><Info size={15} aria-hidden="true" /></Button>
+    <Presence show={open} exitDurationMs={MOTION_DURATIONS.micro}>
+      <Dialog titleId="podcast-discovery-info-title" kicker="发现" title="榜单信息" className="podcast-discovery-info-dialog"
+        onCancel={() => setOpen(false)} onSubmit={event => { event.preventDefault(); setOpen(false); }}
+        actions={<><Button variant="ghost" busy={refreshing} onClick={onRefresh}>更新榜单</Button><Button variant="primary" onClick={() => setOpen(false)}>完成</Button></>}>
+        <div className="podcast-discovery-source"><span>{sourceLabel || "来源暂不可用"}</span>{date && <time dateTime={date.toISOString()}>更新于 {date.toLocaleString("zh-CN")}</time>}</div>
+      </Dialog>
+    </Presence>
+  </>;
 }
 
 function ShowCard({
@@ -168,4 +178,4 @@ function PodcastSearchHighlight({
   );
 }
 
-export { DiscoveryShelf, PodcastSearchHighlight, ShowCard };
+export { DiscoveryInfo, DiscoveryShelf, PodcastSearchHighlight, ShowCard };
