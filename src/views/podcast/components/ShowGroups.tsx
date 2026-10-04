@@ -1,3 +1,4 @@
+import { Select } from "../../../components/Select";
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/Button";
 import { Dialog } from "../../../components/Dialog";
@@ -36,7 +37,7 @@ function ShowGroupPicker({ feed, onClose }: { feed: PodcastFeed; onClose: () => 
       onClose();
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); } }}
     actions={<><Button onClick={onClose} disabled={busy}>取消</Button><Button type="submit" variant="primary" busy={busy} disabled={!groups || (!id && !name.trim())}>{alreadyAdded ? "完成" : "加入"}</Button></>}>
-    {groups ? <div className="podcast-collection-fields"><label>分组<select aria-label="选择节目分组" disabled={busy} value={id} onChange={event => setId(event.target.value)}><option value="">新建分组</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}{group.feedIds.includes(feed.id) ? " · 已加入" : ""}</option>)}</select></label>
+    {groups ? <div className="podcast-collection-fields"><label>分组<Select aria-label="选择节目分组" disabled={busy} value={id} onValueChange={value => setId(value)}><option value="">新建分组</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}{group.feedIds.includes(feed.id) ? " · 已加入" : ""}</option>)}</Select></label>
       {!id && <label>名称<input aria-label="新分组名称" maxLength={80} required disabled={busy} value={name} onChange={event => setName(event.target.value)} /></label>}
       {alreadyAdded && <p role="status">这个节目已在所选分组中</p>}</div> : !error && <PodcastLoading label="正在读取分组" />}
     {error && <p role="alert">{error}{!groups && <Button onClick={() => setRevision(value => value + 1)}>重试</Button>}</p>}
@@ -57,7 +58,7 @@ export function ShowGroups({ feeds, revision, onFilter }: { feeds: PodcastFeed[]
   useEffect(() => { if (!ready) return; previousSelection = selected; const group = groups.find(group => group.id === selected); onFilter(group ? new Set(group.feedIds) : null); }, [groups, selected, ready, onFilter]);
   const group = groups.find(group => group.id === selected);
   return <div className="podcast-show-groups">
-    <label>节目分组<select aria-label="节目分组" value={selected} onChange={event => setSelected(event.target.value)} disabled={!ready}><option value="">全部节目</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name} · {feeds.filter(feed => group.feedIds.includes(feed.id)).length}</option>)}</select></label>
+    <label>节目分组<Select aria-label="节目分组" value={selected} onValueChange={value => setSelected(value)} disabled={!ready}><option value="">全部节目</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name} · {feeds.filter(feed => group.feedIds.includes(feed.id)).length}</option>)}</Select></label>
     <Button variant="ghost" onClick={() => setEditor("new")}>新建分组</Button>{group ? <Button variant="ghost" onClick={() => setEditor(group)}>编辑分组</Button> : null}
     {error ? <p role="alert">{error}<Button variant="ghost" onClick={() => setReload(value => value + 1)}>重试</Button></p> : null}
     <Presence show={editor !== null} exitDurationMs={MOTION_DURATIONS.micro}>{snapshot ? <GroupEditor key={snapshot === "new" ? "new" : snapshot.id} group={snapshot} feeds={feeds} onClose={() => setEditor(null)} onSaved={result => { setSelected(result?.id ?? ""); setEditor(null); setReload(value => value + 1); }} /> : <span />}</Presence>

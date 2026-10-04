@@ -1,3 +1,4 @@
+import { Select } from "../../../components/Select";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "../../../components/Button";
 import { EpisodeRow } from "./EpisodeRows";
@@ -30,8 +31,8 @@ export function EpisodeBrowser({ vm, feedId, requestedQuery, children, scope, in
   return <div className="podcast-episode-browser">
     {requestedQuery===undefined && <div className="podcast-episode-filters">
       <input type="search" value={query} onChange={event=>{setQuery(event.target.value);if(!composing.current)setCommittedQuery(event.target.value);}} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={event=>{composing.current=false;setCommittedQuery(event.currentTarget.value);}} aria-label={feedId?"搜索节目单集":"搜索本地播客资料库"} placeholder={feedId?"搜索单集标题与简介":"搜索本地节目、单集和简介"}/>
-      <select aria-label="单集筛选" value={filter} onChange={event=>setFilter(event.target.value)}>{filters.map(([id,title])=><option key={id} value={id}>{title}</option>)}</select>
-      <select aria-label="单集排序" value={sort} onChange={event=>setSort(event.target.value)}><option value="newest">最新在前</option><option value="oldest">最早在前</option><option value="title">按标题</option><option value="listened">最近收听</option></select>
+      <Select aria-label="单集筛选" value={filter} onValueChange={value=>setFilter(value)}>{filters.map(([id,title])=><option key={id} value={id}>{title}</option>)}</Select>
+      <Select aria-label="单集排序" value={sort} onValueChange={value=>setSort(value)}><option value="newest">最新在前</option><option value="oldest">最早在前</option><option value="title">按标题</option><option value="listened">最近收听</option></Select>
     </div>}
     {active ? <section aria-label="本地单集搜索结果" aria-busy={busy}>
       {error?<p role="alert">{error}</p>:null}

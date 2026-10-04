@@ -19,13 +19,14 @@ test("inherited values show effective defaults and tab switching preserves indep
   try {
     await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(PodcastSettingsDialog, { feedId: "feed", title: "节目", onClose() {} }))));
     assert.equal(document.querySelector('[aria-label="跳过片头"]').value, "10");
-    assert.equal(document.querySelector('[aria-label="节目播放速度"]').value, "1.5");
+    assert.equal(document.querySelector('[aria-label="节目播放速度"]').dataset.value, "1.5");
     assert.equal(document.querySelector('[aria-label="跳过片头"]').disabled, true);
     await act(async () => document.querySelector('[role="switch"][aria-label="使用默认播放设置"]').click());
     assert.equal(document.querySelector('[aria-label="跳过片头"]').value, "120");
     await click("下载与清理");
     const select = document.querySelector('[aria-label="自动下载最新单集"]');
-    await act(async () => { select.value = "5"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
+    await act(async () => { select.click(); });
+    await act(async () => document.querySelector('[role="option"][data-value="5"]').click());
     await click("播放偏好");
     assert.equal(document.querySelector('[aria-label="跳过片头"]').value, "120");
     await act(async () => document.querySelector('form').dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
@@ -48,7 +49,8 @@ test("default preferences stay on the global settings page and preserve unsaved 
     assert.equal([...document.querySelectorAll('button')].find(b=>b.textContent==="保存修改").disabled,true);
     await act(async () => document.querySelector('[aria-label="均衡语音音量"]').click());
     await click("下载与清理");
-    await act(async () => { const select=document.querySelector('[aria-label="下载空间上限"]'); select.value="512"; select.dispatchEvent(new window.Event("change",{bubbles:true})); });
+    await act(async () => { const select=document.querySelector('[aria-label="下载空间上限"]'); select.click(); });
+    await act(async () => document.querySelector('[role="option"][data-value="512"]').click());
     await click("播放偏好");
     assert.equal(document.querySelector('[aria-label="均衡语音音量"]').getAttribute('aria-checked'),'true');
     assert.equal(calls,0);

@@ -1,3 +1,4 @@
+import { Select } from "../../../components/Select";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../../components/Button";
 import { Dialog } from "../../../components/Dialog";
@@ -27,10 +28,10 @@ function ListEditor({ list, feeds, onClose, onSaved }: { list: PodcastPlaylist |
     actions={<><Button onClick={onClose} disabled={busy}>取消</Button><Button type="submit" variant="primary" busy={busy}>保存</Button></>}>
     <div className="podcast-collection-fields">
       <label>名称<input aria-label="播放列表名称" value={name} maxLength={80} onChange={event => setName(event.target.value)} required /></label>
-      <label>类型<select aria-label="播放列表类型" value={kind} disabled={Boolean(existing)} onChange={event => setKind(event.target.value as "manual" | "smart")}><option value="manual">手动添加</option><option value="smart">智能列表</option></select></label>
+      <label>类型<Select aria-label="播放列表类型" value={kind} disabled={Boolean(existing)} onValueChange={value => setKind(value as "manual" | "smart")}><option value="manual">手动添加</option><option value="smart">智能列表</option></Select></label>
       {kind === "smart" ? <>
-        <label>收录单集<select aria-label="智能列表筛选" value={rules.filter} onChange={event => setRules({ ...rules, filter: event.target.value })}><option value="all">全部</option><option value="unplayed">未听完</option><option value="played">已听完</option><option value="saved">稍后听</option><option value="downloaded">已下载</option></select></label>
-        <label>排序<select aria-label="智能列表排序" value={rules.sort} onChange={event => setRules({ ...rules, sort: event.target.value })}><option value="newest">最新优先</option><option value="oldest">最早优先</option><option value="title">标题</option></select></label>
+        <label>收录单集<Select aria-label="智能列表筛选" value={rules.filter} onValueChange={value => setRules({ ...rules, filter: value })}><option value="all">全部</option><option value="unplayed">未听完</option><option value="played">已听完</option><option value="saved">稍后听</option><option value="downloaded">已下载</option></Select></label>
+        <label>排序<Select aria-label="智能列表排序" value={rules.sort} onValueChange={value => setRules({ ...rules, sort: value })}><option value="newest">最新优先</option><option value="oldest">最早优先</option><option value="title">标题</option></Select></label>
         <label>最近天数<input aria-label="智能列表最近天数" type="number" min={1} max={3650} placeholder="不限" value={rules.maxAgeDays ?? ""} onChange={event => setRules({ ...rules, maxAgeDays: event.target.value === "" ? null : Number(event.target.value) })} /></label>
         <FeedPicker feeds={feeds} selected={rules.feedIds} onChange={feedIds => setRules({ ...rules, feedIds })} legend="节目范围 · 不选表示全部" />
         <SmartListPreview rules={rules} />
@@ -47,7 +48,7 @@ export function PlaylistPicker({ episode, onClose }: { episode: PodcastEpisode; 
   return <Dialog titleId="podcast-add-list-title" title="加入播放列表" kicker={episode.feedTitle ?? "播客"} className="podcast-collection-dialog" busy={busy} onCancel={onClose}
     onSubmit={async event => { event.preventDefault(); if (!lists) return; setBusy(true); setError(""); try { let target = id; if (!target) { const created = await savePodcastPlaylist({ name, kind: "manual", rules: defaults }); target = created.id; setLists(previous => [...(previous ?? []), created]); setId(target); } await updatePlaylistItem(target, episode.id, true); onClose(); } catch (reason) { setError(message(reason)); } finally { setBusy(false); } }}
     actions={<><Button onClick={onClose} disabled={busy}>取消</Button><Button type="submit" variant="primary" busy={busy} disabled={!lists || (!id && !name.trim())}>加入</Button></>}>
-    {lists ? <div className="podcast-collection-fields"><label>列表<select aria-label="选择播放列表" value={id} onChange={event => setId(event.target.value)}>{lists.map(list => <option key={list.id} value={list.id}>{list.name}</option>)}<option value="">新建手动列表</option></select></label>{!id ? <label>名称<input aria-label="新列表名称" value={name} onChange={event => setName(event.target.value)} maxLength={80} required /></label> : null}</div> : <PodcastLoading label="正在读取播放列表" />}
+    {lists ? <div className="podcast-collection-fields"><label>列表<Select aria-label="选择播放列表" value={id} onValueChange={value => setId(value)}>{lists.map(list => <option key={list.id} value={list.id}>{list.name}</option>)}<option value="">新建手动列表</option></Select></label>{!id ? <label>名称<input aria-label="新列表名称" value={name} onChange={event => setName(event.target.value)} maxLength={80} required /></label> : null}</div> : <PodcastLoading label="正在读取播放列表" />}
     {error ? <p role="alert">{error}</p> : null}
   </Dialog>;
 }

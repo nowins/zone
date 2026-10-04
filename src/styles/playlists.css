@@ -850,7 +850,6 @@
   gap: 6px;
 }
 
-.smart-playlist-dialog select,
 .smart-playlist-dialog input[type="number"],
 .smart-rule-value input {
   height: 34px;
@@ -863,7 +862,6 @@
   outline: 0;
 }
 
-.smart-playlist-dialog select:focus,
 .smart-playlist-dialog input:focus {
   border-color: var(--accent);
 }
@@ -950,7 +948,7 @@
   margin-bottom: 6px;
 }
 
-.smart-mix-settings label > select,
+.smart-mix-settings label > .select-control,
 .smart-mix-settings .smart-inline-fields {
   width: 100%;
 }
@@ -959,7 +957,7 @@
   width: 74px;
 }
 
-.smart-inline-fields select {
+.smart-inline-fields .select-control {
   flex: 1;
 }
 

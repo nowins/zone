@@ -45,6 +45,7 @@ export function Dialog({
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
+      if ((event.target as Element)?.closest?.('[data-select-open="true"]')) return;
       const dialogs=document.querySelectorAll('[role="dialog"][aria-modal="true"]');
       if(dialogs[dialogs.length-1]!==dialogRef.current)return;
       event.preventDefault();

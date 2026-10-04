@@ -1,3 +1,4 @@
+import { Select } from "./Select";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useModalFocus } from "../hooks/useModalFocus";
 import { Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
@@ -179,12 +180,12 @@ export function SmartPlaylistDialog({
               )}
               {config.rules.map((rule) => (
                 <div className="smart-rule-row" key={rule.id}>
-                  <select value={rule.field} aria-label="规则字段" onChange={(event) => changeRuleField(rule.id, event.target.value as SmartRuleField)}>
+                  <Select value={rule.field} aria-label="规则字段" onValueChange={(value) => changeRuleField(rule.id, value as SmartRuleField)}>
                     {FIELD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                  <select value={rule.operator} aria-label="规则关系" onChange={(event) => updateRule(rule.id, { operator: event.target.value as SmartRuleOperator })}>
+                  </Select>
+                  <Select value={rule.operator} aria-label="规则关系" onValueChange={(value) => updateRule(rule.id, { operator: value as SmartRuleOperator })}>
                     {operatorOptions(rule.field).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
+                  </Select>
                   <RuleValueEditor rule={rule} suggestions={suggestions} onChange={(patch) => updateRule(rule.id, patch)} />
                   <button type="button" className="smart-rule-remove" title="移除规则" onClick={() => updateConfig({ rules: config.rules.filter((item) => item.id !== rule.id) })}>
                     <Trash2 size={15} />
@@ -203,22 +204,22 @@ export function SmartPlaylistDialog({
             <div className="smart-mix-settings">
               <label>
                 <span>排列</span>
-                <select value={config.order} onChange={(event) => updateConfig({ order: event.target.value as SmartPlaylistConfig["order"] })}>
+                <Select aria-label="音乐列表排列" value={config.order} onValueChange={(value) => updateConfig({ order: value as SmartPlaylistConfig["order"] })}>
                   <option value="smart">智能混合</option>
                   <option value="leastPlayed">最少播放优先</option>
                   <option value="oldestPlayed">最久未听优先</option>
                   <option value="recentlyAdded">最近加入优先</option>
                   <option value="title">按歌曲标题</option>
-                </select>
+                </Select>
               </label>
               <label>
                 <span>长度</span>
                 <div className="smart-inline-fields">
                   <input type="number" min="1" max="999" value={config.limitValue} onChange={(event) => updateConfig({ limitValue: safePositive(event.target.value, 1) })} />
-                  <select value={config.limitKind} onChange={(event) => updateConfig({ limitKind: event.target.value as SmartPlaylistConfig["limitKind"] })}>
+                  <Select aria-label="音乐列表长度单位" value={config.limitKind} onValueChange={(value) => updateConfig({ limitKind: value as SmartPlaylistConfig["limitKind"] })}>
                     <option value="tracks">首</option>
                     <option value="minutes">分钟</option>
-                  </select>
+                  </Select>
                 </div>
               </label>
               <label>
@@ -302,10 +303,10 @@ function RuleValueEditor({
   if (rule.operator === "never") return <span className="smart-rule-static">无需输入</span>;
   if (rule.field === "favorite") {
     return (
-      <select value={String(Boolean(rule.value))} aria-label="收藏状态" onChange={(event) => onChange({ value: event.target.value === "true" })}>
+      <Select value={String(Boolean(rule.value))} aria-label="收藏状态" onValueChange={(value) => onChange({ value: value === "true" })}>
         <option value="true">已收藏</option>
         <option value="false">未收藏</option>
-      </select>
+      </Select>
     );
   }
   if (rule.field === "artist" || rule.field === "album" || rule.field === "genre") {

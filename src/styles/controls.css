@@ -142,3 +142,19 @@
 .podcast-rate-dial:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 .podcast-rate-dial-control > .button { min-height: 28px; font-size: 12px; }
 .podcast-rate-dial[aria-disabled="true"] { opacity: .4; cursor: default; }
+
+.select-control { display: inline-block; min-width: 0; vertical-align: middle; }
+.select-trigger { width: 100%; min-height: 36px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid rgba(255,255,255,.22); background: transparent; color: var(--text); font-size: 13px; text-align: left; }
+.select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-trigger > svg { flex: none; color: var(--muted); }
+.select-trigger:hover:not(:disabled), .select-trigger[aria-expanded="true"] { border-color: var(--accent); }
+.select-trigger:disabled { opacity: .4; cursor: default; }
+.select-menu { position: fixed; inset: auto; margin: 0; box-sizing: border-box; padding: 4px; border: 1px solid rgba(255,255,255,.2); color: var(--text); background: var(--app-bg-raised); box-shadow: 0 12px 32px rgba(0,0,0,.45); overflow-y: auto; scrollbar-width: thin; transition: opacity var(--motion-micro) var(--motion-ease-entrance), transform var(--motion-micro) var(--motion-ease-entrance); }
+.select-option { min-height: 34px; padding: 7px 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 1.4; cursor: pointer; }
+.select-option > span { min-width: 0; overflow-wrap: anywhere; }
+.select-option > svg { flex: none; color: var(--accent); }
+.select-option:hover:not([aria-disabled="true"]), .select-option[data-active="true"] { background: rgba(255,255,255,.07); }
+.select-option[aria-selected="true"] { color: var(--accent); }
+.select-option[aria-disabled="true"] { opacity: .4; cursor: default; }
+@starting-style { .select-menu { opacity: 0; transform: translateY(-4px); } }
+.motion-exit .select-menu { opacity: 0; transform: translateY(-2px); pointer-events: none; transition-timing-function: var(--motion-ease-exit); }

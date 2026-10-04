@@ -102,6 +102,7 @@
 | 组件 | 职责与规则 |
 | --- | --- |
 | `Button` | 唯一动作按钮原语（样式在 `controls.css`）：variant 定角色（`outline` 描边默认 / `primary` 强调 / `danger` 危险 / `solid` 填充 CTA / `page` 左侧强调条页面动作 / `ghost` 纯文本），size 定几何（`sm`/`md`/`lg`/`xl`）；`busy` 自动禁用并前置 `MetroLoader`，图标走 `icon` prop |
+| `Select` | 单选下拉原语；`option` 子元素只作数据，以中文 `aria-label` 命名，受控值经 `onValueChange` 更新。触发器与展开面板共用深色、粉色选中标记和焦点样式；播客筛选、分组、列表、设置及音乐智能列表统一使用。方向键／Home／End 选择活动项，Enter／空格确认，Escape 取消，Tab 或外部点击收起；打开时不自动提交新值 |
 | `Dialog` | 深色确认/表单对话框壳：遮罩 + kicker/标题 + 可选右侧动作行，Escape/点遮罩取消、`busy` 时锁定；保留 `playlist-dialog` 基类让 swivel 入场与 Presence 退场继续生效。例外：`SmartPlaylistDialog` 是编辑器表面（不走壳，底部动作用 `Button`）；正在播放的保存列表对话框是刻意的浅色主题，保持独立 |
 | `tiles/`（`Tile` / `FlipTile` / `CycleTile` / `IconicTile` / `MosaicFrames`） | Metro 磁贴系统（`tiles.css`）：`Tile` 提供统一倾斜按压与裁切表面；`FlipTile` 有 peek/flip 两种背面揭示；`MosaicFrames` 是 People-hub 封面墙；`CycleTile` / `IconicTile` 是备料模板——暂无消费方，接入前不算「已在用」。quickplay 固定项由 `QuickplayPinBoard` 编排，宽磁贴与播客用 peek，其余音乐磁贴用 flip；小磁贴静态显示 |
 | `Cover` | 唯一封面渲染入口：`artPath`（本地文件）与 `src`（已解析 URL）二选一；默认音乐封面类（accent-index 渐变占位 + 首字母），`className`/`fallback` 供上下文适配——播客经 `PodcastArtwork` 适配器（`podcast-artwork` 类 + 字符/Podcast 图标占位） |
@@ -113,6 +114,8 @@
 | `PlaylistDialog` / `AddToPlaylistDialog` / `MetadataEditDialog` / `MetadataSearchDialog` / 播客确认框 | 全部建在 `Dialog` 壳上，动作行用 `Button`；遮罩淡入 + 盒体 rotateX 下沉入场由壳的基类继承 |
 
 `Dialog`、资料面板与智能列表编辑器共用 `useModalFocus`：打开后焦点留在浮层内，关闭后返回有效入口。浮层交接或嵌套期间以共享计数维护背景 `inert`，前一浮层退场不能解除后一浮层的隔离。
+
+`Select` 面板通过 WebView2 的 Popover 顶层脱离内容裁切，DOM 仍留在所属浮层内；根据窗口可用空间向上／下展开并限制宽高。焦点留在 combobox，以 `aria-activedescendant` 指示活动项；第一次 Escape 只收起下拉，之后才关闭所属对话框。面板退场走 Presence，减少动态效果由 `motion.css` 统一收敛。长选项在面板中换行，触发器省略并提供完整提示。
 
 智能列表编辑器在标题栏与播放条之间居中，最大 1000×560px，窄窗口保留外侧边距并收缩；模板、规则、预览各自滚动，保存／取消固定可见。保留全部规则和预览功能，不通过缩小控件字号或隐藏预览换取空间。几何以 `playlists.css` 为准，`--dialog-offset-y` 设为零，仍复用共用弹窗进退场。
 | `Titlebar` / `AppHeader` | 无边框窗口 chrome 与 pivot 导航；选中态只变色 + 下划线，**不做位移** |
@@ -142,6 +145,7 @@
 - 专辑详情将封面、艺术家关系和本地曲目放在同一主滚动区，头部复用同一「简介」区展示专辑介绍（缺失省略、预览限五行、长文经限高滚动的对话框展开，介绍经资料面板在线查找或编辑写入）；多碟分组、排序沿用本地标签。歌曲详情提供所属专辑、同专辑其他歌曲及实际收录的普通／智能列表。“其他专辑”等补充区块为空时整体省略，未知时长不伪造。
 - 播放列表保留左侧列表索引、右侧标题与歌曲表格。封面取真实歌曲封面的单图或四格组合，缺图显示类别图标。仅在全部曲目时长已知时显示总时长，空列表禁用播放；普通／智能列表的创建、规则、轮换、排除、固定和 SmartDJ 沿用既有流程。
 - 歌曲表正文为 400 字重，歌曲主体单击选择、双击或 Enter/Space 播放，上下及 Home/End 只移动选择和焦点；独立的关系链接、查看歌曲、喜欢不触发播放。艺术家概览用紧凑歌曲行，其余歌曲表保留关系列与时长。专辑索引主动作进入详情，独立播放按钮支持鼠标与键盘。
+- 收藏入场先交接页面，再让首屏歌曲行、艺术家条目、专辑封面和播放列表按阅读顺序快速展开；只处理恢复滚动后的可见内容。页面与分类共用 `contentEntrance.ts`，不为整库重播 CSS feather；键盘和滚动从当前帧收稳，减少动态效果时立即显示。参数与生命周期见 [动效系统](motion-system.md)。
 - 普通列表允许从菜单移除歌曲，以及指针拖动、Alt+上下或菜单调整顺序；拖动复用 `usePinDrag` 的指针捕获，列表内释放提交，Esc／失焦／移出列表取消。喜欢列表使用喜欢开关，智能列表使用规则与排除，不能混用改序或移除语义。任何列表编辑都不改写已交给播放器的队列快照。
 - 对象详情共用浏览历史，返回／前进恢复查询、筛选、内部标签、选中行、滚动锚点与焦点。quickplay 更多菜单、正在播放的艺术家／专辑进入相同详情并可返回来源；对象无法对账时显示不可用，不能自动跳到第一项。右键及 Shift+F10 打开对应实体菜单，菜单支持方向键、Home/End 和 Esc。
 - quickplay：保留 Zune 横向全景与分组，固定区采用 WP 8.1 的小／中／宽磁贴，兼容既有大磁贴。网格以小磁贴为单位，中为 2×2、宽为 4×2、大为 4×4；组宽随内容增长，窄窗口不强留半屏空白。

@@ -19,8 +19,9 @@ test("list search keeps the current selection and compact navigation selects a m
     const search = document.querySelector('input[type="search"]');
     await act(async () => { Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(search, "科技"); search.dispatchEvent(new window.Event("input", { bubbles: true })); });
     assert.equal(selected, "a"); assert.equal(document.querySelectorAll("nav button").length, 1);
-    const select = document.querySelector("select"); assert.equal(select.value, "a"); assert.equal(select.options.length, 2);
-    await act(async () => { select.value = "b"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
-    assert.equal(selected, "b"); assert.equal(select.options.length, 1); assert.equal(document.querySelector('nav button').getAttribute("aria-pressed"), "true");
+    const select = document.querySelector('[role="combobox"]'); assert.equal(select.dataset.value, "a");
+    await act(async () => select.click()); assert.equal(document.querySelectorAll('[role="option"]').length, 2);
+    await act(async () => { document.querySelector('[role="option"][data-value="b"]').click(); });
+    assert.equal(selected, "b"); assert.equal(select.dataset.value, "b"); assert.equal(document.querySelector('nav button').getAttribute("aria-pressed"), "true");
   } finally { await act(async () => root.unmount()); dom.window.close(); }
 });

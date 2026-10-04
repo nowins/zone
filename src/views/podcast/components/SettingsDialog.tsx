@@ -1,3 +1,4 @@
+import { Select } from "../../../components/Select";
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/Button";
 import { Dialog } from "../../../components/Dialog";
@@ -48,12 +49,12 @@ function PodcastPreferencesEditor({ feedId, title, onClose, embedded = false }: 
     {value && displayed ? <div className="podcast-settings-fields">
       {tab === "downloads" ? <>
         {feedId ? <label>自动下载最新单集
-          <select disabled={busy} aria-label="自动下载最新单集" value={value.autoDownloadCount} onChange={event => update({ ...value, autoDownloadCount: Number(event.target.value) })}>
+          <Select disabled={busy} aria-label="自动下载最新单集" value={value.autoDownloadCount} onValueChange={nextValue => update({ ...value, autoDownloadCount: Number(nextValue) })}>
             {[0,1,3,5,10,20,50].map(n => <option key={n} value={n}>{n ? n + " 集" : "关闭"}</option>)}
-          </select></label> : <label>下载空间上限
-          <select disabled={busy} aria-label="下载空间上限" value={value.storageLimitMb} onChange={event => update({ ...value, storageLimitMb: Number(event.target.value) })}>
+          </Select></label> : <label>下载空间上限
+          <Select disabled={busy} aria-label="下载空间上限" value={value.storageLimitMb} onValueChange={nextValue => update({ ...value, storageLimitMb: Number(nextValue) })}>
             {[0,512,1024,2048,5120,10240].map(n => <option key={n} value={n}>{n ? n >= 1024 ? n / 1024 + " GB" : n + " MB" : "不限"}</option>)}
-          </select></label>}
+          </Select></label>}
         <PreferenceToggle label="自动清理已听完下载" value={value.cleanupPlayed} disabled={busy} onChange={() => update({ ...value, cleanupPlayed: !value.cleanupPlayed })} />
         <small>自动清理保留正在收听、稍后听、手动列表和待播单集。</small>
         {!feedId && <small>空间上限包含未完成文件，在新下载开始时应用。</small>}
@@ -61,12 +62,12 @@ function PodcastPreferencesEditor({ feedId, title, onClose, embedded = false }: 
         {feedId && <PreferenceToggle label="使用默认播放设置" value={value.inheritPlayback} disabled={busy} onChange={() => update({ ...value, inheritPlayback: !value.inheritPlayback })} />}
         {inherited && <p className="podcast-settings-effective" role="status">正在沿用默认设置 · 以下显示实际生效值</p>}
         <div className="podcast-playback-setting-grid">
-          <label>播放速度<select disabled={inherited || busy} aria-label="节目播放速度" value={displayed.playbackRate ?? 0} onChange={event => update({ ...value, playbackRate: Number(event.target.value) || null })}>
+          <label>播放速度<Select disabled={inherited || busy} aria-label="节目播放速度" value={displayed.playbackRate ?? 0} onValueChange={nextValue => update({ ...value, playbackRate: Number(nextValue) || null })}>
             <option value={0}>{feedId ? "默认 " + defaultRate + "×" : defaultRate + "×（当前默认）"}</option>
             {Array.from(new Set([...PODCAST_PLAYBACK_RATES, ...(displayed.playbackRate ? [displayed.playbackRate] : [])])).sort((a,b) => a-b).map(rate => <option key={rate} value={rate}>{rate}×</option>)}
-          </select></label>
+          </Select></label>
 
-          <label>同节目续播<select disabled={inherited || busy} aria-label="节目播放顺序" value={displayed.oldestFirst ? "oldest" : "newest"} onChange={event => update({ ...value, oldestFirst: event.target.value === "oldest" })}><option value="newest">由新到旧</option><option value="oldest">由旧到新</option></select></label>
+          <label>同节目续播<Select disabled={inherited || busy} aria-label="节目播放顺序" value={displayed.oldestFirst ? "oldest" : "newest"} onValueChange={nextValue => update({ ...value, oldestFirst: nextValue === "oldest" })}><option value="newest">由新到旧</option><option value="oldest">由旧到新</option></Select></label>
         </div>
         <PreferenceToggle label="均衡语音音量" value={displayed.normalizeVoice} disabled={inherited || busy} onChange={() => update({ ...value, normalizeVoice: !value.normalizeVoice })} />
         <PreferenceToggle label="加速静音段落" value={displayed.trimSilence} disabled={inherited || busy} onChange={() => update({ ...value, trimSilence: !value.trimSilence })} />
