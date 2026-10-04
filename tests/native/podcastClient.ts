@@ -43,6 +43,10 @@ async function run() {
     await click("管理");await click("清理断点");await until(()=>document.querySelector('.podcast-download-job')?.textContent?.includes("0 B") ?? false,"partial download space released");
     const jobs=await invoke<Array<{state:string;downloadedBytes:number}>>("podcast_list_download_jobs");assert(jobs.some(job=>job.state==="paused"&&job.downloadedBytes===0),"partial cleanup must keep the task paused");
     checks.push("真实客户端暂停任务清理断点并释放占用，保持任务暂停避免自动重新下载");
+    await click("管理");await until(()=>document.querySelectorAll('.podcast-management-section').length===3,"management section hierarchy");await capture("22-management-920");
+    await click("设置同步");await until(()=>Boolean(document.querySelector('.podcast-sync-steps')),"sync setup steps");await capture("23-sync-setup-920");
+    (document.activeElement??document.body).dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=dialog]'),"sync setup escape");
+    checks.push("真实客户端迁移／备份／同步分区、首次同步设置步骤与 Escape 返回");
     await click("节目");await until(()=>Boolean(document.querySelector(".podcast-library-show-open")),"followed shows tab");
     await capture("15-library-920");checks.push("真实客户端资料库分类、管理入口与历史未听完数量语义");
     const open=document.querySelector<HTMLButtonElement>(".podcast-library-show-open");

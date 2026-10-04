@@ -69,6 +69,11 @@ export const listDownloadJobs = () => invoke<PodcastDownloadJob[]>("podcast_list
 export const enqueueDownload = (episodeId: string) => invoke<void>("podcast_enqueue_download", { episodeId });
 export const pauseDownloadJob = (episodeId: string) => invoke<void>("podcast_pause_download_job", { episodeId });
 export const clearDownloadPartial = (episodeId: string) => invoke<void>("podcast_clear_download_partial", { episodeId });
+export type PodcastSyncStatus = { folder: string | null; lastSynced: number | null; error: string | null; syncing: boolean; report: { devicesRead: number; failedDevices: number; changed: boolean } | null };
+export const getPodcastSyncStatus = () => invoke<PodcastSyncStatus>("podcast_sync_status");
+export const choosePodcastSyncFolder = () => invoke<PodcastSyncStatus>("podcast_choose_sync_folder");
+export const syncPodcastsNow = () => invoke<PodcastSyncStatus>("podcast_sync_now");
+export const stopPodcastSync = () => invoke<PodcastSyncStatus>("podcast_stop_sync");
 
 export function listPodcastHome() {
   return invoke<PodcastHome>("podcast_list_home");

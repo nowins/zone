@@ -31,11 +31,11 @@ export function TransferActions() {
     } catch(reason){setError(String(reason));}finally{setBusy(null);}
   }
   return <div className="podcast-transfer-actions">
-    <div><Button variant="ghost" disabled={busy!==null} busy={busy==="import"} onClick={()=>void run("import")}>导入订阅</Button>
-      <Button variant="ghost" disabled={busy!==null} busy={busy==="export"} onClick={()=>void run("export")}>导出订阅</Button></div>
-    <div><Button variant="ghost" disabled={busy!==null} busy={busy==="backup"} onClick={()=>void run("backup")}>备份资料</Button>
-      <Button variant="ghost" disabled={busy!==null} onClick={()=>setConfirmRestore(true)}>恢复资料</Button>
-      <label><input type="checkbox" checked={includeAudio} disabled={busy!==null} onChange={event=>setIncludeAudio(event.target.checked)} />包含已下载音频</label></div>
+    <section className="podcast-management-section" aria-label="订阅迁移"><h2>订阅迁移</h2><div className="podcast-management-actions"><Button disabled={busy!==null} busy={busy==="import"} onClick={()=>void run("import")}>导入订阅</Button>
+      <Button disabled={busy!==null} busy={busy==="export"} onClick={()=>void run("export")}>导出订阅</Button></div></section>
+    <section className="podcast-management-section" aria-label="资料备份"><h2>资料备份</h2><div className="podcast-management-actions"><Button disabled={busy!==null} busy={busy==="backup"} onClick={()=>void run("backup")}>备份资料</Button>
+      <Button disabled={busy!==null} onClick={()=>setConfirmRestore(true)}>恢复资料</Button>
+      <label><input type="checkbox" checked={includeAudio} disabled={busy!==null} onChange={event=>setIncludeAudio(event.target.checked)} />包含已下载音频</label></div></section>
     {message&&<p role="status">{message}</p>}{error&&<p role="alert">{error}</p>}
     <PodcastSyncSettings />
     <Presence show={confirmRestore} exitDurationMs={MOTION_DURATIONS.micro}>{restoreSnapshot?<Dialog titleId="podcast-restore-title" kicker="资料恢复" title="合并播客资料" busy={busy==="restore"}
