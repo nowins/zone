@@ -1,6 +1,7 @@
 import { BookmarkPlus, Clock, ListMusic, Pause, Play, Podcast, RotateCcw, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PodcastTransportOptions } from "./PodcastTransportOptions";
+import { PodcastRateButton } from "./PodcastRateButton";
 import { Presence } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
 import { PlaybackProgress } from "./PlaybackProgress";
@@ -57,7 +58,8 @@ export function PodcastPlayerBar({
         <button onClick={onOpenPodcasts} title="返回播客" aria-label="返回播客">
           <Podcast size={19} />
         </button>
-        {onPlaybackRate && onSleepTimer && <button className="podcast-bar-options-trigger" onClick={()=>setOptionsOpen(true)} aria-label={`播放选项，${playbackRate} 倍速，${sleepLabel}`} aria-haspopup="dialog" title={`倍速与睡眠 · ${sleepLabel}`}><span>{playbackRate}×</span>{sleepTimer&&<><Clock size={12}/><span className="podcast-bar-countdown">{sleepTimer.kind === "episodeEnd" ? "本集结束" : formatTime(Math.max(0, Math.ceil((sleepTimer.deadlineAt-now)/1000)))}</span></>}</button>}
+        {onPlaybackRate && <PodcastRateButton value={playbackRate} onChange={onPlaybackRate} scope={rateScope} label="底栏播放速度" />}
+        {onPlaybackRate && onSleepTimer && <button className="podcast-bar-options-trigger" onClick={()=>setOptionsOpen(true)} aria-label={`睡眠定时，${sleepLabel}`} aria-haspopup="dialog" title={`睡眠定时 · ${sleepLabel}`}><Clock size={15}/>{sleepTimer&&<span className="podcast-bar-countdown">{sleepTimer.kind === "episodeEnd" ? "本集结束" : formatTime(Math.max(0, Math.ceil((sleepTimer.deadlineAt-now)/1000)))}</span>}</button>}
         {onOpenQueue&&<button onClick={onOpenQueue} aria-label={`打开待播，${queueCount} 集`} title={`待播 ${queueCount} 集`}><ListMusic size={18}/><small>{queueCount||""}</small></button>}
         {onRecordMoment && <button onClick={onRecordMoment} aria-label="记录此刻" title="记录此刻"><BookmarkPlus size={18}/></button>}
         <span className="podcast-bar-status" role="status" title={stateLabel}>{status==="loading"||status==="buffering"||status==="error"?stateLabel:episode.playbackLocalPath?"离线":episode.localPath?"已下载":""}</span>

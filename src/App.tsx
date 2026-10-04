@@ -1090,7 +1090,7 @@ export default function App() {
       {compactMode.active ? <CompactPlayerView
         index={collectionIndex} playlists={playlists} activity={trackActivity} favoriteTrackIds={favoriteTrackIds}
         track={activeTrack} queueIds={playbackQueueIds} episode={activePodcastEpisode} podcastQueue={podcastQueue}
-        podcastStatus={podcastPlaybackStatus} playbackRate={podcastPlaybackRate} isPlaying={isPlaying}
+        podcastStatus={podcastPlaybackStatus} playbackRate={podcastPlaybackRate} playbackRateScope={podcast.podcastPlaybackRateScope} isPlaying={isPlaying}
         ready={restored && podcastSessionHydrated} progress={progress} duration={duration} volume={volume} shuffle={shuffle} repeat={repeat}
         onPlay={playTrack} onPlayTracks={playTracks} onToggleFavorite={toggleFavoriteTrack} onPlayPause={togglePlay}
         onPrevious={() => move(-1)} onNext={() => { if (activePodcastEpisode) playNextPodcastEpisode(); else move(1); }}

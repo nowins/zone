@@ -890,4 +890,5 @@
   }
 }
 
-.podcast-rate-popover { width: 192px; }
+.podcast-now-secondary-controls > .podcast-rate-button { padding: 6px 3px; color: rgba(247,242,246,.6); font-size: 12px; }
+.podcast-now-secondary-controls > .podcast-rate-button:hover { color: #fff; }

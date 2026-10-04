@@ -193,14 +193,15 @@ test("horizontal gestures switch pivots and go back without activating a dragged
 
 test("podcast seek, save, rate and queue stay separate from music actions", async () => {
   const episode = { id: "pod", episodeId: "pod", title: "当前单集", podcastTitle: "节目", saved: false };
-  const env = await viewFixture({ episode, podcastQueue: [{ episode: { id: "next", title: "下一单集", feedTitle: "节目" }, position: 0 }], progress: 5, duration: 22 });
+  const env = await viewFixture({ episode, playbackRateScope: "show", podcastQueue: [{ episode: { id: "next", title: "下一单集", feedTitle: "节目" }, position: 0 }], progress: 5, duration: 22 });
   try {
     assert.equal(document.querySelector('[title="随机播放"]'), null);
     await click('[title="后退 15 秒"]');
     await click('[title="前进 30 秒"]');
     await click('[title="更多播放选项"]');
     await click('[title="稍后听"]');
-    await click('[title="播放速度"]');
+    assert.match(document.querySelector('.compact-options .podcast-rate-button').title, /本节目倍速/);
+    await click('.compact-options .podcast-rate-button');
     await openScreen('queue');
     await click('.compact-episode:last-of-type');
     assert.deepEqual(env.calls, [["onSeek", 0], ["onSeek", 22], ["onToggleSaved"], ["onPlaybackRate", 1.25], ["onPlayEpisode", "next"]]);

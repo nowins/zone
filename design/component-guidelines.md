@@ -124,6 +124,7 @@
 
 - `PlayerBar` / `PodcastPlayerBar`：底部 74px 常驻；媒体源二选一，互斥。
 - `TransportControls`、`PlaybackProgress`：极简线性控制；图标切换用 `motion-icon-swap`，收藏确认用 `motion-confirm`。
+- 播客倍速以 `PodcastRateButton` 直接循环常用速度，当前值即入口，底栏、全屏与小屏共用。睡眠独立打开设置；不使用旋钮或倍速按钮阵列。
 - 节目／单集正文复用安全段落排版，保留空行、列表、标题与可选择文本。
 
 ### 小屏模式

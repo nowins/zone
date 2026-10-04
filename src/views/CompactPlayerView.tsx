@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { ArrowLeft, Bookmark, Heart, ListMusic, MoreHorizontal, Pause, Play, Repeat, Repeat1, RotateCcw, RotateCw, Search, Shuffle, SkipBack, SkipForward } from "lucide-react";
 import { Button } from "../components/Button";
+import { PodcastRateButton } from "../components/PodcastRateButton";
 import { Cover } from "../components/Cover";
 import { MetroLoader } from "../components/MetroLoader";
 import { PlaybackProgress } from "../components/PlaybackProgress";
@@ -31,6 +32,7 @@ type Props = {
   podcastQueue: PodcastQueueItem[];
   podcastStatus: PodcastPlaybackStatus;
   playbackRate: number;
+  playbackRateScope?: "default" | "show";
   isPlaying: boolean;
   ready: boolean;
   progress: number;
@@ -297,7 +299,7 @@ export function CompactPlayerView(props: Props) {
               onClick={() => { if (episode) props.onToggleSaved(); else if (track) props.onToggleFavorite(track); }}>
               {episode ? "稍后听" : "收藏"}</Button>
             {episode ? <>
-              <Button variant="ghost" title="播放速度" aria-label="播放速度" onClick={() => props.onPlaybackRate(props.playbackRate >= 2 ? 1 : props.playbackRate + 0.25)}>{props.playbackRate}×</Button>
+              <PodcastRateButton value={props.playbackRate} scope={props.playbackRateScope} onChange={props.onPlaybackRate} label="小屏播放速度" />
               <Button variant="ghost" icon={<SkipForward size={14} />} disabled={!podcastQueue.some(item => item.episode.id !== episode.episodeId)} onClick={props.onNext}>下一集</Button>
             </> : <>
               <Button variant="ghost" title="随机播放" icon={<Shuffle size={14} />} aria-pressed={props.shuffle} disabled={!available} onClick={props.onShuffle}>随机</Button>

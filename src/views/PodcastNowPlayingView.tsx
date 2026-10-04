@@ -13,7 +13,6 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
-  Gauge,
   GripVertical,
   ListMusic,
   Pause,
@@ -31,7 +30,7 @@ import { MetroLoader } from "../components/MetroLoader";
 import { Button } from "../components/Button";
 import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
-import { PodcastRateDial } from "../components/PodcastRateDial";
+import { PodcastRateButton } from "../components/PodcastRateButton";
 import type {
   PodcastPlayback,
   PodcastPlaybackStatus,
@@ -43,7 +42,7 @@ import { podcastArtworkSrc } from "../utils/podcastArtwork";
 
 const SLEEP_MINUTES = [15, 30, 45, 60] as const;
 
-type PodcastNowMenu = "rate" | "sleep" | null;
+type PodcastNowMenu = "sleep" | null;
 type PodcastQueueDropPlacement = "before" | "after";
 
 type PodcastQueueDropTarget = {
@@ -121,11 +120,9 @@ export function PodcastNowPlayingView({
   const [draggedQueueEpisodeId, setDraggedQueueEpisodeId] = useState<string | null>(null);
   const [queueDropTarget, setQueueDropTarget] = useState<PodcastQueueDropTarget | null>(null);
   const [queueAnnouncement, setQueueAnnouncement] = useState("");
-  const rateTriggerRef = useRef<HTMLButtonElement | null>(null);
   const sleepTriggerRef = useRef<HTMLButtonElement | null>(null);
   const queueTriggerRef = useRef<HTMLButtonElement | null>(null);
   const queueCloseRef = useRef<HTMLButtonElement | null>(null);
-  const rateMenuRef = useRef<HTMLDivElement | null>(null);
   const sleepMenuRef = useRef<HTMLDivElement | null>(null);
   const artworkUrl = episode.artworkUrl ?? episode.feedArtworkUrl;
   const artworkSrc = podcastArtworkSrc(artworkUrl);
@@ -165,9 +162,7 @@ export function PodcastNowPlayingView({
   useEffect(() => {
     if (!activeMenu) return;
     const frame = window.requestAnimationFrame(() => {
-      const menu = activeMenu === "rate"
-        ? rateMenuRef.current
-        : sleepMenuRef.current;
+      const menu = sleepMenuRef.current;
       const items = menu
         ? Array.from(menu.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]'))
         : [];
@@ -175,7 +170,7 @@ export function PodcastNowPlayingView({
         item.getAttribute("aria-checked") === "true"
         || item.classList.contains("active")
       );
-      (menu?.querySelector<HTMLElement>('[role="slider"]') ?? selected ?? items[0])?.focus();
+      (selected ?? items[0])?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeMenu]);
@@ -212,7 +207,7 @@ export function PodcastNowPlayingView({
     setActiveMenu(null);
     if (!restoreFocus || !menu) return;
     window.requestAnimationFrame(() => {
-      (menu === "rate" ? rateTriggerRef.current : sleepTriggerRef.current)?.focus();
+      sleepTriggerRef.current?.focus();
     });
   }
 
@@ -333,18 +328,6 @@ export function PodcastNowPlayingView({
     event.preventDefault();
     items[nextIndex]?.focus();
   }
-
-  const rateMenuElement = activeMenu === "rate" ? (
-    <div ref={rateMenuRef} id="podcast-rate-menu" className="podcast-now-popover podcast-rate-popover"
-      role="dialog" aria-label="播放速度" onKeyDown={event => {
-        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeActiveMenu(true); }
-        if (event.key === "Tab") setActiveMenu(null);
-      }}>
-      <strong>播放速度</strong>
-      <p className="podcast-rate-scope">{rateScope === "show" ? "本节目独立倍速" : "默认倍速 · 用于继承设置的节目"}</p>
-      <PodcastRateDial value={playbackRate} onChange={onPlaybackRate} />
-    </div>
-  ) : null;
 
   const sleepMenuElement = activeMenu === "sleep" ? (
     <div
@@ -561,7 +544,6 @@ export function PodcastNowPlayingView({
     </aside>
   ) : null;
 
-  const lastRateMenuElement = useLastNonNull(rateMenuElement);
   const lastSleepMenuElement = useLastNonNull(sleepMenuElement);
   const lastQueuePanelElement = useLastNonNull(queuePanelElement);
 
@@ -671,25 +653,7 @@ export function PodcastNowPlayingView({
 
         <div className="podcast-now-transport-row">
           <div className="podcast-now-secondary-controls">
-            <div className="podcast-now-menu-anchor">
-              <button
-                ref={rateTriggerRef}
-                type="button"
-                className={activeMenu === "rate" ? "active" : ""}
-                aria-haspopup="dialog"
-                aria-controls="podcast-rate-menu"
-                aria-expanded={activeMenu === "rate"}
-                onClick={() =>
-                  setActiveMenu((current) => current === "rate" ? null : "rate")
-                }
-              >
-                <Gauge size={14} />
-                {formatPlaybackRate(playbackRate)}
-              </button>
-              <Presence show={rateMenuElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
-                {rateMenuElement ?? lastRateMenuElement ?? <span style={{ display: "none" }} />}
-              </Presence>
-            </div>
+            <PodcastRateButton className="podcast-now-rate" value={playbackRate} onChange={onPlaybackRate} scope={rateScope} />
 
             <div className="podcast-now-menu-anchor">
               <button
@@ -782,10 +746,6 @@ function playbackStatusLabel(status: PodcastPlaybackStatus) {
   if (status === "buffering") return "正在缓冲";
   if (status === "error") return "播放遇到问题，请检查网络后重试";
   return null;
-}
-
-function formatPlaybackRate(rate: number) {
-  return `${Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(2).replace(/0$/, "")}×`;
 }
 
 function formatSleepTimer(timer: PodcastSleepTimer, now: number) {

@@ -2333,9 +2333,6 @@
 .playlist-dialog.podcast-bar-options-dialog { --dialog-offset-y: 0px; box-sizing: border-box; width: min(420px, calc(100vw - 56px)); max-height: calc(100vh - 110px); padding: 18px 20px 12px; overflow: hidden; display: flex; flex-direction: column; color-scheme: dark; }
 .podcast-bar-options-content { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .podcast-bar-options-dialog > :is(h2,.playlist-dialog-kicker,.playlist-dialog-actions) { flex: none; }
-.podcast-bar-options-dialog .podcast-rate-dial { width: 76px; height: 76px; }
-.podcast-bar-options-dialog .podcast-rate-dial-control { gap: 0; }
-.podcast-bar-options-dialog .podcast-rate-dial-control > .button { min-height: 20px; }
 .playlist-dialog.podcast-bar-options-dialog h2 { font-size: 26px; margin: 8px 0 12px; }
 .podcast-bar-options-dialog .playlist-dialog-actions { padding-top: 8px; margin-top: 0; }
 .podcast-bar-options-dialog fieldset { border: 0; border-top: 1px solid rgba(255,255,255,.16); padding: 10px 0; margin: 0; min-width: 0; font-size: 13px; }

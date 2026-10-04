@@ -958,8 +958,8 @@ test("podcast detail, menus, and full-screen layout cover keyboard and minimum-w
   );
   includes(
     podcastNowPlayingSource,
-    /menu\?\.querySelector<HTMLElement>\([\s\S]{0,45}role="slider"[\s\S]{0,50}selected\s*\?\?\s*items\[0\]/,
-    "opening a playback menu must focus its selected or first item",
+    /\(selected\s*\?\?\s*items\[0\]\)\?\.focus\(\)/,
+    "opening the sleep menu must focus its selected or first item",
   );
   includes(
     podcastNowPlayingCss,
