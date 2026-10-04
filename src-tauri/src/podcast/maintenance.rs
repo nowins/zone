@@ -183,7 +183,7 @@ pub fn start_podcast_maintenance(app: tauri::AppHandle, state: PodcastState) {
         last_plan=std::time::Instant::now();
         let planning_state=state.clone();
         let planning_app=app.clone();
-        let _=tauri::async_runtime::spawn_blocking(move || { let _=deliver_episode_updates(&planning_app,&planning_state.db_path); cleanup_managed_downloads(&planning_state)?; plan_automatic_downloads(&planning_state) }).await;
+        let _=tauri::async_runtime::spawn_blocking(move || { let _=deliver_episode_updates(&planning_app,&planning_state.db_path); let _=run_scheduled_backup(&planning_state,unix_time_millis()); cleanup_managed_downloads(&planning_state)?; plan_automatic_downloads(&planning_state) }).await;
       }
       if state.ensure_ready().is_ok() {
         if let Ok(jobs)=list_download_jobs(&state.db_path) {

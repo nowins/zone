@@ -246,7 +246,11 @@ export const restoreEpisodeBookmark = (episodeId: string, bookmark: PodcastBookm
 export type PodcastImportReport = { imported: number; skipped: number; failures: string[]; failedUrls: string[] };
 export type PodcastBackupPreview = { token: string; fileName: string; createdAt: number | null; feeds: number; episodes: number; progress: number; lists: number; groups: number; bookmarks: number; audioCount: number; audioBytes: number };
 export type PodcastBackupExport = { locationToken: string; fileName: string; audioCount: number };
-export type PodcastBackupStorage = { directory: string; latest: { fileName: string; createdAt: number | null; audioCount: number } | null };
+export type PodcastBackupSummary = {fileName:string;createdAt:number|null;audioCount:number;automatic?:boolean};
+export type PodcastBackupSchedule = {intervalDays:number;retainCount:number};
+export type PodcastBackupStorage = {directory:string;latest:PodcastBackupSummary|null;history?:PodcastBackupSummary[];schedule?:PodcastBackupSchedule;scheduleError?:string|null};
+export const setPodcastBackupSchedule = (schedule:PodcastBackupSchedule,frontendSettings:Record<string,string>) => invoke<void>("podcast_set_backup_schedule",{schedule,frontendSettings});
+export const previewManagedPodcastBackup = (fileName:string) => invoke<PodcastBackupPreview>("podcast_preview_managed_backup",{fileName});
 export const createPodcastBackup = (frontendSettings: Record<string,string | null>, includeAudio: boolean) => invoke<PodcastBackupExport>("podcast_create_backup", { frontendSettings, includeAudio });
 export const getPodcastBackupStorage = () => invoke<PodcastBackupStorage>("podcast_get_backup_storage");
 export const openManagedPodcastBackupFolder = () => invoke<void>("podcast_open_managed_backup_folder");

@@ -131,3 +131,9 @@ pub fn client_add_update(app:tauri::AppHandle)->Result<String,String> {
   parsed.feed=feed.clone();crate::podcast::store_subscription(&path,parsed)?;
   app.emit("podcast-library-changed",()).map_err(|e|e.to_string())?;Ok(feed.id)
 }
+
+#[tauri::command]
+pub fn client_backup_tick(app:tauri::AppHandle)->Result<bool,String>{
+  let state=app.state::<crate::podcast::PodcastState>();
+  crate::podcast::run_scheduled_backup(state.inner(),crate::podcast::unix_time_millis()+8*86_400_000)
+}

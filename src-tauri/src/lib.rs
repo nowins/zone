@@ -306,6 +306,8 @@ pub fn run() {
       podcast::podcast_export_backup,
       podcast::podcast_create_backup,
       podcast::podcast_get_backup_storage,
+      podcast::podcast_set_backup_schedule,
+      podcast::podcast_preview_managed_backup,
       podcast::podcast_open_managed_backup_folder,
       podcast::podcast_restore_backup,
       podcast::podcast_choose_restore_backup,

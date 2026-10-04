@@ -9,6 +9,7 @@ const capture=async(name:string)=>{await delay(700);await invoke("client_capture
 const inputValue=async(input:HTMLInputElement,value:string)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new Event("input",{bubbles:true}));await delay(100);};
 let selectCaptures=0;
 const selectValue=async(select:HTMLButtonElement,value:string)=>{
+  await until(()=>!select.disabled,"custom select enabled");select.scrollIntoView({block:"nearest"});await delay(50);
   select.focus();select.click();await until(()=>select.getAttribute("aria-expanded")==="true","custom select opens");
   const menu=document.getElementById(select.getAttribute("aria-controls")!)!;
   assert(menu.matches(":popover-open"),"dropdown must escape dialog and scroll clipping in the top layer");
@@ -69,6 +70,15 @@ async function run() {
     const backupAudio=document.querySelector<HTMLButtonElement>('[role=switch][aria-label="包含已下载音频"]')!;backupAudio.click();await delay(100);await click("立即备份");await until(()=>document.querySelector('.podcast-transfer-actions > [role=status]')?.textContent?.includes("本机备份已保存")??false,"managed backup with audio");
     const withAudio=await invoke<typeof backupStorage>("podcast_get_backup_storage");assert(withAudio.latest!.audioCount>0&&withAudio.latest!.fileName!==backupStorage.latest!.fileName,"audio backup must create a new snapshot");await capture("26-managed-backup-920");await invoke("client_window",{small:false});await capture("27-management-1180");await invoke("client_window",{small:true});
     checks.push("真实客户端一键本机备份无需文件选择、显式包含音频与独立快照、两种尺寸管理布局");
+    document.querySelector<HTMLElement>('.podcast-backup-schedule summary')!.click();
+    await selectValue(document.querySelector('[role=combobox][aria-label="自动备份频率"]')!,"1");await selectValue(document.querySelector('[role=combobox][aria-label="自动快照保留"]')!,"3");await click("保存备份计划");
+    await until(()=>document.querySelector('.podcast-backup-schedule summary')?.textContent?.includes('每天')??false,"native backup schedule saved");await capture("41-backup-schedule-920");
+    await invoke("client_backup_tick");await click("节目");await click("管理");await click("备份历史");await until(()=>document.querySelector('.podcast-backup-history')?.textContent?.includes('自动快照')??false,"automatic snapshot history");
+    await capture("42-backup-history-920");await invoke("client_window",{small:false});await capture("42-backup-history-1180");await invoke("client_window",{small:true});
+    document.querySelector<HTMLButtonElement>('.podcast-backup-history button')!.click();await until(()=>Boolean(document.querySelector('.podcast-restore-summary')),"managed snapshot native preview");
+    assert(document.querySelector('.podcast-backup-file')?.textContent?.startsWith('Zone播客备份-'),"managed history chose another file");await capture("43-backup-history-preview-920");await click("取消");
+    document.querySelector<HTMLElement>('.podcast-backup-schedule summary')!.click();await selectValue(document.querySelector('[role=combobox][aria-label="自动备份频率"]')!,"0");await click("保存备份计划");
+    checks.push("真实客户端自动备份计划保存、正式原生计划到期执行、工作目录快照历史和原生完整校验预览、两种尺寸布局；保留规则另由 Rust 文件测试验证");
     await click("设置同步");await until(()=>Boolean(document.querySelector('.podcast-sync-steps')),"sync setup steps");await capture("23-sync-setup-920");
     (document.activeElement??document.body).dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=dialog]'),"sync setup escape");
     checks.push("真实客户端迁移／备份／同步分区、首次同步设置步骤与 Escape 返回");

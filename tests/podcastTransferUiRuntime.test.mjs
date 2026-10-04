@@ -88,3 +88,26 @@ test("one-click backups use native app storage, preserve prior status on failure
     assert.equal(opened[1].args.token, "external");
   } finally { await act(async () => root.unmount()); }
 });
+
+test("automatic backup drafts survive a failed save and history preview does not restore until confirmed",async()=>{
+  let schedule={intervalDays:0,retainCount:7},fail=true,saves=0,merges=0,chosen;
+  window.__TAURI_INTERNALS__={invoke:async(command,args)=>{
+    if(command==='podcast_sync_status')return{folder:null};
+    if(command==='podcast_get_backup_storage')return{latest:null,schedule,history:[{fileName:'Zone播客备份-1234-abcd.zonepodcast',createdAt:1000,audioCount:0,automatic:true}]};
+    if(command==='podcast_set_backup_schedule'){saves++;if(fail)throw '备份计划暂无法保存';schedule=args.schedule;}
+    if(command==='podcast_preview_managed_backup'){chosen=args.fileName;return{token:'history',fileName:chosen,createdAt:1000,feeds:1,episodes:2,progress:1,lists:0,groups:0,bookmarks:0,audioCount:0,audioBytes:0};}
+    if(command==='podcast_confirm_restore_backup'){merges++;assert.equal(args.token,'history');return{frontend:{},counts:{mergedRecords:1,retainedRecords:0,audioCount:0}};}
+  }};
+  const root=createRoot(document.getElementById('root'));
+  try{
+    await act(async()=>root.render(React.createElement(TransferActions)));
+    await act(async()=>document.querySelector('[aria-label="自动备份频率"]').click());
+    await act(async()=>document.querySelector('[role=option][data-value="1"]').click());
+    await click('保存备份计划');assert.equal(saves,1);assert.equal(document.querySelector('[aria-label="自动备份频率"]').dataset.value,'1');assert.match(document.querySelector('.podcast-transfer-actions > [role=alert]').textContent,/暂无法保存/);
+    fail=false;await click('保存备份计划');assert.equal(schedule.intervalDays,1);
+    await click('备份历史');assert.match(document.querySelector('.podcast-backup-history').textContent,/自动快照/);
+    await click('预览恢复');assert.equal(chosen,'Zone播客备份-1234-abcd.zonepodcast');assert.equal(merges,0);
+    await act(async()=>document.querySelector('.podcast-restore-summary').closest('form').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true})));
+    assert.equal(merges,1);
+  }finally{await act(async()=>root.unmount());}
+});

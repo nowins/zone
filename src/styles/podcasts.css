@@ -2413,3 +2413,9 @@
 .podcast-search-content-hit > span { margin-right: 12px; color: var(--quiet); }
 .podcast-search-content-hit .button { min-height: 32px; padding: 2px 0; color: var(--accent); }
 .podcast-search-content-hit p { margin: 2px 0 0; line-height: 1.7; overflow-wrap: anywhere; user-select: text; }
+.podcast-backup-schedule { margin-top:16px; }
+.podcast-backup-schedule summary { cursor:pointer;color:var(--muted);margin-bottom:12px; }
+.podcast-backup-history { list-style:none; padding:0; margin:16px 0; }
+.podcast-backup-history li { display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line); }
+.podcast-backup-history strong,.podcast-backup-history small { display:block; }
+.podcast-backup-history small { color:var(--muted);margin-top:4px; }

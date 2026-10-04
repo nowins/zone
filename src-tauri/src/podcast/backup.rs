@@ -12,6 +12,9 @@ pub use preview::*;
 #[path = "backup_managed.rs"]
 mod managed;
 pub use managed::*;
+#[path = "backup_schedule.rs"]
+mod scheduled;
+pub use scheduled::*;
 
 const MANIFEST_LIMIT:u64=64*1024*1024;
 #[derive(Debug,Serialize,Deserialize)]
@@ -71,11 +74,12 @@ fn export_backup_inner(state:&PodcastState,path:&Path,frontend:BTreeMap<String,S
   let mut copied=CopiedFiles{files:vec![],directories:vec![],committed:false};
   let mut db=open_database(&state.db_path)?;let tx=db.transaction().map_err(|e|e.to_string())?;
   let mut saved=BTreeMap::new();for table in tables(&tx)? {
+    if table=="podcast_episode_updates" {continue;}
     if sync && !["podcast_feeds","podcast_episodes","podcast_progress"].contains(&table.as_str()){continue;}
     let query=if sync&&table=="podcast_episodes"{"SELECT * FROM podcast_episodes WHERE id IN(SELECT episode_id FROM podcast_progress)".into()}else if sync&&table=="podcast_feeds"{"SELECT * FROM podcast_feeds WHERE subscribed=1 OR following_updated_at>0 OR id IN(SELECT e.feed_id FROM podcast_episodes e JOIN podcast_progress p ON p.episode_id=e.id)".into()}else{format!("SELECT * FROM \"{table}\"")};
     saved.insert(table.clone(),snapshot(&tx,&query)?);
   }
-  let settings=snapshot(&tx,if sync{"SELECT * FROM app_settings WHERE 0"}else{"SELECT * FROM app_settings WHERE key LIKE 'podcast.%' AND key NOT LIKE 'podcast.sync.%'"})?;
+  let settings=snapshot(&tx,if sync{"SELECT * FROM app_settings WHERE 0"}else{"SELECT * FROM app_settings WHERE key LIKE 'podcast.%' AND key NOT LIKE 'podcast.sync.%' AND key NOT LIKE 'podcast.backup.local.%'"})?;
   let mut backup=PodcastBackup{format:"ZonePodcastBackup".into(),version:1,tables:saved,settings,frontend,created_at:Some(unix_time_millis()),media_directory:None,media:BTreeMap::new()};
   let mut sources=Vec::new();
   if let Some(downloads)=backup.tables.get_mut("podcast_downloads") {
@@ -128,6 +132,7 @@ fn import_table(db:&Connection,name:&str,data:&TableSnapshot)->Result<usize,Stri
     for (column,value) in data.columns.iter().zip(row) {
       if name=="app_settings" && column=="key" && !value.as_str().is_some_and(|key|key.starts_with("podcast.")) {return Err("备份包含其他类别设置".into());}
       if name=="app_settings" && column=="key" && value.as_str().is_some_and(|key|key.starts_with("podcast.sync.")){return Err("备份不能配置本机同步目录".into());}
+      if name=="app_settings" && column=="key" && value.as_str().is_some_and(|key|key.starts_with("podcast.backup.local.")){return Err("备份不能配置本机自动快照记录".into());}
       if name.starts_with("podcast_") && (column=="id" || ["episode_id","feed_id","playlist_id","group_id","resource_id"].contains(&column.as_str())) {validate_identifier(value.as_str().ok_or("备份标识无效")?)?;}
       if ["podcast_playlists","podcast_show_groups"].contains(&name)&&column=="name"{super::lists::collection_name(value.as_str().ok_or("备份名称无效")?)?;}
       if name=="podcast_playlists"&&column=="rules_json"{let rules:super::lists::PlaylistRules=serde_json::from_str(value.as_str().ok_or("备份条件无效")?).map_err(|_|"备份条件无效")?;super::lists::validate_rules(&rules)?;}

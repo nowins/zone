@@ -3,10 +3,14 @@ use tauri_plugin_opener::OpenerExt;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BackupSummary { pub file_name: String, pub created_at: Option<i64>, pub audio_count: usize }
+pub struct BackupSummary { pub file_name: String, pub created_at: Option<i64>, pub audio_count: usize, pub automatic: bool }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BackupStorage { pub directory: String, pub latest: Option<BackupSummary> }
+pub struct BackupStorage { pub directory: String, pub latest: Option<BackupSummary>, pub history: Vec<BackupSummary>, pub schedule: super::scheduled::BackupSchedule, pub schedule_error: Option<String> }
+
+pub(super) fn valid_backup_name(name:&str)->bool {
+  name.len()<=150&&name.strip_prefix("Zone播客备份-").and_then(|rest|rest.strip_suffix(".zonepodcast")).is_some_and(|rest|!rest.is_empty()&&rest.chars().all(|c|c.is_ascii_hexdigit()||c=='-'))
+}
 
 pub(super) fn managed_backup_directory(state: &PodcastState, create: bool) -> Result<PathBuf, String> {
   let base = state.db_path.parent().ok_or("Zone 工作目录不可用")?.canonicalize().map_err(|_| "Zone 工作目录不可访问")?;
@@ -32,20 +36,24 @@ fn backup_storage(state: &PodcastState) -> Result<BackupStorage, String> {
       if index >= 1024 { return Err("本机备份较多，请先整理备份目录".into()); }
       let entry = entry.map_err(|_| "无法读取备份文件")?;
       let name = entry.file_name().to_string_lossy().into_owned();
-      if !name.starts_with("Zone播客备份-") || !name.ends_with(".zonepodcast") { continue; }
+      if !valid_backup_name(&name) { continue; }
       let metadata = fs::symlink_metadata(entry.path()).map_err(|_| "无法读取备份文件")?;
       if metadata.is_file() && !metadata.file_type().is_symlink() { candidates.push((metadata.modified().ok(), entry.path(), name)); }
     }
   }
   candidates.sort_by(|left, right| right.0.cmp(&left.0));
-  let latest = candidates.into_iter().filter_map(|(_, path, file_name)| {
+  let local=super::scheduled::read_local(state)?;
+  let automatic=local.automatic.iter().map(|item|item.name.as_str()).collect::<HashSet<_>>();
+  let mut history = candidates.into_iter().take(40).filter_map(|(_, path, file_name)| {
     let backup = read_backup(&path).ok()?;
-    (backup.format == "ZonePodcastBackup" && backup.version == 1).then_some(BackupSummary { file_name, created_at: backup.created_at, audio_count: backup.media.len() })
-  }).next();
-  Ok(BackupStorage { directory: folder.to_string_lossy().into_owned(), latest })
+    (backup.format == "ZonePodcastBackup" && backup.version == 1).then(||BackupSummary { automatic:automatic.contains(file_name.as_str()),file_name, created_at: backup.created_at, audio_count: backup.media.len() })
+  }).collect::<Vec<_>>();
+  let latest=history.first().map(|item|BackupSummary{file_name:item.file_name.clone(),created_at:item.created_at,audio_count:item.audio_count,automatic:item.automatic});
+  history.truncate(40);
+  Ok(BackupStorage { directory: folder.to_string_lossy().into_owned(), latest,history,schedule:local.schedule,schedule_error:local.error })
 }
 
-fn create_managed_backup(state: &PodcastState, frontend: BTreeMap<String, String>, include_audio: bool) -> Result<BackupExportResult, String> {
+pub(super) fn create_managed_backup(state: &PodcastState, frontend: BTreeMap<String, String>, include_audio: bool) -> Result<BackupExportResult, String> {
   let folder = managed_backup_directory(state, true)?;
   let id = super::super::lists::new_collection_id("backup", &state.db_path.to_string_lossy());
   let path = folder.join(format!("Zone播客备份-{}-{}.zonepodcast", unix_time_millis(), &id[..10]));
@@ -62,7 +70,7 @@ fn create_managed_backup(state: &PodcastState, frontend: BTreeMap<String, String
 #[tauri::command]
 pub async fn podcast_create_backup(state: State<'_, PodcastState>, frontend_settings: BTreeMap<String, String>, include_audio: bool) -> Result<BackupExportResult, String> {
   state.ensure_ready()?; let state = state.inner().clone();
-  tauri::async_runtime::spawn_blocking(move || create_managed_backup(&state, frontend_settings, include_audio)).await.map_err(|error| error.to_string())?
+  tauri::async_runtime::spawn_blocking(move || {let _lock=super::scheduled::backup_lock().lock().map_err(|_|"备份任务锁不可用")?;create_managed_backup(&state, frontend_settings, include_audio)}).await.map_err(|error| error.to_string())?
 }
 #[tauri::command]
 pub async fn podcast_get_backup_storage(state: State<'_, PodcastState>) -> Result<BackupStorage, String> {
