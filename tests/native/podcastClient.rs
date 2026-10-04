@@ -167,3 +167,9 @@ pub fn client_cloud_cache(app:tauri::AppHandle,episode_id:String)->Result<(),Str
   crate::podcast::cloud_transcript::persist(&path,&episode_id,&detail.episode.enclosure_url,"generated",&[cue.clone()])?;
   crate::podcast::cloud_transcript::persist(&path,&episode_id,&detail.episode.enclosure_url,"translated",&[crate::podcast::TranscriptCue{text:"客户端生成转写的中文翻译".into(),..cue}])?;Ok(())
 }
+
+#[tauri::command]
+pub fn client_export_clip(app:tauri::AppHandle,episode_id:String)->Result<usize,String>{
+  let state=app.state::<crate::podcast::PodcastState>();
+  let bytes=crate::podcast::clip_export::clip_bytes(state.inner(),&episode_id,1.0,3.0)?;let path=directory().join("native-excerpt.wav");crate::podcast::clip_export::write_clip(&path,&bytes)?;Ok(bytes.len())
+}

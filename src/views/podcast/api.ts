@@ -271,3 +271,5 @@ export const generateTranscript = (episodeId:string,mode:string,source:string,ex
 
 export type ListeningStats = {totalSeconds:number;recentSeconds:number;episodeCount:number;feedCount:number;days:Array<{day:string;seconds:number}>};
 export const getListeningStats = () => invoke<ListeningStats>("podcast_listening_stats");
+
+export const exportPodcastClip = (episodeId:string,startSeconds:number,endSeconds:number) => invoke<string|null>("podcast_export_clip",{episodeId,startSeconds,endSeconds});

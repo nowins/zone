@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ClipExportAction } from "./ClipExportAction";
 import { Button } from "../../../components/Button";
 import { formatTime } from "../../../utils/music";
 import { addEpisodeBookmark, listEpisodeBookmarks, removeEpisodeBookmark, restoreEpisodeBookmark, updateEpisodeBookmark, type PodcastBookmark } from "../api";
@@ -48,6 +49,7 @@ export function EpisodeBookmarks({ episode, position, onPlayAt }: { episode: Pod
       <Button disabled={busy || loading} onClick={() => void mutate("save")}>{editing ? "保存备注" : "添加 " + formatTime(position)}</Button>
       {editing ? <Button disabled={busy} onClick={() => { setEditing(null); setLabel(""); }}>取消编辑</Button> : <Button onClick={() => void share(position)}>分享此刻</Button>}
     </div>
+    <ClipExportAction episode={episode} position={position}/>
     {notice && <p role="status">{notice}</p>}
     {undo && <div className="podcast-bookmark-undo"><span>已删除 {formatTime(undo.positionSeconds)}</span><Button variant="ghost" disabled={busy} onClick={() => void mutate("undo")}>撤销删除</Button></div>}
     {loading ? <PodcastLoading label="正在读取书签" /> : items.length ? <ol>{items.map(item => <li key={item.id}>

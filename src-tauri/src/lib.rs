@@ -321,6 +321,7 @@ pub fn run() {
       podcast::podcast_transcript_sources,
       podcast::podcast_record_listening,
       podcast::podcast_listening_stats,
+      podcast::podcast_export_clip,
       podcast::podcast_list_playlists,
       podcast::podcast_save_playlist,
       podcast::podcast_delete_playlist,

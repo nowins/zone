@@ -2435,3 +2435,9 @@
 .podcast-stats-note { font-size: 12px; color: var(--muted); line-height: 1.65; }
 .podcast-stats-days { max-height: 220px; overflow: auto; font-size: 13px; }
 .podcast-stats-days div { display: flex; justify-content: space-between; padding: 6px 0; }
+
+.podcast-clip-dialog { width: min(500px, calc(100vw - 48px)); }
+.podcast-clip-dialog p { line-height: 1.65; overflow-wrap: anywhere; }
+.podcast-clip-dialog small { color: var(--muted); font-size: 12px; }
+.podcast-clip-dialog input { width: 100px; background: var(--app-bg); border: 1px solid var(--quiet); color: var(--text); font: inherit; padding: 6px; }
+.podcast-clip-saved { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; user-select: text; }

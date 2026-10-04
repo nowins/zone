@@ -33,7 +33,7 @@ await fs.copyFile(path.join(root,'tests','native','podcastClient.rs'),path.join(
 const manifest=path.join(workspace,'Cargo.toml');await fs.writeFile(manifest,(await fs.readFile(manifest,'utf8')).replace('[dependencies]','[dependencies]\nwebview2-com = "0.38.2"'));
 const lib=path.join(workspace,'src','lib.rs');let source=await fs.readFile(lib,'utf8');
 source='#[path = "podcastClient.rs"] mod podcast_client;\n'+source;
-source=replaceOnce(source,'.invoke_handler(tauri::generate_handler![','.invoke_handler(tauri::generate_handler![podcast_client::client_record,podcast_client::client_capture,podcast_client::client_window,podcast_client::client_media,podcast_client::client_motion,podcast_client::client_context,podcast_client::client_add_update,podcast_client::client_backup_tick,podcast_client::client_prepare_sync,podcast_client::client_cloud_cache,');
+source=replaceOnce(source,'.invoke_handler(tauri::generate_handler![','.invoke_handler(tauri::generate_handler![podcast_client::client_record,podcast_client::client_capture,podcast_client::client_window,podcast_client::client_media,podcast_client::client_motion,podcast_client::client_context,podcast_client::client_add_update,podcast_client::client_backup_tick,podcast_client::client_prepare_sync,podcast_client::client_cloud_cache,podcast_client::client_export_clip,');
 source=replaceOnce(source,'app.manage(music_state);','app.manage(music_state);\n      podcast_client::initialize(app.handle()).map_err(std::io::Error::other)?;');
 source=replaceOnce(source,'.on_page_load(move |webview, payload| {','.on_page_load(move |webview, payload| { if payload.event()==tauri::webview::PageLoadEvent::Finished && payload.url().scheme()!="about" { let _=webview.eval(include_str!("podcastClient.js")); }');
 await fs.writeFile(lib,source);
@@ -50,6 +50,6 @@ await command(process.execPath,[path.join(root,'node_modules','typescript','bin'
 await command('cargo',['build','--offline','--features','tauri/custom-protocol','--manifest-path',path.join(workspace,'Cargo.toml'),'--target-dir',target],'build.log');
 const bin=path.join(report,'bin');await fs.mkdir(bin);const exe=path.join(bin,'zone-player.exe');await fs.copyFile(path.join(target,'debug','zone-player.exe'),exe);
 for(const dll of ['vcruntime140.dll','vcruntime140_1.dll'])await fs.copyFile(path.join(process.env.WINDIR??'C:/Windows','System32',dll),path.join(bin,dll));
-await command(exe,[],'client.log',{...process.env,ZONE_PODCAST_CLIENT_REPORT:report},mode==='manual'?900000:mode==='network'?240000:180000);
+await command(exe,[],'client.log',{...process.env,ZONE_PODCAST_CLIENT_REPORT:report},mode==='manual'?900000:mode==='network'?240000:240000);
 const result=JSON.parse(await fs.readFile(path.join(report,'result.json'),'utf8'));if(!result.ok)throw Error(JSON.stringify(result));
 console.log(mode==='manual'?'原生窗口人工流程结束：'+report:JSON.stringify(result));
