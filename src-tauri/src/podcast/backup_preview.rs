@@ -93,7 +93,8 @@ pub(super) fn remember_backup_location(state:&PodcastState,path:&Path,audio_coun
 pub async fn podcast_choose_restore_backup(state:State<'_,PodcastState>)->Result<Option<BackupPreview>,String> {
   state.ensure_ready()?;let state=state.inner().clone();
   tauri::async_runtime::spawn_blocking(move||{
-    let Some(path)=rfd::FileDialog::new().set_title("选择播客备份").add_filter("Zone 播客备份",&["zonepodcast"]).pick_file() else{return Ok(None);};
+    let folder=super::managed::managed_backup_directory(&state,true)?;
+    let Some(path)=rfd::FileDialog::new().set_title("选择播客备份").set_directory(folder).add_filter("Zone 播客备份",&["zonepodcast"]).pick_file() else{return Ok(None);};
     create_backup_preview(&state,&path).map(Some)
   }).await.map_err(|e|e.to_string())?
 }

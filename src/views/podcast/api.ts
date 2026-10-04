@@ -243,6 +243,10 @@ export const restoreEpisodeBookmark = (episodeId: string, bookmark: PodcastBookm
 export type PodcastImportReport = { imported: number; skipped: number; failures: string[]; failedUrls: string[] };
 export type PodcastBackupPreview = { token: string; fileName: string; createdAt: number | null; feeds: number; episodes: number; progress: number; lists: number; groups: number; bookmarks: number; audioCount: number; audioBytes: number };
 export type PodcastBackupExport = { locationToken: string; fileName: string; audioCount: number };
+export type PodcastBackupStorage = { directory: string; latest: { fileName: string; createdAt: number | null; audioCount: number } | null };
+export const createPodcastBackup = (frontendSettings: Record<string,string | null>, includeAudio: boolean) => invoke<PodcastBackupExport>("podcast_create_backup", { frontendSettings, includeAudio });
+export const getPodcastBackupStorage = () => invoke<PodcastBackupStorage>("podcast_get_backup_storage");
+export const openManagedPodcastBackupFolder = () => invoke<void>("podcast_open_managed_backup_folder");
 export type PodcastBackupRestore = { frontend: Record<string,string>; counts: { mergedRecords: number; retainedRecords: number; audioCount: number } };
 export const importPodcastSubscriptions = () => invoke<PodcastImportReport | null>("podcast_import_opml");
 export const retryPodcastImport = (urls: string[]) => invoke<PodcastImportReport>("podcast_retry_import", { urls });

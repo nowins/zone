@@ -15,7 +15,15 @@ async function run() {
   try {
     await invoke("client_record",{value:{kind:"started",url:location.href,readyState:document.readyState}});
     const context=await invoke<{mode:string;expected?:{active:{activeEpisodeId:string};detail:{episode:{progressSeconds:number}};queue:Array<{episode:{id:string}}>}}>("client_context");
-    if(context.mode==="manual"){await until(()=>Boolean(button("播客")),"manual full App");await click("播客");await click("资料库");await click("管理");await capture("20-manual-ready");let captured=0;const controls=document.createElement('div');controls.style.cssText="position:fixed;top:4px;left:300px;z-index:10000;display:flex;gap:8px;font-size:11px";const shot=document.createElement('button');shot.textContent="验收快照";shot.onclick=()=>void capture(`21-manual-${++captured}`);const finish=document.createElement('button');finish.textContent="结束验收";finish.onclick=()=>void invoke("client_record",{value:{kind:"result",ok:true,checks:["原生窗口人工操作结束，具体流程与证据见手工验收报告"]}});controls.append(shot,finish);document.body.append(controls);return;}
+    if(context.mode==="manual"){
+      await until(()=>Boolean(button("播客")),"manual full App");await click("播客");await click("资料库");await click("管理");await capture("20-manual-ready");
+      let captured=0;const controls=document.createElement('div');controls.style.cssText="position:fixed;top:4px;left:300px;z-index:10000;display:flex;gap:8px;font-size:11px";
+      const shot=document.createElement('button');shot.textContent="验收快照";shot.onclick=()=>void capture(`21-manual-${++captured}`);
+      const finish=document.createElement('button');finish.textContent="结束验收";finish.onclick=()=>void invoke("client_record",{value:{kind:"result",ok:true,checks:["原生窗口人工操作结束，具体流程与证据见手工验收报告"]}});
+      controls.append(shot,finish);
+      for(const small of [false,true]){const size=document.createElement('button');size.textContent=small ? "920×620" : "1180×760";size.onclick=()=>void invoke("client_window",{small});controls.append(size);}
+      document.body.append(controls);return;
+    }
     if(context.mode==="network"){await networkAudit(checks);await invoke("client_record",{value:{kind:"result",ok:true,checks}});return;}
     if(context.mode==="restart"){await restartAudit(context.expected!,checks);await invoke("client_record",{value:{kind:"result",ok:true,checks}});return;}
     await until(()=>Boolean(button("播客")),"full App mount"); await click("播客"); await until(()=>Boolean(document.querySelector(".podcast-page")),"podcast page");
@@ -47,6 +55,11 @@ async function run() {
     const jobs=await invoke<Array<{state:string;downloadedBytes:number}>>("podcast_list_download_jobs");assert(jobs.some(job=>job.state==="paused"&&job.downloadedBytes===0),"partial cleanup must keep the task paused");
     checks.push("真实客户端暂停任务清理断点并释放占用，保持任务暂停避免自动重新下载");
     await click("管理");await until(()=>document.querySelectorAll('.podcast-management-section').length===3,"management section hierarchy");await capture("22-management-920");
+    await click("立即备份");await until(()=>document.querySelector('.podcast-transfer-actions > [role=status]')?.textContent?.includes("本机备份已保存")??false,"one-click native backup without a file picker");
+    const backupStorage=await invoke<{directory:string;latest:{fileName:string;audioCount:number}|null}>("podcast_get_backup_storage");assert(backupStorage.directory.endsWith("podcast-backups")&&backupStorage.latest?.audioCount===0,"default backup must use managed storage without audio");
+    const backupAudio=document.querySelector<HTMLButtonElement>('[role=switch][aria-label="包含已下载音频"]')!;backupAudio.click();await delay(100);await click("立即备份");await until(()=>document.querySelector('.podcast-transfer-actions > [role=status]')?.textContent?.includes("本机备份已保存")??false,"managed backup with audio");
+    const withAudio=await invoke<typeof backupStorage>("podcast_get_backup_storage");assert(withAudio.latest!.audioCount>0&&withAudio.latest!.fileName!==backupStorage.latest!.fileName,"audio backup must create a new snapshot");await capture("26-managed-backup-920");await invoke("client_window",{small:false});await capture("27-management-1180");await invoke("client_window",{small:true});
+    checks.push("真实客户端一键本机备份无需文件选择、显式包含音频与独立快照、两种尺寸管理布局");
     await click("设置同步");await until(()=>Boolean(document.querySelector('.podcast-sync-steps')),"sync setup steps");await capture("23-sync-setup-920");
     (document.activeElement??document.body).dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=dialog]'),"sync setup escape");
     checks.push("真实客户端迁移／备份／同步分区、首次同步设置步骤与 Escape 返回");

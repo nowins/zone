@@ -9,6 +9,9 @@ use tauri::{Emitter,State};
 #[path = "backup_preview.rs"]
 mod preview;
 pub use preview::*;
+#[path = "backup_managed.rs"]
+mod managed;
+pub use managed::*;
 
 const MANIFEST_LIMIT:u64=64*1024*1024;
 #[derive(Debug,Serialize,Deserialize)]
@@ -229,7 +232,7 @@ fn sanitize_download_records(backup:&mut PodcastBackup) {
 pub async fn podcast_export_backup(state:State<'_,PodcastState>,frontend_settings:BTreeMap<String,String>,include_audio:bool)->Result<Option<BackupExportResult>,String> {
   state.ensure_ready()?;let state=state.inner().clone();
   tauri::async_runtime::spawn_blocking(move||{
-    let Some(path)=rfd::FileDialog::new().set_title("备份播客资料").set_file_name("Zone播客备份.zonepodcast").add_filter("Zone 播客备份",&["zonepodcast"]).save_file() else {return Ok(None);};
+    let Some(path)=rfd::FileDialog::new().set_title("导出播客资料").set_file_name("Zone播客备份.zonepodcast").add_filter("Zone 播客备份",&["zonepodcast"]).save_file() else {return Ok(None);};
     export_backup(&state,&path,frontend_settings,include_audio)?;let audio_count=read_backup(&path)?.media.len();preview::remember_backup_location(&state,&path,audio_count).map(Some)
   }).await.map_err(|e|e.to_string())?
 }

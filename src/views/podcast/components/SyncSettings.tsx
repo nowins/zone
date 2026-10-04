@@ -38,7 +38,8 @@ export function PodcastSyncSettings() {
   const syncing = Boolean(busy || status?.syncing);
   const label = busy === "choose" ? "正在选择同步目录" : busy === "stop" ? "正在停止同步" : busy === "load" ? "正在读取同步状态" : syncing ? "正在同步" : problem ? "同步需要处理" : !status ? "正在读取同步状态" : !status.folder ? "同步未开启" : !status.lastSynced ? "等待首次同步" : "已同步";
   return <section className="podcast-sync-settings podcast-management-section" aria-label="跨设备同步">
-    <h2>跨设备同步</h2>
+    <div className="podcast-management-heading"><h2>跨设备同步</h2><p>关注状态与收听进度</p></div>
+    <div className="podcast-management-body">
     <p className="podcast-sync-status" role="status">{(syncing || (!status && !error)) && <MetroLoader />}{label}</p>
     {status?.folder && <><p className="podcast-sync-path" title={displayFolder(status.folder)}>{displayFolder(status.folder)}</p>
       {status.lastSynced && <p>最近同步 {new Date(status.lastSynced).toLocaleString("zh-CN")}</p>}
@@ -49,6 +50,7 @@ export function PodcastSyncSettings() {
     </div>
     {problem && <p role="alert">{problem}</p>}
     {status?.folder && <details><summary>同步范围</summary><p>关注状态与收听进度每分钟合并，以最新修改为准。请保持设备时间准确。</p></details>}
+    </div>
     <Presence show={setup} exitDurationMs={MOTION_DURATIONS.micro}><Dialog titleId="podcast-sync-setup" kicker="跨设备同步" title="设置共享目录" className="podcast-collection-dialog" busy={busy !== null} onCancel={() => setSetup(false)} onSubmit={event => { event.preventDefault(); void run("choose", choosePodcastSyncFolder); }}
       actions={<><Button disabled={busy !== null} onClick={() => setSetup(false)}>取消</Button><Button type="submit" variant="primary" busy={busy === "choose"}>选择同步目录</Button></>}>
       <ol className="podcast-sync-steps"><li>在网盘或共享盘中准备一个播客专用目录。</li><li>每台设备的 Zone 都选择这个目录。</li><li>网盘完成文件传输后，Zone 会合并关注与进度。</li></ol>
