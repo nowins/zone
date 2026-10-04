@@ -59,6 +59,7 @@ export function PodcastNowPlayingView({
   duration,
   volume,
   playbackRate,
+  rateScope = "default",
   sleepTimer,
   onBack,
   onPlayPause,
@@ -86,6 +87,7 @@ export function PodcastNowPlayingView({
   duration: number;
   volume: number;
   playbackRate: number;
+  rateScope?: "default" | "show";
   sleepTimer: PodcastSleepTimer;
   onBack: () => void;
   onPlayPause: () => void;
@@ -339,6 +341,7 @@ export function PodcastNowPlayingView({
       onKeyDown={handleMenuKeyDown}
     >
       <strong>播放速度</strong>
+      <p className="podcast-rate-scope">{rateScope === "show" ? "本节目独立倍速" : "默认倍速 · 用于继承设置的节目"}</p>
       <div className="podcast-rate-options">
         {PODCAST_PLAYBACK_RATES.map((rate) => (
           <button

@@ -2271,14 +2271,19 @@
 .podcast-bar-sleep { margin-top: 24px; }
 .podcast-bar-sleep > div { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
 .podcast-bar-sleep input { width: 80px; }
-.playlist-dialog-overlay.podcast-bar-options-overlay { inset: 28px 0 0; padding: 24px; }
-.playlist-dialog.podcast-bar-options-dialog { --dialog-offset-y: 0px; box-sizing: border-box; width: min(590px, calc(100vw - 48px)); max-height: calc(100vh - 76px); overflow: auto; color-scheme: dark; }
-.podcast-bar-options-dialog .playlist-dialog-actions { position: sticky; bottom: -28px; padding-block: 16px; background: #171118; }
+.playlist-dialog-overlay.podcast-bar-options-overlay { inset: 28px 0 76px; padding: 0 28px; align-items: end; justify-items: start; }
+.playlist-dialog.podcast-bar-options-dialog { --dialog-offset-y: 0px; box-sizing: border-box; width: min(420px, calc(100vw - 56px)); max-height: calc(100vh - 110px); padding: 18px 20px 12px; overflow: auto; color-scheme: dark; }
+.podcast-bar-options-dialog h2 { font-size: 26px; margin-bottom: 14px; }
+.podcast-bar-options-dialog .playlist-dialog-actions { position: sticky; bottom: -12px; padding-block: 12px; margin-top: 0; background: #171118; }
 .podcast-bar-options-dialog fieldset { border: 0; border-top: 1px solid rgba(255,255,255,.16); padding: 16px 0; margin-inline: 0; min-width: 0; font-size: 13px; }
 .podcast-bar-options-dialog legend { padding-right: 10px; color: var(--muted); font-size: 12px; }
 .podcast-bar-options-dialog .podcast-bar-rates .button { min-width: 42px; min-height: 36px; }
-.podcast-bar-options-dialog .podcast-bar-sleep label { display: flex; width: 140px; align-items: center; gap: 12px; margin: 0 0 12px; }
+.podcast-bar-options-dialog .podcast-bar-sleep label { display: flex; width: 140px; align-items: center; gap: 12px; margin: 0; }
 .podcast-bar-options-dialog .podcast-bar-sleep input { width: 80px; }
+.podcast-bar-options-dialog .podcast-bar-sleep { margin-top: 10px; padding-bottom: 0; }
+.podcast-bar-options-dialog .podcast-bar-sleep > div { margin-bottom: 10px; }
+.podcast-rate-scope { font-size: 12px; line-height: 1.6; color: var(--muted); margin: 0 0 10px; }
+.podcast-sleep-countdown, .podcast-bar-countdown { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .podcast-card-rank { left: 6px; right: auto; }
 .podcast-card-followed { display: flex; align-items: center; gap: 3px; font-size: 10px; padding: 2px 4px; background: rgba(0,0,0,.65); }

@@ -874,6 +874,7 @@ export default function App() {
   const playerBarElement = chromeVisible && podcastSessionHydrated ? (
     activePodcastEpisode ? (
       <PodcastPlayerBar
+        rateScope={podcast.podcastPlaybackRateScope}
         playbackRate={podcastPlaybackRate} sleepTimer={podcastSleepTimer} queueCount={podcastQueue.filter(item=>item.episode.id!==activePodcastEpisode.episodeId).length}
         onPlaybackRate={setPodcastPlaybackRate} onSleepTimer={setPodcastSleepTimer}
         onOpenQueue={()=>{setPodcastQueueRequest(++podcastQueueRequestNonce.current);navigatePage("podcasts");}}
@@ -1205,6 +1206,7 @@ export default function App() {
         {page === "nowPlaying" && (
           activePodcastEpisode ? (
             <PodcastNowPlayingView
+              rateScope={podcast.podcastPlaybackRateScope}
               episode={activePodcastEpisode}
               queue={podcastQueue}
               status={podcastPlaybackStatus}

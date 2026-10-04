@@ -136,8 +136,10 @@ export function usePodcastPlayback({
 
   function setPodcastPlaybackRate(rate:number) {
     if(!Number.isFinite(rate)||rate<0.5||rate>3)return;
+    const current=activePodcastEpisodeRef.current;
+    if (current && episodePreferencesRef.current?.episodeId !== current.episodeId) { showActionNotice("正在读取节目设置，请稍后再试"); return; }
     applyPodcastPlaybackRate(rate);
-    const current=activePodcastEpisodeRef.current;const custom=episodePreferencesRef.current?.episodeId===current?.episodeId && episodePreferencesRef.current?.custom;
+    const custom=episodePreferencesRef.current?.episodeId===current?.episodeId && episodePreferencesRef.current?.custom;
     const feedId=custom?current?.feedId:undefined;
     if(!custom){defaultPlaybackRateRef.current=rate;patchPodcastPlaybackSettings({playbackRate:rate});}
     manualRatePendingRef.current++;
@@ -1228,6 +1230,7 @@ export function usePodcastPlayback({
     podcastEpisodeRequest,
     podcastPlaybackRate,
     podcastPreferences: episodePreferences?.value ?? DEFAULT_PODCAST_PREFERENCES,
+    podcastPlaybackRateScope: episodePreferences?.custom ? "show" as const : "default" as const,
     setPodcastPlaybackRate,
     podcastAutoQueueMode,
     podcastSleepTimer,

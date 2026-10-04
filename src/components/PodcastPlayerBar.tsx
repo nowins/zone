@@ -7,6 +7,7 @@ import { PlaybackProgress } from "./PlaybackProgress";
 import { VolumeControl } from "./TransportControls";
 import type { PodcastPlayback, PodcastPlaybackStatus, PodcastSleepTimer } from "../types";
 import { podcastArtworkSrc } from "../utils/podcastArtwork";
+import { formatTime } from "../utils/music";
 
 export function PodcastPlayerBar({
   episode,
@@ -23,7 +24,7 @@ export function PodcastPlayerBar({
   onOpenNowPlaying,
   backwardSeconds = 15,
   forwardSeconds = 30,
-  playbackRate = 1, sleepTimer = null, queueCount = 0, onPlaybackRate, onSleepTimer, onOpenQueue,
+  playbackRate = 1, sleepTimer = null, queueCount = 0, rateScope = "default", onPlaybackRate, onSleepTimer, onOpenQueue,
 }: {
   episode: PodcastPlayback;
   isPlaying: boolean;
@@ -40,6 +41,7 @@ export function PodcastPlayerBar({
   backwardSeconds?: number;
   forwardSeconds?: number;
   playbackRate?: number; sleepTimer?: PodcastSleepTimer; queueCount?: number;
+  rateScope?: "default" | "show";
   onPlaybackRate?: (value: number) => void; onSleepTimer?: (value: PodcastSleepTimer) => void; onOpenQueue?: () => void;
 }) {
   const artworkSrc = podcastArtworkSrc(episode.artworkUrl);
@@ -54,7 +56,7 @@ export function PodcastPlayerBar({
         <button onClick={onOpenPodcasts} title="返回播客" aria-label="返回播客">
           <Podcast size={19} />
         </button>
-        {onPlaybackRate && onSleepTimer && <button className="podcast-bar-options-trigger" onClick={()=>setOptionsOpen(true)} aria-label={`播放选项，${playbackRate} 倍速，${sleepLabel}`} aria-haspopup="dialog" title={`倍速与睡眠 · ${sleepLabel}`}><span>{playbackRate}×</span>{sleepTimer&&<Clock size={12}/>}</button>}
+        {onPlaybackRate && onSleepTimer && <button className="podcast-bar-options-trigger" onClick={()=>setOptionsOpen(true)} aria-label={`播放选项，${playbackRate} 倍速，${sleepLabel}`} aria-haspopup="dialog" title={`倍速与睡眠 · ${sleepLabel}`}><span>{playbackRate}×</span>{sleepTimer&&<><Clock size={12}/><span className="podcast-bar-countdown">{sleepTimer.kind === "episodeEnd" ? "本集结束" : formatTime(Math.max(0, Math.ceil((sleepTimer.deadlineAt-now)/1000)))}</span></>}</button>}
         {onOpenQueue&&<button onClick={onOpenQueue} aria-label={`打开待播，${queueCount} 集`} title={`待播 ${queueCount} 集`}><ListMusic size={18}/><small>{queueCount||""}</small></button>}
         <span className="podcast-bar-status" role="status" title={stateLabel}>{status==="loading"||status==="buffering"||status==="error"?stateLabel:episode.playbackLocalPath?"离线":episode.localPath?"已下载":""}</span>
       </nav>
@@ -96,7 +98,7 @@ export function PodcastPlayerBar({
         </div>
         <VolumeControl volume={volume} onVolume={onVolume} />
       </div>
-      <Presence show={optionsOpen} exitDurationMs={MOTION_DURATIONS.micro}>{onPlaybackRate&&onSleepTimer?<PodcastTransportOptions rate={playbackRate} timer={sleepTimer} episodeId={episode.episodeId} onRate={onPlaybackRate} onTimer={onSleepTimer} onClose={()=>setOptionsOpen(false)}/>:<span style={{display:"none"}}/>}</Presence>
+      <Presence show={optionsOpen} exitDurationMs={MOTION_DURATIONS.micro}>{onPlaybackRate&&onSleepTimer?<PodcastTransportOptions rate={playbackRate} timer={sleepTimer} rateScope={rateScope} episodeId={episode.episodeId} onRate={onPlaybackRate} onTimer={onSleepTimer} onClose={()=>setOptionsOpen(false)}/>:<span style={{display:"none"}}/>}</Presence>
     </footer>
   );
 }

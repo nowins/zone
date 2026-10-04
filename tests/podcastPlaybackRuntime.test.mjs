@@ -73,6 +73,8 @@ test("show preferences load before binding, respect a later pause, and preserve 
   try{
     await step(()=>h.api.playPodcastEpisode(podcastPlayback(podcastEpisode("custom"))));
     assert.equal(h.api.transport.podcastPreferencesReady,false);
+    await step(()=>h.api.setPodcastPlaybackRate(3));
+    assert.equal(JSON.parse(localStorage.getItem("zone-podcast-playback-v1")).playbackRate,1.25);
     h.playbackControlsRef.current.setPlaybackIntent(false);
     await step(()=>pending.resolve({inheritPlayback:false,playbackRate:2,introSeconds:10,outroSeconds:20,backwardSeconds:10,forwardSeconds:45}));
     assert.equal(h.api.transport.podcastPreferencesReady,true);assert.equal(h.api.podcastPlaybackRate,2);assert.equal(h.intent,false);assert.equal(h.armed.length,1);
