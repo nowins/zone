@@ -78,7 +78,7 @@ export function usePodcastPlayback({
   const podcastActiveSessionMountedRef = useRef(false);
   const podcastSleepTimerRef = useRef<number | null>(null);
   const [activePodcastEpisode, setActivePodcastEpisode] = useState<PodcastPlayback | null>(null);
-  const [queueUndo, setQueueUndo]=useState<{ids:string[];expected:string[];active:string|null;expires:number}|null>(null);
+  const [queueUndo, setQueueUndo]=useState<{ids:string[];expected:string[];active:string|null;expires:number;kind:"remove"|"replace"}|null>(null);
   const queueUndoRef=useRef(queueUndo);queueUndoRef.current=queueUndo;
   useEffect(()=>{if(!queueUndo)return;const timer=window.setTimeout(()=>setQueueUndo(null),Math.max(0,queueUndo.expires-Date.now()));return()=>window.clearTimeout(timer);},[queueUndo]);
   const [podcastQueue, setPodcastQueue] = useState<PodcastQueueItem[]>([]);
@@ -475,16 +475,23 @@ export function usePodcastPlayback({
       .catch(() => undefined);
   }
 
-  async function playPodcastPlaylist(id: string) {
+  async function playPodcastPlaylist(id: string, startPlayback = true) {
+    const snapshot = podcastQueueRef.current;
+    const active = activePodcastEpisodeRef.current?.episodeId ?? null;
     const attempt = ++podcastAutoQueueAttemptRef.current;
     cancelPendingQueueConsume();
     const revision = beginPodcastQueueMutation(podcastQueueRef.current);
     await serializePodcastQueueMutation(async () => {
       if (attempt !== podcastAutoQueueAttemptRef.current) return;
       try {
-        const items = await invoke<PodcastQueueItem[]>("podcast_activate_playlist", { id });
+        const items = await invoke<PodcastQueueItem[]>("podcast_activate_playlist", { id, startPlayback });
         applyPodcastQueueResult(items, revision);
-        if (attempt === podcastAutoQueueAttemptRef.current && revision === podcastQueueRevisionRef.current && items[0]) {
+        if (!startPlayback && revision === podcastQueueRevisionRef.current && active === (activePodcastEpisodeRef.current?.episodeId ?? null)) {
+          const ids = snapshot.map(item => item.episode.id).filter(id => id !== active);
+          const expected = items.map(item => item.episode.id);
+          if (ids.join("|") !== expected.join("|")) setQueueUndo({ ids, expected, active, expires: Date.now() + 30000, kind: "replace" });
+        }
+        if (startPlayback && attempt === podcastAutoQueueAttemptRef.current && revision === podcastQueueRevisionRef.current && items[0]) {
           playPodcastEpisode(podcastPlaybackForEpisode(items[0].episode));
         }
       } catch (error) {
@@ -578,12 +585,12 @@ export function usePodcastPlayback({
     if (revision!==podcastQueueRevisionRef.current || active!==(activePodcastEpisodeRef.current?.episodeId ?? null)) return;
     const ids=snapshot.map(item=>item.episode.id).filter(id=>id!==active);
     if(ids.length<=expected.length)return;
-    setQueueUndo({ids,expected:expected.map(item=>item.episode.id),active,expires:Date.now()+30000});
+    setQueueUndo({ids,expected:expected.map(item=>item.episode.id),active,expires:Date.now()+30000,kind:"remove"});
   }
   function undoPodcastQueueRemoval() {
     const undo=queueUndoRef.current;if(!undo || Date.now()>undo.expires)return Promise.resolve();
     const revision=beginPodcastQueueMutation(podcastQueueRef.current);
-    return serializePodcastQueueMutation(async()=>{try{const items=await invoke<PodcastQueueItem[]>("podcast_queue_restore",{episodeIds:undo.ids,expectedIds:undo.expected,expectedActive:undo.active});applyPodcastQueueResult(items,revision);showActionNotice("已撤销待播移除");}catch{await reloadPodcastQueue(revision);showActionNotice("待播或当前单集已变化，无法撤销");}});
+    return serializePodcastQueueMutation(async()=>{try{const items=await invoke<PodcastQueueItem[]>("podcast_queue_restore",{episodeIds:undo.ids,expectedIds:undo.expected,expectedActive:undo.active});applyPodcastQueueResult(items,revision);showActionNotice(undo.kind === "replace" ? "已恢复替换前的待播" : "已撤销待播移除");}catch{await reloadPodcastQueue(revision);showActionNotice("待播或当前单集已变化，无法撤销");}});
   }
   function removePodcastQueueEpisode(episodeId: string) {
     const snapshot=podcastQueueRef.current;const active=activePodcastEpisodeRef.current?.episodeId ?? null;
@@ -1233,6 +1240,7 @@ export function usePodcastPlayback({
     removePodcastQueueEpisode,
     removePodcastQueueEpisodes,
     clearPodcastQueue,
+    queueUndoKind: queueUndo?.kind,
     queueUndoAvailable: Boolean(queueUndo && queueUndo.active===(activePodcastEpisode?.episodeId ?? null) && queueUndo.expected.join("|")===podcastQueue.map(item=>item.episode.id).join("|")),
     undoPodcastQueueRemoval,
     movePodcastQueueEpisode,

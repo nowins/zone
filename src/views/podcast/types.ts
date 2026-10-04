@@ -79,7 +79,7 @@ export type PodcastViewProps = {
   onReturnToNowPlaying: () => void;
   isPlaying: boolean;
   onPlayEpisode: (episode: PodcastPlayback) => void;
-  onPlayPlaylist?: (id: string) => Promise<void>;
+  onPlayPlaylist?: (id: string, startPlayback?: boolean) => Promise<void>;
   onPlayEpisodeAt: (episode: PodcastPlayback, positionSeconds: number) => void;
   onQueueEpisode: (
     episode: PodcastEpisode,
@@ -105,6 +105,7 @@ export type PodcastViewProps = {
   ) => Promise<{ downloadedCount: number; failedCount: number; canceled?: boolean }>;
   onClearQueue: () => void | Promise<void>;
   queueUndoAvailable?: boolean;
+  queueUndoKind?: "remove" | "replace";
   onUndoQueueRemoval?: () => Promise<void>;
   playbackRate?: number;
   onAutoQueueMode: (mode: PodcastAutoQueueMode) => void;

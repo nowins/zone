@@ -6,6 +6,8 @@ import { MOTION_DURATIONS } from "../../../motion/tokens";
 import type { PodcastEpisode, PodcastFeed } from "../../../types";
 import { deletePodcastPlaylist, listPodcastPlaylists, podcastPlaylistPage, reorderPodcastPlaylist, savePodcastPlaylist, updatePlaylistItem, type EpisodeSearchPage, type PodcastPlaylist, type PodcastPlaylistRules } from "../api";
 import { EpisodeRow } from "./EpisodeRows";
+import { FeedPicker } from "./FeedPicker";
+import { SmartListPreview } from "./SmartListPreview";
 import { ListNavigator } from "./ListNavigator";
 import { PodcastEmpty, PodcastLoading } from "./primitives";
 import type { PodcastViewModel } from "../usePodcastViewModel";
@@ -30,8 +32,9 @@ function ListEditor({ list, feeds, onClose, onSaved }: { list: PodcastPlaylist |
         <label>收录单集<select aria-label="智能列表筛选" value={rules.filter} onChange={event => setRules({ ...rules, filter: event.target.value })}><option value="all">全部</option><option value="unplayed">未听完</option><option value="played">已听完</option><option value="saved">稍后听</option><option value="downloaded">已下载</option></select></label>
         <label>排序<select aria-label="智能列表排序" value={rules.sort} onChange={event => setRules({ ...rules, sort: event.target.value })}><option value="newest">最新优先</option><option value="oldest">最早优先</option><option value="title">标题</option></select></label>
         <label>最近天数<input aria-label="智能列表最近天数" type="number" min={1} max={3650} placeholder="不限" value={rules.maxAgeDays ?? ""} onChange={event => setRules({ ...rules, maxAgeDays: event.target.value === "" ? null : Number(event.target.value) })} /></label>
-        <fieldset className="podcast-collection-feeds"><legend>节目范围 · 不选表示全部</legend>{feeds.map(feed => <label key={feed.id}><input type="checkbox" checked={rules.feedIds.includes(feed.id)} onChange={event => setRules({ ...rules, feedIds: event.target.checked ? [...rules.feedIds, feed.id] : rules.feedIds.filter(id => id !== feed.id) })} />{feed.title}</label>)}</fieldset>
-        <small>条件从完整资料库动态计算；播放时将当前结果加入待播。</small>
+        <FeedPicker feeds={feeds} selected={rules.feedIds} onChange={feedIds => setRules({ ...rules, feedIds })} legend="节目范围 · 不选表示全部" />
+        <SmartListPreview rules={rules} />
+        <small>按当前条件替换待播；原待播可在仅替换后撤销。</small>
       </> : <small>从单集详情加入内容；播放列表会保留独立顺序。</small>}
     </div>{error ? <p role="alert">{error}</p> : null}
   </Dialog>;
@@ -70,8 +73,8 @@ export function NamedLists({ vm }: { vm: PodcastViewModel }) {
     <div className="podcast-named-list-heading"><h2>我的列表</h2><Button variant="ghost" onClick={() => setEditor("new")}>新建列表</Button></div>
     {lists === null ? !error && <PodcastLoading label="正在读取列表" /> : lists.length === 0 ? <PodcastEmpty label="还没有播放列表" /> : <>
       <div className="podcast-named-list-layout"><ListNavigator lists={lists} selected={selected} onSelect={id => { setOffset(0); setSelected(id); setNotice(""); }} />
-      <div className="podcast-named-list-content">{selectedList ? <><div className="podcast-named-list-heading"><h3>{selectedList.name}{page ? <small>{page.total} 集</small> : null}</h3><div><Button variant="primary" disabled={busy || !page?.total || !vm.onPlayPlaylist} onClick={() => void mutate(async () => { await vm.onPlayPlaylist?.(selectedList.id); vm.changeRootScreen("playlist"); })}>播放列表</Button><Button variant="ghost" disabled={busy} onClick={() => setEditor(selectedList)}>编辑</Button><Button variant="ghost" disabled={busy} onClick={() => setDeleting(selectedList)}>删除列表</Button></div></div>
-        {notice ? <p className="podcast-list-notice" role="status">{notice}</p> : null}
+      <div className="podcast-named-list-content">{selectedList ? <><div className="podcast-named-list-heading"><h3>{selectedList.name}{page ? <small>{page.total} 集</small> : null}</h3><div><Button variant="primary" disabled={busy || !page?.total || !vm.onPlayPlaylist} onClick={() => void mutate(async () => { await vm.onPlayPlaylist?.(selectedList.id); vm.changeRootScreen("playlist"); })}>替换并播放</Button><Button variant="ghost" disabled={busy || !page?.total || !vm.onPlayPlaylist} onClick={() => void mutate(() => vm.onPlayPlaylist!(selectedList.id, false), "已替换待播 · 当前播放保持")}>替换待播</Button><Button variant="ghost" disabled={busy} onClick={() => setEditor(selectedList)}>编辑</Button><Button variant="ghost" disabled={busy} onClick={() => setDeleting(selectedList)}>删除列表</Button></div></div>
+        {notice ? <p className="podcast-list-notice" role="status">{notice}{vm.queueUndoAvailable && vm.queueUndoKind === "replace" ? <Button variant="ghost" onClick={() => void mutate(() => vm.onUndoQueueRemoval!(), "已恢复替换前的待播")}>撤销替换</Button> : null}</p> : null}
         {!page ? !error && <PodcastLoading label="正在整理单集" /> : page.total === 0 ? <PodcastEmpty label="列表暂时没有单集，可加入内容或修改条件" /> : <>
           {page.episodes.map((episode, index) => <div key={episode.id} className="podcast-named-list-row"><EpisodeRow episode={episode} active={vm.currentEpisodeId === episode.id} isPlaying={vm.isPlaying} downloading={vm.downloadingId === episode.id} showFeed onOpen={() => vm.openEpisodeDetail(episode, "playlist")} onPlay={() => vm.playEpisode(episode)} onDownload={() => void vm.downloadEpisode(episode)} onContextMenu={event => vm.showEpisodeMenu(event, episode)} />{selectedList.kind === "manual" ? <div className="podcast-named-list-order"><Button variant="ghost" size="sm" aria-label={`上移“${episode.title}”`} disabled={busy || offset + index === 0} onClick={() => void move(episode.id, -1)}>上移</Button><Button variant="ghost" size="sm" aria-label={`下移“${episode.title}”`} disabled={busy || offset + index + 1 >= page.total} onClick={() => void move(episode.id, 1)}>下移</Button><Button variant="ghost" size="sm" aria-label={`从列表移除“${episode.title}”`} disabled={busy} onClick={() => void mutate(() => updatePlaylistItem(selectedList.id, episode.id, false), "已从列表移除单集")}>移除</Button></div> : null}</div>)}
           <div className="podcast-search-page-actions"><Button variant="ghost" disabled={offset === 0 || busy} onClick={() => setOffset(value => Math.max(0, value - 50))}>上一页</Button><span>{offset + 1}–{offset + page.episodes.length} / {page.total}</span><Button variant="ghost" disabled={!page.hasMore || busy} onClick={() => setOffset(value => value + 50)}>下一页</Button></div>

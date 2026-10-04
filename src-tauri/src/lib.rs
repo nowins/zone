@@ -310,6 +310,7 @@ pub fn run() {
       podcast::podcast_save_playlist,
       podcast::podcast_delete_playlist,
       podcast::podcast_playlist_page,
+      podcast::podcast_preview_playlist,
       podcast::podcast_update_playlist_item,
       podcast::podcast_reorder_playlist,
       podcast::podcast_activate_playlist,

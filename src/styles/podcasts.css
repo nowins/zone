@@ -2241,6 +2241,10 @@
 .playlist-dialog .podcast-collection-feeds label { justify-content: flex-start; margin: 8px 0; }
 .playlist-dialog .podcast-collection-feeds input[type="checkbox"] { width: 16px; height: 16px; min-width: 16px; margin: 0; padding: 0; }
 .podcast-collection-fields small { font-size: 12px; line-height: 1.8; color: var(--muted); }
+.podcast-smart-preview { border-top: 1px solid var(--faint); padding-top: 12px; min-width: 0; font-size: 13px; }
+.podcast-smart-summary { color: var(--muted); line-height: 1.7; }
+.podcast-smart-preview ol { padding-left: 20px; line-height: 1.8; }
+.podcast-smart-preview li { overflow-wrap: anywhere; }
 .podcast-show-groups { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin: 18px 0 24px; font-size: 13px; }
 .podcast-show-groups label { display: flex; align-items: center; gap: 12px; }
 .podcast-show-groups select { min-height: 36px; max-width: 300px; padding: 6px; font: inherit; color: var(--text); background: var(--app-bg); border: 1px solid var(--quiet); color-scheme: dark; }

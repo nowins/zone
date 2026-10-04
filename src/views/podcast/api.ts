@@ -157,6 +157,7 @@ export const listPodcastPlaylists = () => invoke<PodcastPlaylist[]>("podcast_lis
 export const savePodcastPlaylist = (list: {id?: string; name: string; kind: string; rules: PodcastPlaylistRules; expectedUpdatedAt?: number}) => invoke<PodcastPlaylist>("podcast_save_playlist", list);
 export const deletePodcastPlaylist = (id: string) => invoke<void>("podcast_delete_playlist", { id });
 export const podcastPlaylistPage = (id: string, offset: number, limit = 50) => invoke<EpisodeSearchPage>("podcast_playlist_page", { id, offset, limit });
+export const previewPodcastPlaylist = (rules: PodcastPlaylistRules) => invoke<EpisodeSearchPage>("podcast_preview_playlist", { rules });
 export const updatePlaylistItem = (id: string, episodeId: string, add: boolean) => invoke<void>("podcast_update_playlist_item", { id, episodeId, add });
 export const reorderPodcastPlaylist = (id: string, episodeIds: string[]) => invoke<void>("podcast_reorder_playlist", { id, episodeIds });
 export type PodcastShowGroup = { id: string; name: string; feedIds: string[]; updatedAt: number };

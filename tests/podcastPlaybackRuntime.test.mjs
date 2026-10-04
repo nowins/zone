@@ -2,6 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { deferred, mountPodcastPlayback, podcastEpisode, podcastPlayback, podcastDetail, step } from "./helpers/podcastRuntime.mjs";
 
+test("replacing a named list without playback restores the previous queue with guarded undo", async () => {
+  const before = [{ episode: podcastEpisode("before"), position: 0, addedAt: 1 }];
+  let queue = before, restored;
+  const h = await mountPodcastPlayback(async (command, args) => {
+    if (command === "podcast_list_queue") return queue;
+    if (command === "podcast_activate_playlist") { queue = [{ episode: podcastEpisode("after"), position: 0, addedAt: 2 }]; return queue; }
+    if (command === "podcast_queue_restore") { restored = args; queue = before; return queue; }
+  });
+  try {
+    await step(() => h.api.playPodcastPlaylist("list", false));
+    assert.equal(h.armed.length, 0); assert.equal(h.api.queueUndoAvailable, true); assert.equal(h.api.queueUndoKind, "replace");
+    await step(() => h.api.undoPodcastQueueRemoval());
+    assert.deepEqual(restored.episodeIds, ["before"]); assert.deepEqual(restored.expectedIds, ["after"]); assert.equal(restored.expectedActive, null);
+    assert.equal(h.api.podcastQueue[0].episode.id, "before"); assert.equal(h.api.queueUndoAvailable, false);
+  } finally { await h.close(); }
+});
+
 test("playing a named list uses the shared transport and a later pause prevents delayed autoplay", async () => {
   const pending = deferred();
   const items = [{ episode: podcastEpisode("listed"), position: 0, addedAt: 1 }];

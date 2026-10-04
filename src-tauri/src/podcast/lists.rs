@@ -221,6 +221,17 @@ pub(crate) fn playlist_page(
     limit.clamp(1, 100),
   )
 }
+pub(crate) fn preview_playlist(path: &Path, downloads: &Path, rules: PlaylistRules) -> Result<PodcastEpisodeSearchPage, String> {
+  validate_rules(&rules)?;
+  let db = open_database(path)?;
+  page_in(&db, downloads, &PodcastPlaylist { id: String::new(), name: String::new(), kind: "smart".into(), rules, updated_at: 0 }, 0, 3)
+}
+
+#[tauri::command]
+pub fn podcast_preview_playlist(state: State<'_, PodcastState>, rules: PlaylistRules) -> Result<PodcastEpisodeSearchPage, String> {
+  state.ensure_ready()?;
+  preview_playlist(&state.db_path, &state.downloads_dir, rules)
+}
 pub(crate) fn update_playlist_item(
   path: &Path,
   id: &str,
@@ -300,11 +311,15 @@ pub(crate) fn reorder_playlist(path: &Path, id: &str, episodes: &[String]) -> Re
   .map_err(|e| e.to_string())?;
   tx.commit().map_err(|e| e.to_string())
 }
+#[cfg(test)]
 pub(crate) fn activate_playlist(
   path: &Path,
   downloads: &Path,
   id: &str,
 ) -> Result<Vec<PodcastQueueItem>, String> {
+  activate_playlist_mode(path, downloads, id, true)
+}
+pub(crate) fn activate_playlist_mode(path: &Path, downloads: &Path, id: &str, start_playback: bool) -> Result<Vec<PodcastQueueItem>, String> {
   let mut db = open_database(path)?;
   let tx = db
     .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -318,7 +333,8 @@ pub(crate) fn activate_playlist(
   }
   tx.execute("DELETE FROM podcast_queue", [])
     .map_err(|e| e.to_string())?;
-  for (position, episode) in page.episodes.iter().enumerate() {
+  let active = if start_playback { None } else { load_active_episode_session_in(&tx)?.and_then(|session| session.active_episode_id) };
+  for (position, episode) in page.episodes.iter().filter(|episode| active.as_deref() != Some(episode.id.as_str())).enumerate() {
     tx.execute(
       "INSERT INTO podcast_queue(episode_id,position,added_at) VALUES(?1,?2,?3)",
       params![episode.id, position as i64, unix_time_millis()],
@@ -406,15 +422,50 @@ pub fn podcast_reorder_playlist(
 pub fn podcast_activate_playlist(
   state: State<'_, PodcastState>,
   id: String,
+  start_playback: Option<bool>,
 ) -> Result<Vec<PodcastQueueItem>, String> {
   state.ensure_ready()?;
-  activate_playlist(&state.db_path, &state.downloads_dir, &id)
+  activate_playlist_mode(&state.db_path, &state.downloads_dir, &id, start_playback.unwrap_or(true))
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::podcast::test_support::*;
+  #[test]
+  fn replace_only_excludes_current_episode_and_restores_the_previous_queue() {
+    let dir = test_directory("replace-list");
+    let state = PodcastState::initialize_at(&dir).unwrap();
+    let parsed = parsed_fixture_with_episode_count(2);
+    let ids = parsed.episodes.iter().map(|episode| episode.id.clone()).collect::<Vec<_>>();
+    store_subscription(&state.db_path, parsed).unwrap();
+    save_active_episode_session(&state.db_path, Some(ids[0].clone())).unwrap();
+    queue_add(&state.db_path, &ids[1], false).unwrap();
+    let list = save_playlist(&state.db_path, None, "当前", "manual", PlaylistRules::default(), None).unwrap();
+    update_playlist_item(&state.db_path, &list.id, &ids[0], true).unwrap();
+    let after = activate_playlist_mode(&state.db_path, &state.downloads_dir, &list.id, false).unwrap();
+    assert!(after.is_empty());
+    queue_restore(&state.db_path, &[ids[1].clone()], &[], Some(&ids[0])).unwrap();
+    assert_eq!(list_queue(&state.db_path, &state.downloads_dir).unwrap()[0].episode.id, ids[1]);
+  }
+  #[test]
+  fn unsaved_preview_counts_full_archive_without_mutating_lists_or_queue() {
+    let dir = test_directory("preview-list");
+    let state = PodcastState::initialize_at(&dir).unwrap();
+    let parsed = parsed_fixture_with_episode_count(501);
+    let first = parsed.episodes[0].id.clone();
+    store_subscription(&state.db_path, parsed).unwrap();
+    queue_add(&state.db_path, &first, false).unwrap();
+    let page = preview_playlist(&state.db_path, &state.downloads_dir, PlaylistRules::default()).unwrap();
+    assert_eq!(page.total, 501);
+    assert_eq!(page.episodes.len(), 3);
+    assert!(page.has_more);
+    assert_eq!(list_queue(&state.db_path, &state.downloads_dir).unwrap().len(), 1);
+    let db = open_database(&state.db_path).unwrap();
+    assert_eq!(db.query_row("SELECT COUNT(*) FROM podcast_playlists", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    let invalid = PlaylistRules { max_age_days: Some(0), ..Default::default() };
+    assert!(preview_playlist(&state.db_path, &state.downloads_dir, invalid).is_err());
+  }
   #[test]
   fn manual_lists_are_persistent_ordered_deduplicated_and_independent_of_queue() {
     let dir = test_directory("manual-lists");

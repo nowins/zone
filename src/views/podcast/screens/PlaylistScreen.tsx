@@ -180,7 +180,7 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
                 ) : null}
               </details> : null}
               <p className="podcast-queue-total" role="status">{upNextQueue.length} 集待播 · 剩余音频 {formatTime(remaining)}{vm.playbackRate!==1?` · 按 ${vm.playbackRate}× 约 ${formatTime(remaining/(vm.playbackRate??1))}`:""}{unknown?` · ${unknown} 集时长未知`:""}</p>
-              {vm.queueUndoAvailable ? <div className="podcast-queue-undo" role="status">已移除待播内容 <Button variant="ghost" onClick={()=>void vm.onUndoQueueRemoval?.()}>撤销移除</Button></div> : null}
+              {vm.queueUndoAvailable ? <div className="podcast-queue-undo" role="status">{vm.queueUndoKind === "replace" ? "已替换待播内容" : "已移除待播内容"} <Button variant="ghost" onClick={()=>void vm.onUndoQueueRemoval?.()}>{vm.queueUndoKind === "replace" ? "撤销替换" : "撤销移除"}</Button></div> : null}
 
               <div className="podcast-auto-queue">
                 <span id="podcast-auto-queue-label">播完后</span>
