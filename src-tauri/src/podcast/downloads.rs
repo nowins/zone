@@ -11,6 +11,49 @@ use super::*;
 
 type EpisodeFileOperations = Mutex<HashSet<String>>;
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastDownloadStorage {
+  completed_bytes: u64,
+  partial_bytes: u64,
+  limit_bytes: u64,
+  reclaimable_bytes: u64,
+  reclaimable_count: usize,
+}
+
+pub(crate) fn download_storage_summary(db_path: &Path, downloads_dir: &Path) -> Result<PodcastDownloadStorage, String> {
+  let db = open_database(db_path)?;
+  let preferences = read_preferences_in(&db, None)?;
+  let mut summary = PodcastDownloadStorage { completed_bytes: 0, partial_bytes: 0, limit_bytes: u64::from(preferences.storage_limit_mb) * 1024 * 1024, reclaimable_bytes: 0, reclaimable_count: 0 };
+  let mut statement = db.prepare("SELECT d.episode_id,d.local_path,d.state,COALESCE(p.completed,0) FROM podcast_downloads d LEFT JOIN podcast_progress p ON p.episode_id=d.episode_id").map_err(|e| e.to_string())?;
+  let rows = statement.query_map([], |row| Ok((row.get::<_,String>(0)?, row.get::<_,Option<String>>(1)?, row.get::<_,String>(2)?, row.get::<_,bool>(3)?))).map_err(|e| e.to_string())?;
+  for row in rows {
+    let (id, path, state, completed) = row.map_err(|e| e.to_string())?;
+    validate_identifier(&id)?;
+    if let Some(path) = path {
+      let path = PathBuf::from(path);
+      if is_managed_download_path(downloads_dir, &id, &path) {
+        if let Ok(metadata) = fs::symlink_metadata(path) {
+          if metadata.is_file() && !metadata.file_type().is_symlink() {
+            summary.completed_bytes = summary.completed_bytes.saturating_add(metadata.len());
+            if state == "downloaded" && completed {
+              summary.reclaimable_bytes = summary.reclaimable_bytes.saturating_add(metadata.len());
+              summary.reclaimable_count += 1;
+            }
+          }
+        }
+      }
+    }
+    // Count only the exact partial path derived from the validated episode ID.
+    if let Ok(metadata) = fs::symlink_metadata(downloads_dir.join(format!("{id}.part"))) {
+      if metadata.is_file() && !metadata.file_type().is_symlink() {
+        summary.partial_bytes = summary.partial_bytes.saturating_add(metadata.len());
+      }
+    }
+  }
+  Ok(summary)
+}
+
 // Feed storage and commands must share one guard even when reached through
 // different PodcastState instances. Weak entries do not retain inactive databases.
 pub(crate) fn episode_file_operations(db_path: &Path) -> Result<Arc<EpisodeFileOperations>, String> {
@@ -1296,6 +1339,16 @@ pub(crate) fn save_progress_with_policy(
 
 #[cfg(test)]
 mod tests {
+  #[test]
+  fn storage_summary_uses_actual_controlled_files_and_completed_cleanup_scope() {
+    let directory=test_directory("storage-summary");let state=PodcastState::initialize_at(&directory).unwrap();
+    let parsed=parsed_fixture_with_episode_count(2);let ids=parsed.episodes.iter().map(|episode|episode.id.clone()).collect::<Vec<_>>();store_subscription(&state.db_path,parsed).unwrap();
+    let audio=state.downloads_dir.join(format!("{}.mp3",ids[0]));fs::write(&audio,vec![1u8;100]).unwrap();mark_download_complete(&state.db_path,&ids[0],&audio.to_string_lossy(),10,Some(10)).unwrap();set_episode_played(&state.db_path,&ids[0],true).unwrap();
+    let part=state.downloads_dir.join(format!("{}.part",ids[1]));fs::write(&part,vec![2u8;40]).unwrap();mark_download_started(&state.db_path,&ids[1],4,Some(80)).unwrap();
+    let summary=download_storage_summary(&state.db_path,&state.downloads_dir).unwrap();assert_eq!(summary.completed_bytes,100);assert_eq!(summary.partial_bytes,40);assert_eq!(summary.reclaimable_bytes,100);assert_eq!(summary.reclaimable_count,1);
+    let outside=directory.join("outside.mp3");fs::write(&outside,vec![3u8;200]).unwrap();open_database(&state.db_path).unwrap().execute("UPDATE podcast_downloads SET local_path=?1 WHERE episode_id=?2",params![outside.to_string_lossy(),ids[0]]).unwrap();
+    let summary=download_storage_summary(&state.db_path,&state.downloads_dir).unwrap();assert_eq!(summary.completed_bytes,0);assert_eq!(summary.reclaimable_bytes,0);assert!(outside.exists());
+  }
   #[test]
   fn automatic_delete_rechecks_protection_and_policy_inside_its_transaction() {
     let directory=test_directory("automatic-delete-race");let state=PodcastState::initialize_at(&directory).unwrap();

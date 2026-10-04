@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ShowGroups } from "../components/ShowGroups";
 import { DownloadJobs } from "../components/DownloadJobs";
+import { DownloadStorage } from "../components/DownloadStorage";
 import { TransferActions } from "../components/TransferActions";
 import { EpisodeBrowser } from "../components/EpisodeBrowser";
 import { PODCAST_LIBRARY_SORTS, PODCAST_DOWNLOAD_BATCH_LIMIT } from "../constants";
@@ -29,7 +30,8 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
   return (
     <main ref={pageRef} className="podcast-screen podcast-library-screen">
       <div className="podcast-library-tabs" role="group" aria-label="资料库分类">{[["shows","节目"],["episodes","单集"],["saved","稍后听"],["downloads","下载"],["history","历史"],["manage","管理"]].map(([id,label])=><button key={id} type="button" aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>
-      {tab==="manage" ? <><TransferActions /><DownloadJobs /></> : null}
+      {tab==="manage" ? <TransferActions /> : null}
+      {tab==="downloads" ? <><DownloadStorage revision={vm.libraryRevision} /><DownloadJobs /></> : null}
       {tab==="episodes" ? <EpisodeBrowser key="archive" vm={vm} scope="archive"/> : null}
       {tab==="saved" ? <EpisodeBrowser key="saved" vm={vm} scope="saved" initialFilter="saved"/> : null}
       {tab==="history" ? <EpisodeBrowser key="history" vm={vm} scope="history" initialFilter="history" initialSort="listened"/> : null}

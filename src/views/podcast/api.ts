@@ -66,9 +66,11 @@ export type PodcastDownloadJob = {
 export const getPodcastPreferences = (feedId?: string) => invoke<PodcastPreferences>("podcast_get_preferences", { feedId });
 export const setPodcastPreferences = (preferences: PodcastPreferences, feedId?: string) => invoke<void>("podcast_set_preferences", { feedId, preferences });
 export const listDownloadJobs = () => invoke<PodcastDownloadJob[]>("podcast_list_download_jobs");
+export type PodcastDownloadStorage = { completedBytes: number; partialBytes: number; limitBytes: number; reclaimableBytes: number; reclaimableCount: number };
+export const getDownloadStorage = () => invoke<PodcastDownloadStorage>("podcast_download_storage");
 export const enqueueDownload = (episodeId: string) => invoke<void>("podcast_enqueue_download", { episodeId });
 export const pauseDownloadJob = (episodeId: string) => invoke<void>("podcast_pause_download_job", { episodeId });
-export const clearDownloadPartial = (episodeId: string) => invoke<void>("podcast_clear_download_partial", { episodeId });
+export const clearDownloadPartial = (episodeId: string) => invoke<number>("podcast_clear_download_partial", { episodeId });
 export type PodcastSyncStatus = { folder: string | null; lastSynced: number | null; error: string | null; syncing: boolean; report: { devicesRead: number; failedDevices: number; changed: boolean } | null };
 export const getPodcastSyncStatus = () => invoke<PodcastSyncStatus>("podcast_sync_status");
 export const choosePodcastSyncFolder = () => invoke<PodcastSyncStatus>("podcast_choose_sync_folder");

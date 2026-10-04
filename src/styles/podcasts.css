@@ -2171,6 +2171,10 @@
 .podcast-download-job > div { display: grid; gap: 5px; min-width: 0; }
 .podcast-download-job strong { font-size: 14px; overflow-wrap: anywhere; }
 .podcast-download-job span,.podcast-download-job small { color: var(--muted); font-size: 12px; }
+.podcast-storage-summary { margin-bottom: 24px; }
+.podcast-storage-summary h2 { font-size: 22px; font-weight: 400; margin: 0 0 12px; }
+.podcast-storage-summary p { font-size: 13px; color: var(--muted); margin: 6px 0; }
+.podcast-download-jobs { margin-bottom: 28px; }
 .podcast-playback-settings { border: 0; padding: 12px 0 0; margin: 0; border-top: 1px solid var(--quiet); }
 .podcast-playback-settings legend { padding: 0 10px 0 0; font-size: 15px; }
 .podcast-playback-setting-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin-top: 20px; }

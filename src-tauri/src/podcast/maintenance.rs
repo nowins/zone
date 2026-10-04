@@ -111,6 +111,13 @@ pub(crate) fn list_download_jobs(path: &Path) -> Result<Vec<PodcastDownloadJob>,
   result
 }
 
+#[tauri::command]
+pub async fn podcast_download_storage(state: State<'_, PodcastState>) -> Result<super::downloads::PodcastDownloadStorage, String> {
+  state.ensure_ready()?;
+  let path = state.db_path.clone(); let downloads = state.downloads_dir.clone();
+  tauri::async_runtime::spawn_blocking(move || download_storage_summary(&path, &downloads)).await.map_err(|e| e.to_string())?
+}
+
 fn plan_automatic_downloads(state: &PodcastState) -> Result<(), String> {
   for feed in list_feeds(&state.db_path)? {
     let preferences = read_preferences(&state.db_path, Some(&feed.id))?;
@@ -217,7 +224,7 @@ pub async fn podcast_pause_download_job(state: State<'_,PodcastState>,episode_id
   Ok(())
 }
 
-pub(crate) fn clear_download_job_partial(state:&PodcastState,id:&str)->Result<(),String> {
+pub(crate) fn clear_download_job_partial(state:&PodcastState,id:&str)->Result<u64,String> {
   validate_identifier(id)?;
   let _guard=EpisodeFileGuard::acquire(&state.active_downloads,id)?;
   let db=open_database(&state.db_path)?;
@@ -225,10 +232,11 @@ pub(crate) fn clear_download_job_partial(state:&PodcastState,id:&str)->Result<()
   let complete:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM podcast_downloads WHERE episode_id=?1 AND state='downloaded')",[id],|r|r.get(0)).map_err(|e|e.to_string())?;
   if running{return Err("请先暂停并等待下载停止".into());}if complete{return Err("单集已下载，请从已下载列表管理".into());}
   db.execute("UPDATE podcast_download_jobs SET state='paused',request_id=NULL,error=NULL,updated_at=?2 WHERE episode_id=?1",params![id,unix_time_millis()]).map_err(|e|e.to_string())?;
-  delete_episode_download(&state.db_path,&state.downloads_dir,id)
+  let bytes=fs::symlink_metadata(state.downloads_dir.join(format!("{id}.part"))).ok().filter(|metadata|metadata.is_file()&&!metadata.file_type().is_symlink()).map(|metadata|metadata.len()).unwrap_or(0);
+  delete_episode_download(&state.db_path,&state.downloads_dir,id)?;Ok(bytes)
 }
 #[tauri::command]
-pub async fn podcast_clear_download_partial(state:State<'_,PodcastState>,episode_id:String)->Result<(),String> {
+pub async fn podcast_clear_download_partial(state:State<'_,PodcastState>,episode_id:String)->Result<u64,String> {
   state.ensure_ready()?;let owned=state.inner().clone();
   tauri::async_runtime::spawn_blocking(move||clear_download_job_partial(&owned,&episode_id)).await.map_err(|e|e.to_string())?
 }

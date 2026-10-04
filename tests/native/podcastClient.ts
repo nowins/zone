@@ -40,7 +40,8 @@ async function run() {
     const preferences=await invoke<{storageLimitMb:number}>("podcast_get_preferences",{});
     assert(preferences.storageLimitMb===expected,"global settings not persisted through native SQLite");
     checks.push("完整 App 中打开下载设置、保存原生 SQLite、1180×760 与 920×620、对话框焦点隔离");
-    await click("管理");await click("清理断点");await until(()=>document.querySelector('.podcast-download-job')?.textContent?.includes("0 B") ?? false,"partial download space released");
+    await click("下载");await until(()=>Boolean(document.querySelector('.podcast-storage-summary p')),"download storage summary");const storageBefore=await invoke<{partialBytes:number}>("podcast_download_storage");assert(storageBefore.partialBytes===8192,"actual partial bytes");await capture("24-download-management-920");
+    await click("清除未完成文件");await until(()=>document.querySelector('.podcast-download-job')?.textContent?.includes("0 B") ?? false,"partial download space released");await until(()=>document.querySelector('.podcast-storage-summary')?.textContent?.includes("未完成文件 0 B") ?? false,"live storage update after cleanup");
     const jobs=await invoke<Array<{state:string;downloadedBytes:number}>>("podcast_list_download_jobs");assert(jobs.some(job=>job.state==="paused"&&job.downloadedBytes===0),"partial cleanup must keep the task paused");
     checks.push("真实客户端暂停任务清理断点并释放占用，保持任务暂停避免自动重新下载");
     await click("管理");await until(()=>document.querySelectorAll('.podcast-management-section').length===3,"management section hierarchy");await capture("22-management-920");

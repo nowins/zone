@@ -296,6 +296,7 @@ pub fn run() {
       podcast::podcast_get_preferences,
       podcast::podcast_set_preferences,
       podcast::podcast_list_download_jobs,
+      podcast::podcast_download_storage,
       podcast::podcast_enqueue_download,
       podcast::podcast_pause_download_job,
       podcast::podcast_clear_download_partial,
