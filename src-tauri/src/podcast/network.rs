@@ -159,6 +159,20 @@ pub(crate) async fn send_public_get(url: Url, timeout: Duration, range: Option<&
   send_public_get_with_policy(url, timeout, range, false).await
 }
 
+// Billable authenticated requests never retry automatically or follow redirects.
+pub(crate) async fn send_cloud_post(url:Url,key:&str,content_type:&str,body:Vec<u8>)->Result<Vec<u8>,String> {
+  validate_url_with_policy(&url,false)?;
+  if url.scheme()!="https"||body.len()>21*1024*1024{return Err("云端请求地址或大小无效".into());}
+  with_network_limit(NetworkClass::Metadata,async {
+    let addresses=network_io(tokio::time::timeout(Duration::from_secs(10),resolve_public_addresses(&url,false))).await?.map_err(|_|"服务地址解析超时")??;
+    let host=host_without_ipv6_brackets(url.host_str().ok_or("服务地址无效")?);
+    let client=shared_public_client(url.scheme(),host,&addresses,false)?;
+    let response=network_io(client.client.post(url).bearer_auth(key).header(header::CONTENT_TYPE,content_type).body(body).timeout(Duration::from_secs(180)).send()).await?.map_err(|_|"云端服务连接失败或超时；已保存的内容保持不变")?;
+    if !response.status().is_success(){return Err(format!("云端服务返回 {}，请检查服务地址、密钥、模型和额度",response.status().as_u16()));}
+    read_limited(response,8*1024*1024,"云端转写结果").await
+  }).await
+}
+
 pub(crate) async fn send_public_get_with_policy(
   url: Url,
   timeout: Duration,

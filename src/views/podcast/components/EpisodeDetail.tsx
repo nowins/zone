@@ -220,7 +220,7 @@ function EpisodeDetail({
       <div className="podcast-reading-nav" role="group" aria-label="单集内容">
         <Button variant="ghost" aria-pressed={reading === "notes"} onClick={() => setReading("notes")}>简介</Button>
         {detail.hasChapters && <Button variant="ghost" aria-pressed={reading === "chapters"} onClick={() => { setReading("chapters"); if (!chaptersOpen) onToggleChapters(); }}>章节</Button>}
-        {detail.transcriptCount > 0 && <Button variant="ghost" aria-pressed={reading === "transcript"} onClick={() => setReading("transcript")}>转写</Button>}
+        {<Button variant="ghost" aria-pressed={reading === "transcript"} onClick={() => setReading("transcript")}>转写</Button>}
         <Button variant="ghost" aria-pressed={reading === "bookmarks"} onClick={() => setReading("bookmarks")}>书签</Button>
       </div>
       <section className="podcast-detail-description" hidden={reading !== "notes"}>
@@ -297,7 +297,7 @@ function EpisodeDetail({
           ) : null}
         </section>
       ) : null}
-      {detail.transcriptCount>0&&<div hidden={reading !== "transcript"}><TranscriptPanel key={`transcript-${episode.id}`} revealed={reading === "transcript"} episodeId={episode.id} active={active} progress={activeProgress} onPlayAt={onPlayChapter}/></div>}
+      {<div hidden={reading !== "transcript"}><TranscriptPanel key={`transcript-${episode.id}`} revealed={reading === "transcript"} episodeId={episode.id} active={active} progress={activeProgress} onPlayAt={onPlayChapter}/></div>}
       <div hidden={reading !== "bookmarks"}><EpisodeBookmarks key={`bookmarks-${episode.id}`} episode={episode} position={active ? activeProgress : episode.progressSeconds} onPlayAt={onPlayChapter}/></div>
       <Presence show={addingToList} exitDurationMs={MOTION_DURATIONS.micro}>
         <PlaylistPicker episode={episode} onClose={() => setAddingToList(false)} />

@@ -668,6 +668,8 @@ pub(crate) fn ensure_podcast_schema(connection: &Connection) -> Result<(), Strin
   for (name, definition) in [("season", "season INTEGER CHECK(season BETWEEN 1 AND 100000)"), ("episode_number", "episode_number INTEGER CHECK(episode_number BETWEEN 1 AND 100000)"), ("episode_type", "episode_type TEXT CHECK(episode_type IN ('full','trailer','bonus'))")] {
     ensure_database_column(connection, "podcast_episodes", name, definition)?;
   }
+  ensure_database_column(connection,"podcast_episode_resources","origin","origin TEXT NOT NULL DEFAULT 'rss' CHECK(origin IN ('rss','generated','translated'))")?;
+  ensure_database_column(connection,"podcast_episode_resources","enclosure_binding","enclosure_binding TEXT")?;
   connection
     .execute_batch(
       "

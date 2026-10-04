@@ -53,7 +53,7 @@ export function NowEpisodeContent({ episode, progress, initialReading = "notes",
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [reading]);
   const labels: [Reading, string][] = [["notes", "简介"], ["show", "节目"],
     ...(detail?.hasChapters ? [["chapters", "章节"] as [Reading, string]] : []),
-    ...(detail?.transcriptCount ? [["transcript", "转写"] as [Reading, string]] : []), ["bookmarks", "书签"]];
+    ["transcript", "转写"], ["bookmarks", "书签"]];
   const currentChapter = chapters ? findActivePodcastChapterIndex(chapters.chapters, progress) : -1;
   return <section id="podcast-now-content" className="podcast-now-content" aria-label="本集内容">
     <nav ref={navRef} className="podcast-now-reading-nav" aria-label="本集阅读内容">

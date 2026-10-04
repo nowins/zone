@@ -256,6 +256,7 @@ fn store_feed(
           ])
           .map_err(|error| format!("无法更新播客单集：{error}"))?;
       }
+      transaction.execute("DELETE FROM podcast_episode_resources WHERE episode_id=?1 AND origin!='rss' AND enclosure_binding IS NOT ?2",params![episode.id,episode.enclosure_url]).map_err(|e|e.to_string())?;
       reconcile_episode_resources(&transaction, episode)?;
     }
   }
@@ -364,7 +365,8 @@ fn prune_missing_feed_episodes(
           ),
           EXISTS(SELECT 1 FROM podcast_saved_episodes WHERE episode_id = ?1)
             OR EXISTS(SELECT 1 FROM podcast_playlist_items WHERE episode_id = ?1)
-            OR EXISTS(SELECT 1 FROM podcast_bookmarks WHERE episode_id = ?1),
+            OR EXISTS(SELECT 1 FROM podcast_bookmarks WHERE episode_id = ?1)
+            OR EXISTS(SELECT 1 FROM podcast_episode_resources WHERE episode_id = ?1 AND origin != 'rss'),
           EXISTS(SELECT 1 FROM podcast_queue WHERE episode_id = ?1),
           EXISTS(
             SELECT 1
@@ -481,7 +483,7 @@ fn reconcile_episode_resources(
     return Ok(());
   };
   let mut existing_statement = transaction
-    .prepare("SELECT id FROM podcast_episode_resources WHERE episode_id = ?1")
+    .prepare("SELECT id FROM podcast_episode_resources WHERE episode_id = ?1 AND origin='rss'")
     .map_err(|error| format!("无法读取播客单集资源：{error}"))?;
   let existing_ids = existing_statement
     .query_map([&episode.id], |row| row.get::<_, String>(0))

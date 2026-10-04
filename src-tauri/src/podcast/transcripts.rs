@@ -362,10 +362,15 @@ pub async fn podcast_get_transcript(
   state: State<'_, PodcastState>,
   episode_id: String,
   request_id: Option<String>,
+  variant: Option<String>,
 ) -> Result<TranscriptDocument, String> {
   state.ensure_ready()?;
   run_network_task(request_id.as_deref(), async {
-    get_transcript(&state.db_path, &episode_id, false).await
+    match variant.as_deref().unwrap_or("source") {
+      "source" => get_transcript(&state.db_path, &episode_id, false).await.or_else(|error| super::cloud_transcript::cached_generated(&state.db_path,&episode_id,"generated")?.ok_or(error)),
+      origin @ ("generated"|"translated") => super::cloud_transcript::cached_generated(&state.db_path,&episode_id,origin)?.ok_or_else(||"没有这类已生成转写".into()),
+      _ => Err("转写类型无效".into())
+    }
   })
   .await
 }

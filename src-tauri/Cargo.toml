@@ -44,6 +44,7 @@ windows = { version = "0.61.3", features = [
   "Storage",
   "Storage_Streams",
   "Win32_Foundation",
+  "Win32_Security_Cryptography",
   "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
   "Win32_Graphics_Imaging",

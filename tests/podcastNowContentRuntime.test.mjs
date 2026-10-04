@@ -9,7 +9,7 @@ globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { createRoot } = await import("react-dom/client");
-const methods = ["getEpisodeDetail", "getEpisodeChapters", "cancelPodcastRequest", "openPodcastLink", "getTranscript", "listEpisodeBookmarks", "addEpisodeBookmark", "removeEpisodeBookmark", "restoreEpisodeBookmark", "updateEpisodeBookmark"];
+const methods = ["getEpisodeDetail", "getEpisodeChapters", "cancelPodcastRequest", "openPodcastLink", "getTranscript", "listEpisodeBookmarks", "addEpisodeBookmark", "removeEpisodeBookmark", "restoreEpisodeBookmark", "updateEpisodeBookmark", "transcriptSources", "getCloudSettings", "generateTranscript"];
 await build({ entryPoints: ["src/views/PodcastNowPlayingView.tsx"], outfile: ".tmp/podcastNowContent/view.mjs", bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent", plugins: [{ name: "controlled-native-data", setup(b) {
   b.onLoad({ filter: /[\\/]podcast[\\/]api\.ts$/ }, () => ({ contents: methods.map(name => `export const ${name} = (...args) => globalThis.nativeData.${name}(...args);`).join("\n"), loader: "ts" }));
   b.onLoad({ filter: /PodcastNowBackdrop\.tsx$/ }, () => ({ contents: 'export function PodcastNowBackdrop(){return null}', loader: "tsx" }));

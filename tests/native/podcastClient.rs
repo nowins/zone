@@ -159,3 +159,11 @@ pub fn client_prepare_sync(app:tauri::AppHandle)->Result<serde_json::Value,Strin
   crate::podcast::configure_sync_directory(state.inner(),&folder)?;
   Ok(serde_json::json!({"episodeId":episode,"playlistId":playlist,"groupId":group}))
 }
+
+#[tauri::command]
+pub fn client_cloud_cache(app:tauri::AppHandle,episode_id:String)->Result<(),String>{
+  let data=app.path().app_data_dir().map_err(|e|e.to_string())?;let path=crate::db::initialize_zone_database(&data)?;let detail=crate::podcast::get_episode_detail(&path,&data.join("podcast-downloads"),&episode_id)?;
+  let cue=crate::podcast::TranscriptCue{start_seconds:Some(1.0),end_seconds:Some(2.0),text:"Client generated transcript".into(),speaker:None};
+  crate::podcast::cloud_transcript::persist(&path,&episode_id,&detail.episode.enclosure_url,"generated",&[cue.clone()])?;
+  crate::podcast::cloud_transcript::persist(&path,&episode_id,&detail.episode.enclosure_url,"translated",&[crate::podcast::TranscriptCue{text:"客户端生成转写的中文翻译".into(),..cue}])?;Ok(())
+}

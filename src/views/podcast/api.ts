@@ -151,7 +151,7 @@ export function getEpisodeChapters(episodeId: string) {
 
 export type TranscriptCue = {startSeconds:number|null;endSeconds:number|null;text:string;speaker:string|null};
 export type TranscriptDocument = {episodeId:string;language:string|null;cues:TranscriptCue[];stale:boolean};
-export const getTranscript = (episodeId:string) => invokeNetwork<TranscriptDocument>("transcript","podcast_get_transcript",{episodeId});
+export const getTranscript = (episodeId:string,variant="source") => invokeNetwork<TranscriptDocument>("transcript","podcast_get_transcript",{episodeId,variant});
 export const openPodcastLink = (url:string) => invoke<void>("podcast_open_link",{url});
 
 export type PodcastPlaylistRules = { filter: string; sort: string; feedIds: string[]; maxAgeDays: number | null };
@@ -262,3 +262,9 @@ export const exportPodcastBackup = (frontendSettings: Record<string,string | nul
 export const choosePodcastRestoreBackup = () => invoke<PodcastBackupPreview | null>("podcast_choose_restore_backup");
 export const confirmPodcastRestoreBackup = (token: string) => invoke<PodcastBackupRestore>("podcast_confirm_restore_backup", { token });
 export const openPodcastBackupFolder = (token: string) => invoke<void>("podcast_open_backup_folder", { token });
+
+export type CloudSettings = {baseUrl:string;transcriptionModel:string;translationModel:string;hasKey:boolean};
+export const getCloudSettings = () => invoke<CloudSettings>("podcast_get_cloud_settings");
+export const saveCloudSettings = (settings:CloudSettings,key?:string,clearKey=false) => invoke<CloudSettings>("podcast_set_cloud_settings",{settings,key,clearKey});
+export const transcriptSources = (episodeId:string) => invoke<string[]>("podcast_transcript_sources",{episodeId});
+export const generateTranscript = (episodeId:string,mode:string,source:string,expectedBaseUrl:string) => invokeNetwork<TranscriptDocument>("cloud","podcast_generate_transcript",{episodeId,mode,source,expectedBaseUrl});

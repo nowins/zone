@@ -12,7 +12,7 @@ const { TranscriptPanel, EpisodeBookmarks } = await import("../.tmp/reading-ui-t
 const click = label => act(async () => [...document.querySelectorAll("button")].find(button => button.textContent === label).click());
 test("manual transcript reading pauses follow while current highlighting and explicit resume remain available", async () => {
   let scrolls = 0; window.HTMLElement.prototype.scrollIntoView = () => { scrolls++; };
-  window.__TAURI_INTERNALS__ = { invoke: async command => command === "podcast_get_transcript" ? { language: "中文", cues: [0,10,20].map(start => ({ startSeconds: start, endSeconds: start + 10, text: "段落 " + start })), stale: false } : null };
+  window.__TAURI_INTERNALS__ = { invoke: async command => command === "podcast_get_transcript" ? { language: "中文", cues: [0,10,20].map(start => ({ startSeconds: start, endSeconds: start + 10, text: "段落 " + start })), stale: false } : command === "podcast_transcript_sources" ? ["source"] : null };
   const root = createRoot(document.getElementById("root"));
   const props = { episodeId: "episode", active: true, progress: 12, revealed: true, onPlayAt() {} };
   try {
@@ -23,6 +23,23 @@ test("manual transcript reading pauses follow while current highlighting and exp
     await act(async () => root.render(React.createElement(TranscriptPanel, { ...props, progress: 25 })));
     assert.equal(scrolls, stopped); assert.match(document.querySelector('[aria-current="true"]').textContent, /段落 20/);
     await click("回到当前段落"); assert.equal(follow.checked, true); assert.ok(scrolls > stopped);
+  } finally { await act(async () => root.unmount()); }
+});
+test("timed reader following leaves explicitly focused version and search controls in place", async () => {
+  let scrolls = 0; window.HTMLElement.prototype.scrollIntoView = () => { scrolls++; };
+  window.__TAURI_INTERNALS__ = { invoke: async command => command === "podcast_get_transcript" ? { cues: [0,10,20].map(start => ({ startSeconds: start, endSeconds: start + 10, text: "段落 " + start })), stale: false } : command === "podcast_transcript_sources" ? ["source","translated"] : null };
+  const root = createRoot(document.getElementById("root"));
+  const props = { episodeId: "episode", active: true, progress: 2, revealed: true, onPlayAt() {} };
+  try {
+    await act(async () => root.render(React.createElement(TranscriptPanel, props)));
+    const control = document.querySelector('[aria-label="转写版本"]'); control.focus(); const before = scrolls;
+    await act(async () => root.render(React.createElement(TranscriptPanel, { ...props, progress: 12 })));
+    assert.equal(scrolls, before); assert.equal(document.activeElement, control);
+    const search = document.querySelector('[aria-label="搜索转写内容"]'); search.focus();
+    await act(async () => root.render(React.createElement(TranscriptPanel, { ...props, progress: 25 })));
+    assert.equal(scrolls, before); assert.match(document.querySelector('[aria-current="true"]').textContent, /段落 20/);
+    search.blur(); await act(async () => root.render(React.createElement(TranscriptPanel, { ...props, progress: 12 })));
+    assert.ok(scrolls > before);
   } finally { await act(async () => root.unmount()); }
 });
 test("bookmark editing preserves its timestamp and delete undo restores the original identity", async () => {

@@ -23,9 +23,11 @@ fn content_excerpt(text:&str,query:&str)->String {
   format!("{}{}{}",if start>0{"…"}else{""},excerpt,if text.chars().count()>start+170{"…"}else{""})
 }
 
+#[cfg(test)]
 pub(crate) fn search_episodes(path:&Path,downloads:&Path,feed:Option<&str>,query:&str,filter:&str,sort:&str,offset:usize,limit:usize)->Result<PodcastEpisodeSearchPage,String> {
   search_episodes_scoped(path,downloads,feed,query,filter,sort,offset,limit,false)
 }
+#[cfg(test)]
 fn search_episodes_scoped(path:&Path,downloads:&Path,feed:Option<&str>,query:&str,filter:&str,sort:&str,offset:usize,limit:usize,followed_only:bool)->Result<PodcastEpisodeSearchPage,String> {
   search_series_episodes(path,downloads,feed,query,filter,sort,offset,limit,followed_only,None,None)
 }

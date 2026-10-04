@@ -2419,3 +2419,13 @@
 .podcast-backup-history li { display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line); }
 .podcast-backup-history strong,.podcast-backup-history small { display:block; }
 .podcast-backup-history small { color:var(--muted);margin-top:4px; }
+
+.podcast-cloud-settings { max-width: 620px; }
+.podcast-cloud-settings small { display: block; color: var(--muted); font-size: 12px; line-height: 1.6; margin: 14px 0; }
+.podcast-cloud-settings .podcast-cloud-address { grid-column: 1 / -1; }
+.podcast-cloud-settings input { width: 100%; min-width: 0; height: 36px; background: var(--app-bg); color: var(--text); border: 1px solid var(--quiet); padding: 0 8px; font: inherit; }
+.podcast-cloud-actions, .podcast-cloud-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.podcast-cloud-actions [role="status"] { color: var(--muted); font-size: 12px; }
+.podcast-cloud-dialog { width: min(540px, calc(100vw - 48px)); }
+.podcast-cloud-dialog p { line-height: 1.65; margin: 12px 0; overflow-wrap: anywhere; color: var(--muted); }
+.podcast-cloud-dialog .podcast-cloud-target { color: var(--accent); user-select: text; }

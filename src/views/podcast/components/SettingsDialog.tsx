@@ -1,3 +1,4 @@
+import { CloudSettings } from "./CloudSettings";
 import { Select } from "../../../components/Select";
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/Button";
@@ -17,9 +18,11 @@ function PreferenceToggle({label, value, disabled, onChange}: {label:string;valu
 function PodcastPreferencesEditor({ feedId, title, onClose, embedded = false }: { feedId?: string; title: string; onClose?: () => void; embedded?: boolean }) {
   const [value, setValue] = useState<PodcastPreferences | null>(null);
   const [defaults, setDefaults] = useState<PodcastPreferences | null>(null);
-  const [tab, setTab] = useState<"playback" | "downloads" | "updates">("playback");
+  const [tab, setTab] = useState<"playback" | "downloads" | "updates" | "cloud">("playback");
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  const [cloudVisited,setCloudVisited]=useState(false);
+  const [testSent,setTestSent]=useState(false);
   const [dirty, setDirty] = useState(false), [saved, setSaved] = useState(false);
   function update(next: PodcastPreferences) { setValue(next); setDirty(true); setSaved(false); }
   useEffect(() => {
@@ -41,18 +44,20 @@ function PodcastPreferencesEditor({ feedId, title, onClose, embedded = false }: 
   const displayed = inherited ? effective : value;
   const defaultRate = defaults?.playbackRate ?? readPodcastPlaybackSettings().playbackRate;
   const fields = <>
-    <p className="podcast-settings-scope">{feedId ? "设置应用于本节目" : "默认设置应用于沿用默认偏好的节目"}</p>
+    {tab!=="cloud"&&<p className="podcast-settings-scope">{feedId ? "设置应用于本节目" : "默认设置应用于沿用默认偏好的节目"}</p>}
     <div className="podcast-settings-tabs podcast-library-tabs" role="group" aria-label="设置分类">
       <Button variant="ghost" disabled={busy} aria-pressed={tab === "playback"} onClick={() => setTab("playback")}>播放偏好</Button>
       <Button variant="ghost" disabled={busy} aria-pressed={tab === "downloads"} onClick={() => setTab("downloads")}>下载与清理</Button>
       <Button variant="ghost" disabled={busy} aria-pressed={tab === "updates"} onClick={() => setTab("updates")}>更新提醒</Button>
+      {!feedId && <Button variant="ghost" disabled={busy} aria-pressed={tab === "cloud"} onClick={()=>{setCloudVisited(true);setTab("cloud");}}>转写服务</Button>}
     </div>
-    {value && displayed ? <div className="podcast-settings-fields">
+    {!feedId&&cloudVisited&&<div hidden={tab!=="cloud"}><CloudSettings/></div>}
+    {tab === "cloud" ? null : value && displayed ? <div className="podcast-settings-fields">
       {tab === "updates" ? <>
         {feedId && <PreferenceToggle label="使用默认提醒设置" value={value.notifyNewEpisodes == null} disabled={busy} onChange={()=>update({...value,notifyNewEpisodes:value.notifyNewEpisodes==null?(defaults?.notifyNewEpisodes??false):null})}/>}
         <PreferenceToggle label="Windows 新单集通知" value={Boolean(value.notifyNewEpisodes??defaults?.notifyNewEpisodes)} disabled={busy||Boolean(feedId&&value.notifyNewEpisodes==null)} onChange={()=>update({...value,notifyNewEpisodes:!value.notifyNewEpisodes})}/>
         <small>首页已固定的节目始终显示更新角标。打开节目后清除提示；收听进度保持不变。</small>
-        <Button variant="ghost" disabled={busy} onClick={()=>{setBusy(true);setError(null);void testPodcastNotification().then(()=>setSaved(true)).catch(reason=>setError(String(reason))).finally(()=>setBusy(false));}}>发送测试提醒</Button>
+        <Button variant="ghost" disabled={busy} onClick={()=>{setBusy(true);setError(null);void testPodcastNotification().then(()=>setTestSent(true)).catch(reason=>setError(String(reason))).finally(()=>setBusy(false));}}>发送测试提醒</Button>{testSent&&<small role="status">测试提醒已提交给 Windows</small>}
       </> : tab === "downloads" ? <>
         {feedId ? <label>自动下载最新单集
           <Select disabled={busy} aria-label="自动下载最新单集" value={value.autoDownloadCount} onValueChange={nextValue => update({ ...value, autoDownloadCount: Number(nextValue) })}>
@@ -86,7 +91,7 @@ function PodcastPreferencesEditor({ feedId, title, onClose, embedded = false }: 
     {error && <p role="alert">{error}{!value && <Button onClick={() => setRevision(value => value + 1)}>重试读取</Button>}</p>}
   </>;
   if (embedded) return <form className="podcast-default-settings" aria-label="播客默认偏好" onSubmit={event => { event.preventDefault(); void save(); }}>{fields}
-    <div className="podcast-preference-save"><span role="status">{dirty ? "有未保存的修改" : saved ? "已保存播客偏好" : ""}</span><Button type="submit" variant="primary" disabled={!value || !dirty} busy={busy}>保存修改</Button></div>
+    {tab!=="cloud" && <div className="podcast-preference-save"><span role="status">{dirty ? "有未保存的修改" : saved ? "已保存播客偏好" : ""}</span><Button type="submit" variant="primary" disabled={!value || !dirty} busy={busy}>保存修改</Button></div>}
   </form>;
   return <Dialog titleId="podcast-settings-title" kicker="节目设置" title={title} overlayClassName="podcast-settings-overlay" className="podcast-settings-dialog" busy={busy} onCancel={() => onClose?.()}
     onSubmit={event => { event.preventDefault(); void save(); }} actions={<><Button disabled={busy} onClick={onClose}>取消</Button><Button type="submit" variant="primary" disabled={!value} busy={busy}>保存</Button></>}><div className="podcast-settings-content">{fields}</div></Dialog>;
