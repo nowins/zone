@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { MOTION_DRIFT, MOTION_DURATIONS } from "../motion/tokens";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { MOTION_DRIFT } from "../motion/tokens";
 import { resolvePageTransition } from "../motion/pageTransition";
 import { useReducedMotion } from "../motion/useReducedMotion";
+import { SurfaceTransition } from "../motion/surfaceTransition";
 import { resolveSearchSurface } from "../utils/collectionSearch";
 import { useCollectionNavigation } from "./useCollectionNavigation";
 import type { CollectionEntityRef } from "../utils/collectionEntities";
@@ -43,8 +44,10 @@ export function useNavigation({
 }: UseNavigationParams) {
   const previousPageRef = useRef<"quickplay" | "collection" | "podcasts" | "settings">("quickplay");
   const pageRef = useRef<AppPage>("quickplay");
-  const lastNavigationAt = useRef(-Infinity);
-  const collection = useCollectionNavigation();
+  const workspaceRef = useRef<HTMLElement | null>(null);
+  const pageMotion = useRef<SurfaceTransition | null>(null);
+  const [navigationRevision, setNavigationRevision] = useState(0);
+  const collection = useCollectionNavigation(() => pageMotion.current?.settle());
   const { query, searchMode, view, playlistId: selectedPlaylistId } = collection.location;
   const pendingReturn = useRef<CollectionLocation["origin"]>();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -55,6 +58,31 @@ export function useNavigation({
   const [navigationAnimated, setNavigationAnimated] = useState(true);
   const [quickplayEntrance, setQuickplayEntrance] = useState(true);
   const reducedMotion = useReducedMotion();
+
+  useLayoutEffect(() => {
+    const workspace = workspaceRef.current;
+    if (!workspace || !shortcutsEnabled) return;
+    const motion = new SurfaceTransition(workspace);
+    pageMotion.current = motion;
+    const stop = () => motion.stop();
+    const hidden = () => { if (document.hidden) stop(); };
+    window.addEventListener("resize", stop);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      stop(); pageMotion.current = null;
+      window.removeEventListener("resize", stop);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [shortcutsEnabled]);
+
+  useLayoutEffect(() => {
+    if (reducedMotion) { pageMotion.current?.stop(); return; }
+    const motion = pageMotion.current, workspace = workspaceRef.current;
+    if (!motion || !workspace || motion.enter()) return;
+    const observer = new MutationObserver(() => { if (motion.enter()) observer.disconnect(); });
+    observer.observe(workspace, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [page, navigationRevision, reducedMotion, shortcutsEnabled]);
 
   useEffect(() => {
     if (!pendingReturn.current || page === "collection") return;
@@ -76,18 +104,20 @@ export function useNavigation({
   }, [page]);
 
   // Commit the intent synchronously, including reversals in one React batch.
-  // Frequent input settles immediately rather than restarting an entrance.
+  // Visual hand-off overlaps the mounted target and survives rapid reversals.
   function requestNavigation(next: AppPage, rememberCollection = true, animate = true) {
     const from = pageRef.current;
     if (next === from) return;
     if (next !== "collection") focusSearchPendingRef.current = false;
     if (from === "collection" && rememberCollection) collection.remember();
     const transition = resolvePageTransition(from, next);
-    const now = performance.now();
-    setNavigationAnimated(animate && !reducedMotion && now - lastNavigationAt.current >= MOTION_DURATIONS.page);
-    lastNavigationAt.current = now;
+    const enabled = animate && !reducedMotion && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches && !document.hidden;
+    const visiblePage = workspaceRef.current?.dataset.page ?? from;
+    pageMotion.current?.prepare(visiblePage, next, transition, enabled);
+    setNavigationAnimated(enabled);
+    setNavigationRevision(revision => revision + 1);
     setNavDir(transition.direction);
-    setNavDrift(transition.enterDriftPx);
+    setNavDrift(next === "nowPlaying" ? MOTION_DRIFT.l : MOTION_DRIFT.m);
     if (next === "quickplay") setQuickplayEntrance(false);
     pageRef.current = next;
     setPage(next);
@@ -107,7 +137,7 @@ export function useNavigation({
       return;
     }
     focusSearchPendingRef.current = true;
-    requestNavigation("collection", true, false);
+    requestNavigation("collection");
   }
 
   function navigatePage(nextPage: "quickplay" | "collection" | "podcasts" | "settings", animate = true) {
@@ -143,7 +173,7 @@ export function useNavigation({
       if (contextMenu || infoTarget || addToPlaylistTarget || playlistDialog || smartPlaylistDialog) return;
       if (page === "collection" && event.altKey && ["ArrowLeft", "ArrowRight"].includes(event.key)) {
         event.preventDefault();
-        travelCollection(event.key === "ArrowLeft" ? -1 : 1, false);
+        travelCollection(event.key === "ArrowLeft" ? -1 : 1);
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
@@ -190,6 +220,7 @@ export function useNavigation({
     openCollectionEntity,
     travelCollection,
     page,
+    workspaceRef,
     navDir,
     navDrift,
     navigationAnimated,

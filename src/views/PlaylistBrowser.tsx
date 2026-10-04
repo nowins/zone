@@ -70,8 +70,7 @@ export function PlaylistBrowser({
   }, [activity, favoriteTrackIds, playlists, queueIds, trackMap, tracks]);
   const selected = entries.find((item) => item.id === selectedPlaylistId);
   const contentRef = useRef<HTMLElement>(null);
-  const animateSelection = useRef(true);
-  useCollectionPanelMotion(contentRef, selectedPlaylistId, undefined, animateSelection.current);
+  useCollectionPanelMotion(contentRef, selectedPlaylistId);
   if (!selected) return <div className="collection-unavailable"><h2>此播放列表已不存在</h2>
     <Button onClick={() => onSelectPlaylist(DEFAULT_PLAYLIST_ID)}>查看喜欢的歌曲</Button></div>;
   const artwork = [...new Set(selected.tracks.flatMap((track) => track.cover_path ? [track.cover_path] : []))].slice(0, 4);
@@ -94,7 +93,7 @@ export function PlaylistBrowser({
             className={playlist.id === selected.id ? "selected" : ""}
             aria-pressed={playlist.id === selected.id}
             title={playlist.name}
-            onClick={event => { animateSelection.current = event.detail > 0; onSelectPlaylist(playlist.id); }}
+            onClick={() => onSelectPlaylist(playlist.id)}
             onContextMenu={(event) =>
               onContextMenu(event, {
                 kind: "playlist",

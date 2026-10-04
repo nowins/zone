@@ -105,7 +105,7 @@ test("podcast playback reuses the app's single audio element", () => {
 
 test("podcasts are a peer page wired to the formal discovery and library command chain", () => {
   includes(typesSource, /type AppPage\s*=[^;]*"podcasts"/, "AppPage must include podcasts");
-  includes(appHeaderSource, /onNavigate\("podcasts", event\.detail > 0\)/, "the primary navigation must open podcasts and distinguish keyboard activation");
+  includes(appHeaderSource, /onNavigate\("podcasts"\)/, "the primary navigation must open podcasts with the shared choreography");
   includes(appHeaderSource, />\s*播客\s*</, "the podcast navigation label must be Chinese");
   includes(appSource, /page\s*===\s*"podcasts"/, "App must render a podcasts page branch");
   includes(appSource, /<PodcastView\b/, "App must mount PodcastView");

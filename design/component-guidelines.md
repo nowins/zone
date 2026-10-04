@@ -8,7 +8,7 @@
 2. **内容即装饰**。尽可能使用真实封面与媒体派生色；不加与音乐无关的装饰性渐变/光斑。
 3. **大号、低字重排版**。展示性文字用 200–300 字重、clamp() 流式字号、负字距；功能性文字保持可读且克制。
 4. **无解释性文案**。界面不写教学式句子；功能性 UI 文案一律中文（`tests/localization.test.mjs` 有守卫）。
-5. **动效有目的、可打断、时间短**。常规交互优先 transform/opacity，通常采用 ≤260ms 的通用 token；分层入场、媒体背景和加载循环有各自编排，适用范围见 [动效系统](motion-system.md)。尊重 `prefers-reduced-motion`。
+5. **动效有目的、可打断、有接续**。常规交互优先 transform/opacity，通常采用 ≤260ms 的通用 token；分层入场、媒体背景和加载循环有各自编排，适用范围见 [动效系统](motion-system.md)。尊重 `prefers-reduced-motion`。
 
 ## 2. 设计令牌
 

@@ -95,7 +95,7 @@ export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
     }
     sync(false);
   }
-  function panTo(left: number, smooth: boolean) {
+  function panTo(left: number, smooth: boolean, velocity = 0) {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const target = clampPanorama(left, viewport.scrollWidth - viewport.clientWidth);
@@ -103,7 +103,7 @@ export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
     if (!smooth || reducedMotion) { stop(); viewport.scrollLeft = target; sync(); return; }
     const running = motion.current.handle;
     if (running) running.retarget(target);
-    else motion.current.handle = animateValue({ from: viewport.scrollLeft, to: target, spring: SPRING_PRESETS.snappy,
+    else motion.current.handle = animateValue({ from: viewport.scrollLeft, to: target, spring: SPRING_PRESETS.snappy, velocity,
       onUpdate: value => { viewport.scrollLeft = value; sync(); },
       onComplete: () => { motion.current.handle = null; sync(); },
     });
@@ -210,7 +210,7 @@ export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
     const current = drag.current;
     if (!current || current.pointerId !== event.pointerId) return;
     cancelDrag();
-    if (current.moving && event.timeStamp - current.time < PANORAMA_MOTION.velocityWindow && !reducedMotion) panTo(event.currentTarget.scrollLeft + current.velocity * PANORAMA_MOTION.coastMs, true);
+    if (current.moving && event.timeStamp - current.time < PANORAMA_MOTION.velocityWindow && !reducedMotion) panTo(event.currentTarget.scrollLeft + current.velocity * PANORAMA_MOTION.coastMs, true, current.velocity * 1000);
   }
 
   function onScrollbarInput(event: FormEvent<HTMLInputElement>) {

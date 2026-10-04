@@ -148,16 +148,27 @@
   pointer-events: none;
 }
 
-/* Frequent navigation and keyboard activation show content immediately. */
-.shell[data-nav-motion="instant"] :is(.quickplay, .content-band, .now-playing-stage,
-  .quick-group, .quick-album, .folder-list > div, .settings-section-heading,
-  .settings-sidebar > section, .podcast-content-section, .podcast-episode,
-  .podcast-show-card, .podcast-continue-card, .podcast-queue-episode),
+/* Navigation owns peer-page movement; stage arrival and tile launch keep theirs. */
+.shell[data-page-motion="managed"] > .workspace > :is(.quickplay, .content-band),
 .quickplay[data-entrance="restored"],
 .quickplay[data-entrance="restored"] .quick-group,
 .quickplay[data-entrance="restored"] .quick-album,
 .collection-connected[data-collection-motion="content"] {
   animation: none;
+}
+
+.motion-departure {
+  position: fixed;
+  z-index: 20;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+}
+
+.motion-departure, .motion-departure * {
+  animation: none !important;
+  transition: none !important;
+  pointer-events: none !important;
 }
 
 /* Overlay and chrome exits: faster and lighter than their entrances, each
@@ -454,6 +465,7 @@ button.tilt-pressed {
    an instant-tier opacity-only fade instead of a dead pause: the JS
    lifecycles wait the same 80ms (see resolveExitDurationMs). */
 @media (prefers-reduced-motion: reduce) {
+  .motion-departure { display: none; }
   .quick-group,
   .quick-album,
   .collection-album-select,

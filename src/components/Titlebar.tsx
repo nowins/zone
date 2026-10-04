@@ -30,7 +30,7 @@ export function Titlebar({
       <div className="window-controls">
         {showSettings ? <button
           className={isSettings ? "titlebar-settings active" : "titlebar-settings"}
-          onClick={event => onOpenSettings(event.detail > 0)}
+          onClick={() => onOpenSettings()}
           title="设置"
           aria-current={isSettings ? "page" : undefined}
         >

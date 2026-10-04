@@ -14,19 +14,19 @@ export function AppHeader({
         <nav className="primary-pivot" aria-label="主要导航">
           <button
             className={page === "quickplay" ? "active" : ""}
-            onClick={event => onNavigate("quickplay", event.detail > 0)}
+            onClick={() => onNavigate("quickplay")}
           >
             quickplay
           </button>
           <button
             className={page === "collection" ? "active" : ""}
-            onClick={event => onNavigate("collection", event.detail > 0)}
+            onClick={() => onNavigate("collection")}
           >
             收藏
           </button>
           <button
             className={page === "podcasts" ? "active" : ""}
-            onClick={event => onNavigate("podcasts", event.detail > 0)}
+            onClick={() => onNavigate("podcasts")}
           >
             播客
           </button>

@@ -1,5 +1,6 @@
 import { COLLECTION_CATEGORY_ORDER, type CollectionHistory, type CollectionLocation } from "../utils/collectionNavigation.js";
-import { COLLECTION_PIVOT_MOTION, MOTION_DRIFT, MOTION_EASINGS, MOTION_STAGGER } from "./tokens.js";
+import { COLLECTION_PIVOT_MOTION, MOTION_EASINGS, NAVIGATION_MOTION } from "./tokens.js";
+import { snapshotSurface } from "./surfaceTransition.js";
 
 const isIndex = (location: CollectionLocation) => !location.entity && !(location.query.trim() && location.searchMode === "results");
 
@@ -18,6 +19,45 @@ const groupSelector = [
   ".collection-entity-heading", ".collection-detail-tabs", ".collection-entity-section",
 ].join(",");
 
+type Departure = { key: string; layer: HTMLElement; node: HTMLElement; animation: Animation; arrival: Map<string, Keyframe> };
+const departures = new WeakMap<HTMLElement, Departure>();
+const surfaceKey = (location: CollectionLocation) => JSON.stringify([location.view, location.entity, location.query, location.searchMode, location.playlistId]);
+const groupKey = (node: HTMLElement, index: number) => `${[...node.classList].join(".")}:${index}`;
+const clearDeparture = (root: HTMLElement, departure: Departure | undefined) => {
+  if (!departure) return;
+  departure.animation.onfinish = null;
+  departure.animation.cancel();
+  departure.layer.remove();
+  if (departures.get(root) === departure) departures.delete(root);
+};
+
+/** Capture before React replaces the keyed content; keep no live old view. */
+export function prepareCollectionPivot(root: HTMLElement, history: CollectionHistory, next: CollectionHistory): void {
+  const window = root.ownerDocument.defaultView!;
+  const content = root.querySelector<HTMLElement>(".collection-content");
+  if (!content || !next.animate || root.ownerDocument.hidden || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || typeof content.animate !== "function") return;
+  const direction = collectionPivotDirection(next) || next.direction;
+  const previous = departures.get(root), arrival = new Map<string, Keyframe>();
+  if (previous?.key === surfaceKey(next.entries[next.cursor])) {
+    const parent = window.getComputedStyle(previous.node);
+    const offset = new window.DOMMatrixReadOnly(parent.transform === "none" ? undefined : parent.transform).m41;
+    [...previous.node.querySelectorAll<HTMLElement>(groupSelector)].forEach((node, index) => {
+      const style = window.getComputedStyle(node);
+      const x = new window.DOMMatrixReadOnly(style.transform === "none" ? undefined : style.transform).m41;
+      arrival.set(groupKey(node, index), { transform: `translate3d(${x + offset}px,0,0)`, opacity: Number(parent.opacity || 1) * Number(style.opacity || 1) });
+    });
+  }
+  const snapshot = snapshotSurface(content);
+  clearDeparture(root, previous);
+  const animation = snapshot.node.animate([
+    { transform: "none", opacity: 1 },
+    { transform: `translate3d(${-direction * NAVIGATION_MOTION.exitDrift}px,0,0)`, opacity: 0 },
+  ], { duration: NAVIGATION_MOTION.exit, easing: `cubic-bezier(${MOTION_EASINGS.navigation.join(",")})`, fill: "forwards" });
+  const departure = { ...snapshot, animation, arrival, key: surfaceKey(history.entries[history.cursor]) };
+  departures.set(root, departure);
+  animation.onfinish = () => clearDeparture(root, departure);
+}
+
 /** Animate a few content regions, independent of the number of library rows. */
 export function playCollectionPivot(root: HTMLElement, direction: -1 | 1): () => void {
   const document = root.ownerDocument, window = document.defaultView;
@@ -25,8 +65,10 @@ export function playCollectionPivot(root: HTMLElement, direction: -1 | 1): () =>
   const viewport = root.getBoundingClientRect();
   if (viewport.width <= 0 || viewport.height <= 0) return () => {};
   const interactionRoot = root.closest<HTMLElement>(".collection-connected") ?? root;
+  const departure = departures.get(interactionRoot);
   const groups: HTMLElement[] = [];
-  for (const node of root.querySelectorAll<HTMLElement>(groupSelector)) {
+  const allGroups = [...root.querySelectorAll<HTMLElement>(groupSelector)];
+  for (const node of allGroups) {
     // A section owns its descendants' movement, including the track list.
     const parent = node.parentElement?.closest(groupSelector);
     if (parent && root.contains(parent)) continue;
@@ -54,16 +96,17 @@ export function playCollectionPivot(root: HTMLElement, direction: -1 | 1): () =>
     if (stopped) return;
     stopped = true;
     cancelAnimations();
+    clearDeparture(interactionRoot, departure);
     interactionRoot.removeEventListener("pointerdown", settle, true);
     interactionRoot.removeEventListener("wheel", settle, true);
-    interactionRoot.removeEventListener("keydown", stop, true);
+    interactionRoot.removeEventListener("keydown", settle, true);
     interactionRoot.removeEventListener("scroll", onScroll, true);
     document.removeEventListener("visibilitychange", hidden);
     window.removeEventListener("resize", stop);
   };
   const animate = (node: HTMLElement, frames: Keyframe[], duration: number, delay = 0) => {
     const animation = node.animate(frames, {
-      duration, delay, easing: `cubic-bezier(${MOTION_EASINGS.standard.join(",")})`, fill: "backwards",
+      duration, delay, easing: `cubic-bezier(${MOTION_EASINGS.navigation.join(",")})`, fill: "backwards",
     });
     animations.push({ node, animation });
     animation.onfinish = () => {
@@ -92,12 +135,12 @@ export function playCollectionPivot(root: HTMLElement, direction: -1 | 1): () =>
   };
   const hidden = () => { if (document.hidden) stop(); };
   groups.forEach((node, index) => animate(node, [
-    { transform: `translate3d(${direction * (index === 0 ? MOTION_DRIFT.m : MOTION_DRIFT.s)}px, 0, 0)`, opacity: 0 },
+    departure?.arrival.get(groupKey(node, allGroups.indexOf(node))) ?? { transform: `translate3d(${direction * (index === 0 ? COLLECTION_PIVOT_MOTION.drift : COLLECTION_PIVOT_MOTION.secondaryDrift)}px, 0, 0)`, opacity: 0 },
     { transform: "none", opacity: 1 },
-  ], COLLECTION_PIVOT_MOTION.duration, Math.min(index, COLLECTION_PIVOT_MOTION.staggerGroups - 1) * MOTION_STAGGER.step));
+  ], COLLECTION_PIVOT_MOTION.duration, Math.min(index, COLLECTION_PIVOT_MOTION.staggerGroups - 1) * COLLECTION_PIVOT_MOTION.stagger));
   interactionRoot.addEventListener("pointerdown", settle, { capture: true, passive: true });
   interactionRoot.addEventListener("wheel", settle, { capture: true, passive: true });
-  interactionRoot.addEventListener("keydown", stop, true);
+  interactionRoot.addEventListener("keydown", settle, true);
   interactionRoot.addEventListener("scroll", onScroll, { capture: true, passive: true });
   document.addEventListener("visibilitychange", hidden);
   window.addEventListener("resize", stop);

@@ -135,6 +135,7 @@ export default function App() {
     navDir,
     navDrift,
     navigationAnimated,
+    workspaceRef,
     quickplayEntrance,
     previousPageRef,
     requestNavigation,
@@ -1036,7 +1037,7 @@ export default function App() {
   return (
     <div
       className={`shell ${compactMode.active ? "shell-compact" : page === "nowPlaying" ? "shell-now-playing" : ""}`}
-      data-nav-motion={navigationAnimated ? undefined : "instant"}
+      data-page-motion="managed"
       style={
         {
           "--motion-dir": navDir,
@@ -1103,7 +1104,7 @@ export default function App() {
             else requestNavigation(target);
           }
         }}
-      /> : <main className="workspace">
+      /> : <main ref={workspaceRef} className="workspace" data-page={page}>
         <Presence show={appHeaderElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
           {appHeaderElement ?? lastAppHeaderElement ?? <span style={{ display: "none" }} />}
         </Presence>

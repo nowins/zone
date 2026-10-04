@@ -1,16 +1,23 @@
 import { useCallback, useRef, useState, type SetStateAction } from "react";
 import type { ViewMode } from "../types";
 import type { CollectionEntityRef } from "../utils/collectionEntities";
+import { prepareCollectionPivot } from "../motion/collectionPivot";
 import { emptyCollectionSurface, initialCollectionHistory, pushCollectionLocation, travelCollectionHistory,
   type CollectionHistory, type CollectionLocation, type CollectionSurface } from "../utils/collectionNavigation";
 
-export function useCollectionNavigation() {
+export function useCollectionNavigation(onTransition?: () => void) {
   const [history, setHistory] = useState(initialCollectionHistory);
   const historyRef = useRef(history);
   const rootRef = useRef<HTMLElement | null>(null);
   const lastFocus = useRef<string>();
+  const onTransitionRef = useRef(onTransition);
+  onTransitionRef.current = onTransition;
   const commit = useCallback((update: (current: CollectionHistory) => CollectionHistory) => {
     const next = update(historyRef.current);
+    if (next.revision !== historyRef.current.revision && rootRef.current) {
+      onTransitionRef.current?.();
+      prepareCollectionPivot(rootRef.current, historyRef.current, next);
+    }
     historyRef.current = next;
     setHistory(next);
   }, []);

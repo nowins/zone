@@ -10,6 +10,8 @@ export interface AnimateValueOptions {
   from: number;
   to: number;
   spring?: SpringPreset;
+  /** Initial spring speed in units per second, for gesture release continuity. */
+  velocity?: number;
   tween?: TweenSpec;
   onUpdate: (value: number) => void;
   onComplete?: () => void;
@@ -132,7 +134,7 @@ export function animateValue(options: AnimateValueOptions): AnimationHandle {
     onComplete: options.onComplete,
     lastValue: options.from,
     springPreset: options.spring ?? null,
-    springState: useSpring ? createSpring(options.from) : null,
+    springState: useSpring ? { ...createSpring(options.from), velocity: options.velocity ?? 0 } : null,
     lastFrameTime: startedAt,
     tween: useSpring ? null : options.tween ?? { durationMs: 0, easing: (t) => t },
     tweenFrom: options.from,

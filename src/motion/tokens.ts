@@ -61,6 +61,13 @@ export const PANORAMA_MOTION = {
   scrollbarIdle: 700,
 } as const;
 
+/** Metro page movement has a readable arrival followed by a long deceleration. */
+export const NAVIGATION_MOTION = {
+  enter: 640, exit: 180, fade: 170,
+  drift: 96, exitDrift: 64, groupDrift: 32, stagger: 46, maxGroups: 8,
+  snapshotOverscanRows: 2,
+} as const;
+
 export type MotionDurationName = keyof typeof MOTION_DURATIONS;
 
 /**
@@ -75,6 +82,7 @@ export const MOTION_EASINGS = {
   emphasis: [0.175, 0.885, 0.32, 1.275],
   /** Slow, unattended chrome dissolution; user-triggered reveals stay snappy. */
   dissolve: [0.4, 0, 0.6, 1],
+  navigation: [0.1, 0.9, 0.2, 1],
 } as const;
 
 export type MotionEasingName = keyof typeof MOTION_EASINGS;
@@ -88,7 +96,7 @@ export const MOTION_STAGGER = { step: 24, max: 144 } as const;
 /** Podcast feather entrance; collection uses flat semantic groups. */
 export const BROWSE_MOTION = { duration: 320, scale: 0.96 } as const;
 /** At most three timing groups, without translating both a parent and its rows. */
-export const COLLECTION_PIVOT_MOTION = { duration: MOTION_DURATIONS.content, settle: MOTION_DURATIONS.press, maxGroups: 12, staggerGroups: 3 } as const;
+export const COLLECTION_PIVOT_MOTION = { duration: 560, drift: 96, secondaryDrift: 64, stagger: 46, settle: MOTION_DURATIONS.press, maxGroups: 12, staggerGroups: 3 } as const;
 /** Coarse vertical wheel signals only; fine gestures retain native momentum. */
 export const SCROLL_MOTION = { coarseDelta: 50, linePixels: 32 } as const;
 

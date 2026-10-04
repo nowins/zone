@@ -1,4 +1,4 @@
-import { MOTION_DURATIONS, MOTION_DRIFT } from "./tokens.js";
+import { NAVIGATION_MOTION } from "./tokens.js";
 
 export type MotionPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings";
 
@@ -7,6 +7,8 @@ export interface PageTransition {
   direction: 1 | -1;
   enterMs: number;
   enterDriftPx: number;
+  exitMs: number;
+  exitDriftPx: number;
   coverFlip: boolean;
 }
 
@@ -17,8 +19,8 @@ const PEER_PAGES: readonly MotionPage[] = ["quickplay", "collection", "podcasts"
  * Resolves the WP7-style choreography between two pages: peers pivot along
  * the navigation order (forward = 1), entering nowPlaying pushes on top,
  * leaving it pops back. Same-page transitions are zero-length. Durations
- * come from the page token tier. Navigation mounts the target immediately;
- * the shell supplies direction and `--motion-drift` to its entrance.
+ * come from NAVIGATION_MOTION. Navigation mounts the target immediately;
+ * SurfaceTransition overlaps outgoing pixels with the grouped arrival.
  * `coverFlip` marks pairs where the views run the shared-element cover
  * flight (registered/consumed through the `cover:{trackId}` FLIP registry,
  * not through the navigation timer path).
@@ -30,6 +32,8 @@ export function resolvePageTransition(from: MotionPage, to: MotionPage): PageTra
       direction: 1,
       enterMs: 0,
       enterDriftPx: 0,
+      exitMs: 0,
+      exitDriftPx: 0,
       coverFlip: false,
     };
   }
@@ -38,8 +42,10 @@ export function resolvePageTransition(from: MotionPage, to: MotionPage): PageTra
     return {
       kind: "push",
       direction: 1,
-      enterMs: MOTION_DURATIONS.page,
-      enterDriftPx: MOTION_DRIFT.l,
+      enterMs: NAVIGATION_MOTION.enter,
+      enterDriftPx: NAVIGATION_MOTION.drift,
+      exitMs: NAVIGATION_MOTION.exit,
+      exitDriftPx: NAVIGATION_MOTION.exitDrift,
       coverFlip: true,
     };
   }
@@ -48,8 +54,10 @@ export function resolvePageTransition(from: MotionPage, to: MotionPage): PageTra
     return {
       kind: "pop",
       direction: -1,
-      enterMs: MOTION_DURATIONS.page,
-      enterDriftPx: MOTION_DRIFT.m,
+      enterMs: NAVIGATION_MOTION.enter,
+      enterDriftPx: NAVIGATION_MOTION.drift,
+      exitMs: NAVIGATION_MOTION.exit,
+      exitDriftPx: NAVIGATION_MOTION.exitDrift,
       coverFlip: true,
     };
   }
@@ -58,8 +66,10 @@ export function resolvePageTransition(from: MotionPage, to: MotionPage): PageTra
   return {
     kind: "pivot",
     direction,
-    enterMs: MOTION_DURATIONS.page,
-    enterDriftPx: MOTION_DRIFT.m,
+    enterMs: NAVIGATION_MOTION.enter,
+    enterDriftPx: NAVIGATION_MOTION.drift,
+    exitMs: NAVIGATION_MOTION.exit,
+    exitDriftPx: NAVIGATION_MOTION.exitDrift,
     coverFlip: false,
   };
 }

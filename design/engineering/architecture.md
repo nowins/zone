@@ -27,8 +27,8 @@
 - `src/app/podcastPlaybackSettings.ts`：播客倍速/活动单集/自动续播偏好（`zone-podcast-playback-v1`）的常量、类型与 read/patch 纯函数，附 `webkitAudioContext` 全局声明。
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
   - `useNavigation.ts`：顶层 page、`requestNavigation` 页面过渡、对象入口及来源返回、搜索／历史快捷键、`openNowPlaying`；内部调用 `useCollectionNavigation`。
-  - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。
-  - `useCollectionPivot.ts`：收藏分类、详情及返回的分组入场及生命周期；同文件的 `useCollectionPanelMotion` 处理艺术家详情标签与播放列表选择。`motion/collectionPivot.ts` 按分类／标签顺序或历史方向解析方向，只动画少量可见区域，参数来自 `COLLECTION_PIVOT_MOTION`；返回先恢复表面再反向入场，键盘切换分类／标签和 reduced-motion 直接落到终态。
+  - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；新 revision 提交前由动效内核保存有限退场画面；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。
+  - `useCollectionPivot.ts`：收藏分类、详情及返回的分组入场及生命周期；同文件的 `useCollectionPanelMotion` 处理艺术家详情标签与播放列表选择。`motion/collectionPivot.ts` 按分类／标签顺序或历史方向解析方向，只动画少量可见区域，参数来自 `COLLECTION_PIVOT_MOTION`；返回先恢复表面再反向入场，键盘与鼠标共享编排，reduced-motion 直接落到终态。
   - `useWheelScroll.ts`：收藏与首页内部纵向列表的粗步进滚轮接续，底层 `motion/wheelScroll.ts` 共用动画器与 `snappy` 弹簧；细小连续输入、原生定位和 reduced-motion 保留直接响应。
   - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、只读 `collectionIndex`（albums/artists 等关系集中在 `utils/collectionEntities.ts`）、addFolder/rescan 与 `useLibraryWatcher` 接线。
   - `usePodcastPlayback.ts`：播客会话/队列/进度 domain。对外只返回产品状态与动作（无 ref、无裸 setter），另附 `transport: PodcastTransportBridge` 给播放控制；拥有播客自然结束处理 `handleEpisodeEnded` 与待播消费判定（经 `playbackControlsRef` 的 `hasEpisodeStartedOnDevice` 回查 transport 事实）。

@@ -79,6 +79,7 @@ export const MOTION_TWEENS: Record<MotionEasingKey, (t: number) => number> = {
   exit: cubicBezier(...MOTION_EASINGS.exit),
   emphasis: cubicBezier(...MOTION_EASINGS.emphasis),
   dissolve: cubicBezier(...MOTION_EASINGS.dissolve),
+  navigation: cubicBezier(...MOTION_EASINGS.navigation),
 };
 
 type MotionEasingKey = keyof typeof MOTION_EASINGS;

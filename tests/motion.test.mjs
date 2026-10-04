@@ -19,6 +19,7 @@ import {
 } from "../.tmp/visualizer-tests/motion/spring.js";
 import {
   MOTION_DURATIONS,
+  NAVIGATION_MOTION,
   MOTION_DRIFT,
   MOTION_EASINGS,
   MOTION_STAGGER,
@@ -180,6 +181,17 @@ test("animate: spring travels from -> to, completes, then the loop idles", () =>
   assert.equal(completed, true);
   assert.equal(values[values.length - 1], 100);
   assert.equal(fake.hasPending(), false);
+});
+
+test("animate: gesture release starts with its actual velocity", () => {
+  const fake = createFakeRaf();
+  _setAnimationClockForTesting(fake.now, fake.raf);
+  let carried = 0, resting = 0;
+  const moving = animateValue({ from: 0, to: 160, velocity: 1000, spring: SPRING_PRESETS.snappy, onUpdate: value => { carried = value; } });
+  const idle = animateValue({ from: 0, to: 160, spring: SPRING_PRESETS.snappy, onUpdate: value => { resting = value; } });
+  fake.step(8);
+  assert.ok(carried > resting + 4, "the release does not hesitate while restarting from zero speed");
+  moving.cancel(); idle.cancel();
 });
 
 test("animate: cancel stops updates and never completes", () => {
@@ -352,8 +364,8 @@ test("pageTransition: peer pages pivot along the navigation order", () => {
   assert.equal(skip.kind, "pivot");
   assert.equal(skip.direction, 1);
 
-  assert.equal(forward.enterMs, MOTION_DURATIONS.page);
-  assert.equal("exitMs" in forward, false, "navigation has no delayed exit window");
+  assert.equal(forward.enterMs, NAVIGATION_MOTION.enter);
+  assert.equal(forward.exitMs, NAVIGATION_MOTION.exit, "outgoing motion overlaps the mounted target");
 });
 
 test("pageTransition: entering nowPlaying pushes with a cover flip", () => {

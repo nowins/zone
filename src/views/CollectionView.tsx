@@ -73,13 +73,13 @@ export function CollectionView(props: Props) {
       <div className="collection-toolbar">
         {detail || searching ?
           <button type="button" data-collection-focus="back" className="collection-back" disabled={!canBack}
-            aria-label={`返回${previousLabel}`} title={`返回${previousLabel}`} onClick={event => props.onTravel(-1, event.detail > 0)}>
+            aria-label={`返回${previousLabel}`} title={`返回${previousLabel}`} onClick={() => props.onTravel(-1)}>
             <ArrowLeft size={18} /><span>返回{previousLabel}</span>
           </button>
         : <nav className="collection-categories" aria-label="收藏视图">
           {COLLECTION_CATEGORY_ORDER.map(view => <button key={view}
             data-collection-focus={`index:${view}`} aria-current={view === props.view ? "page" : undefined}
-            className={view === props.view ? "selected" : ""} onClick={event => navigation.openIndex(view, event.detail > 0)}>{labels[view]}</button>)}
+            className={view === props.view ? "selected" : ""} onClick={() => navigation.openIndex(view)}>{labels[view]}</button>)}
         </nav>}
         <CollectionSearchField ref={props.searchInputRef} query={location.query} onQuery={props.onQuery} onClear={props.onClearSearch}
           showReturnToResults={false} onReturnToResults={() => navigation.patch({ searchMode: "results" })} />

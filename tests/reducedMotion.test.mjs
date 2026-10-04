@@ -28,7 +28,8 @@ test("reduced motion swaps spatial exits for an instant-tier opacity fade", () =
   assert.ok(killList, "reduced block still kills entrance/feedback animations");
   const killRule = reducedBlock.slice(0, reducedBlock.indexOf("animation: none;"));
   assert.ok(!killRule.includes(".motion-exit .context-menu"), "context menu exit needs the fade, not a dead wait");
-  assert.ok(motionCss.includes('.shell[data-nav-motion="instant"]'));
+  assert.ok(motionCss.includes('.shell[data-page-motion="managed"]'));
+  assert.ok(appSource.includes("if (reducedMotion) { pageMotion.current?.stop(); return; }"), "WAAPI motion stops as soon as the preference changes");
 });
 
 test("navigation commits immediately and Presence consumes the shared exit-duration policy", () => {
