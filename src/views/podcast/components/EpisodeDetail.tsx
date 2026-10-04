@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../../components/Button";
 import { Presence } from "../../../motion/presence";
 import { MOTION_DURATIONS } from "../../../motion/tokens";
@@ -79,6 +79,8 @@ function EpisodeDetail({
   onPlayChapter: (positionSeconds: number) => void;
 }) {
   const { episode, feed } = detail;
+  const [reading, setReading] = useState("notes");
+  useEffect(() => setReading("notes"), [episode.id]);
   const [addingToList, setAddingToList] = useState(false);
   const currentChapterIndex = active && chapterDocument
     ? findActivePodcastChapterIndex(
@@ -215,12 +217,18 @@ function EpisodeDetail({
         </button></div></details>
       </div>
 
-      <section className="podcast-detail-description">
+      <div className="podcast-reading-nav" role="group" aria-label="单集内容">
+        <Button variant="ghost" aria-pressed={reading === "notes"} onClick={() => setReading("notes")}>简介</Button>
+        {detail.hasChapters && <Button variant="ghost" aria-pressed={reading === "chapters"} onClick={() => { setReading("chapters"); if (!chaptersOpen) onToggleChapters(); }}>章节</Button>}
+        {detail.transcriptCount > 0 && <Button variant="ghost" aria-pressed={reading === "transcript"} onClick={() => setReading("transcript")}>转写</Button>}
+        <Button variant="ghost" aria-pressed={reading === "bookmarks"} onClick={() => setReading("bookmarks")}>书签</Button>
+      </div>
+      <section className="podcast-detail-description" hidden={reading !== "notes"}>
         <h3>简介</h3>
         {episode.description?<PodcastNotes source={episode.description} base={episode.webpageUrl??feed.feedUrl} duration={episode.durationSeconds} onPlayAt={onPlayChapter}/>:<p>这集暂时没有简介。</p>}
       </section>
       {detail.hasChapters ? (
-        <section className="podcast-detail-chapters">
+        <section className="podcast-detail-chapters" hidden={reading !== "chapters"}>
           <button
             type="button"
             className="podcast-chapter-disclosure"
@@ -289,8 +297,8 @@ function EpisodeDetail({
           ) : null}
         </section>
       ) : null}
-      {detail.transcriptCount>0&&<TranscriptPanel key={`transcript-${episode.id}`} episodeId={episode.id} active={active} progress={activeProgress} onPlayAt={onPlayChapter}/>}
-      <EpisodeBookmarks key={`bookmarks-${episode.id}`} episode={episode} position={active ? activeProgress : episode.progressSeconds} onPlayAt={onPlayChapter}/>
+      {detail.transcriptCount>0&&<div hidden={reading !== "transcript"}><TranscriptPanel key={`transcript-${episode.id}`} revealed={reading === "transcript"} episodeId={episode.id} active={active} progress={activeProgress} onPlayAt={onPlayChapter}/></div>}
+      <div hidden={reading !== "bookmarks"}><EpisodeBookmarks key={`bookmarks-${episode.id}`} episode={episode} position={active ? activeProgress : episode.progressSeconds} onPlayAt={onPlayChapter}/></div>
       <Presence show={addingToList} exitDurationMs={MOTION_DURATIONS.micro}>
         <PlaylistPicker episode={episode} onClose={() => setAddingToList(false)} />
       </Presence>

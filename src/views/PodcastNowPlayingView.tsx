@@ -28,6 +28,7 @@ import { PlaybackProgress } from "../components/PlaybackProgress";
 import { PodcastNowBackdrop } from "../components/PodcastNowBackdrop";
 import { VolumeControl } from "../components/TransportControls";
 import { MetroLoader } from "../components/MetroLoader";
+import { Button } from "../components/Button";
 import { Presence, useLastNonNull } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
 import { PODCAST_PLAYBACK_RATES } from "../app/podcastPlaybackSettings";
@@ -73,6 +74,7 @@ export function PodcastNowPlayingView({
   onReorderQueueItem,
   onClearQueue,
   onOpenEpisode,
+  onRecordMoment,
   onToggleSaved,
   onNext,
   onRetry,
@@ -105,6 +107,7 @@ export function PodcastNowPlayingView({
   ) => void;
   onClearQueue: () => void;
   onOpenEpisode: () => void;
+  onRecordMoment?: () => void;
   onToggleSaved: () => void;
   onNext: () => void;
   onRetry: () => void;
@@ -658,6 +661,7 @@ export function PodcastNowPlayingView({
 
           <div className="podcast-now-copy-actions">
             <button type="button" onClick={onOpenEpisode}>单集信息</button>
+            {onRecordMoment && <Button variant="ghost" onClick={onRecordMoment}>记录此刻</Button>}
             <button
               type="button"
               className={episode.saved ? "active" : ""}

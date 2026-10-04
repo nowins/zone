@@ -318,6 +318,8 @@ pub fn run() {
       podcast::podcast_save_show_group,
       podcast::podcast_list_bookmarks,
       podcast::podcast_add_bookmark,
+      podcast::podcast_update_bookmark,
+      podcast::podcast_restore_bookmark,
       podcast::podcast_remove_bookmark,
       podcast::podcast_sync_status,
       podcast::podcast_choose_sync_folder,

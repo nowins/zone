@@ -1,5 +1,6 @@
 import { recordDiagnostic } from "../utils/diagnostics";
-import { downloadPodcastEpisode, getPodcastPreferences, setPodcastPreferences } from "../views/podcast/api";
+import { recordEpisodeBookmark, downloadPodcastEpisode, getPodcastPreferences, setPodcastPreferences } from "../views/podcast/api";
+import { formatTime } from "../utils/music";
 import { DEFAULT_PODCAST_PREFERENCES, effectivePodcastPreferences, podcastIntroPosition, podcastOutroReached, type PodcastPreferences } from "../utils/podcastPreferences.js";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -946,6 +947,18 @@ export function usePodcastPlayback({
     });
     requestNavigation("podcasts");
   }
+  async function recordPodcastMoment() {
+    const episode = activePodcastEpisodeRef.current;
+    if (!episode) return;
+    const position = playbackControlsRef.current?.hasEpisodeStartedOnDevice(episode.episodeId)
+      ? audioRef.current?.currentTime ?? 0 : episode.savedProgressSeconds ?? episode.progressSeconds ?? 0;
+    try {
+      const existing = await invoke<Array<{positionSeconds:number}>>("podcast_list_bookmarks", { episodeId: episode.episodeId });
+      if (existing.some(item => Math.round(item.positionSeconds * 1000) === Math.round(position * 1000))) { showActionNotice("此刻已有书签"); return; }
+      await recordEpisodeBookmark(episode.episodeId, Math.max(0, position));
+      if (activePodcastEpisodeRef.current?.episodeId === episode.episodeId) showActionNotice(`已记录 ${formatTime(position)} · 单集书签`);
+    } catch { showActionNotice("书签未能保存，请重试"); }
+  }
 
   function playPodcastQueueItem(item: PodcastQueueItem) {
     playPodcastEpisode(podcastPlaybackForEpisode(item.episode));
@@ -1255,6 +1268,7 @@ export function usePodcastPlayback({
     setPodcastQueueEpisodesPlayed,
     downloadPodcastQueueEpisodes,
     openActivePodcastEpisode,
+    recordPodcastMoment,
     playPodcastQueueItem,
     playPodcastQueueEpisodeById,
     markPodcastPlaying,

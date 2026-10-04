@@ -2198,6 +2198,13 @@
 .podcast-transcript-cues li { display: grid; grid-template-columns: 72px minmax(0,1fr); align-items: start; gap: 16px; padding: 12px 8px; border-bottom: 1px solid var(--faint); font-size: 14px; line-height: 1.7; }
 .podcast-transcript-cues li[aria-current="true"] { color: var(--accent); background: rgba(255,255,255,0.035); }
 .podcast-transcript-cues li p { margin: 0; overflow-wrap: anywhere; }
+.podcast-notes, .podcast-transcript-cues p { user-select: text; }
+.podcast-reading-nav { display: flex; gap: 20px; margin: 20px 0; }
+.podcast-reading-nav button { color: var(--muted); border-bottom: 2px solid transparent; }
+.podcast-reading-nav button[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.podcast-transcript-current-label { color: var(--accent); font-size: 12px; }
+.podcast-transcript-cues li[aria-current="true"] { border-left: 2px solid var(--accent); }
+.podcast-bookmark-undo { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); }
 .podcast-transcript-cues li > span { color: var(--muted); font-size: 12px; }
 .podcast-list-pivots, .podcast-named-list-nav { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
 .podcast-list-pivots button { font-size: 22px; }

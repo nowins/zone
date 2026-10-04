@@ -875,6 +875,7 @@ export default function App() {
     activePodcastEpisode ? (
       <PodcastPlayerBar
         rateScope={podcast.podcastPlaybackRateScope}
+        onRecordMoment={() => void podcast.recordPodcastMoment()}
         playbackRate={podcastPlaybackRate} sleepTimer={podcastSleepTimer} queueCount={podcastQueue.filter(item=>item.episode.id!==activePodcastEpisode.episodeId).length}
         onPlaybackRate={setPodcastPlaybackRate} onSleepTimer={setPodcastSleepTimer}
         onOpenQueue={()=>{setPodcastQueueRequest(++podcastQueueRequestNonce.current);navigatePage("podcasts");}}
@@ -1207,6 +1208,7 @@ export default function App() {
           activePodcastEpisode ? (
             <PodcastNowPlayingView
               rateScope={podcast.podcastPlaybackRateScope}
+              onRecordMoment={() => void podcast.recordPodcastMoment()}
               episode={activePodcastEpisode}
               queue={podcastQueue}
               status={podcastPlaybackStatus}

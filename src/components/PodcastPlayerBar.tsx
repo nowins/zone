@@ -1,4 +1,4 @@
-import { Clock, ListMusic, Pause, Play, Podcast, RotateCcw, RotateCw } from "lucide-react";
+import { BookmarkPlus, Clock, ListMusic, Pause, Play, Podcast, RotateCcw, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PodcastTransportOptions } from "./PodcastTransportOptions";
 import { Presence } from "../motion/presence";
@@ -24,7 +24,7 @@ export function PodcastPlayerBar({
   onOpenNowPlaying,
   backwardSeconds = 15,
   forwardSeconds = 30,
-  playbackRate = 1, sleepTimer = null, queueCount = 0, rateScope = "default", onPlaybackRate, onSleepTimer, onOpenQueue,
+  playbackRate = 1, sleepTimer = null, queueCount = 0, rateScope = "default", onPlaybackRate, onSleepTimer, onOpenQueue, onRecordMoment,
 }: {
   episode: PodcastPlayback;
   isPlaying: boolean;
@@ -42,6 +42,7 @@ export function PodcastPlayerBar({
   forwardSeconds?: number;
   playbackRate?: number; sleepTimer?: PodcastSleepTimer; queueCount?: number;
   rateScope?: "default" | "show";
+  onRecordMoment?: () => void;
   onPlaybackRate?: (value: number) => void; onSleepTimer?: (value: PodcastSleepTimer) => void; onOpenQueue?: () => void;
 }) {
   const artworkSrc = podcastArtworkSrc(episode.artworkUrl);
@@ -58,6 +59,7 @@ export function PodcastPlayerBar({
         </button>
         {onPlaybackRate && onSleepTimer && <button className="podcast-bar-options-trigger" onClick={()=>setOptionsOpen(true)} aria-label={`播放选项，${playbackRate} 倍速，${sleepLabel}`} aria-haspopup="dialog" title={`倍速与睡眠 · ${sleepLabel}`}><span>{playbackRate}×</span>{sleepTimer&&<><Clock size={12}/><span className="podcast-bar-countdown">{sleepTimer.kind === "episodeEnd" ? "本集结束" : formatTime(Math.max(0, Math.ceil((sleepTimer.deadlineAt-now)/1000)))}</span></>}</button>}
         {onOpenQueue&&<button onClick={onOpenQueue} aria-label={`打开待播，${queueCount} 集`} title={`待播 ${queueCount} 集`}><ListMusic size={18}/><small>{queueCount||""}</small></button>}
+        {onRecordMoment && <button onClick={onRecordMoment} aria-label="记录此刻" title="记录此刻"><BookmarkPlus size={18}/></button>}
         <span className="podcast-bar-status" role="status" title={stateLabel}>{status==="loading"||status==="buffering"||status==="error"?stateLabel:episode.playbackLocalPath?"离线":episode.localPath?"已下载":""}</span>
       </nav>
 

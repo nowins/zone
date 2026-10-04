@@ -4,9 +4,10 @@ import { formatTime } from "../../../utils/music";
 import { cancelPodcastRequest, getTranscript, type TranscriptDocument } from "../api";
 import { PodcastLoading } from "./primitives";
 
-export function TranscriptPanel({episodeId,active,progress,onPlayAt}:{episodeId:string;active:boolean;progress:number;onPlayAt:(seconds:number)=>void}) {
+export function TranscriptPanel({episodeId,active,progress,revealed=false,onPlayAt}:{episodeId:string;active:boolean;progress:number;revealed?:boolean;onPlayAt:(seconds:number)=>void}) {
   const [open,setOpen]=useState(false);const [document,setDocument]=useState<TranscriptDocument|null>(null);const [error,setError]=useState<string|null>(null);const [busy,setBusy]=useState(false);
   const [query,setQuery]=useState("");const [page,setPage]=useState(0);const [following,setFollowing]=useState(true);const [revision,setRevision]=useState(0);const list=useRef<HTMLOListElement>(null);
+  useEffect(() => { if (revealed) setOpen(true); }, [revealed]);
   useEffect(()=>{if(!open)return;let disposed=false;setBusy(true);setError(null);
     void getTranscript(episodeId).then(value=>{if(!disposed)setDocument(value);}).catch(reason=>{if(!disposed)setError(String(reason));}).finally(()=>{if(!disposed)setBusy(false);});
     return()=>{disposed=true;void cancelPodcastRequest("transcript").catch(()=>{});};
@@ -26,9 +27,10 @@ export function TranscriptPanel({episodeId,active,progress,onPlayAt}:{episodeId:
       {busy?<PodcastLoading label="正在读取转写"/>:error?<div role="alert"><p>{error}</p><Button onClick={()=>setRevision(value=>value+1)}>重试转写</Button></div>:document&&<>
         <div className="podcast-episode-filters"><input type="search" aria-label="搜索转写内容" placeholder="搜索转写内容" value={query} onChange={event=>setQuery(event.target.value)}/><label><input type="checkbox" checked={following} onChange={event=>setFollowing(event.target.checked)}/>跟随播放</label></div>
         <p className="podcast-search-page-status" role="status">{matches.length} 段{document.language?` · ${document.language}`:""}{document.stale?" · 显示本地转写缓存":""}</p>
-        <ol ref={list} className="podcast-transcript-cues" aria-label="转写段落">{visible.map(({cue,index})=><li key={index} aria-current={current===index?"true":undefined}>
+        {active && current >= 0 && (!following || query.trim()) && <Button variant="ghost" onClick={() => { setQuery(""); setPage(Math.floor(current / 50)); setFollowing(true); }}>回到当前段落</Button>}
+        <ol ref={list} className="podcast-transcript-cues" tabIndex={0} onWheel={() => { setPage(effectivePage); setFollowing(false); }} onTouchMove={() => { setPage(effectivePage); setFollowing(false); }} onPointerDown={() => { setPage(effectivePage); setFollowing(false); }} onKeyDown={event => { if (["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"," "].includes(event.key)) { setPage(effectivePage); setFollowing(false); } }} aria-label="转写段落">{visible.map(({cue,index})=><li key={index} aria-current={current===index?"true":undefined}>
           {cue.startSeconds!==null?<Button variant="ghost" title={`从 ${formatTime(cue.startSeconds)} 播放`} onClick={()=>onPlayAt(cue.startSeconds!)}>{formatTime(cue.startSeconds)}</Button>:<span>文字</span>}
-          <p>{cue.speaker&&<strong>{cue.speaker}：</strong>}{cue.text}</p>
+          <p>{current === index && <span className="podcast-transcript-current-label">当前段落 · </span>}{cue.speaker&&<strong>{cue.speaker}：</strong>}{cue.text}</p>
         </li>)}</ol>
         {matches.length===0&&<p>没有匹配的转写内容</p>}
         {matches.length>50&&<div className="podcast-search-page-actions"><Button disabled={effectivePage===0} onClick={()=>{setFollowing(false);setPage(effectivePage-1);}}>上一页</Button><span>第 {effectivePage+1} 页</span><Button disabled={(effectivePage+1)*50>=matches.length} onClick={()=>{setFollowing(false);setPage(effectivePage+1);}}>下一页</Button></div>}

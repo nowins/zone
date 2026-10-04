@@ -34,6 +34,25 @@ test("playing a named list uses the shared transport and a later pause prevents 
   } finally { await h.close(); }
 });
 
+test("record moment uses the bound audio clock and preserves an existing note", async () => {
+  let saved;
+  const h = await mountPodcastPlayback(async (command, args) => {
+    if (command === "podcast_list_bookmarks") return [];
+    if (command === "podcast_add_bookmark") { saved = args; return []; }
+    return [];
+  });
+  try {
+    await step(() => h.api.playPodcastEpisode(podcastPlayback(podcastEpisode("recorded", { progressSeconds: 17 }))));
+    h.audioRef.current.currentTime = 999;
+    await step(() => h.api.recordPodcastMoment());
+    assert.equal(saved.positionSeconds, 17); assert.equal(saved.preserveExisting, true);
+    h.playbackControlsRef.current.hasEpisodeStartedOnDevice = () => true;
+    h.audioRef.current.currentTime = 23.5;
+    await step(() => h.api.recordPodcastMoment());
+    assert.equal(saved.positionSeconds, 23.5); assert.equal(saved.episodeId, "recorded");
+  } finally { await h.close(); }
+});
+
 test("a return from suspended scheduling expires sleep before reconnect can resume", async () => {
   const h = await mountPodcastPlayback(async () => []);
   try {

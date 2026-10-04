@@ -230,5 +230,13 @@ export function setEpisodeSaved(episodeId: string, saved: boolean) {
 
 export type PodcastBookmark = { id: string; positionSeconds: number; label: string };
 export const listEpisodeBookmarks = (episodeId: string) => invoke<PodcastBookmark[]>("podcast_list_bookmarks", { episodeId });
-export const addEpisodeBookmark = (episodeId: string, positionSeconds: number, label: string) => invoke<PodcastBookmark[]>("podcast_add_bookmark", { episodeId, positionSeconds, label });
-export const removeEpisodeBookmark = (episodeId: string, bookmarkId: string) => invoke<PodcastBookmark[]>("podcast_remove_bookmark", { episodeId, bookmarkId });
+async function changeBookmarks(command: string, args: Record<string, unknown>, episodeId: string) {
+  const result = await invoke<PodcastBookmark[]>(command, args);
+  window.dispatchEvent(new window.CustomEvent("zone-podcast-bookmarks-changed", { detail: episodeId }));
+  return result;
+}
+export const addEpisodeBookmark = (episodeId: string, positionSeconds: number, label: string) => changeBookmarks("podcast_add_bookmark", { episodeId, positionSeconds, label }, episodeId);
+export const recordEpisodeBookmark = (episodeId: string, positionSeconds: number) => changeBookmarks("podcast_add_bookmark", { episodeId, positionSeconds, label: "", preserveExisting: true }, episodeId);
+export const removeEpisodeBookmark = (episodeId: string, bookmarkId: string) => changeBookmarks("podcast_remove_bookmark", { episodeId, bookmarkId }, episodeId);
+export const updateEpisodeBookmark = (episodeId: string, bookmark: PodcastBookmark, label: string) => changeBookmarks("podcast_update_bookmark", { episodeId, bookmarkId: bookmark.id, label, expectedLabel: bookmark.label }, episodeId);
+export const restoreEpisodeBookmark = (episodeId: string, bookmark: PodcastBookmark) => changeBookmarks("podcast_restore_bookmark", { episodeId, bookmark }, episodeId);
