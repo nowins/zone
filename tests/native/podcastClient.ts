@@ -113,8 +113,9 @@ async function run() {
       await selectValue(document.querySelector('select[aria-label="选择播放列表"]')!,"");
       await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="新列表名称"]')!,manualName);
       await click("加入");await until(()=>!document.querySelector('[role=dialog]'),"episode added to named list");
-      await click("返回节目");await click("返回资料库");await click("播放列表");await click("我的列表");await click(manualName);await until(()=>Boolean(document.querySelector('.podcast-named-list-row')),"manual list member");
+      await click("返回节目");await click("返回资料库");await click("播放列表");await click("我的列表");await until(()=>Boolean(document.querySelector('select[aria-label="当前播放列表"]')),"compact list navigation");const manualList=(await invoke<Array<{id:string;name:string}>>("podcast_list_playlists")).find(list=>list.name===manualName)!;await selectValue(document.querySelector('select[aria-label="当前播放列表"]')!,manualList.id);await until(()=>Boolean(document.querySelector('.podcast-named-list-row')),"manual list member");
       assert(document.querySelector('.podcast-named-list-row')?.textContent?.includes("离线单集"),"named list lost episode");
+      await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="搜索我的列表"]')!,"没有这样的列表");assert(document.querySelector('.podcast-named-list-row')?.textContent?.includes("离线单集"),"search changed active list");assert(document.querySelector('.podcast-list-index')?.textContent?.includes("没有匹配"),"missing empty list search");await capture("26-list-navigation-920");await inputValue(document.querySelector<HTMLInputElement>('input[aria-label="搜索我的列表"]')!,"");
       await invoke("client_window",{small:false});await capture("08-named-list-1180");
       await click("新建列表");await until(()=>Boolean(document.querySelector('input[aria-label="播放列表名称"]')),"smart list editor");
       const smartName=`验收智能 ${Date.now()}`;
@@ -126,7 +127,7 @@ async function run() {
       const playList=Array.from(document.querySelectorAll<HTMLButtonElement>('.podcast-named-list-heading button')).find(el=>el.textContent?.trim()==="播放列表")!;playList.click();
       await until(()=>!audio.paused,"named list shared transport");assert(document.querySelectorAll('audio').length===1,"named list added another audio");
       document.querySelector<HTMLButtonElement>('.podcast-player button[title="暂停"]')!.click();
-      await click(manualName);await click("删除列表");await until(()=>Boolean(document.querySelector('[role=dialog]')),"delete list dialog");
+      await selectValue(document.querySelector('select[aria-label="当前播放列表"]')!,manualList.id);await click("删除列表");await until(()=>Boolean(document.querySelector('[role=dialog]')),"delete list dialog");
       (document.querySelector('[role=dialog] button[type=submit]') as HTMLButtonElement).click();await until(()=>!document.querySelector('[role=dialog]'),"list deleted");
       const lists=await invoke<Array<{name:string}>>("podcast_list_playlists");assert(!lists.some(list=>list.name===manualName),"deleted list remained");
       checks.push("真实客户端新建手动列表、单集加入、智能已下载条件、列表共用播放、删除列表保护音频与资料、双窗口布局");
