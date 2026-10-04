@@ -4,7 +4,7 @@ import { JSDOM } from "jsdom";
 import React, { act, useRef, useState } from "react";
 import { readFileSync } from "node:fs";
 import { build } from "esbuild";
-import { collectionPivotDirection, playCollectionPivot } from "../.tmp/visualizer-tests/motion/collectionPivot.js";
+import { collectionPivotDirection, playCollectionPivot, prepareCollectionPivot } from "../.tmp/visualizer-tests/motion/collectionPivot.js";
 import { initialCollectionHistory, pushCollectionLocation, travelCollectionHistory, emptyCollectionSurface } from "../.tmp/visualizer-tests/utils/collectionNavigation.js";
 import { applyMotionTokens, BROWSE_MOTION, COLLECTION_PIVOT_MOTION, MOTION_STAGGER } from "../.tmp/visualizer-tests/motion/tokens.js";
 
@@ -74,6 +74,44 @@ test("horizontal regions own transport while content measurement stays bounded",
   root.getBoundingClientRect = () => rect(180, 80);
   playCollectionPivot(root, 1);
   assert.deepEqual(animations.map(a => a.node.dataset.row), ["2", "3"], "groups outside the viewport do not animate");
+});
+
+test("a song table moves as one aligned surface and rows never change their spacing", t => {
+  const { root, document, animations } = environment(t);
+  const table = document.createElement('section'); table.className = 'collection-track-list';
+  table.append(...root.childNodes); root.append(table);
+  const stop = playCollectionPivot(root, 1);
+  const transport = animations.filter(a => a.frames.some(frame => frame.transform !== undefined));
+  assert.deepEqual(transport.map(a => a.node), [table], 'header and body share exactly one translation');
+  const rows = animations.filter(a => a.node.matches('.collection-track-row'));
+  assert.ok(rows.length > 1);
+  assert.ok(rows.every(a => a.frames.every(frame => frame.transform === undefined)), 'revealing rows cannot bend the table geometry');
+  assert.ok(rows[1].options.delay > rows[0].options.delay, 'the content reveal remains staged');
+  stop();
+});
+
+test("playlist navigation stays stable while only the right content owns the pivot and reveal", t => {
+  const { root, document, animations } = environment(t);
+  const body = document.createElement('section'); body.className = 'playlist-content'; body.append(...root.childNodes);
+  const sidebar = document.createElement('section'); sidebar.className = 'playlist-list'; sidebar.dataset.collectionScroll = 'playlist-index';
+  sidebar.innerHTML = '<div class="playlist-create"><button>新建播放列表</button></div><button data-collection-anchor="now">正在播放</button><button data-collection-anchor="favorites">喜欢的歌曲</button>';
+  root.append(sidebar, body);
+  const stop = playCollectionPivot(root, 1);
+  assert.ok(animations.length > 1);
+  assert.ok(animations.every(a => body.contains(a.node)), 'no sidebar, creation action or shared parent participates');
+  assert.equal(animations.filter(a => a.node === body).length, 1);
+  assert.equal(sidebar.style.overflowAnchor, '', 'right-side reveal cannot alter the left scroller');
+  stop();
+  root.className = 'collection-content';
+  const page = document.createElement('section'); page.className = 'collection-connected'; root.replaceWith(page); page.append(root);
+  const initial = initialCollectionHistory();
+  const history = pushCollectionLocation(initial, { ...initial.entries[0], view: 'playlists' }, emptyCollectionSurface());
+  const next = pushCollectionLocation(history, { ...history.entries[history.cursor], view: 'songs' }, emptyCollectionSurface());
+  prepareCollectionPivot(page, history, next);
+  assert.equal(document.querySelector('.motion-departure .playlist-list').style.visibility, 'hidden', 'the static sidebar is not copied into the moving departure');
+  assert.equal(sidebar.style.visibility, '', 'the live navigation remains untouched');
+  animations.at(-1).finish();
+  assert.equal(document.querySelector('.motion-departure'), null);
 });
 
 test("interaction, resize, hiding and cleanup settle an unfinished entrance without swallowing input", t => {

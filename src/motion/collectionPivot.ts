@@ -15,8 +15,8 @@ export function collectionPivotDirection(history: CollectionHistory): -1 | 0 | 1
 }
 
 const groupSelector = [
-  ".collection-artist-index", ".collection-album-index", ".collection-track-scroll",
-  ".collection-track-head", ".playlist-heading", ".playlist-create", ".playlist-list",
+  ".collection-artist-index", ".collection-album-index", ".collection-track-list", ".collection-track-scroll",
+  ".collection-track-head", ".playlist-content", ".playlist-heading",
   ".collection-entity-heading", ".collection-detail-tabs", ".collection-entity-section",
 ].join(",");
 
@@ -51,6 +51,8 @@ export function prepareCollectionPivot(root: HTMLElement, history: CollectionHis
     });
   }
   const snapshot = snapshotSurface(content);
+  // Navigation belongs to the live page, not the departing data surface.
+  snapshot.node.querySelectorAll<HTMLElement>(".playlist-list").forEach(node => { node.style.visibility = "hidden"; });
   clearDeparture(root, previous);
   const animation = snapshot.node.animate([
     { transform: "none", opacity: 1 },

@@ -125,9 +125,9 @@ test("page arrival reveals first-screen rows in sequence and real input settles 
   motion.enter();
   assert.equal(area.style.overflowAnchor, 'none');
   const arrivals = animations.filter(a => a.node.className === 'collection-track-row');
-  assert.equal(arrivals.length, 28, 'fourteen first-screen rows, each with separate movement and early fade');
+  assert.equal(arrivals.length, 14, 'fourteen first-screen rows fade without separate spatial motion');
   assert.equal(arrivals[0].options.delay, CONTENT_ENTRANCE_MOTION.delay);
-  assert.equal(arrivals[2].options.delay - arrivals[0].options.delay, CONTENT_ENTRANCE_MOTION.step);
+  assert.equal(arrivals[1].options.delay - arrivals[0].options.delay, CONTENT_ENTRANCE_MOTION.step);
   area.dispatchEvent(new document.defaultView.Event('scroll'));
   assert.ok(arrivals.every(a => !a.cancelled), 'same-position restoration does not erase the build-in');
   arrivals.forEach(a => { a.node.style.transform = 'matrix(1, 0, 0, 1, 0, 7)'; a.node.style.opacity = '0.5'; });
@@ -188,12 +188,74 @@ test("a quick page return resumes frozen item frames and never hides already set
   motion.prepare('quickplay', 'collection', resolvePageTransition('quickplay', 'collection'), true);
   const returning = rows(); motion.enter();
   const returned = animations.filter(a => a.node.parentElement === returning && !a.cancelled);
-  assert.equal(returned[0].frames[0].transform, 'matrix(1, 0, 0, 1, 0, 7)');
-  assert.equal(returned[1].frames[0].opacity, '0.5');
-  assert.equal(returned[3].frames[0].opacity, '1', 'fully visible rows stay visible on reversal');
+  assert.equal(returned[0].frames[0].opacity, '0.5');
+  assert.equal(returned[1].frames[0].opacity, '1', 'fully visible rows stay visible on reversal');
+  assert.ok(returned.every(a => a.frames.every(frame => frame.transform === undefined)));
   assert.ok(returned.every(a => a.options.delay === 0));
   returned.forEach(a => a.finish());
   animations.filter(a => !a.cancelled).forEach(a => a.finish());
   assert.equal(returning.style.overflowAnchor, '', 'natural completion restores anchoring');
+  motion.stop();
+});
+
+test("entering the collection on a playlist scopes page movement to its right pane", t => {
+  const { document, motion, animations, mount } = setup(t);
+  motion.prepare('quickplay', 'collection', resolvePageTransition('quickplay', 'collection'), true);
+  const page = mount('content-band collection-connected');
+  page.innerHTML = '<div class="collection-toolbar">分类</div><div class="collection-content"><div class="playlist-browser"><section class="playlist-list"><div class="playlist-create">新建</div><button data-collection-anchor="favorites">喜欢的歌曲</button></section><section class="playlist-content"><header class="playlist-heading">喜欢的歌曲</header><section class="collection-track-list"><div class="collection-track-head">表头</div><div class="collection-track-scroll" data-collection-scroll="songs"></div></section></section></div></div>';
+  const right = page.querySelector('.playlist-content'), area = page.querySelector('.collection-track-scroll');
+  for (let i = 0; i < 10; i++) {
+    const row = document.createElement('div'); row.className = 'collection-track-row'; row.dataset.collectionAnchor = `${i}`;
+    row.getBoundingClientRect = () => ({ top: 106 + i * 44, bottom: 150 + i * 44, height: 44 }); area.append(row);
+  }
+  motion.enter();
+  const incoming = animations.filter(a => page.contains(a.node));
+  assert.ok(incoming.length > 2);
+  assert.ok(incoming.every(a => right.contains(a.node)), 'root, toolbar, sidebar and shared parents all remain still');
+  assert.equal(incoming.filter(a => a.node === right).length, 2, 'one transport and one early fade own the pane');
+  motion.stop();
+});
+
+test("an internal pivot transfers unfinished page movement away from new navigation", t => {
+  const { document, motion, animations, mount } = setup(t);
+  motion.prepare('quickplay', 'collection', resolvePageTransition('quickplay', 'collection'), true);
+  const page = mount('content-band collection-connected');
+  page.innerHTML = '<div class="collection-toolbar">分类</div><div class="collection-content"><ul class="collection-artist-index"><li>艺术家</li></ul></div>';
+  const content = page.querySelector('.collection-content');
+  motion.enter();
+  page.style.transform = 'matrix(1, 0, 0, 1, 64, 3)'; page.style.opacity = '0.8';
+  content.style.transform = 'matrix(1, 0, 0, 1, 20, 2)'; content.style.opacity = '0.5';
+  motion.settle('collection-content');
+  const settling = animations.filter(a => !a.cancelled);
+  assert.ok(settling.every(a => content.contains(a.node)), 'the root and toolbar relinquish motion before the new sidebar mounts');
+  const transport = settling.find(a => a.node === content);
+  assert.equal(transport.frames[0].transform, 'translate3d(84px,5px,0)', 'the old content keeps its inherited visible position');
+  assert.equal(transport.frames[0].opacity, '0.4', 'the inherited fade is also transferred');
+  motion.stop();
+  assert.ok(animations.every(a => a.cancelled));
+  assert.equal(document.querySelector('.motion-departure'), null);
+});
+
+test("a playlist page return combines departing parent and right-pane frames", t => {
+  const { document, motion, animations, mount } = setup(t);
+  const playlist = () => {
+    const root = mount('content-band collection-connected');
+    root.innerHTML = '<div class="collection-content"><div class="playlist-list">索引</div><div class="playlist-content">歌曲</div></div>';
+    return root;
+  };
+  playlist();
+  motion.prepare('collection', 'quickplay', resolvePageTransition('collection', 'quickplay'), true);
+  const old = document.querySelector('.motion-departure > section');
+  old.style.transform = 'matrix(1, 0, 0, 1, -18, 0)'; old.style.opacity = '0.6';
+  old.querySelector('.playlist-content').style.transform = 'matrix(1, 0, 0, 1, 24, 2)';
+  old.querySelector('.playlist-content').style.opacity = '0.8';
+  mount('quickplay'); motion.enter();
+  motion.prepare('quickplay', 'collection', resolvePageTransition('quickplay', 'collection'), true);
+  const returned = playlist(); motion.enter();
+  const pane = returned.querySelector('.playlist-content');
+  const arrivals = animations.filter(a => a.node === pane && !a.cancelled);
+  assert.equal(arrivals[0].frames[0].transform, 'translate3d(6px,2px,0)', 'the parent departure offset is retained without moving the sidebar');
+  assert.equal(arrivals[1].frames[0].opacity, '0.48', 'the visible inherited opacity is retained');
+  assert.ok(animations.filter(a => returned.contains(a.node) && !a.cancelled).every(a => pane.contains(a.node)));
   motion.stop();
 });

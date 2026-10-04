@@ -1,7 +1,7 @@
 import { CONTENT_ENTRANCE_MOTION } from "./tokens.js";
 
-const listSelector = ".collection-track-scroll,.collection-artist-index,.collection-album-index,.playlist-list";
-const itemSelector = ".collection-track-row,.collection-artist-index > li,.collection-album-index > div,.playlist-list > button";
+const listSelector = ".collection-track-scroll,.collection-artist-index,.collection-album-index";
+const itemSelector = ".collection-track-row,.collection-artist-index > li,.collection-album-index > div";
 export type ContentFrame = { transform: string; opacity: string };
 export type ContentItem = { node: HTMLElement; key: string; delay: number };
 export type ContentFrames = Map<string, ContentFrame>;
@@ -20,8 +20,7 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
   const items: ContentItem[] = [];
   for (const list of [...root.querySelectorAll<HTMLElement>(listSelector)].slice(0, CONTENT_ENTRANCE_MOTION.maxRegions)) {
     const children = list.children;
-    const skip = list.matches(".playlist-list") ? 1 : 0; // The creation action precedes playlist rows.
-    const first = children[skip] as HTMLElement | undefined;
+    const first = children[0] as HTMLElement | undefined;
     if (!first?.matches(itemSelector)) continue;
     const area = list.closest<HTMLElement>("[data-collection-scroll]") ?? list;
     const clip = area.getBoundingClientRect();
@@ -29,15 +28,15 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
     if (bottom <= top || clip.right <= Math.max(viewport.left, 0) || clip.left >= Math.min(viewport.right, window.innerWidth)) continue;
     const style = window.getComputedStyle(list);
     const columns = style.display === "grid" ? Math.max(1, style.gridTemplateColumns.split(/\s+/).filter(value => value.endsWith("px")).length) : 1;
-    const count = children.length - skip;
+    const count = children.length;
     const firstRect = first.getBoundingClientRect();
-    const next = children[skip + columns] as HTMLElement | undefined;
+    const next = children[columns] as HTMLElement | undefined;
     const stride = next ? next.getBoundingClientRect().top - firstRect.top : firstRect.height + (parseFloat(style.rowGap) || 0);
     if (firstRect.height <= 0 || stride <= 0) continue;
     const start = Math.max(0, Math.floor((top - firstRect.top - firstRect.height) / stride) + 1) * columns;
     const end = Math.min(count, Math.ceil((bottom - firstRect.top) / stride) * columns);
     for (let index = start; index < end && items.length < CONTENT_ENTRANCE_MOTION.maxItems; index++) {
-      const node = children[index + skip] as HTMLElement;
+      const node = children[index] as HTMLElement;
       if (!node.matches(itemSelector)) continue;
       items.push({ node, key: itemKey(node), delay: CONTENT_ENTRANCE_MOTION.delay + Math.min((index - start) * CONTENT_ENTRANCE_MOTION.step, CONTENT_ENTRANCE_MOTION.maxDelay) });
     }
@@ -82,10 +81,12 @@ export function suspendContentAnchoring(items: ContentItem[]): () => void {
 /** A quick build-in, separate from the page's horizontal transport. */
 export function playContentEntrance(items: ContentItem[], animate: Animate, returning: ContentFrames | null = null): void {
   for (const { node, key, delay } of items) {
+    // Track tables share one horizontal transport; their row geometry stays fixed.
+    const track = node.matches(".collection-track-row");
     const start = returning ? returning.get(key) ?? { transform: "none", opacity: "1" }
       : { transform: `translate3d(0,${CONTENT_ENTRANCE_MOTION.drift}px,0)`, opacity: "0" };
     const wait = returning ? 0 : delay;
-    animate(node, [{ transform: start.transform }, { transform: "none" }], CONTENT_ENTRANCE_MOTION.move, wait);
+    if (!track) animate(node, [{ transform: start.transform }, { transform: "none" }], CONTENT_ENTRANCE_MOTION.move, wait);
     animate(node, [{ opacity: start.opacity }, { opacity: 1 }], CONTENT_ENTRANCE_MOTION.fade, wait);
   }
 }

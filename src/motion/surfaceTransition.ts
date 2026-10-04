@@ -13,6 +13,16 @@ function frame(node: HTMLElement): Frame {
   return { transform: style.transform || "none", opacity: style.opacity || "1" };
 }
 
+function inheritedFrame(node: HTMLElement, parent: Frame, own: Frame): Frame {
+  const offset = (value: Frame) => {
+    if (!value.transform || value.transform === "none") return { x: 0, y: 0 };
+    const matrix = new node.ownerDocument.defaultView!.DOMMatrixReadOnly(value.transform);
+    return { x: matrix.m41, y: matrix.m42 };
+  };
+  const a = offset(parent), b = offset(own);
+  return { transform: `translate3d(${a.x + b.x}px,${a.y + b.y}px,0)`, opacity: `${Number(parent.opacity) * Number(own.opacity)}` };
+}
+
 export function surfaceOffset(node: HTMLElement): { x: number; y: number } {
   const transform = frame(node).transform;
   if (!transform || transform === "none") return { x: 0, y: 0 };
@@ -108,6 +118,7 @@ export class SurfaceTransition {
   private outgoing: Surface | null = null;
   private incoming: Animation[] = [];
   private returning: Frame[] | null = null;
+  private returningPane: Frame | null = null;
   private returningContent: ContentFrames | null = null;
   private sourceContent: ContentFrames | null = null;
   private removeInputListeners: (() => void) | null = null;
@@ -118,6 +129,8 @@ export class SurfaceTransition {
   constructor(private host: HTMLElement) {}
 
   private groups(node: HTMLElement): HTMLElement[] {
+    const playlist = node.querySelector<HTMLElement>(".playlist-content");
+    if (node.matches(".collection-connected") && playlist) return [playlist];
     return [...node.querySelectorAll<HTMLElement>(groupSelector)].filter(group => {
       const parent = group.parentElement?.closest(groupSelector);
       return !parent || !node.contains(parent);
@@ -134,9 +147,12 @@ export class SurfaceTransition {
     const returning = this.outgoing?.key === to
       ? [this.outgoing.node, ...this.groups(this.outgoing.node)].map(frame) : null;
     const returningContent = returning && this.outgoing ? captureContentFrames(this.outgoing.node) : null;
+    const oldPane = returning && this.outgoing?.node.matches(".collection-connected") ? this.outgoing.node.querySelector<HTMLElement>(".playlist-content") : null;
+    const returningPane = returning && oldPane ? inheritedFrame(oldPane, returning[0], frame(oldPane)) : null;
     const snapshot = source && enabled ? snapshotSurface(source) : null;
     this.stop();
     this.returning = returning;
+    this.returningPane = returningPane;
     this.returningContent = returningContent;
     this.sourceContent = snapshot ? captureContentFrames(snapshot.node) : null;
     this.source = source;
@@ -164,18 +180,24 @@ export class SurfaceTransition {
     this.plan = null;
     const source = this.source;
     this.source = null;
-    if (!plan || root.matches(".now-playing-stage")) { this.returning = null; this.returningContent = null; this.sourceContent = null; return true; } // Its Canvas and FLIP own stage arrival.
+    if (!plan || root.matches(".now-playing-stage")) { this.returning = null; this.returningPane = null; this.returningContent = null; this.sourceContent = null; return true; } // Its Canvas and FLIP own stage arrival.
     // Suppress only this mount's legacy feathers. Later internal changes still
     // get their own entrance, without replaying every row on page arrival.
     root.querySelectorAll<HTMLElement>(".quick-group,.quick-album,.folder-list > div,.settings-section-heading,.settings-sidebar > section,.podcast-content-section,.podcast-episode,.podcast-show-card,.podcast-continue-card,.podcast-queue-episode")
       .forEach(node => { node.style.animation = "none"; });
     const groups = this.groups(root);
+    const playlist = root.matches(".collection-connected") ? root.querySelector<HTMLElement>(".playlist-content") : null;
+    const arrivalRoot = playlist ?? root;
     // Measure the settled layout before starting any parent transform.
     const contentItems = contentEntranceItems(root);
     this.restoreAnchoring = suspendContentAnchoring(contentItems);
     const starts = root === source ? [root, ...groups].map(frame) : this.returning;
     const contentStarts = root === source ? this.sourceContent : this.returningContent;
+    const arrivalStart = playlist && starts
+      ? root === source ? inheritedFrame(playlist, starts[0], frame(playlist)) : this.returningPane ?? starts[0]
+      : starts?.[0];
     this.returning = null;
+    this.returningPane = null;
     this.returningContent = null;
     this.sourceContent = null;
     const animate = (node: HTMLElement, frames: Keyframe[], duration: number, delay = 0) => {
@@ -191,12 +213,12 @@ export class SurfaceTransition {
         }
       };
     };
-    animate(root, [
-      { transform: starts?.[0]?.transform ?? `translate3d(${plan.direction * plan.enterDriftPx}px,0,0)` },
+    animate(arrivalRoot, [
+      { transform: arrivalStart?.transform ?? `translate3d(${plan.direction * plan.enterDriftPx}px,0,0)` },
       { transform: "none" },
     ], plan.enterMs);
-    animate(root, [{ opacity: starts?.[0]?.opacity ?? 0 }, { opacity: 1 }], NAVIGATION_MOTION.fade);
-    groups.forEach((node, index) => animate(node, [
+    animate(arrivalRoot, [{ opacity: arrivalStart?.opacity ?? 0 }, { opacity: 1 }], NAVIGATION_MOTION.fade);
+    (playlist ? [] : groups).forEach((node, index) => animate(node, [
       { transform: starts?.[index + 1]?.transform ?? `translate3d(${plan.direction * NAVIGATION_MOTION.groupDrift}px,0,0)` },
       { transform: "none" },
     ], plan.enterMs, Math.min(index, 2) * NAVIGATION_MOTION.stagger));
@@ -224,9 +246,18 @@ export class SurfaceTransition {
   }
 
   /** An internal pivot takes ownership without snapping its moving parent. */
-  settle(): void {
+  settle(scope?: "collection-content"): void {
     const nodes = new Set(this.incoming.map(animation => (animation.effect as KeyframeEffect).target as HTMLElement));
-    const starts = [...nodes].filter(node => this.host.contains(node)).map(node => ({ node, start: frame(node) }));
+    let starts = [...nodes].filter(node => this.host.contains(node)).map(node => ({ node, start: frame(node) }));
+    const root = scope === "collection-content" ? this.current() : null;
+    const content = root?.matches(".collection-connected") ? root.querySelector<HTMLElement>(".collection-content") : null;
+    if (root && content && starts.length) {
+      // Transfer inherited transport to the old content before a pivot replaces it.
+      // Newly mounted navigation must never inherit the previous page's movement.
+      const start = inheritedFrame(content, frame(root), frame(content));
+      starts = starts.filter(({ node }) => node !== content && content.contains(node));
+      starts.unshift({ node: content, start });
+    }
     const restoreAnchoring = this.restoreAnchoring;
     this.restoreAnchoring = null;
     this.stop();
@@ -258,6 +289,7 @@ export class SurfaceTransition {
     this.plan = null;
     this.source = null;
     this.returning = null;
+    this.returningPane = null;
     this.returningContent = null;
     this.sourceContent = null;
   }

@@ -47,7 +47,7 @@ export function useNavigation({
   const workspaceRef = useRef<HTMLElement | null>(null);
   const pageMotion = useRef<SurfaceTransition | null>(null);
   const [navigationRevision, setNavigationRevision] = useState(0);
-  const collection = useCollectionNavigation(() => pageMotion.current?.settle());
+  const collection = useCollectionNavigation(() => pageMotion.current?.settle("collection-content"));
   const { query, searchMode, view, playlistId: selectedPlaylistId } = collection.location;
   const pendingReturn = useRef<CollectionLocation["origin"]>();
   const searchInputRef = useRef<HTMLInputElement | null>(null);

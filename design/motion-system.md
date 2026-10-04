@@ -57,7 +57,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 播客的 feather 使用 `BROWSE_MOTION`。页面导航使用独立的 `NAVIGATION_MOTION`：位移 640ms、淡入 170ms、退场 180ms、入场/退场 96/64px；最多三档 46ms 错峰，完整编排最长 732ms。收藏的 `COLLECTION_PIVOT_MOTION` 使用 560ms 减速尾段、96/64px 分级位移和三档 46ms 错峰，完整入场最长 652ms；输入打断后的收稳为 110ms。淡入很早完成，目标内容从挂载起可操作。数值是针对 Zone 的调校，不是原版逐帧测量结果，事实源均为 `tokens.ts`。
 
-收藏首屏内容另外使用 `CONTENT_ENTRANCE_MOTION`：表头先到，歌曲行、艺术家条目、专辑封面和播放列表再按阅读顺序快速展开。条目向上收拢 18px，位移 360ms、淡入 140ms，从 54ms 开始以 24ms 错峰，额外等待封顶 192ms；全部首屏内容最迟 386ms 显现、606ms 收稳。它与页面／区域的横向交接分工，均匀列表与规则网格每区只测两个条目，依照恢复后的滚动位置选择可见内容，最多 12 区、48 项。不增加加载等待，不给屏外曲目启动动画。
+收藏首屏内容另外使用 `CONTENT_ENTRANCE_MOTION`：歌曲表头与正文共用表格区域的横向位移，歌曲行只按阅读顺序错峰淡入，保持列对齐和静态行距；艺术家条目与专辑封面另外向上收拢 18px，位移 360ms。条目淡入 140ms，从 54ms 开始以 24ms 错峰，额外等待封顶 192ms；全部首屏内容最迟 386ms 显现，艺术家／封面条目最迟 606ms 收稳。播放列表左侧索引和新建按钮保持原位，不参加区域或逐项入场；右侧标题与歌曲表格作为一个内容区域过渡。均匀列表与规则网格每区只测两个条目，依照恢复后的滚动位置选择可见内容，最多 12 区、48 项。不增加加载等待，不给屏外曲目启动动画。
 
 正在播放闲置隐藏是自动退隐的刻意例外：返回、队列、底部控制区共用 chrome 档 700ms 与 dissolve 曲线，在原位同步降低透明度；唤回用 content 档 220ms 与 standard 曲线，CSS transition 从中间值反向接续，不重新挂载或重播入场。歌曲信息不随闲置状态变暗。用户主动隐藏队列仍走 micro 档 Presence；reduced-motion 下两类过渡均收缩至 instant 档。暂停、焦点和操作中的计时保护见 [播放视觉规范](engineering/playback-visuals.md)。
 
@@ -78,7 +78,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 - `flip.ts` — FLIP registry：`registerFlipSource / registerFlipElement(id, ...)`、`takeFlipSource(id)`（取出即删，>1s 过期）、`computeFlipDelta(source, target)`。
 - `coverFlip.ts` — 封面共享元素飞行编排：`registerCoverFlipSource` 保存可见矩形与已解码图片；`playCoverFlip({ id, source, target, direction? })` 用 Canvas 快照和 Web Animations API 执行有限的 transform 飞行。入场文字在飞行期间显示，落位仅做短暂的轮廓交接，不等待图片重新解码或弹簧静止。`rememberCoverReturnTarget` 保存底部栏实际位置，`startCoverReturn` 在点击返回时起飞，与目标页面入场重叠；底部栏挂载后 `attachCoverReturn` 接管终点，不重播返程。仅在「播放条/quickplay 大封面 ↔ 正在播放曲目卡」链路使用；时长由 `NOW_PLAYING_MOTION` 统一管理。
 - `presence.tsx` — `<Presence show exitDurationMs exitClassName?>`：show 转 false 时保留子树、挂退场类、超时卸载；`useLastNonNull(value)` 冻结关闭前快照供退场窗口渲染（退场窗口内 props 冻结不刷新，窗口应保持在 micro 档，不要拉长）。当前歌词设置面板和在线来源搜索面板也采用这条链路。
-- `pageTransition.ts` — `resolvePageTransition(from, to)`：同级 pivot、进入正在播放 push、返回 pop，定义成对的方向、时长及行程。`surfaceTransition.ts` 在导航意图提交时冻结旧画面，`useNavigation` 的 layout effect 为已挂载目标执行分组入场；延迟加载的页面通过 MutationObserver 在实际内容挂载时接续。原页面正常卸载，唯一主音频不参与复制；长歌曲列表仅复制可见行和少量边缘行，保留滚动范围；正在播放入场仍由舞台和封面 FLIP 负责。
+- `pageTransition.ts` — `resolvePageTransition(from, to)`：同级 pivot、进入正在播放 push、返回 pop，定义成对的方向、时长及行程。`surfaceTransition.ts` 在导航意图提交时冻结旧画面，`useNavigation` 的 layout effect 为已挂载目标执行分组入场；延迟加载的页面通过 MutationObserver 在实际内容挂载时接续。进入收藏的播放列表页时只移动右侧内容。收藏内部导航提交前，`settle("collection-content")` 将尚未结束的页面父级位移与淡入转交给旧内容，避免新索引继承旧页面的运动。原页面正常卸载，唯一主音频不参与复制；长歌曲列表仅复制可见行和少量边缘行，保留滚动范围；正在播放入场仍由舞台和封面 FLIP 负责。
 - `collectionPivot.ts` — 收藏分类、对象详情及返回的方向解析和可见内容分组入场；`useCollectionPivot` 连接浏览 revision，`useCollectionPanelMotion` 连接详情标签及播放列表选择，两者共用 reduced-motion 与卸载清理，使用 Web Animations API 执行有限的 transform／opacity 过渡。
 - `contentEntrance.ts` — 顶层收藏入场与内部 Pivot 共用的首屏条目展开；先测静态布局再启动父级位移，使用有界的可见区选择和独立的早淡入，网格间隙中的完整屏外行不占错峰顺序。展开期间暂停滚动锚定，重叠控制器全部释放后恢复原样式。生命周期交给所属页面／Pivot 控制器，快速反向时复用退场快照冻结的条目帧，已显现条目不重新隐藏；快照的行距与滚动范围按扣除条目位移后的静态位置计算。
 - `useReducedMotion.ts` — `useReducedMotion()` hook，JS/rAF 侧统一入口。
@@ -171,7 +171,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 
 ## 收藏对象浏览
 
-顶层页面走 `requestNavigation`。收藏分类借鉴 [WP 8.1 Pivot 的分组滑入](https://blogs.windows.com/windowsdeveloper/2014/07/22/tips-and-tricks-for-using-xaml-controls-in-your-universal-windows-apps/)：分类顺序由 `COLLECTION_CATEGORY_ORDER` 维护，分类标签、搜索和数量保持原位，内容按目标的左右方向交接。`useCollectionNavigation` 在提交新 revision 前复制旧内容的可见画面，`useCollectionPivot` 为新内容执行少量语义区域的滑入，并与顶层入场共用首屏条目的快速展开；不缩放文字、不逐行扫描整库布局或重播旧的 CSS feather。横向参数来自 `COLLECTION_PIVOT_MOTION`，最多 12 个可见区域和三档错峰；条目纵向与淡入参数来自 `CONTENT_ENTRANCE_MOTION`。
+顶层页面走 `requestNavigation`。收藏分类借鉴 [WP 8.1 Pivot 的分组滑入](https://blogs.windows.com/windowsdeveloper/2014/07/22/tips-and-tricks-for-using-xaml-controls-in-your-universal-windows-apps/)：分类顺序由 `COLLECTION_CATEGORY_ORDER` 维护，分类标签、搜索和数量保持原位，内容按目标的左右方向交接。`useCollectionNavigation` 在提交新 revision 前复制旧内容的可见画面，退场副本隐藏播放列表左侧索引，保留右侧内容的布局；`useCollectionPivot` 为新内容执行少量语义区域的滑入，并与顶层入场共用首屏条目的显现。歌曲表头与正文由同一个表格区域移动，播放列表仅右侧内容移动；不缩放文字、不逐行扫描整库布局或重播旧的 CSS feather。横向参数来自 `COLLECTION_PIVOT_MOTION`，最多 12 个可见区域和三档错峰；歌曲行淡入、艺术家／封面条目的纵向与淡入参数来自 `CONTENT_ENTRANCE_MOTION`。
 
 快速切换不排队等待；旧画面从当前帧退场，退场窗口内反向返回时接续它的可见位置。每次最多一层内容退场，旧 React 子树照常卸载。历史返回先恢复滚动锚点、选择和焦点；恢复产生的同位置滚动事件不会打断动画。滚动、指针和键盘输入从当前 transform/opacity 用短过渡收稳，不吞掉输入或反复启动；窗口调整、隐藏、卸载及 reduced-motion 开启清理动画与退场层。首次挂载由顶层入场负责，普通数据更新不重播。
 

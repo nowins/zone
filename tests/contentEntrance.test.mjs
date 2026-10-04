@@ -32,10 +32,10 @@ test("restored long lists build in only visible rows, with constant layout reads
   assert.equal(Math.max(...items.map(item => item.delay)), motion.delay + motion.maxDelay);
   const animations = [];
   playContentEntrance(items, (node, frames, duration, delay) => animations.push({ node, frames, duration, delay }));
-  assert.equal(animations.length, items.length * 2);
+  assert.equal(animations.length, items.length);
   assert.ok(animations.every(a => !a.frames[0].transform?.includes('scale')));
-  assert.equal(animations[0].frames[0].transform, `translate3d(0,${motion.drift}px,0)`);
-  assert.equal(animations[1].duration, motion.fade);
+  assert.ok(animations.every(a => a.frames.every(frame => frame.transform === undefined)), 'rows keep their baselines while the table owns movement');
+  assert.equal(animations[0].duration, motion.fade);
   assert.equal(list.scrollTop, 4400);
   assert.equal(list.children.length, 2000);
   list.style.overflowAnchor = 'auto';
@@ -75,9 +75,9 @@ test("content work has a total cap and a rapid return resumes frozen item frames
   items[0].node.style.transform = 'matrix(1, 0, 0, 1, 0, 9)'; items[0].node.style.opacity = '0.45';
   const saved = captureContentFrames(root), animations = [];
   playContentEntrance(items, (node, frames, duration, delay) => animations.push({ node, frames, duration, delay }), saved);
-  assert.equal(animations[0].frames[0].transform, items[0].node.style.transform);
-  assert.equal(animations[1].frames[0].opacity, '0.45');
-  assert.equal(animations[3].frames[0].opacity, '1', 'settled rows never restart at transparent');
+  assert.equal(animations[0].frames[0].opacity, '0.45');
+  assert.equal(animations[1].frames[0].opacity, '1', 'settled rows never restart at transparent');
+  assert.ok(animations.every(a => a.frames.every(frame => frame.transform === undefined)));
   assert.ok(animations.every(a => a.delay === 0));
 });
 
@@ -106,4 +106,19 @@ test("overlapping page and panel arrivals keep anchoring suspended until the las
   assert.equal(list.style.overflowAnchor, 'none', 'an earlier controller cannot restore anchoring during the later arrival');
   releasePanel(); releasePanel();
   assert.equal(list.style.overflowAnchor, 'auto', 'the original style is restored once, after all controllers finish');
+});
+
+test("playlist navigation is never selected for item entrances", t => {
+  const { root, list, dom } = setup(t);
+  const sidebar = dom.window.document.createElement('section'); sidebar.className = 'playlist-list';
+  sidebar.innerHTML = '<div class="playlist-create">新建播放列表</div><button data-collection-anchor="favorites">喜欢的歌曲</button>';
+  sidebar.getBoundingClientRect = () => { throw new Error('navigation is outside the data reveal'); };
+  root.prepend(sidebar);
+  for (let i = 0; i < 10; i++) {
+    const row = dom.window.document.createElement('div'); row.className = 'collection-track-row'; row.dataset.collectionAnchor = `${i}`;
+    row.getBoundingClientRect = () => rect(100 + i * 44, 44); list.append(row);
+  }
+  const items = contentEntranceItems(root);
+  assert.equal(items.length, 10);
+  assert.ok(items.every(({ node }) => node.parentElement === list));
 });
