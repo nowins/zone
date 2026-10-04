@@ -6,7 +6,7 @@ use tauri::{Emitter,State};
 const OPML_LIMIT: usize=5*1024*1024;
 #[derive(Debug,Default,Serialize)]
 #[serde(rename_all="camelCase")]
-pub struct PodcastImportReport { pub imported: usize, pub skipped: usize, pub failures: Vec<String> }
+pub struct PodcastImportReport { pub imported: usize, pub skipped: usize, pub failures: Vec<String>, pub failed_urls: Vec<String> }
 
 pub(crate) fn parse_opml(bytes:&[u8])->Result<Vec<String>,String> {
   if bytes.len()>OPML_LIMIT {return Err("OPML 文件过大".into());}
@@ -70,7 +70,19 @@ pub async fn podcast_import_opml(app:tauri::AppHandle,state:State<'_,PodcastStat
     Ok(Some(parse_opml(&fs::read(path).map_err(|e|e.to_string())?)?))
   }).await.map_err(|e|e.to_string())??;
   let Some(urls)=urls else {return Ok(None);};
-  let existing:HashSet<_>=list_feeds(&state.db_path)?.into_iter().map(|feed|feed.feed_url).collect();
+  let report=import_urls(&state,urls).await?;
+  let _=app.emit("podcast-library-changed",());Ok(Some(report))
+}
+
+fn normalize_import_urls(urls:Vec<String>)->Result<Vec<String>,String>{
+  if urls.is_empty()||urls.len()>500{return Err("单次导入须为 1 至 500 个节目".into());}
+  let mut seen=HashSet::new();let mut result=Vec::new();
+  for url in urls{let normalized=validate_public_url_shape(&url)?.to_string();if seen.insert(normalized.clone()){result.push(normalized);}}
+  Ok(result)
+}
+async fn import_urls(state:&PodcastState,urls:Vec<String>)->Result<PodcastImportReport,String>{
+  let urls=normalize_import_urls(urls)?;
+  let existing:HashSet<_>=list_feeds(&state.db_path)?.into_iter().filter(|feed|feed.subscribed).map(|feed|feed.feed_url).collect();
   let mut report=PodcastImportReport::default();let mut tasks=tokio::task::JoinSet::new();let mut urls=urls.into_iter();
   loop {
     while tasks.len()<3 {
@@ -78,19 +90,33 @@ pub async fn podcast_import_opml(app:tauri::AppHandle,state:State<'_,PodcastStat
       if existing.contains(&url) {report.skipped+=1;continue;}
       let db=state.db_path.clone();
       tasks.spawn(async move {
-        let parsed=fetch_and_parse_feed(&url,None,None,None).await?;
-        tauri::async_runtime::spawn_blocking(move||store_subscription(&db,parsed)).await.map_err(|e|e.to_string())?.map(|_|())
+        let result=async{let parsed=fetch_and_parse_feed(&url,None,None,None).await?;
+          tauri::async_runtime::spawn_blocking(move||store_subscription(&db,parsed)).await.map_err(|e|e.to_string())?.map(|_|())
+        }.await;
+        (url,result)
       });
     }
     let Some(result)=tasks.join_next().await else {break;};
-    match result.map_err(|e|e.to_string())? {Ok(())=>report.imported+=1,Err(error)=>report.failures.push(error)}
+    let (url,result)=result.map_err(|e|e.to_string())?;
+    match result {Ok(())=>report.imported+=1,Err(error)=>{report.failures.push(format!("{url}：{error}"));report.failed_urls.push(url);}}
   }
-  let _=app.emit("podcast-library-changed",());Ok(Some(report))
+  Ok(report)
+}
+#[tauri::command]
+pub async fn podcast_retry_import(app:tauri::AppHandle,state:State<'_,PodcastState>,urls:Vec<String>)->Result<PodcastImportReport,String>{
+  state.ensure_ready()?;let report=import_urls(&state,urls).await?;let _=app.emit("podcast-library-changed",());Ok(report)
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;use crate::podcast::test_support::*;
+  #[test]
+  fn import_retry_deduplicates_and_revalidates_public_urls_and_batch_limits() {
+    assert_eq!(normalize_import_urls(vec!["https://example.com/rss".into(),"https://example.com/rss".into()]).unwrap().len(),1);
+    assert!(normalize_import_urls(vec!["http://127.0.0.1/rss".into()]).is_err());
+    assert!(normalize_import_urls(vec!["https://example.com/rss".into();501]).is_err());
+    assert!(normalize_import_urls(vec![]).is_err());
+  }
   #[test]
   fn opml_round_trip_escapes_titles_and_preserves_only_subscriptions() {
     let mut parsed=parsed_fixture("https://example.com/a.mp3");parsed.feed.title="中文 & \"标题\" <播客>".into();

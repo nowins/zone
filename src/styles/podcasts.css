@@ -2270,6 +2270,12 @@
 .podcast-sync-settings > div { display: flex; flex-wrap: wrap; gap: 10px; }
 .podcast-sync-settings p { color: var(--muted); font-size: 13px; line-height: 1.7; }
 .podcast-sync-path { overflow-wrap: anywhere; }
+.podcast-backup-file, .podcast-import-failures li { overflow-wrap: anywhere; }
+.podcast-import-failures { margin-top: 16px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.podcast-restore-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 28px; margin: 20px 0; font-size: 14px; }
+.podcast-restore-summary > div { display: flex; justify-content: space-between; gap: 12px; }
+.podcast-restore-summary dt { color: var(--muted); }
+.podcast-restore-summary dd { margin: 0; font-variant-numeric: tabular-nums; }
 .podcast-player .podcast-bar-options-trigger { width: auto; min-width: 48px; gap: 4px; grid-auto-flow: column; font-size: 12px; }
 .podcast-player .player-shortcuts small { position: absolute; right: 0; top: -2px; font-size: 9px; color: var(--accent); }
 .podcast-bar-status { max-width: 68px; font-size: 10px; color: var(--muted); }

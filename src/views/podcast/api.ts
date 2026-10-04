@@ -240,3 +240,14 @@ export const recordEpisodeBookmark = (episodeId: string, positionSeconds: number
 export const removeEpisodeBookmark = (episodeId: string, bookmarkId: string) => changeBookmarks("podcast_remove_bookmark", { episodeId, bookmarkId }, episodeId);
 export const updateEpisodeBookmark = (episodeId: string, bookmark: PodcastBookmark, label: string) => changeBookmarks("podcast_update_bookmark", { episodeId, bookmarkId: bookmark.id, label, expectedLabel: bookmark.label }, episodeId);
 export const restoreEpisodeBookmark = (episodeId: string, bookmark: PodcastBookmark) => changeBookmarks("podcast_restore_bookmark", { episodeId, bookmark }, episodeId);
+export type PodcastImportReport = { imported: number; skipped: number; failures: string[]; failedUrls: string[] };
+export type PodcastBackupPreview = { token: string; fileName: string; createdAt: number | null; feeds: number; episodes: number; progress: number; lists: number; groups: number; bookmarks: number; audioCount: number; audioBytes: number };
+export type PodcastBackupExport = { locationToken: string; fileName: string; audioCount: number };
+export type PodcastBackupRestore = { frontend: Record<string,string>; counts: { mergedRecords: number; retainedRecords: number; audioCount: number } };
+export const importPodcastSubscriptions = () => invoke<PodcastImportReport | null>("podcast_import_opml");
+export const retryPodcastImport = (urls: string[]) => invoke<PodcastImportReport>("podcast_retry_import", { urls });
+export const exportPodcastSubscriptions = () => invoke<boolean>("podcast_export_opml");
+export const exportPodcastBackup = (frontendSettings: Record<string,string | null>, includeAudio: boolean) => invoke<PodcastBackupExport | null>("podcast_export_backup", { frontendSettings, includeAudio });
+export const choosePodcastRestoreBackup = () => invoke<PodcastBackupPreview | null>("podcast_choose_restore_backup");
+export const confirmPodcastRestoreBackup = (token: string) => invoke<PodcastBackupRestore>("podcast_confirm_restore_backup", { token });
+export const openPodcastBackupFolder = (token: string) => invoke<void>("podcast_open_backup_folder", { token });
