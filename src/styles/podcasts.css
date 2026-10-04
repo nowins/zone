@@ -2183,7 +2183,6 @@
     grid-template-columns: 40px 24px minmax(0, 1fr);
   }
 }
-.podcast-library-actions { display: flex; justify-content: flex-end; padding: 0 36px; }
 .podcast-transfer-actions { margin-bottom: 24px; font-size: 13px; }
 .podcast-management-section { margin: 0 0 28px; padding: 0 0 22px; border-bottom: 1px solid var(--faint); }
 .podcast-management-section h2 { font-size: 21px; font-weight: 330; line-height: 1.1; letter-spacing: -.018em; margin: 0 0 14px; }
@@ -2373,9 +2372,21 @@
 .podcast-queue-total,.podcast-queue-undo { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .podcast-queue-undo { display: flex; align-items: center; gap: 16px; }
 
-.playlist-dialog-overlay.podcast-settings-overlay { inset: 28px 0 0; padding: 24px; }
-.playlist-dialog.podcast-settings-dialog { max-height: calc(100vh - 76px); }
-.podcast-settings-dialog .playlist-dialog-actions { position: sticky; bottom: -28px; z-index: 1; background: #171118; padding: 16px 0; border-top: 1px solid var(--faint); }
+.playlist-dialog-overlay.podcast-settings-overlay { inset: 28px 0 74px; padding: 20px; }
+.playlist-dialog.podcast-settings-dialog { display: flex; flex-direction: column; padding: 24px; width: min(560px, calc(100vw - 48px)); max-height: calc(100vh - 142px); overflow: hidden; }
+.playlist-dialog.podcast-settings-dialog > h2 { flex: 0 0 auto; font-size: 30px; line-height: 1.15; margin: 16px 0 8px; }
+.podcast-settings-content { min-height: 0; overflow-y: auto; padding-right: 8px; scrollbar-width: thin; }
+.podcast-settings-dialog .playlist-dialog-actions { flex: 0 0 auto; position: static; margin-top: 16px; padding: 16px 0 0; border-top: 1px solid var(--faint); }
+.podcast-default-settings { max-width: 760px; padding-top: 24px; }
+.podcast-settings-fields .podcast-playback-setting-grid { grid-template-columns: 1fr; gap: 0; }
+.podcast-settings-fields .podcast-playback-setting-grid label { justify-content: space-between; min-height: 48px; border-bottom: 1px solid var(--faint); }
+.podcast-settings-fields .podcast-playback-setting-grid input { width: 84px; }
+.podcast-preference-toggle { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 48px; border-bottom: 1px solid var(--faint); font-size: 14px; }
+.podcast-preference-save { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: flex-end; gap: 20px; padding: 12px 0; border-top: 1px solid var(--faint); background: var(--app-bg); z-index: 1; }
+.podcast-preference-save > span { color: var(--muted); font-size: 13px; }
+.podcast-preference-advanced { border-top: 1px solid var(--faint); margin-top: 20px; }
+.podcast-preference-advanced summary { color: var(--muted); font-size: 14px; min-height: 40px; padding: 12px 0; cursor: pointer; }
+.podcast-preference-advanced summary:hover { color: var(--text); }
 .podcast-heading h1:focus-visible { outline: 1px solid var(--quiet); outline-offset: 3px; }
 .podcast-page :is(button,summary,select,input):focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 .podcast-page summary { border-radius: 0; }

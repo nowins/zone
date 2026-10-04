@@ -13,6 +13,7 @@ import { Presence } from "../motion/presence";
 import { MOTION_DURATIONS } from "../motion/tokens";
 import { createPortal } from "react-dom";
 import { APP_VERSION, RELEASE_LINKS } from "../app/releaseInfo";
+import { PodcastDefaultsSettings } from "./podcast/components/SettingsDialog";
 import { PRIVACY_LINKS, PRIVACY_SECTIONS } from "../app/privacy";
 
 export function SettingsView({
@@ -50,6 +51,8 @@ export function SettingsView({
   onRescan: () => void;
   onClear: () => Promise<void>;
 }) {
+  const [category, setCategory] = useState<"music" | "podcast" | "app">("music");
+  const [podcastVisited, setPodcastVisited] = useState(false);
   const folderCount = folders.length;
   const { configs, providers, setEnabled, move } = useLyricsProviderSettings();
   const [diagnosticNotice, setDiagnosticNotice] = useState("");
@@ -105,15 +108,12 @@ export function SettingsView({
 
   return (
     <section className="content-band settings-page">
-      <header className="settings-header">
-        <div>
-          <span className="settings-overline">ZONE / 资料库</span>
-          <h1>设置</h1>
-          <p>管理音乐来源、扫描状态和本地资料库。</p>
-        </div>
+      <header className="settings-header settings-header-integrated">
+        <h1>设置</h1>
+        <nav className="settings-categories" aria-label="设置分区">{([["music","音乐"],["podcast","播客"],["app","常规"]] as const).map(([id,label]) => <button key={id} type="button" aria-current={category===id ? "page" : undefined} onClick={() => { setCategory(id); if(id==="podcast")setPodcastVisited(true); }}>{label}</button>)}</nav>
       </header>
-
-      <div className="settings-layout">
+      {podcastVisited && <div hidden={category !== "podcast"}><PodcastDefaultsSettings /></div>}
+      <div className="settings-layout" hidden={category !== "music"}>
         <div className="settings-main-stack">
           <section className="settings-library" aria-labelledby="music-folders-heading">
             <header className="settings-section-heading">
@@ -201,23 +201,6 @@ export function SettingsView({
                 >
                   <span aria-hidden="true" />
                   {adaptivePrevious ? "已启用" : "已关闭"}
-                </button>
-              </div>
-
-              <div className="settings-behavior-row">
-                <div>
-                  <strong>关闭到托盘</strong>
-                  <span>点击窗口关闭时隐藏到托盘，而不是退出应用。</span>
-                </div>
-                <button
-                  className="provider-toggle"
-                  type="button"
-                  role="switch"
-                  aria-checked={closeToTray}
-                  onClick={() => onCloseToTrayChange(!closeToTray)}
-                >
-                  <span aria-hidden="true" />
-                  {closeToTray ? "已启用" : "已关闭"}
                 </button>
               </div>
             </div>
@@ -388,6 +371,34 @@ export function SettingsView({
             {isScanning && <Button variant="ghost" onClick={onCancelScan}>取消扫描</Button>}
           </section>
 
+          <section className="settings-danger-zone">
+            <span className="settings-kicker">维护</span>
+            <h2>清理资料库</h2>
+            <p>移除音乐索引、歌单、喜欢、固定内容和播放统计，保留播客资料。不会删除电脑中的音乐文件。</p>
+            <Button variant="danger" className="settings-danger-action" onClick={() => { setClearError(""); setConfirmClear(true); }} disabled={isScanning || clearBusy || (folderCount === 0 && trackCount === 0)} icon={<Trash2 size={16} aria-hidden="true" />}>
+              <span>清空资料库</span>
+            </Button>
+          </section>
+        </aside>
+      </div>
+      <div className="settings-general" hidden={category !== "app"}>
+        <h2>窗口与应用</h2>
+              <div className="settings-behavior-row">
+                <div>
+                  <strong>关闭到托盘</strong>
+                  <span>点击窗口关闭时隐藏到托盘，而不是退出应用。</span>
+                </div>
+                <button
+                  className="provider-toggle"
+                  type="button"
+                  role="switch"
+                  aria-checked={closeToTray}
+                  onClick={() => onCloseToTrayChange(!closeToTray)}
+                >
+                  <span aria-hidden="true" />
+                  {closeToTray ? "已启用" : "已关闭"}
+                </button>
+              </div>
           <section className="settings-diagnostics">
             <Button variant="ghost" onClick={() => void saveDiagnostics()} icon={<FileJson2 size={16} />}>导出诊断记录</Button>
             {diagnosticNotice && <p role="status">{diagnosticNotice}</p>}
@@ -398,15 +409,6 @@ export function SettingsView({
             {RELEASE_LINKS.support && <Button variant="ghost" onClick={() => void invoke("plugin:opener|open_url", { url: RELEASE_LINKS.support }).catch(() => setDiagnosticNotice("无法打开帮助页面，请重试"))}>反馈与帮助</Button>}
             {RELEASE_LINKS.download && <Button variant="ghost" onClick={() => void invoke("plugin:opener|open_url", { url: RELEASE_LINKS.download }).catch(() => setDiagnosticNotice("无法打开下载页面，请重试"))}>获取新版</Button>}
           </section>
-          <section className="settings-danger-zone">
-            <span className="settings-kicker">维护</span>
-            <h2>清理资料库</h2>
-            <p>移除音乐索引、歌单、喜欢、固定内容和播放统计，保留播客资料。不会删除电脑中的音乐文件。</p>
-            <Button variant="danger" className="settings-danger-action" onClick={() => { setClearError(""); setConfirmClear(true); }} disabled={isScanning || clearBusy || (folderCount === 0 && trackCount === 0)} icon={<Trash2 size={16} aria-hidden="true" />}>
-              <span>清空资料库</span>
-            </Button>
-          </section>
-        </aside>
       </div>
       {createPortal(<Presence show={confirmClear} exitDurationMs={MOTION_DURATIONS.micro}>
         <Dialog titleId="clear-library-title" kicker="音乐资料库" title="清空音乐资料库？"

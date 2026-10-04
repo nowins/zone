@@ -83,6 +83,18 @@ h2 {
   margin-top: 13px;
 }
 
+.settings-header.settings-header-integrated { align-items: center; padding: 8px 0 16px; gap: 32px; }
+.settings-header.settings-header-integrated h1 { margin: 0; font-size: 38px; font-weight: 250; line-height: 1.1; }
+.settings-categories { display: flex; gap: 28px; }
+.settings-categories button { min-height: 40px; padding: 6px 0; color: var(--muted); font-size: 22px; font-weight: 330; }
+.settings-categories button[aria-current="page"] { color: var(--text); box-shadow: inset 0 -2px var(--accent); }
+.settings-categories button:hover { color: var(--text); }
+.settings-page :is(button,summary,select,input):focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.settings-layout[hidden], .settings-general[hidden] { display: none; }
+.settings-general { max-width: 760px; padding-top: 24px; }
+.settings-general > h2 { font-size: 25px; font-weight: 300; margin: 0 0 20px; }
+.settings-general .settings-diagnostics { margin-top: 24px; }
+
 .settings-header > div > p {
   margin: 18px 0 0;
   color: var(--muted);

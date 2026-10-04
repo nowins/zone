@@ -26,22 +26,23 @@ async function run() {
     document.querySelector('[role=menu]')!.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=menu]'),"more menu escape");
     await click("查看全部");await until(()=>Boolean(document.querySelector('.podcast-search-page-status')),"complete continue listening list");await capture("11-continue-all-1180");await click("返回收听");
     checks.push("真实客户端收听剩余时长、上次时间、完整资料库继续收听和可见更多操作");
-    await click("资料库"); await click("播客设置");await click("下载与清理");await until(()=>Boolean(document.querySelector(".podcast-settings-fields select")),"global settings");
+    await click("资料库"); await click("设置");await until(()=>Boolean(document.querySelector(".settings-categories")),"global settings page");document.querySelectorAll<HTMLButtonElement>(".settings-categories button")[1].click();await click("下载与清理");await until(()=>Boolean(document.querySelector(".podcast-settings-fields select")),"global settings");
     const select=document.querySelector<HTMLSelectElement>(".podcast-settings-fields select")!;
-    const checkbox=document.querySelector<HTMLInputElement>(".podcast-settings-fields input[type=checkbox]")!;
-    assert(checkbox.getBoundingClientRect().width<=24&&checkbox.getBoundingClientRect().height<=24,"checkbox inherited oversized text field styling");
+    const toggle=document.querySelector<HTMLButtonElement>('.podcast-default-settings [role=switch]')!;
+    assert(toggle.getBoundingClientRect().height<=44,"global switch is oversized");
     const expected=select.value==="512"?1024:512;
     select.value=String(expected);select.dispatchEvent(new Event("change",{bubbles:true}));await delay(100);
+    document.querySelectorAll<HTMLButtonElement>(".settings-categories button")[2].click();await delay(100);assert(document.querySelector('.settings-general')?.getAttribute('hidden')===null&&document.querySelector('.settings-layout')?.hasAttribute('hidden'),"general settings overlap music settings");document.querySelectorAll<HTMLButtonElement>(".settings-categories button")[1].click();await delay(100);assert(select.value===String(expected),"changing global categories lost podcast draft");
     await invoke("client_window",{small:false});await capture("01-maintenance-1180");
     await invoke("client_window",{small:true});await capture("02-maintenance-920");
-    const bounds=document.querySelector("[role=dialog]")!.getBoundingClientRect();
-    assert(bounds.top>=48&&bounds.bottom<=innerHeight-20&&bounds.left>=0&&bounds.right<=innerWidth,"settings are cropped in the smallest window");
-    assert(document.querySelector("[role=dialog]")?.contains(document.activeElement),"settings must trap focus");
-    await click("保存");await until(()=>!document.querySelector("[role=dialog]"),"settings saved");
+    const bounds=document.querySelector(".podcast-default-settings")!.getBoundingClientRect();
+    assert(bounds.left>=0&&bounds.right<=innerWidth,"settings overflow smallest window");assert(!document.querySelector('[role=dialog]'),"default podcast settings still open a separate modal");
+    const saveBounds=button("保存修改")!.getBoundingClientRect();assert(saveBounds.top>=bounds.top&&saveBounds.bottom<=document.querySelector('.settings-page')!.getBoundingClientRect().bottom,"default preference save is covered by the persistent player");
+    await click("保存修改");await until(()=>document.querySelector('.podcast-preference-save')?.textContent?.includes("已保存播客偏好")??false,"settings saved");
     const preferences=await invoke<{storageLimitMb:number}>("podcast_get_preferences",{});
     assert(preferences.storageLimitMb===expected,"global settings not persisted through native SQLite");
-    checks.push("完整 App 中打开下载设置、保存原生 SQLite、1180×760 与 920×620、对话框焦点隔离");
-    await click("下载");await until(()=>Boolean(document.querySelector('.podcast-storage-summary p')),"download storage summary");const storageBefore=await invoke<{partialBytes:number}>("podcast_download_storage");assert(storageBefore.partialBytes===8192,"actual partial bytes");await capture("24-download-management-920");
+    checks.push("完整 App 全局设置中的播客分类、默认偏好原生 SQLite 保存、1180×760 与 920×620 布局");
+    await click("播客");await until(()=>Boolean(document.querySelector(".podcast-library-tabs")),"return from unified settings");await click("下载");await until(()=>Boolean(document.querySelector('.podcast-storage-summary p')),"download storage summary");const storageBefore=await invoke<{partialBytes:number}>("podcast_download_storage");assert(storageBefore.partialBytes===8192,"actual partial bytes");await capture("24-download-management-920");
     await click("清除未完成文件");await until(()=>document.querySelector('.podcast-download-job')?.textContent?.includes("0 B") ?? false,"partial download space released");await until(()=>document.querySelector('.podcast-storage-summary')?.textContent?.includes("未完成文件 0 B") ?? false,"live storage update after cleanup");
     const jobs=await invoke<Array<{state:string;downloadedBytes:number}>>("podcast_list_download_jobs");assert(jobs.some(job=>job.state==="paused"&&job.downloadedBytes===0),"partial cleanup must keep the task paused");
     checks.push("真实客户端暂停任务清理断点并释放占用，保持任务暂停避免自动重新下载");
@@ -54,7 +55,8 @@ async function run() {
     const open=document.querySelector<HTMLButtonElement>(".podcast-library-show-open");
     assert(open,"followed fixture show missing");
     if(open){open.click();await click("节目设置");await until(()=>Boolean(document.querySelector(".podcast-settings-fields select")),"feed settings");await capture("03-feed-settings");
-      const inheritedOption=document.querySelector<HTMLInputElement>('.podcast-playback-settings input[type=checkbox]')!;if(!inheritedOption.checked)inheritedOption.click();await delay(100);
+      const inheritedOption=document.querySelector<HTMLButtonElement>('[role=switch][aria-label="使用默认播放设置"]')!;if(inheritedOption.getAttribute('aria-checked')!=='true')inheritedOption.click();await delay(100);
+      document.querySelector<HTMLDetailsElement>(".podcast-preference-advanced")!.open=true;
       const globalPlayback=await invoke<{introSeconds:number}>("podcast_get_preferences",{});assert(document.querySelector<HTMLInputElement>('input[aria-label="跳过片头"]')!.value===String(globalPlayback.introSeconds),"inherited settings show stale custom values");assert(document.querySelector<HTMLSelectElement>('select[aria-label="节目播放速度"]')!.disabled,"inherited controls must be read only");await capture("25-inherited-settings-920");
       checks.push("默认／节目设置分类、继承显示实际生效值且保留独立偏好");
       (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));await until(()=>!document.querySelector("[role=dialog]"),"escape closes settings");checks.push("节目设置入口与 Escape 关闭且保留节目页");
@@ -70,11 +72,12 @@ async function run() {
       const order=document.querySelector<HTMLSelectElement>('select[aria-label="单集排序"]')!;order.value="oldest";order.dispatchEvent(new Event("change",{bubbles:true}));await delay(450);
       await capture("04-show-search-920");checks.push("原生资料库查询、节目内搜索空状态、清空查询与最早排序");
       await click("节目设置");await until(()=>Boolean(document.querySelector('select[aria-label="节目播放速度"]')),"playback preferences");
-      const inherit=Array.from(document.querySelectorAll<HTMLInputElement>('.podcast-settings-fields input[type=checkbox]')).find(el=>el.parentElement?.textContent?.includes("使用默认播放设置"))!;
-      if(inherit.checked)inherit.click();await delay(100);
+      const inherit=document.querySelector<HTMLButtonElement>('[role=switch][aria-label="使用默认播放设置"]')!;
+      if(inherit.getAttribute('aria-checked')==='true')inherit.click();await delay(100);
+      document.querySelector<HTMLDetailsElement>(".podcast-preference-advanced")!.open=true;
       await selectValue(document.querySelector('select[aria-label="节目播放速度"]')!,"1.5");
       for(const [label,value] of [["跳过片头","10"],["跳过片尾","20"],["后退间隔","10"],["前进间隔","45"]])await inputValue(document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!,value);
-      for(const label of ["均衡语音音量","加速静音段落"]){const option=Array.from(document.querySelectorAll<HTMLInputElement>('.podcast-settings-fields input[type=checkbox]')).find(el=>el.parentElement?.textContent?.includes(label))!;assert(option,`${label} setting missing`);if(!option.checked)option.click();await delay(100);}
+      for(const label of ["均衡语音音量","加速静音段落"]){const option=document.querySelector<HTMLButtonElement>(`[role=switch][aria-label="${label}"]`)!;assert(option,`${label} setting missing`);if(option.getAttribute('aria-checked')!=='true')option.click();await delay(100);}
       await capture("05-playback-settings-920");await click("保存");await until(()=>!document.querySelector("[role=dialog]"),"playback settings saved");
       await click("展开简介");assert(document.querySelector('.podcast-show-hero p.expanded'),"show description cannot expand");await click("收起简介");
       const openRow=document.querySelector<HTMLButtonElement>('.podcast-episode-open')!;openRow.focus();openRow.click();await until(()=>Boolean(document.querySelector('.podcast-detail')),"browse detail");await click("返回节目");await until(()=>Boolean(document.querySelector('.podcast-episode-open')),"restore show search");assert((document.querySelector('select[aria-label="单集排序"]') as HTMLSelectElement).value==="oldest","show sort lost after returning");
@@ -176,8 +179,8 @@ async function run() {
     const ranked=document.querySelector<HTMLButtonElement>('.podcast-show-card')!;assert(ranked.title.includes("完整标题"),"full show metadata unavailable");assert(ranked.querySelector('.podcast-card-rank')?.textContent==="7"&&ranked.querySelector('.podcast-card-followed'),"rank and followed status must coexist");assert(document.querySelector('.podcast-discovery-source time')?.getAttribute('datetime'),"discovery snapshot date missing");await capture("14-discovery-920");
     const unfollowed=button("仅看未关注")!;unfollowed.click();await until(()=>!document.querySelector('.podcast-show-card'),"discovery followed filter");assert(unfollowed.getAttribute('aria-pressed')==='true',"follow filter state inaccessible");assert(!document.querySelector('.podcast-discover-screen input[type=checkbox],.podcast-discover-screen select[aria-label="发现节目分类"]'),"discovery exposes inconsistent native filters");assert(document.querySelector('.podcast-discovery-source time'),"empty filter hides source and date");unfollowed.click();
     checks.push("真实客户端榜单来源与更新时间、完整标题、排行与已关注标记并存、筛选空状态");
-    await invoke("client_motion",{reduce:true});await until(()=>matchMedia('(prefers-reduced-motion: reduce)').matches,"native reduced motion");await click("资料库");await click("播客设置");await until(()=>Boolean(document.querySelector('.podcast-settings-dialog')),"reduced motion settings");const modal=document.querySelector<HTMLElement>('.podcast-settings-dialog')!;await delay(100);assert(getComputedStyle(modal).animationName==="none"||parseFloat(getComputedStyle(modal).animationDuration)<0.02,"reduced motion retains rotating dialog animation");const focusables=Array.from(modal.querySelectorAll<HTMLButtonElement>('button')).filter(el=>!el.disabled);focusables.at(-1)!.focus();focusables.at(-1)!.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));assert(modal.contains(document.activeElement),"Tab escaped modal");await capture("16-reduced-motion-settings-920");modal.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=dialog]'),"reduced motion closes immediately");await invoke("client_motion",{reduce:false});checks.push("真实 WebView2 减少动态效果媒体条件、浮层动画停用与焦点 Tab／Escape 隔离（系统按键仍需手工补充）");
-    await musicSwitchAudit(checks);
+    await invoke("client_motion",{reduce:true});await until(()=>matchMedia('(prefers-reduced-motion: reduce)').matches,"native reduced motion");await click("资料库");await click("节目");document.querySelector<HTMLButtonElement>('.podcast-library-show-open')!.click();await click("节目设置");await until(()=>Boolean(document.querySelector('.podcast-settings-dialog')),"reduced motion settings");const modal=document.querySelector<HTMLElement>('.podcast-settings-dialog')!;await delay(100);assert(getComputedStyle(modal).animationName==="none"||parseFloat(getComputedStyle(modal).animationDuration)<0.02,"reduced motion retains rotating dialog animation");const focusables=Array.from(modal.querySelectorAll<HTMLButtonElement>('button')).filter(el=>!el.disabled);focusables.at(-1)!.focus();focusables.at(-1)!.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));assert(modal.contains(document.activeElement),"Tab escaped modal");await capture("16-reduced-motion-settings-920");modal.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await until(()=>!document.querySelector('[role=dialog]'),"reduced motion closes immediately");await invoke("client_motion",{reduce:false});checks.push("真实 WebView2 减少动态效果媒体条件、浮层动画停用与焦点 Tab／Escape 隔离（系统按键仍需手工补充）");
+    await click("返回资料库");await musicSwitchAudit(checks);
     await snapshot();
     await invoke("client_record",{value:{kind:"result",ok:true,checks}});
   } catch(error) {await invoke("client_record",{value:{kind:"result",ok:false,error:String(error),checks,body:document.body.textContent?.slice(-2000)}});}

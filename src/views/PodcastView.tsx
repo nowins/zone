@@ -174,7 +174,6 @@ export function PodcastView(props: PodcastViewProps) {
       </header>
 
       {screen === "listen" ? <ListenScreen vm={vm} /> : null}
-      {screen === "library" && <div className="podcast-library-actions"><Button variant="ghost" onClick={() => setSettings({title:"默认播客设置"})}>播客设置</Button></div>}
       {screen === "discover" ? <DiscoverScreen vm={vm} /> : null}
       {screen === "library" ? <LibraryScreen vm={vm} /> : null}
       {screen === "playlist" ? <PlaylistScreen vm={vm} /> : null}
