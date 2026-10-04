@@ -105,7 +105,7 @@ fn store_feed(
         id, feed_url, title, author, description, artwork_url,
         etag, last_modified, last_fetched_at, subscribed,
         subscribed_at, last_checked_at, last_refresh_error, duration_parser_version
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1)
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
       ON CONFLICT(id) DO UPDATE SET
         feed_url = excluded.feed_url,
         title = excluded.title,
@@ -135,6 +135,7 @@ fn store_feed(
         feed.subscribed_at,
         feed.last_checked_at,
         feed.last_refresh_error,
+        PODCAST_FEED_PARSER_VERSION,
       ],
     )
     .map_err(|error| format!("无法保存播客订阅：{error}"))?;
@@ -617,18 +618,18 @@ pub(crate) fn list_refresh_targets(
     .prepare(
       "
       SELECT id, feed_url, title, author, artwork_url,
-        CASE WHEN duration_parser_version >= 1 THEN etag ELSE NULL END,
-        CASE WHEN duration_parser_version >= 1 THEN last_modified ELSE NULL END
+        CASE WHEN duration_parser_version >= ?4 THEN etag ELSE NULL END,
+        CASE WHEN duration_parser_version >= ?4 THEN last_modified ELSE NULL END
       FROM podcast_feeds
       WHERE ((?1 IS NULL AND subscribed = 1) OR id = ?1)
-        AND (?2 = 1 OR duration_parser_version < 1 OR last_checked_at IS NULL OR last_checked_at <= ?3)
+        AND (?2 = 1 OR duration_parser_version < ?4 OR last_checked_at IS NULL OR last_checked_at <= ?3)
       ORDER BY COALESCE(last_checked_at, 0), title COLLATE NOCASE
       ",
     )
     .map_err(|error| format!("无法读取播客刷新列表：{error}"))?;
   let rows = statement
     .query_map(
-      params![feed_id, i64::from(force), cutoff],
+      params![feed_id, i64::from(force), cutoff, PODCAST_FEED_PARSER_VERSION],
       |row| {
         Ok(PodcastRefreshTarget {
           id: row.get(0)?,
@@ -996,6 +997,40 @@ mod tests {
 
     fs::remove_dir_all(directory).expect("cleanup test directory");
   }
+  #[test]
+  fn old_flattened_notes_reparse_without_validators_and_keep_user_state() {
+    let directory = test_directory("notes-parser-upgrade");
+    let state = PodcastState::initialize_at(&directory).expect("state");
+    let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
+    let feed_id = parsed.feed.id.clone();
+    let episode_id = parsed.episodes[0].id.clone();
+    let now = parsed.feed.last_fetched_at;
+    store_subscription(&state.db_path, parsed).expect("initial subscription");
+    save_progress(&state.db_path, &episode_id, 123.0, 3723.0).expect("progress");
+    open_database(&state.db_path).unwrap().execute(
+      "UPDATE podcast_feeds SET duration_parser_version=1,description='旧简介',etag='old',last_modified='old',last_checked_at=?1 WHERE id=?2",
+      params![now, feed_id],
+    ).unwrap();
+    let targets = list_refresh_targets(&state.db_path, None, false, now).unwrap();
+    assert_eq!(targets.len(), 1);
+    assert!(targets[0].etag.is_none() && targets[0].last_modified.is_none());
+    mark_refresh_failed(&state.db_path, &feed_id, now + 1, "temporary failure").unwrap();
+    let retained: (String, i64) = open_database(&state.db_path).unwrap().query_row(
+      "SELECT description,duration_parser_version FROM podcast_feeds WHERE id=?1", [&feed_id], |row| Ok((row.get(0)?, row.get(1)?)),
+    ).unwrap();
+    assert_eq!(retained, ("旧简介".into(), 1));
+    assert_eq!(list_refresh_targets(&state.db_path, None, false, now + 1).unwrap().len(), 1);
+    store_preview(&state.db_path, parsed_fixture("https://media.example.test/episode-1.mp3")).unwrap();
+    let detail = get_episode_detail(&state.db_path, &state.downloads_dir, &episode_id).unwrap();
+    assert!(detail.feed.subscribed);
+    assert_eq!(detail.episode.progress_seconds, 123.0);
+    assert!(detail.feed.description.as_deref().unwrap().contains("<p>"));
+    let forced = list_refresh_targets(&state.db_path, Some(&feed_id), true, now + 2).unwrap();
+    assert!(forced[0].etag.is_some());
+    assert!(list_refresh_targets(&state.db_path, None, false, now + 2).unwrap().is_empty());
+    fs::remove_dir_all(directory).unwrap();
+  }
+
   #[test]
   fn refresh_selection_throttles_recent_checks_and_rejects_unknown_ids() {
     let directory = test_directory("refresh-selection");

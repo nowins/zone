@@ -207,6 +207,14 @@ pub(crate) fn plain_text(value: &str, limit: usize) -> String {
     .to_string()
 }
 
+pub(crate) fn notes_source(value: &str) -> Option<String> {
+  // Keep reading structure as untrusted data. The UI renders an allowlisted tree.
+  let source: String = value.trim().chars()
+    .filter(|character| !character.is_control() || matches!(character, '\n' | '\r' | '\t'))
+    .take(PODCAST_DESCRIPTION_LIMIT).collect();
+  (!source.trim().is_empty()).then_some(source)
+}
+
 pub(crate) fn truncate_chars(value: &str, limit: usize) -> String {
   value.chars().take(limit).collect()
 }

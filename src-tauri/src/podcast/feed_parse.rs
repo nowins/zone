@@ -1090,8 +1090,7 @@ fn normalize_feed(
   let description = parsed
     .description
     .as_ref()
-    .map(|value| plain_text(&value.content, PODCAST_DESCRIPTION_LIMIT))
-    .filter(|value| !value.is_empty());
+    .and_then(|value| notes_source(&value.content));
   let artwork_url = parsed
     .logo
     .as_ref()
@@ -1173,15 +1172,13 @@ fn normalize_episode(
   let description = entry
     .summary
     .as_ref()
-    .map(|value| plain_text(&value.content, PODCAST_DESCRIPTION_LIMIT))
-    .filter(|value| !value.is_empty())
+    .and_then(|value| notes_source(&value.content))
     .or_else(|| {
       entry
         .content
         .as_ref()
         .and_then(|content| content.body.as_deref())
-        .map(|value| plain_text(value, PODCAST_DESCRIPTION_LIMIT))
-        .filter(|value| !value.is_empty())
+        .and_then(notes_source)
     });
   let duration_seconds = explicit_duration.unwrap_or_else(|| entry
     .media
@@ -1349,16 +1346,32 @@ mod tests {
   }
 
   #[test]
+  fn rss_notes_keep_blocks_plain_line_breaks_and_bounded_untrusted_source() {
+    let xml = r#"<rss version="2.0"><channel><title>节目</title>
+      <description><![CDATA[<p>第一段</p><p>第二段</p><ul><li>一</li><li>二</li></ul>]]></description>
+      <item><guid>one</guid><title>单集</title><description><![CDATA[第一段
+同段第二行
+
+第二段]]></description><enclosure url="https://example.test/a.mp3" type="audio/mpeg"/></item>
+      </channel></rss>"#;
+    let parsed = parse_test_feed(xml, "reading-structure");
+    assert_eq!(parsed.feed.description.as_deref(), Some("<p>第一段</p><p>第二段</p><ul><li>一</li><li>二</li></ul>"));
+    assert_eq!(parsed.episodes[0].description.as_deref(), Some("第一段\n同段第二行\n\n第二段"));
+    assert_eq!(notes_source("\0\u{0001}正文\n\n下一段").as_deref(), Some("正文\n\n下一段"));
+    assert_eq!(notes_source(&"中".repeat(PODCAST_DESCRIPTION_LIMIT + 1)).unwrap().chars().count(), PODCAST_DESCRIPTION_LIMIT);
+  }
+
+  #[test]
   fn rss_feed_is_normalized_to_stable_feed_and_episode_records() {
     let parsed = parsed_fixture("https://media.example.test/episode-1.mp3");
     assert_eq!(parsed.feed.title, "Zone 测试播客");
     assert_eq!(parsed.feed.author.as_deref(), Some("Zone 主播"));
-    assert_eq!(parsed.feed.description.as_deref(), Some("一档 本地优先 的节目。"));
+    assert_eq!(parsed.feed.description.as_deref(), Some("<p>一档 <strong>本地优先</strong> 的节目。</p>"));
     assert_eq!(parsed.feed.id.len(), 64);
     assert_eq!(parsed.episodes.len(), 1);
     let episode = &parsed.episodes[0];
     assert_eq!(episode.title, "第一集");
-    assert_eq!(episode.description.as_deref(), Some("第一集的 简介"));
+    assert_eq!(episode.description.as_deref(), Some("<p>第一集的 <em>简介</em></p>"));
     assert_eq!(episode.duration_seconds, Some(3_723.0));
     assert_eq!(episode.enclosure_type.as_deref(), Some("audio/mpeg"));
     assert_eq!(episode.expected_bytes, Some(23));

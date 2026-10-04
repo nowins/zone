@@ -124,6 +124,7 @@
 
 - `PlayerBar` / `PodcastPlayerBar`：底部 74px 常驻；媒体源二选一，互斥。
 - `TransportControls`、`PlaybackProgress`：极简线性控制；图标切换用 `motion-icon-swap`，收藏确认用 `motion-confirm`。
+- 节目／单集正文复用安全段落排版，保留空行、列表、标题与可选择文本。
 
 ### 小屏模式
 

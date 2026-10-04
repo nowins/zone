@@ -1,10 +1,10 @@
 import { usePodcastBrowsePosition } from "../components/BrowsePosition";
-import { memo, useState, type MouseEvent } from "react";
+import { memo, useEffect, useState, type MouseEvent } from "react";
 import { useEvent } from "../../../hooks/useEvent";
 import type { PodcastEpisode } from "../../../types";
 import { Button } from "../../../components/Button";
 import { RefreshCw } from "lucide-react";
-import { plainText } from "../format";
+import { PodcastNotes } from "../components/Notes";
 import { MetroLoader } from "../../../components/MetroLoader";
 import { EpisodeRow } from "../components/EpisodeRows";
 import { EpisodeBrowser } from "../components/EpisodeBrowser";
@@ -18,6 +18,7 @@ import type { PodcastViewModel } from "../usePodcastViewModel";
 
 export function ShowScreen({ vm }: { vm: PodcastViewModel }) {
   const [expanded, setExpanded]=useState(false);
+  useEffect(() => setExpanded(false), [vm.selectedFeed?.id]);
   const pageRef=usePodcastBrowsePosition(`show:${vm.selectedFeed?.id}`);
   const { selectedFeed, refreshSelectedFeed, openingId, displayedEpisodes, episodeState, episodes,
     currentEpisodeId, isPlaying, downloadingId, hasMoreEpisodes, loadingEpisodePage, loadMoreEpisodes } = vm;
@@ -43,7 +44,7 @@ export function ShowScreen({ vm }: { vm: PodcastViewModel }) {
                     {selectedFeed.subscribed && <ShowGroupAction feed={selectedFeed} />}
                   </div>
                   {selectedFeed.description
-                    ? <><p id="podcast-show-description" className={expanded?"expanded":""}>{plainText(selectedFeed.description)}</p><Button variant="ghost" size="sm" aria-expanded={expanded} aria-controls="podcast-show-description" onClick={()=>setExpanded(value=>!value)}>{expanded?"收起简介":"展开简介"}</Button></>
+                    ? <><div id="podcast-show-description" className={`podcast-show-description${expanded ? " expanded" : ""}`}><PodcastNotes source={selectedFeed.description} base={selectedFeed.feedUrl} interactive={expanded} /></div><Button variant="ghost" size="sm" aria-expanded={expanded} aria-controls="podcast-show-description" onClick={()=>setExpanded(value=>!value)}>{expanded?"收起简介":"展开简介"}</Button></>
                     : null}
                 </div>
                 <button

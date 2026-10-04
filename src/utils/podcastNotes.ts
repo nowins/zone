@@ -1,5 +1,31 @@
 export type NoteNode = {type:"text";text:string}|{type:"element";tag:string;href?:string;children:NoteNode[]};
 const allowed=new Set(["p","div","h2","h3","h4","h5","h6","br","strong","b","em","i","ul","ol","li","blockquote","pre","code","span"]);
+const blocks = new Set(["p", "div", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "blockquote", "pre"]);
+
+function readingParagraphs(nodes: NoteNode[]): NoteNode[] {
+  const result: NoteNode[] = [];
+  let inline: NoteNode[] = [];
+  function flush() {
+    if (inline.some(node => node.type !== "text" || node.text.trim())) {
+      result.push({ type: "element", tag: "p", children: inline });
+    }
+    inline = [];
+  }
+  for (const node of nodes) {
+    if (node.type === "element" && blocks.has(node.tag)) {
+      flush();
+      result.push(node.tag === "div" || node.tag === "blockquote"
+        ? { ...node, children: readingParagraphs(node.children) } : node);
+    } else if (node.type === "text") {
+      for (const part of node.text.split(/(\r?\n[ \t]*\r?\n(?:[ \t]*\r?\n)*)/)) {
+        if (/^\r?\n[ \t]*\r?\n/.test(part)) flush();
+        else if (part) inline.push({ type: "text", text: part });
+      }
+    } else inline.push(node);
+  }
+  flush();
+  return result;
+}
 export function decodeNoteEntities(text:string) {
   const entities:Record<string,string>={amp:"&",lt:"<",gt:">",quot:'"',apos:"'",nbsp:" "};
   return text.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi,(original,name:string)=>{
@@ -34,11 +60,14 @@ export function parsePodcastNotes(source:string,base?:string):NoteNode[] {
     }
     const tag=match[1].toLowerCase();if(!allowed.has(tag)&&tag!=="a")continue;
     if(match[0].startsWith("</")){let index=stack.length-1;while(index>0&&stack[index].tag!==tag)index--;if(index>0)stack.length=index;continue;}
+    // Recover common RSS fragments with omitted paragraph/list closing tags.
+    if (blocks.has(tag) && stack[stack.length - 1]?.tag === "p") stack.pop();
+    if (tag === "li" && stack[stack.length - 1]?.tag === "li") stack.pop();
     const href=tag==="a"?match[0].match(/\shref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i):null;
     const url=href?safePodcastLink(decodeNoteEntities(href[1]??href[2]??href[3]),base):null;
     const node:NoteNode={type:"element",tag:tag==="a"?"span":tag,children:[],...(url?{href:url}:{})};stack[stack.length-1].children.push(node);
     if(tag!=="br"&&!match[0].endsWith("/>")&&stack.length<32)stack.push({tag,children:node.children});
-  }return root;
+  }return readingParagraphs(root);
 }
 export function podcastTimecodeSeconds(value:string):number|null {
   const parts=value.split(':').map(Number);if(parts.length<2||parts.length>3||parts.some(n=>!Number.isInteger(n)||n<0))return null;
