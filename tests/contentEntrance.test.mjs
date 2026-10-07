@@ -35,8 +35,7 @@ test("restored long lists build in only visible rows, with constant layout reads
   assert.equal(animations.length, items.length);
   assert.ok(animations.every(a => !a.frames[0].transform?.includes('scale')));
   assert.ok(animations.every(a => a.frames.every(frame => frame.transform === undefined)), 'rows keep their baselines while the table owns movement');
-  assert.equal(animations[0].duration, motion.itemFade);
-  assert.ok(animations.every(a => Number(a.frames[0].opacity) > 0), 'staggered rows stay faintly readable instead of appearing from black');
+  assert.equal(animations[0].duration, motion.duration);
   assert.equal(list.scrollTop, 4400);
   assert.equal(list.children.length, 2000);
   list.style.overflowAnchor = 'auto';

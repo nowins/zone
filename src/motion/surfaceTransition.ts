@@ -52,11 +52,11 @@ export class SurfaceTransition {
     // Only data departs; never create a moving copy of persistent navigation.
     snapshot.node.querySelectorAll<HTMLElement>(".playlist-list").forEach(node => { node.style.visibility = "hidden"; });
     const start = frame(snapshot.node), offset = surfaceOffset(snapshot.node);
-    const drift = content ? BROWSE_MOTION.exitDrift : plan.exitDriftPx;
+    const drift = content ? BROWSE_MOTION.drift : plan.exitDriftPx;
     const animation = snapshot.node.animate([
       start,
       { transform: `translate3d(${offset.x - plan.direction * drift}px,${offset.y}px,0)`, opacity: 0 },
-    ], { duration: content ? BROWSE_MOTION.exit : plan.exitMs, easing: content ? `cubic-bezier(${MOTION_EASINGS.browse.join(",")})` : easing, fill: "forwards" });
+    ], { duration: content ? BROWSE_MOTION.exit : plan.exitMs, easing: content ? `cubic-bezier(${MOTION_EASINGS.standard.join(",")})` : easing, fill: "forwards" });
     this.outgoing = { ...snapshot, key: from, animation };
     animation.onfinish = () => {
       if (this.outgoing?.animation !== animation) return;

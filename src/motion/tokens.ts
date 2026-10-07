@@ -83,8 +83,6 @@ export const MOTION_EASINGS = {
   /** Slow, unattended chrome dissolution; user-triggered reveals stay snappy. */
   dissolve: [0.4, 0, 0.6, 1],
   navigation: [0.1, 0.9, 0.2, 1],
-  /** Content transport starts gently and keeps a readable deceleration. */
-  browse: [0.25, 0.65, 0.3, 1],
 } as const;
 
 export type MotionEasingName = keyof typeof MOTION_EASINGS;
@@ -97,9 +95,8 @@ export const MOTION_STAGGER = { step: 24, max: 144 } as const;
 
 /** One content-browsing preset for music and podcasts; navigation stays still. */
 export const BROWSE_MOTION = {
-  duration: 560, fade: 320, itemFade: 360, itemOpacity: 0.4,
-  drift: 32, exitDrift: 16, stagger: MOTION_STAGGER.step, maxDelay: MOTION_STAGGER.max,
-  exit: 260, settle: MOTION_DURATIONS.content,
+  duration: 320, drift: MOTION_DRIFT.m, stagger: MOTION_STAGGER.step, maxDelay: MOTION_STAGGER.max,
+  exit: MOTION_DURATIONS.micro, settle: MOTION_DURATIONS.press,
   maxGroups: 12, maxItems: 48, maxRegions: 12,
   // Legacy feather consumers outside managed browsing surfaces keep this scale.
   scale: 0.96,
