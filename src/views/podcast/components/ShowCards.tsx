@@ -107,6 +107,7 @@ function ShowCard({
     <button
       type="button"
       className="podcast-show-card"
+      data-podcast-show={show.id}
       onClick={onOpen}
       disabled={loading}
       aria-label={`${show.title}，${show.author || "未知作者"}${show.rank ? `，榜单第 ${show.rank} 名` : ""}${followed ? "，已关注" : ""}`}

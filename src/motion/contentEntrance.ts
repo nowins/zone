@@ -1,7 +1,8 @@
-import { CONTENT_ENTRANCE_MOTION } from "./tokens.js";
+import { BROWSE_MOTION } from "./tokens.js";
 
 const listSelector = ".collection-track-scroll,.collection-artist-index,.collection-album-index";
 const itemSelector = ".collection-track-row,.collection-artist-index > li,.collection-album-index > div";
+const podcastItemSelector = ".podcast-episode,.podcast-show-card,.podcast-continue-card,.podcast-queue-episode";
 export type ContentFrame = { transform: string; opacity: string };
 export type ContentItem = { node: HTMLElement; key: string; delay: number };
 export type ContentFrames = Map<string, ContentFrame>;
@@ -10,7 +11,7 @@ const anchoringOwners = new WeakMap<HTMLElement, { value: string; count: number 
 
 function itemKey(node: HTMLElement): string {
   const list = node.parentElement!;
-  return `${list.className}:${list.closest<HTMLElement>("[data-collection-list]")?.dataset.collectionList ?? ""}:${node.dataset.collectionAnchor}`;
+  return `${list.className}:${list.closest<HTMLElement>("[data-collection-list]")?.dataset.collectionList ?? ""}:${node.dataset.collectionAnchor ?? node.dataset.podcastEpisode ?? node.dataset.podcastShow ?? node.getAttribute("aria-label") ?? node.textContent}`;
 }
 
 /** Uniform rows and regular grids need two item measurements, even after scroll restoration. */
@@ -18,7 +19,7 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
   const window = root.ownerDocument.defaultView!;
   const viewport = root.getBoundingClientRect();
   const items: ContentItem[] = [];
-  for (const list of [...root.querySelectorAll<HTMLElement>(listSelector)].slice(0, CONTENT_ENTRANCE_MOTION.maxRegions)) {
+  for (const list of [...root.querySelectorAll<HTMLElement>(listSelector)].slice(0, BROWSE_MOTION.maxRegions)) {
     const children = list.children;
     const first = children[0] as HTMLElement | undefined;
     if (!first?.matches(itemSelector)) continue;
@@ -35,12 +36,23 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
     if (firstRect.height <= 0 || stride <= 0) continue;
     const start = Math.max(0, Math.floor((top - firstRect.top - firstRect.height) / stride) + 1) * columns;
     const end = Math.min(count, Math.ceil((bottom - firstRect.top) / stride) * columns);
-    for (let index = start; index < end && items.length < CONTENT_ENTRANCE_MOTION.maxItems; index++) {
+    for (let index = start; index < end && items.length < BROWSE_MOTION.maxItems; index++) {
       const node = children[index] as HTMLElement;
       if (!node.matches(itemSelector)) continue;
-      items.push({ node, key: itemKey(node), delay: CONTENT_ENTRANCE_MOTION.delay + Math.min((index - start) * CONTENT_ENTRANCE_MOTION.step, CONTENT_ENTRANCE_MOTION.maxDelay) });
+      items.push({ node, key: itemKey(node), delay: Math.min((index - start) * BROWSE_MOTION.stagger, BROWSE_MOTION.maxDelay) });
     }
-    if (items.length === CONTENT_ENTRANCE_MOTION.maxItems) break;
+    if (items.length === BROWSE_MOTION.maxItems) break;
+  }
+  // Podcast pages are paginated and rows may vary in height; inspect only their
+  // viewport band instead of inferring a uniform stride or animating hidden rows.
+  for (const node of root.querySelectorAll<HTMLElement>(podcastItemSelector)) {
+    if (items.length === BROWSE_MOTION.maxItems) break;
+    const area = node.closest<HTMLElement>(".podcast-screen") ?? root;
+    const clip = area.getBoundingClientRect(), rect = node.getBoundingClientRect();
+    if (rect.height <= 0 || rect.width <= 0 || rect.bottom <= Math.max(viewport.top, clip.top, 0)
+      || rect.top >= Math.min(viewport.bottom, clip.bottom, window.innerHeight)
+      || rect.right <= Math.max(viewport.left, clip.left, 0) || rect.left >= Math.min(viewport.right, clip.right, window.innerWidth)) continue;
+    items.push({ node, key: itemKey(node), delay: Math.min(items.length * BROWSE_MOTION.stagger, BROWSE_MOTION.maxDelay) });
   }
   return items;
 }
@@ -48,7 +60,7 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
 /** Snapshots already froze animated targets; settled rows need no style reads. */
 export function captureContentFrames(snapshot: HTMLElement): ContentFrames {
   const frames: ContentFrames = new Map();
-  for (const node of snapshot.querySelectorAll<HTMLElement>(itemSelector)) {
+  for (const node of snapshot.querySelectorAll<HTMLElement>(`${itemSelector},${podcastItemSelector}`)) {
     if (node.style.transform || node.style.opacity) frames.set(itemKey(node), {
       transform: node.style.transform || "none", opacity: node.style.opacity || "1",
     });
@@ -56,9 +68,9 @@ export function captureContentFrames(snapshot: HTMLElement): ContentFrames {
   return frames;
 }
 
-/** Browser scroll anchoring must not compensate for the explicit item translation. */
+/** Keep scroll restoration stable while visible regions move. */
 export function suspendContentAnchoring(items: ContentItem[]): () => void {
-  const areas = new Set(items.map(({ node }) => node.closest<HTMLElement>("[data-collection-scroll]") ?? node.parentElement!));
+  const areas = new Set(items.map(({ node }) => node.closest<HTMLElement>("[data-collection-scroll],.podcast-screen") ?? node.parentElement!));
   for (const area of areas) {
     const owner = anchoringOwners.get(area) ?? { value: area.style.overflowAnchor, count: 0 };
     owner.count++;
@@ -81,12 +93,10 @@ export function suspendContentAnchoring(items: ContentItem[]): () => void {
 /** A quick build-in, separate from the page's horizontal transport. */
 export function playContentEntrance(items: ContentItem[], animate: Animate, returning: ContentFrames | null = null): void {
   for (const { node, key, delay } of items) {
-    // Track tables share one horizontal transport; their row geometry stays fixed.
-    const track = node.matches(".collection-track-row");
+    // Regions own movement in both libraries; item baselines never change.
     const start = returning ? returning.get(key) ?? { transform: "none", opacity: "1" }
-      : { transform: `translate3d(0,${CONTENT_ENTRANCE_MOTION.drift}px,0)`, opacity: "0" };
+      : { transform: "none", opacity: "0" };
     const wait = returning ? 0 : delay;
-    if (!track) animate(node, [{ transform: start.transform }, { transform: "none" }], CONTENT_ENTRANCE_MOTION.move, wait);
-    animate(node, [{ opacity: start.opacity }, { opacity: 1 }], CONTENT_ENTRANCE_MOTION.fade, wait);
+    animate(node, [{ opacity: start.opacity }, { opacity: 1 }], BROWSE_MOTION.duration, wait);
   }
 }

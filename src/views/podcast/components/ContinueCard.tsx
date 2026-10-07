@@ -26,6 +26,7 @@ function ContinueCard({
   return (
     <article
       className={`podcast-continue-card${active ? " active" : ""}`}
+      data-podcast-episode={episode.id}
       onContextMenu={onContextMenu}
     >
       <div className="podcast-continue-artwork">

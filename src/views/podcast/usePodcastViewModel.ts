@@ -159,7 +159,7 @@ export function usePodcastViewModel({
   onEpisodeUpdated,
   onSetEpisodePlayed,
   onDownloadsDeleted,
-}: PodcastViewProps) {
+}: PodcastViewProps, beforeScreenChange?: (from: PodcastScreen, to: PodcastScreen) => void) {
   const restoredSession = useMemo(() => podcastSessionSnapshot, []);
   const [queueFocusRequest,setQueueFocusRequest]=useState(0);
   const queueHandledRef=useRef(0);
@@ -184,9 +184,18 @@ export function usePodcastViewModel({
     window.addEventListener("keydown", focusPodcastSearch);
     return () => window.removeEventListener("keydown", focusPodcastSearch);
   }, []);
-  const [screen, setScreen] = useState<PodcastScreen>(
+  const [screen, setScreenState] = useState<PodcastScreen>(
     restoredSession?.screen ?? "listen",
   );
+  const screenRef = useRef(screen);
+  const beforeScreenChangeRef = useRef(beforeScreenChange);
+  beforeScreenChangeRef.current = beforeScreenChange;
+  const setScreen = useCallback((next: PodcastScreen) => {
+    if (next === screenRef.current) return;
+    beforeScreenChangeRef.current?.(screenRef.current, next);
+    screenRef.current = next;
+    setScreenState(next);
+  }, []);
   const [returnScreen, setReturnScreen] = useState<RootPodcastScreen>(
     restoredSession?.returnScreen ?? "listen",
   );

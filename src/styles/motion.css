@@ -85,16 +85,20 @@
 .collection-connected .album-tile,
 .collection-connected .artist-album-tile { animation: none; }
 
-/* Collection WAAPI entrances and podcast feather share one browsing preset. */
+/* Managed browsing uses one WAAPI controller; CSS must not add a second entrance. */
+.podcast-page[data-browse-motion="managed"] :is(.podcast-content-section, .podcast-episode, .podcast-show-card, .podcast-continue-card, .podcast-queue-episode) {
+  animation: none;
+}
+
+/* Standalone podcast surfaces retain feather timing outside managed browsing. */
 .podcast-content-section,
 .podcast-episode,
 .podcast-show-card,
 .podcast-continue-card,
 .podcast-queue-episode { animation-duration: var(--motion-browse); }
 
-/* Podcast screens feather the same way: coarse per-section cascade plus
-   per-item 24ms steps capped at 144ms. Rows keep stable keys across progress
-   refreshes, so the entrance only plays on real insertions. */
+/* Standalone feathers use capped section and item delays. Managed pages use
+   the shared controller and never replay these on asynchronous insertions. */
 .podcast-content-section:nth-child(1),
 .podcast-episode:nth-child(1),
 .podcast-show-card:nth-child(1),

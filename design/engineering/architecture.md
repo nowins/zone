@@ -28,7 +28,7 @@
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
   - `useNavigation.ts`：顶层 page、`requestNavigation` 页面过渡、对象入口及来源返回、搜索／历史快捷键、`openNowPlaying`；内部调用 `useCollectionNavigation`。
   - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；新 revision 提交前由动效内核保存有限退场画面；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。
-  - `useCollectionPivot.ts`：收藏分类、详情及返回的分组入场及生命周期；同文件的 `useCollectionPanelMotion` 处理艺术家详情标签与播放列表选择。`motion/collectionPivot.ts` 按分类／标签顺序或历史方向解析方向，只动画少量可见区域，参数来自 `COLLECTION_PIVOT_MOTION`；返回先恢复表面再反向入场，键盘与鼠标共享编排，reduced-motion 直接落到终态。
+  - `useCollectionPivot.ts`：收藏分类、详情及返回的方向接线；内部入场与 `useCollectionPanelMotion` 均复用 `useBrowseEntrance.ts`。共享浏览控制器 `motion/browseTransition.ts` 用 `BROWSE_MOTION` 管理收藏与播客内容的入退场、快速反向及输入接管，分类／搜索保持原位。
   - `useWheelScroll.ts`：收藏与首页内部纵向列表的粗步进滚轮接续，底层 `motion/wheelScroll.ts` 共用动画器与 `snappy` 弹簧；细小连续输入、原生定位和 reduced-motion 保留直接响应。
   - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、只读 `collectionIndex`（albums/artists 等关系集中在 `utils/collectionEntities.ts`）、addFolder/rescan 与 `useLibraryWatcher` 接线。
   - `usePodcastPlayback.ts`：播客会话/队列/进度 domain。对外只返回产品状态与动作（无 ref、无裸 setter），另附 `transport: PodcastTransportBridge` 给播放控制；拥有播客自然结束处理 `handleEpisodeEnded` 与待播消费判定（经 `playbackControlsRef` 的 `hasEpisodeStartedOnDevice` 回查 transport 事实）。
@@ -82,7 +82,7 @@
   - `flip.ts` / `coverFlip.ts`：FLIP registry 与封面共享元素飞行编排（播放条 ↔ 正在播放曲目卡，`cover:{trackId}`）。
   - `presence.tsx`：`<Presence>` 浮层退场存在组件与 `useLastNonNull`。
   - `pageTransition.ts`：页面切换编排表（pivot/push/pop），由 App 的 `requestNavigation` 消费。
-  - `surfaceTransition.ts` / `collectionPivot.ts`：顶层页面与收藏浏览的静态退场画面、分组入场、快速反向和输入接管；`contentEntrance.ts` 共享首屏条目的有界选择、早淡入与展开，并协调重叠控制器的滚动锚定生命周期。
+  - `surfaceTransition.ts`：顶层页面交接，收藏／播客委托 `browseTransition.ts`；`collectionPivot.ts` 保留收藏方向和快照接线。`surfaceSnapshot.ts` 共享有限静态快照及滚动恢复，`contentEntrance.ts` 共享首屏条目的有界选择、透明度显现及滚动锚定生命周期。
   - `useReducedMotion.ts`：reduced-motion 统一 hook。
 - `src/styles.css`：按序 `@import` `src/styles/` 下的拆分 CSS：`base`、`controls`（Button 原语变体与尺寸）、`collection`、`podcasts`、`podcast-now-playing`、`quickplay`、`player`、`now-playing`、`lyrics`、`overlays-settings`、`playlists`、`tiles`（Metro 磁贴系统）、`motion`（动效原语层：feather 入场、页面/浮层出入场、反馈动画、共享 `.tilt-pressed` 倾斜规则、唯一 reduced-motion 块）、`animations-responsive`（正在播放入场编排与响应式）。
 - `src-tauri/src/lib.rs`：应用初始化接线。包含系统托盘、`update_system_media`/`update_system_media_timeline` 薄命令与 `pub fn run()`（协议注册、状态初始化、命令注册）；业务命令按模块注册，例如 `music::music_scan_library`。

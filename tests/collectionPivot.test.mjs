@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 import { collectionPivotDirection, playCollectionPivot, prepareCollectionPivot } from "../.tmp/visualizer-tests/motion/collectionPivot.js";
 import { initialCollectionHistory, pushCollectionLocation, travelCollectionHistory, emptyCollectionSurface } from "../.tmp/visualizer-tests/utils/collectionNavigation.js";
-import { applyMotionTokens, BROWSE_MOTION, COLLECTION_PIVOT_MOTION, MOTION_STAGGER } from "../.tmp/visualizer-tests/motion/tokens.js";
+import { applyMotionTokens, BROWSE_MOTION, MOTION_STAGGER } from "../.tmp/visualizer-tests/motion/tokens.js";
 
 test("categories, details and history have matching directions; keyboard category activation stays immediate", () => {
   let history = initialCollectionHistory();
@@ -56,18 +56,18 @@ test("horizontal regions own transport while content measurement stays bounded",
   const stop = playCollectionPivot(root, -1);
   assert.equal(animations.length, 2, "only heading and list move, irrespective of row count");
   assert.equal(rowReads, 2, "uniform rows need two measurements, never a library-wide scan");
-  assert.equal(animations[0].frames[0].transform, "translate3d(-96px, 0, 0)");
-  assert.equal(animations[1].frames[0].transform, "translate3d(-64px, 0, 0)");
-  assert.deepEqual(animations.map(a => a.options.delay), [0, COLLECTION_PIVOT_MOTION.stagger]);
-  assert.ok(animations.every(a => a.options.duration === COLLECTION_PIVOT_MOTION.duration));
+  assert.equal(animations[0].frames[0].transform, "translate3d(-22px,0,0)");
+  assert.equal(animations[1].frames[0].transform, "translate3d(-22px,0,0)");
+  assert.deepEqual(animations.map(a => a.options.delay), [0, BROWSE_MOTION.stagger]);
+  assert.ok(animations.every(a => a.options.duration === BROWSE_MOTION.duration));
   assert.ok(animations.every(a => a.node !== root && !a.frames[0].transform.includes("scale")));
   stop(); assert.ok(animations.every(a => a.cancelled));
   animations.length = 0;
   root.innerHTML = Array.from({ length: 40 }, (_, i) => `<section class="collection-entity-section" data-row="${i}"><div class="collection-track-scroll"></div></section>`).join("");
   playCollectionPivot(root, 1);
-  assert.equal(animations.length, COLLECTION_PIVOT_MOTION.maxGroups);
+  assert.equal(animations.length, BROWSE_MOTION.maxGroups);
   assert.ok(animations.every(a => a.node.className === "collection-entity-section"), "nested lists inherit their section's movement");
-  assert.equal(Math.max(...animations.map(a => a.options.delay)), COLLECTION_PIVOT_MOTION.stagger * 2);
+  assert.equal(Math.max(...animations.map(a => a.options.delay)), BROWSE_MOTION.maxDelay);
   animations.forEach(a => a.finish());
   assert.ok(animations.every(a => a.cancelled), "finished animations release their effects");
   animations.length = 0;
@@ -137,7 +137,7 @@ test("interaction, resize, hiding and cleanup settle an unfinished entrance with
       const targets = new Set(original.map(a => a.node));
       assert.equal(settling.length, targets.size, "opacity and movement share one sampled settle per item");
       assert.ok(settling.every(a => a.frames[0].transform === "matrix(1, 0, 0, 1, 6, 0)" && a.frames[0].opacity === "0.6"));
-      assert.ok(settling.every(a => a.options.duration === COLLECTION_PIVOT_MOTION.settle));
+      assert.ok(settling.every(a => a.options.duration === BROWSE_MOTION.settle));
       target.dispatchEvent(input);
       assert.equal(animations.length, original.length + targets.size, "continuing input does not restart the settle");
     } else assert.ok(animations.every(a => a.cancelled));
@@ -149,7 +149,7 @@ test("interaction, resize, hiding and cleanup settle an unfinished entrance with
   playCollectionPivot(root, 1);
   toolbar.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
   assert.ok(animations.slice(0, 2).every(a => a.cancelled), "keyboard entry samples the old frame");
-  assert.ok(animations.filter(a => !a.cancelled).every(a => a.options.duration === COLLECTION_PIVOT_MOTION.settle), "focus does not erase motion with a snap");
+  assert.ok(animations.filter(a => !a.cancelled).every(a => a.options.duration === BROWSE_MOTION.settle), "focus does not erase motion with a snap");
   animations.length = 0;
   Object.defineProperty(document, "hidden", { configurable: true, value: true });
   playCollectionPivot(root, 1);
@@ -167,10 +167,10 @@ test("queued restoration scroll events do not erase the return animation, while 
   area.scrollTop = 160;
   area.dispatchEvent(new window.Event("scroll"));
   assert.ok(animations.slice(0, 2).every(a => a.cancelled));
-  assert.ok(animations.filter(a => !a.cancelled).every(a => a.options.duration === COLLECTION_PIVOT_MOTION.settle));
+  assert.ok(animations.filter(a => !a.cancelled).every(a => a.options.duration === BROWSE_MOTION.settle));
 });
 
-test("podcasts retain feather tokens while collection groups have a visible flat arrival", t => {
+test("music and podcast browsing use one preset without replaying legacy feathers", t => {
   const { document } = environment(t);
   applyMotionTokens(document.documentElement);
   assert.equal(document.documentElement.style.getPropertyValue("--motion-browse"), `${BROWSE_MOTION.duration}ms`);
@@ -178,8 +178,8 @@ test("podcasts retain feather tokens while collection groups have a visible flat
   const css = readFileSync("src/styles/motion.css", "utf8");
   assert.match(css, /\.podcast-queue-episode\s*\{\s*animation-duration: var\(--motion-browse\)/);
   assert.match(css, /@keyframes motion-feather-in\s*\{\s*from\s*\{[^}]*scale\(var\(--motion-feather-scale\)\)/);
-  assert.ok(COLLECTION_PIVOT_MOTION.duration >= 500, "movement retains a Metro deceleration tail");
-  assert.equal(COLLECTION_PIVOT_MOTION.staggerGroups, 3, "stagger remains bounded independently of row count");
+  assert.equal(BROWSE_MOTION.duration, 320, "both libraries use the existing podcast browsing rhythm");
+  assert.equal(BROWSE_MOTION.maxDelay, MOTION_STAGGER.max, "stagger remains bounded independently of row count");
 });
 
 await build({ stdin: { contents: `export { useCollectionNavigation } from './src/hooks/useCollectionNavigation';
@@ -259,7 +259,7 @@ test("detail panel changes animate in both directions without replaying the head
   assert.equal(animations.length, count, "data refreshes do not restart the current panel");
   await act(async () => setTab("albums"));
   assert.equal(animations.filter(a => !a.cancelled).length, 1);
-  assert.ok(animations.filter(a => !a.cancelled).every(a => a.frames[0].transform.includes("-96px")));
+  assert.ok(animations.filter(a => !a.cancelled).every(a => a.frames[0].transform.includes(`-${BROWSE_MOTION.drift}px`)));
   await act(async () => root.unmount());
   assert.ok(animations.every(a => a.cancelled));
 });

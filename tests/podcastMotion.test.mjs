@@ -49,13 +49,14 @@ test("podcast now-playing popovers keep token-based paired exits beside their st
   assert.ok(reduced.includes(".podcast-now-queue"));
 });
 
-test("podcast screens join the shared feather cascade with the standard stagger cap", () => {
+test("managed podcast screens disable legacy CSS arrivals while standalone surfaces retain feathers", () => {
   const featherRule = motionCss.match(/([^{}]*)\{[^}]*animation: motion-feather-in/);
   assert.ok(featherRule, "the feather rule must exist");
   assert.ok(featherRule[1].includes(".podcast-content-section"));
   assert.ok(featherRule[1].includes(".podcast-episode"));
   assert.ok(featherRule[1].includes(".podcast-show-card"));
   assert.ok(featherRule[1].includes(".podcast-queue-episode"));
+  assert.ok(/\.podcast-page\[data-browse-motion="managed"\][^{]+\{\s*animation: none;/.test(motionCss));
   // Same 24ms step / 144ms cap table as every other list surface.
   assert.ok(motionCss.includes(".podcast-episode:nth-child(2) { --stagger: 24ms; }") || /\.podcast-episode:nth-child\(2\)[,\s]/.test(motionCss));
   assert.ok(/\.podcast-episode:nth-child\(n \+ 7\)[,\s]/.test(motionCss));

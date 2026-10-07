@@ -1,7 +1,8 @@
 import { formatTime } from "../../../utils/music";
 import { usePodcastBrowsePosition } from "../components/BrowsePosition";
 import { PODCAST_AUTO_QUEUE_MODES } from "../constants";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useBrowsePanelMotion } from "../../../hooks/useBrowseEntrance";
 import { Button } from "../../../components/Button";
 import { NamedLists } from "../components/NamedLists";
 import { formatEpisodeDate, plainText } from "../format";
@@ -17,6 +18,8 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
   useEffect(()=>{rememberedTab=tab;},[tab]);
   useEffect(()=>{if(vm.queueFocusRequest>0)setTab("queue");},[vm.queueFocusRequest]);
   const pageRef=usePodcastBrowsePosition("playlist");
+  const contentRef = useRef<HTMLDivElement>(null);
+  useBrowsePanelMotion(contentRef, tab, ["queue", "lists"]);
   const {
     // pull fields used by this screen (full bag is fine; unused locals are ok at runtime)
     ..._
@@ -165,6 +168,7 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
         <Button variant="ghost" aria-pressed={tab === "queue"} onClick={() => setTab("queue")}>待播</Button>
         <Button variant="ghost" aria-pressed={tab === "lists"} onClick={() => setTab("lists")}>我的列表</Button>
       </div>
+      <div ref={contentRef} className="podcast-tab-content">
       {tab === "lists" ? <NamedLists vm={vm} /> :
       <div className="podcast-playlist-content">
               {knownActiveEpisode ? <details className="podcast-playlist-current"><summary>当前单集 · {knownActiveEpisode.title} · {isPlaying?"播放中":"已暂停"}</summary>
@@ -363,6 +367,7 @@ export function PlaylistScreen({ vm }: { vm: PodcastViewModel }) {
                 )}
               </PodcastSection>
       </div>}
+      </div>
             </main>
   );
 }

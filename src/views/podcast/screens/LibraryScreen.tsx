@@ -1,7 +1,8 @@
 import { ListeningStats } from "../components/ListeningStats";
 import { usePodcastBrowsePosition } from "../components/BrowsePosition";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useBrowsePanelMotion } from "../../../hooks/useBrowseEntrance";
 import { ShowGroups } from "../components/ShowGroups";
 import { DownloadJobs } from "../components/DownloadJobs";
 import { DownloadStorage } from "../components/DownloadStorage";
@@ -26,11 +27,14 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
   const [groupFeedIds, setGroupFeedIds] = useState<ReadonlySet<string> | null>(null);
   const groupedFeeds = vm.orderedFeeds.filter(feed => !groupFeedIds || groupFeedIds.has(feed.id));
   const pageRef=usePodcastBrowsePosition("library");
+  const contentRef = useRef<HTMLDivElement>(null);
+  useBrowsePanelMotion(contentRef, tab, ["shows", "episodes", "saved", "downloads", "history", "manage"]);
   const { currentEpisodeId, isPlaying, openEpisodeDetail, playEpisode, showEpisodeMenu, feeds, libraryState, librarySort, setLibrarySort, openStoredFeed, moveFollowedFeed, downloadLibraryState, downloadGroups, downloadedBytes, downloadedCount, downloadedFeedCount, downloadPage, loadDownloadedLibrary, loadingMoreDownloads, downloadSelectionMode, toggleDownloadSelectionMode, toggleAllLoadedDownloads, allLoadedDownloadsSelected, loadedDownloadsExceedBatchLimit, selectedDownloadIds, toggleDownloadSelection, requestSelectedDownloadDeletion, setDownloadCleanupIntent, episodes, downloadCleanupAction } = vm;
 
   return (
     <main ref={pageRef} className="podcast-screen podcast-library-screen">
       <div className="podcast-library-tabs" role="group" aria-label="资料库分类">{[["shows","节目"],["episodes","单集"],["saved","稍后听"],["downloads","下载"],["history","历史"],["manage","管理"]].map(([id,label])=><button key={id} type="button" aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div>
+      <div ref={contentRef} className="podcast-tab-content">
       {tab==="manage" ? <TransferActions /> : null}
       {tab==="downloads" ? <><DownloadStorage revision={vm.libraryRevision} /><DownloadJobs /></> : null}
       {tab==="episodes" ? <EpisodeBrowser key="archive" vm={vm} scope="archive"/> : null}
@@ -268,6 +272,7 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                   ) : <PodcastEmpty label="还没有下载，选择单集下载后可离线收听" />}
                 </PodcastSection>
               ) : null}
+      </div>
             </main>
   );
 }

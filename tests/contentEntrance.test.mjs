@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 import { captureContentFrames, contentEntranceItems, playContentEntrance, suspendContentAnchoring } from "../.tmp/visualizer-tests/motion/contentEntrance.js";
-import { CONTENT_ENTRANCE_MOTION as motion } from "../.tmp/visualizer-tests/motion/tokens.js";
+import { BROWSE_MOTION as motion } from "../.tmp/visualizer-tests/motion/tokens.js";
 
 const rect = (top, height, left = 0, width = 900) => ({ top, bottom: top + height, left, right: left + width, width, height });
 function setup(t) {
@@ -27,15 +27,15 @@ test("restored long lists build in only visible rows, with constant layout reads
   assert.equal(reads, 2);
   assert.equal(items[0].node.dataset.collectionAnchor, 'track-100');
   assert.equal(items.length, 12);
-  assert.equal(items[0].delay, motion.delay);
-  assert.equal(items[1].delay - items[0].delay, motion.step);
-  assert.equal(Math.max(...items.map(item => item.delay)), motion.delay + motion.maxDelay);
+  assert.equal(items[0].delay, 0);
+  assert.equal(items[1].delay - items[0].delay, motion.stagger);
+  assert.equal(Math.max(...items.map(item => item.delay)), 0 + motion.maxDelay);
   const animations = [];
   playContentEntrance(items, (node, frames, duration, delay) => animations.push({ node, frames, duration, delay }));
   assert.equal(animations.length, items.length);
   assert.ok(animations.every(a => !a.frames[0].transform?.includes('scale')));
   assert.ok(animations.every(a => a.frames.every(frame => frame.transform === undefined)), 'rows keep their baselines while the table owns movement');
-  assert.equal(animations[0].duration, motion.fade);
+  assert.equal(animations[0].duration, motion.duration);
   assert.equal(list.scrollTop, 4400);
   assert.equal(list.children.length, 2000);
   list.style.overflowAnchor = 'auto';
@@ -92,7 +92,7 @@ test("a restored grid starts after a fully clipped row even when the viewport fa
   }
   const items = contentEntranceItems(root);
   assert.equal(items[0].node.dataset.collectionAnchor, 'artist-2');
-  assert.equal(items[0].delay, motion.delay, 'hidden items consume no stagger time');
+  assert.equal(items[0].delay, 0, 'hidden items consume no stagger time');
   assert.ok(items.every(({ node }) => node.getBoundingClientRect().bottom > 100));
 });
 

@@ -1,5 +1,7 @@
 import { Button } from "../components/Button";
-import { useState } from "react";
+import { useState, useRef, useLayoutEffect } from "react";
+import { useBrowseEntrance } from "../hooks/useBrowseEntrance";
+import { prepareBrowseTransition } from "../motion/browseTransition";
 import { useLastNonNull } from "../motion/presence";
 import { PodcastSettingsDialog } from "./podcast/components/SettingsDialog";
 import {
@@ -28,7 +30,16 @@ import { ShowScreen } from "./podcast/screens/ShowScreen";
 import { EpisodeScreen } from "./podcast/screens/EpisodeScreen";
 
 export function PodcastView(props: PodcastViewProps) {
-  const vm = usePodcastViewModel(props);
+  const rootRef = useRef<HTMLElement>(null);
+  const order = ["listen", "discover", "library", "playlist", "show", "episode"];
+  const directionBetween = (from: string, to: string): -1 | 1 => order.indexOf(to) < order.indexOf(from) ? -1 : 1;
+  const vm = usePodcastViewModel(props, (from, to) => {
+    if (rootRef.current) prepareBrowseTransition(rootRef.current, from, to, directionBetween(from, to));
+  });
+  const previousScreen = useRef(vm.screen);
+  const direction = previousScreen.current === vm.screen ? 0 : directionBetween(previousScreen.current, vm.screen);
+  useBrowseEntrance(rootRef, vm.screen, direction);
+  useLayoutEffect(() => { previousScreen.current = vm.screen; }, [vm.screen]);
   const [settings, setSettings] = useState<{ feedId?: string; title: string } | null>(null);
   const lastSettings = useLastNonNull(settings);
   const {
@@ -77,7 +88,7 @@ export function PodcastView(props: PodcastViewProps) {
   } = vm;
 
   return (
-    <section className="content-band podcast-page">
+    <section ref={rootRef} className="content-band podcast-page" data-browse-motion="managed">
       <p className="podcast-ghost" aria-hidden="true">podcasts</p>
 
       <header className={`podcast-header ${screen === "show" || screen === "episode" ? "podcast-header-detail" : "podcast-header-root"}`}>

@@ -68,12 +68,6 @@ export const NAVIGATION_MOTION = {
   snapshotOverscanRows: 2,
 } as const;
 
-/** First-screen content builds in quickly while the page continues decelerating. */
-export const CONTENT_ENTRANCE_MOTION = {
-  move: 360, fade: 140, drift: 18, delay: 54, step: 24, maxDelay: 192,
-  maxItems: 48, maxRegions: 12,
-} as const;
-
 export type MotionDurationName = keyof typeof MOTION_DURATIONS;
 
 /**
@@ -99,10 +93,14 @@ export const MOTION_DRIFT = { s: 8, m: 22, l: 48 } as const;
 /** Per-item stagger step and total cap, in milliseconds. */
 export const MOTION_STAGGER = { step: 24, max: 144 } as const;
 
-/** Podcast feather entrance; collection uses flat semantic groups. */
-export const BROWSE_MOTION = { duration: 320, scale: 0.96 } as const;
-/** At most three horizontal timing groups; visible items have a separate vertical build-in. */
-export const COLLECTION_PIVOT_MOTION = { duration: 560, drift: 96, secondaryDrift: 64, stagger: 46, settle: MOTION_DURATIONS.press, maxGroups: 12, staggerGroups: 3 } as const;
+/** One content-browsing preset for music and podcasts; navigation stays still. */
+export const BROWSE_MOTION = {
+  duration: 320, drift: MOTION_DRIFT.m, stagger: MOTION_STAGGER.step, maxDelay: MOTION_STAGGER.max,
+  exit: MOTION_DURATIONS.micro, settle: MOTION_DURATIONS.press,
+  maxGroups: 12, maxItems: 48, maxRegions: 12,
+  // Legacy feather consumers outside managed browsing surfaces keep this scale.
+  scale: 0.96,
+} as const;
 /** Coarse vertical wheel signals only; fine gestures retain native momentum. */
 export const SCROLL_MOTION = { coarseDelta: 50, linePixels: 32 } as const;
 
