@@ -90,13 +90,13 @@ export function suspendContentAnchoring(items: ContentItem[]): () => void {
   };
 }
 
-/** A quick build-in, separate from the page's horizontal transport. */
+/** A readable reveal, separate from the region's horizontal transport. */
 export function playContentEntrance(items: ContentItem[], animate: Animate, returning: ContentFrames | null = null): void {
   for (const { node, key, delay } of items) {
     // Regions own movement in both libraries; item baselines never change.
     const start = returning ? returning.get(key) ?? { transform: "none", opacity: "1" }
-      : { transform: "none", opacity: "0" };
+      : { transform: "none", opacity: String(BROWSE_MOTION.itemOpacity) };
     const wait = returning ? 0 : delay;
-    animate(node, [{ opacity: start.opacity }, { opacity: 1 }], BROWSE_MOTION.duration, wait);
+    animate(node, [{ opacity: start.opacity }, { opacity: 1 }], BROWSE_MOTION.itemFade, wait);
   }
 }

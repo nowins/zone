@@ -38,20 +38,23 @@ test('collection categories and podcast sections use one controller with station
     const page = mount(`<section class="collection-connected"><header class="collection-toolbar"><button>分类</button><input></header><p>数量</p><div class="collection-content"><div class="${group}">内容</div></div></section>`);
     const stop = playBrowseTransition(page, 1);
     const active = animations.filter(a => !a.cancelled);
-    assert.equal(active.length, 1);
+    assert.equal(active.length, 2, 'one movement and one independently timed fade own the region');
     assert.equal(active[0].node.className, group);
     assert.equal(active[0].frames[0].transform, `translate3d(${BROWSE_MOTION.drift}px,0,0)`);
     assert.equal(active[0].options.duration, BROWSE_MOTION.duration);
+    assert.equal(active[1].options.duration, BROWSE_MOTION.fade);
+    assert.ok(active[0].frames.every(frame => frame.opacity === undefined));
+    assert.ok(active[1].frames.every(frame => frame.transform === undefined));
     stop();
   }
   const podcast = mount('<section class="podcast-page"><header class="podcast-header"><nav>分区</nav><input></header><main class="podcast-screen"><section class="podcast-content-section">节目</section><section class="podcast-content-section">单集</section></main></section>');
   const stop = playBrowseTransition(podcast, -1);
   const active = animations.filter(a => !a.cancelled);
-  assert.equal(active.length, 2);
+  assert.equal(active.length, 4);
   assert.ok(active.every(a => a.node.className === 'podcast-content-section'));
-  assert.ok(active.every(a => a.frames[0].transform === `translate3d(-${BROWSE_MOTION.drift}px,0,0)`));
-  assert.ok(active.every(a => a.options.duration === BROWSE_MOTION.duration));
-  assert.equal(active[1].options.delay, BROWSE_MOTION.stagger);
+  assert.ok(active.filter(a => a.frames[0].transform).every(a => a.frames[0].transform === `translate3d(-${BROWSE_MOTION.drift}px,0,0)`));
+  assert.ok(active.every(a => a.options.duration === (a.frames[0].transform ? BROWSE_MOTION.duration : BROWSE_MOTION.fade)));
+  assert.equal(active[2].options.delay, BROWSE_MOTION.stagger);
   stop();
   for (const markup of [
     '<section class="podcast-show-hero">节目身份</section><section class="podcast-show-episodes">单集</section>',
@@ -60,9 +63,9 @@ test('collection categories and podcast sections use one controller with station
     const detail = mount(`<section class="podcast-page"><header class="podcast-header">返回</header><main class="podcast-screen">${markup}</main></section>`);
     const release = playBrowseTransition(detail, 1);
     const current = animations.filter(a => !a.cancelled);
-    assert.equal(current.length, 2, 'identity and related content both take part in the shared transition');
+    assert.equal(current.length, 4, 'identity and related content each move and fade');
     assert.ok(current.every(a => a.node.parentElement.matches('.podcast-screen')));
-    assert.ok(current.every(a => a.options.duration === BROWSE_MOTION.duration));
+    assert.ok(current.every(a => a.options.duration === (a.frames[0].transform ? BROWSE_MOTION.duration : BROWSE_MOTION.fade)));
     release();
   }
 });
@@ -136,10 +139,48 @@ test('a podcast panel without semantic sections resumes its departure frame on r
   prepareBrowseTransition(page, 'listen', 'playlist', 1);
   const back = playBrowseTransition(page, 1);
   const current = animations.filter(a => !a.cancelled && a.node === panel);
-  assert.equal(current.length, 1);
+  assert.equal(current.length, 2);
   assert.equal(current[0].frames[0].transform, 'translate3d(7px,0px,0)');
-  assert.equal(current[0].frames[0].opacity, '0.7');
+  assert.equal(current[1].frames[0].opacity, '0.7');
   assert.ok(animations.filter(a => !a.cancelled && page.contains(a.node)).every(a => a.node === panel));
   back(); first();
+  assert.equal(document.querySelector('.motion-departure'), null);
+});
+
+test('navigation input keeps the current rhythm, content input gently settles, and fades do not end transport early', t => {
+  const { window, animations, mount } = setup(t);
+  const page = mount('<section class="collection-connected"><header class="collection-toolbar"><button>分类</button><input></header><div class="collection-content"><section class="collection-track-list">歌曲</section></div></section>');
+  const stop = playBrowseTransition(page, 1);
+  const original = animations.slice();
+  page.querySelector('button').dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+  page.querySelector('input').dispatchEvent(new window.Event('keydown', { bubbles: true }));
+  assert.equal(animations.length, original.length, 'static chrome cannot accelerate the live data animation');
+  original.find(a => a.frames[0].opacity !== undefined).finish();
+  assert.equal(original[0].cancelled, false, 'the shorter fade leaves the longer movement running');
+  const list = page.querySelector('.collection-track-list');
+  list.style.transform = 'matrix(1,0,0,1,12,0)'; list.style.opacity = '0.8';
+  list.dispatchEvent(new window.Event('wheel', { bubbles: true }));
+  const settling = animations.filter(a => !a.cancelled);
+  assert.equal(settling.length, 1, 'one sampled frame owns the interaction handoff');
+  assert.equal(settling[0].frames[0].transform, list.style.transform);
+  assert.equal(settling[0].frames[0].opacity, '0.8');
+  assert.equal(settling[0].options.duration, BROWSE_MOTION.settle);
+  settling[0].finish();
+  assert.ok(animations.every(a => a.cancelled));
+  stop();
+});
+
+test('an incoming playlist clips full-width departing pixels away from its stationary index', t => {
+  const { document, mount } = setup(t);
+  const page = mount('<section class="collection-connected"><div class="collection-content"><section class="collection-track-list">旧歌曲</section></div></section>');
+  prepareBrowseTransition(page, 'songs', 'playlists', 1);
+  const layer = document.querySelector('.motion-departure');
+  page.querySelector('.collection-content').innerHTML = '<aside class="playlist-list">静止索引</aside><section class="playlist-content">右侧歌曲</section>';
+  const pane = page.querySelector('.playlist-content');
+  pane.getBoundingClientRect = () => ({ left: 300, right: 950, top: 50, bottom: 450, width: 650, height: 400 });
+  const stop = playBrowseTransition(page, 1);
+  assert.equal(layer.style.clipPath, 'inset(0px 0px 0px 250px)', 'the old wide table cannot paint over the new sidebar');
+  assert.equal(layer.querySelector('.collection-track-list').textContent, '旧歌曲', 'right-side handoff retains its finite old pixels');
+  stop();
   assert.equal(document.querySelector('.motion-departure'), null);
 });

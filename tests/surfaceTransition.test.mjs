@@ -49,7 +49,7 @@ test("outgoing pixels and the interactive target coexist; cleanup retains one au
   const arrivals = animations.filter(a => current.contains(a.node));
   assert.ok(arrivals.length > 0);
   assert.ok(arrivals.every(a => current.querySelector('.collection-content').contains(a.node)));
-  assert.ok(arrivals.every(a => a.options.duration === BROWSE_MOTION.duration));
+  assert.ok(arrivals.every(a => a.options.duration === (a.frames[0].transform ? BROWSE_MOTION.duration : a.node.matches('li') ? BROWSE_MOTION.itemFade : BROWSE_MOTION.fade)));
   assert.equal(document.querySelectorAll('audio').length, 1);
   animations[0].finish();
   assert.equal(document.querySelector('.motion-departure'), null);
@@ -215,7 +215,8 @@ test("entering the collection on a playlist scopes page movement to its right pa
   const incoming = animations.filter(a => page.contains(a.node));
   assert.ok(incoming.length > 2);
   assert.ok(incoming.every(a => right.contains(a.node)), 'root, toolbar, sidebar and shared parents all remain still');
-  assert.equal(incoming.filter(a => a.node === right).length, 1, 'one shared animation owns movement and opacity');
+  assert.equal(incoming.filter(a => a.node === right && a.frames[0].transform !== undefined).length, 1, 'the right pane has one movement owner');
+  assert.equal(incoming.filter(a => a.node === right && a.frames[0].opacity !== undefined).length, 1, 'the right pane has one fade owner');
   motion.stop();
 });
 
@@ -259,7 +260,7 @@ test("a playlist page return combines departing parent and right-pane frames", t
   const pane = returned.querySelector('.playlist-content');
   const arrivals = animations.filter(a => a.node === pane && !a.cancelled);
   assert.equal(arrivals[0].frames[0].transform, 'translate3d(6px,2px,0)', 'the parent departure offset is retained without moving the sidebar');
-  assert.equal(arrivals[0].frames[0].opacity, '0.48', 'the visible inherited opacity is retained');
+  assert.equal(arrivals[1].frames[0].opacity, '0.48', 'the visible inherited opacity is retained');
   assert.ok(animations.filter(a => returned.contains(a.node) && !a.cancelled).every(a => pane.contains(a.node)));
   motion.stop();
 });
