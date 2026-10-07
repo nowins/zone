@@ -6,17 +6,14 @@ import { surfaceOffset } from "../motion/surfaceTransition";
 import { emptyCollectionSurface, initialCollectionHistory, pushCollectionLocation, travelCollectionHistory,
   type CollectionHistory, type CollectionLocation, type CollectionSurface } from "../utils/collectionNavigation";
 
-export function useCollectionNavigation(onTransition?: () => void) {
+export function useCollectionNavigation() {
   const [history, setHistory] = useState(initialCollectionHistory);
   const historyRef = useRef(history);
   const rootRef = useRef<HTMLElement | null>(null);
   const lastFocus = useRef<string>();
-  const onTransitionRef = useRef(onTransition);
-  onTransitionRef.current = onTransition;
   const commit = useCallback((update: (current: CollectionHistory) => CollectionHistory) => {
     const next = update(historyRef.current);
     if (next.revision !== historyRef.current.revision && rootRef.current) {
-      onTransitionRef.current?.();
       prepareCollectionPivot(rootRef.current, historyRef.current, next);
     }
     historyRef.current = next;

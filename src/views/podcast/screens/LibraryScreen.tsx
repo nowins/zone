@@ -69,6 +69,7 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
                         <article
                           key={feed.id}
                           className="podcast-library-show"
+                          data-podcast-show={feed.id}
                         >
                           <button
                             type="button"

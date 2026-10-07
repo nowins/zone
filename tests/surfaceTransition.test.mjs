@@ -4,6 +4,7 @@ import { JSDOM } from "jsdom";
 import { SurfaceTransition, snapshotSurface } from "../.tmp/visualizer-tests/motion/surfaceTransition.js";
 import { resolvePageTransition } from "../.tmp/visualizer-tests/motion/pageTransition.js";
 import { NAVIGATION_MOTION, BROWSE_MOTION } from "../.tmp/visualizer-tests/motion/tokens.js";
+import { playBrowseTransition, prepareBrowseTransition } from "../.tmp/visualizer-tests/motion/browseTransition.js";
 
 function setup(t) {
   const dom = new JSDOM('<body><div class="shell"><audio></audio><main class="workspace"><section class="quickplay"><div class="quick-group"><button id="pin" data-collection-focus="pin">封面</button></div><div class="quickplay-viewport"></div></section></main></div></body>', { pretendToBeVisual: true });
@@ -49,7 +50,7 @@ test("outgoing pixels and the interactive target coexist; cleanup retains one au
   const arrivals = animations.filter(a => current.contains(a.node));
   assert.ok(arrivals.length > 0);
   assert.ok(arrivals.every(a => current.querySelector('.collection-content').contains(a.node)));
-  assert.ok(arrivals.every(a => a.options.duration === BROWSE_MOTION.duration));
+  assert.ok(arrivals.every(a => a.options.duration === (a.node.matches('li') ? BROWSE_MOTION.reveal : BROWSE_MOTION.duration)));
   assert.equal(document.querySelectorAll('audio').length, 1);
   animations[0].finish();
   assert.equal(document.querySelector('.motion-departure'), null);
@@ -114,7 +115,43 @@ test("a long track list snapshots visible rows with two row measurements and kee
   snapshot.layer.remove();
 });
 
-test("page arrival reveals first-screen rows in sequence and real input settles their current frames", t => {
+test("cold podcast loading keeps chrome visible and reserves one entrance for the real cards", t => {
+  const { motion, animations, mount } = setup(t);
+  motion.prepare('quickplay', 'podcasts', resolvePageTransition('quickplay', 'podcasts'), true);
+  const page = mount('content-band podcast-page');
+  page.innerHTML = '<header>播客分区</header><main class="podcast-screen"><section class="podcast-content-section"><div class="podcast-loading-state">正在读取</div></section></main>';
+  assert.equal(motion.enter(), false, 'a loading placeholder must not consume the real content entrance');
+  assert.equal(animations.filter(a => page.contains(a.node)).length, 0);
+  const section = page.querySelector('.podcast-content-section');
+  section.innerHTML = '<article class="podcast-library-show" data-podcast-show="one">节目一</article>';
+  assert.equal(motion.enter(), true);
+  assert.equal(animations.filter(a => a.node === section).length, 1, 'the card region owns only movement');
+  assert.equal(animations.find(a => a.node === section.firstElementChild).options.duration, BROWSE_MOTION.reveal);
+  const count = animations.length;
+  section.firstElementChild.textContent = '节目标题更新';
+  assert.equal(motion.enter(), true);
+  assert.equal(animations.length, count, 'later data changes cannot replay the entry');
+  motion.stop();
+});
+
+test("internal browsing takes over the top-level departure without accumulating old pages", t => {
+  const { document, motion, animations, mount } = setup(t);
+  motion.prepare('quickplay', 'collection', resolvePageTransition('quickplay', 'collection'), true);
+  const page = mount('content-band collection-connected');
+  page.innerHTML = '<div class="collection-content"><section class="collection-track-list">歌曲</section></div>';
+  motion.enter();
+  const topDeparture = animations[0];
+  assert.equal(document.querySelectorAll('.motion-departure').length, 1);
+  prepareBrowseTransition(page, 'songs', 'albums', -1);
+  assert.equal(topDeparture.cancelled, true, 'internal navigation releases the previous top-level pixels without settling live data');
+  assert.equal(document.querySelectorAll('.motion-departure').length, 1);
+  assert.ok(document.querySelector('.motion-departure .collection-track-list'));
+  const stop = playBrowseTransition(page, -1);
+  stop(); motion.stop();
+  assert.equal(document.querySelector('.motion-departure'), null);
+});
+
+test("page arrival reveals a coherent text region and real input settles its current frame", t => {
   const { document, motion, animations, mount } = setup(t);
   motion.prepare('quickplay', 'collection', resolvePageTransition('quickplay', 'collection'), true);
   const page = mount('content-band collection-connected');
@@ -127,10 +164,10 @@ test("page arrival reveals first-screen rows in sequence and real input settles 
   }
   motion.enter();
   assert.equal(area.style.overflowAnchor, 'none');
-  const arrivals = animations.filter(a => a.node.className === 'collection-track-row');
-  assert.equal(arrivals.length, 14, 'fourteen first-screen rows fade without separate spatial motion');
-  assert.equal(arrivals[0].options.delay, 0);
-  assert.equal(arrivals[1].options.delay - arrivals[0].options.delay, BROWSE_MOTION.stagger);
+  assert.equal(animations.filter(a => a.node.className === 'collection-track-row').length, 0, 'no row has an independent reveal');
+  const arrivals = animations.filter(a => a.node === area);
+  assert.equal(arrivals.length, 2, 'the text region owns separate alpha and movement');
+  assert.ok(arrivals.every(a => a.options.delay === 0));
   area.dispatchEvent(new document.defaultView.Event('scroll'));
   assert.ok(arrivals.every(a => !a.cancelled), 'same-position restoration does not erase the build-in');
   arrivals.forEach(a => { a.node.style.transform = 'matrix(1, 0, 0, 1, 0, 7)'; a.node.style.opacity = '0.5'; });
@@ -139,8 +176,9 @@ test("page arrival reveals first-screen rows in sequence and real input settles 
   assert.equal(input.defaultPrevented, false);
   assert.ok(arrivals.every(a => a.cancelled));
   const settling = animations.filter(a => !a.cancelled);
-  assert.equal(settling.filter(a => a.node.className === 'collection-track-row').length, 14);
-  assert.ok(settling.filter(a => a.node.className === 'collection-track-row').every(a => a.frames[0].opacity === '0.5'));
+  assert.equal(settling.filter(a => a.node === area).length, 1, 'settling samples alpha and translation together once');
+  assert.equal(settling.find(a => a.node === area).frames[0].opacity, '0.5');
+  assert.equal(settling.filter(a => a.node.className === 'collection-track-row').length, 0);
   area.dispatchEvent(input);
   assert.equal(animations.filter(a => !a.cancelled).length, settling.length, 'continuing input never restarts the settle');
   motion.stop();
@@ -168,14 +206,14 @@ test("snapshot range uses settled row spacing during staggered content motion", 
   snapshot.layer.remove();
 });
 
-test("a quick page return resumes frozen item frames and never hides already settled rows", t => {
+test("a quick page return resumes frozen covers and never hides already settled items", t => {
   const { document, motion, animations, mount } = setup(t);
   const rows = () => {
     const page = mount('content-band collection-connected');
-    page.innerHTML = '<div class="collection-content"><div class="collection-track-scroll" data-collection-scroll="songs"></div></div>';
-    const area = page.querySelector('.collection-track-scroll');
+    page.innerHTML = '<div class="collection-content"><div class="collection-album-index" data-collection-scroll="albums"></div></div>';
+    const area = page.querySelector('.collection-album-index');
     for (let i = 0; i < 80; i++) {
-      const row = document.createElement('div'); row.className = 'collection-track-row'; row.dataset.collectionAnchor = `${i}`;
+      const row = document.createElement('div'); row.dataset.collectionAnchor = `${i}`;
       row.getBoundingClientRect = () => ({ top: 106 + i * 44, bottom: 150 + i * 44, height: 44 });
       area.append(row);
     }
@@ -213,9 +251,12 @@ test("entering the collection on a playlist scopes page movement to its right pa
   }
   motion.enter();
   const incoming = animations.filter(a => page.contains(a.node));
-  assert.ok(incoming.length > 2);
+  assert.equal(incoming.length, 2);
   assert.ok(incoming.every(a => right.contains(a.node)), 'root, toolbar, sidebar and shared parents all remain still');
-  assert.equal(incoming.filter(a => a.node === right).length, 1, 'one shared animation owns movement and opacity');
+  assert.equal(incoming.filter(a => a.node === right).length, 2, 'one shared region owns both movement and alpha');
+  assert.equal(incoming.filter(a => a.frames[0].transform !== undefined).length, 1);
+  assert.equal(incoming.filter(a => a.frames[0].opacity !== undefined).length, 1);
+  assert.match(document.querySelector('.motion-departure').style.clipPath, /^inset\(/, 'old full-width pixels are clipped to the right pane');
   motion.stop();
 });
 
@@ -259,7 +300,7 @@ test("a playlist page return combines departing parent and right-pane frames", t
   const pane = returned.querySelector('.playlist-content');
   const arrivals = animations.filter(a => a.node === pane && !a.cancelled);
   assert.equal(arrivals[0].frames[0].transform, 'translate3d(6px,2px,0)', 'the parent departure offset is retained without moving the sidebar');
-  assert.equal(arrivals[0].frames[0].opacity, '0.48', 'the visible inherited opacity is retained');
+  assert.equal(arrivals[1].frames[0].opacity, '0.48', 'the visible inherited opacity is retained');
   assert.ok(animations.filter(a => returned.contains(a.node) && !a.cancelled).every(a => pane.contains(a.node)));
   motion.stop();
 });

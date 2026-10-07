@@ -22,6 +22,7 @@ export function EpisodeBrowser({ vm, feedId, requestedQuery, children, scope, in
   const previousCriteria=useRef(criteria);
   const loadedCriteria=useRef<string|null>(null);
   const active=requestedQuery!==undefined ? Boolean(requestedQuery.trim()) : Boolean(scope || feedId || actualQuery.trim() || filter!=="all" || sort!=="newest");
+  const pending=active&&!page&&!error;
   useEffect(()=>{browsing.set(key,{query:committedQuery,filter,sort,offset,season,episodeType});while(browsing.size>100)browsing.delete(browsing.keys().next().value!);},[key,committedQuery,filter,sort,offset,season,episodeType]);
   useEffect(()=>{if(previousCriteria.current!==criteria){previousCriteria.current=criteria;setOffset(0);}},[criteria]);
   useEffect(()=>{
@@ -39,9 +40,9 @@ export function EpisodeBrowser({ vm, feedId, requestedQuery, children, scope, in
       {Boolean(series?.seasons.length) && <Select aria-label="按季筛选" value={season} onValueChange={setSeason}><option value="all">所有季</option>{series?.seasons.map(value=><option key={value} value={String(value)}>第 {value} 季</option>)}</Select>}
       {series?.types.some(type=>type!=="full") && <Select aria-label="单集类型" value={episodeType} onValueChange={setEpisodeType}><option value="all">所有类型</option>{series.types.map(type=><option key={type} value={type}>{type==="trailer"?"预告":type==="bonus"?"加更":"正片"}</option>)}</Select>}
     </div>}
-    {active ? <section aria-label="本地单集搜索结果" aria-busy={busy}>
+    {active ? <section className="podcast-episode-results" aria-label="本地单集搜索结果" aria-busy={busy||pending} data-browse-pending={pending||undefined}>
       {error?<p role="alert">{error}</p>:null}
-      {busy&&!page?<PodcastLoading label="正在搜索本地单集"/>:page?.episodes.length?<>
+      {pending?<PodcastLoading label="正在搜索本地单集"/>:page?.episodes.length?<>
         <p className="podcast-search-page-status" role="status">本地单集 · 共 {page.total} 集 {busy?"· 更新中 ":""}· 第 {offset+1}–{offset+page.episodes.length} 集</p>
         {page.episodes.map(episode=><div key={episode.id}><EpisodeRow episode={episode} active={vm.currentEpisodeId===episode.id} isPlaying={vm.currentEpisodeId===episode.id&&vm.isPlaying} downloading={vm.downloadingId===episode.id} showFeed={!feedId}
           onOpen={()=>vm.openEpisodeDetail(episode,feedId?"show":"library")} onPlay={()=>vm.playEpisode(episode)} onDownload={()=>void vm.downloadEpisode(episode)} onContextMenu={event=>vm.showEpisodeMenu(event,episode)}/>

@@ -80,9 +80,11 @@ export const MOTION_EASINGS = {
   entrance: [0.18, 0.88, 0.24, 1],
   exit: [0.55, 0.06, 0.68, 0.19],
   emphasis: [0.175, 0.885, 0.32, 1.275],
-  /** Slow, unattended chrome dissolution; user-triggered reveals stay snappy. */
+  /** Balanced alpha changes; browsing uses the shorter reveal duration. */
   dissolve: [0.4, 0, 0.6, 1],
   navigation: [0.1, 0.9, 0.2, 1],
+  /** Small browsing displacement with a readable, decelerating tail. */
+  browse: [0.215, 0.61, 0.355, 1],
 } as const;
 
 export type MotionEasingName = keyof typeof MOTION_EASINGS;
@@ -95,8 +97,8 @@ export const MOTION_STAGGER = { step: 24, max: 144 } as const;
 
 /** One content-browsing preset for music and podcasts; navigation stays still. */
 export const BROWSE_MOTION = {
-  duration: 320, drift: MOTION_DRIFT.m, stagger: MOTION_STAGGER.step, maxDelay: MOTION_STAGGER.max,
-  exit: MOTION_DURATIONS.micro, settle: MOTION_DURATIONS.press,
+  duration: 640, reveal: 180, drift: MOTION_DRIFT.m, stagger: 46, maxDelay: 506,
+  exit: MOTION_DURATIONS.instant, settle: MOTION_DURATIONS.micro,
   maxGroups: 12, maxItems: 48, maxRegions: 12,
   // Legacy feather consumers outside managed browsing surfaces keep this scale.
   scale: 0.96,
@@ -150,6 +152,8 @@ function cubicBezierCss(points: readonly [number, number, number, number]): stri
 export function applyMotionTokens(root: HTMLElement = document.documentElement): void {
   const { style } = root;
   style.setProperty("--motion-browse", `${BROWSE_MOTION.duration}ms`);
+  style.setProperty("--motion-browse-reveal", `${BROWSE_MOTION.reveal}ms`);
+  style.setProperty("--motion-browse-gutter", `${BROWSE_MOTION.drift}px`);
   style.setProperty("--motion-feather-scale", `${BROWSE_MOTION.scale}`);
   style.setProperty("--panorama-backdrop-travel", `${PANORAMA_MOTION.backdropTravel}px`);
   for (const name of Object.keys(MOTION_DURATIONS) as MotionDurationName[]) {

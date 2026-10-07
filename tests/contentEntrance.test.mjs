@@ -13,7 +13,7 @@ function setup(t) {
   return { dom, root, list };
 }
 
-test("restored long lists build in only visible rows, with constant layout reads and capped delay", t => {
+test("restored long lists select visible rows for anchoring without individual reveals", t => {
   const { dom, root, list } = setup(t);
   list.scrollTop = 4400;
   let reads = 0;
@@ -28,14 +28,10 @@ test("restored long lists build in only visible rows, with constant layout reads
   assert.equal(items[0].node.dataset.collectionAnchor, 'track-100');
   assert.equal(items.length, 12);
   assert.equal(items[0].delay, 0);
-  assert.equal(items[1].delay - items[0].delay, motion.stagger);
-  assert.equal(Math.max(...items.map(item => item.delay)), 0 + motion.maxDelay);
+  assert.ok(items.every(item => item.kind === 'list' && item.delay === 0));
   const animations = [];
   playContentEntrance(items, (node, frames, duration, delay) => animations.push({ node, frames, duration, delay }));
-  assert.equal(animations.length, items.length);
-  assert.ok(animations.every(a => !a.frames[0].transform?.includes('scale')));
-  assert.ok(animations.every(a => a.frames.every(frame => frame.transform === undefined)), 'rows keep their baselines while the table owns movement');
-  assert.equal(animations[0].duration, motion.duration);
+  assert.equal(animations.length, 0, 'the table owns both movement and alpha; rows never form a fade wave');
   assert.equal(list.scrollTop, 4400);
   assert.equal(list.children.length, 2000);
   list.style.overflowAnchor = 'auto';
@@ -58,20 +54,28 @@ test("regular cover and artist grids reveal the restored visible band in reading
   const items = contentEntranceItems(root);
   assert.equal(reads, 2);
   assert.deepEqual(items.map(item => item.node.dataset.collectionAnchor), Array.from({ length: 9 }, (_, i) => `album-${90 + i}`));
-  assert.ok(items.slice(1).every((item, i) => item.delay >= items[i].delay));
+  assert.deepEqual(items.map(item => item.delay), Array.from({ length: 9 }, (_, i) => i * motion.stagger));
+  assert.ok(items.every(item => item.kind === 'card'));
+  const animations = [];
+  playContentEntrance(items, (node, frames, duration, delay) => animations.push({ node, frames, duration, delay }));
+  assert.ok(animations.every(a => a.frames[0].opacity === '0' && a.duration === motion.reveal));
+  assert.ok(animations.every(a => a.frames.every(frame => frame.transform === undefined)), 'cards inherit the common transport');
   list.getBoundingClientRect = () => rect(800, 500);
   assert.equal(contentEntranceItems(root).length, 0, 'offscreen sections create no item animations');
 });
 
 test("content work has a total cap and a rapid return resumes frozen item frames without hiding settled items", t => {
   const { dom, root, list } = setup(t);
+  list.className = 'collection-album-index';
   for (let i = 0; i < 500; i++) {
-    const row = dom.window.document.createElement('div'); row.className = 'collection-track-row'; row.dataset.collectionAnchor = `track-${i}`;
+    const row = dom.window.document.createElement('div'); row.dataset.collectionAnchor = `album-${i}`;
     row.getBoundingClientRect = () => rect(100 + i * 2, 2);
     list.append(row);
   }
   const items = contentEntranceItems(root);
   assert.equal(items.length, motion.maxItems);
+  assert.equal(items[11].delay, 506, 'the first twelve covers form a readable sequence');
+  assert.ok(items.slice(11).every(item => item.delay === motion.maxDelay), 'large grids cannot stretch the reveal indefinitely');
   items[0].node.style.transform = 'matrix(1, 0, 0, 1, 0, 9)'; items[0].node.style.opacity = '0.45';
   const saved = captureContentFrames(root), animations = [];
   playContentEntrance(items, (node, frames, duration, delay) => animations.push({ node, frames, duration, delay }), saved);

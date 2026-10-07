@@ -2,9 +2,9 @@ import { BROWSE_MOTION } from "./tokens.js";
 
 const listSelector = ".collection-track-scroll,.collection-artist-index,.collection-album-index";
 const itemSelector = ".collection-track-row,.collection-artist-index > li,.collection-album-index > div";
-const podcastItemSelector = ".podcast-episode,.podcast-show-card,.podcast-continue-card,.podcast-queue-episode";
+const podcastItemSelector = ".podcast-episode,.podcast-show-card,.podcast-library-show,.podcast-continue-card,.podcast-queue-episode";
 export type ContentFrame = { transform: string; opacity: string };
-export type ContentItem = { node: HTMLElement; key: string; delay: number };
+export type ContentItem = { node: HTMLElement; key: string; delay: number; kind: "card" | "list" };
 export type ContentFrames = Map<string, ContentFrame>;
 type Animate = (node: HTMLElement, frames: Keyframe[], duration: number, delay?: number) => void;
 const anchoringOwners = new WeakMap<HTMLElement, { value: string; count: number }>();
@@ -19,6 +19,10 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
   const window = root.ownerDocument.defaultView!;
   const viewport = root.getBoundingClientRect();
   const items: ContentItem[] = [];
+  const append = (node: HTMLElement, index: number) => {
+    const kind = node.matches(".collection-track-row,.podcast-episode,.podcast-queue-episode") ? "list" : "card";
+    items.push({ node, key: itemKey(node), kind, delay: kind === "card" ? Math.min(index * BROWSE_MOTION.stagger, BROWSE_MOTION.maxDelay) : 0 });
+  };
   for (const list of [...root.querySelectorAll<HTMLElement>(listSelector)].slice(0, BROWSE_MOTION.maxRegions)) {
     const children = list.children;
     const first = children[0] as HTMLElement | undefined;
@@ -39,7 +43,7 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
     for (let index = start; index < end && items.length < BROWSE_MOTION.maxItems; index++) {
       const node = children[index] as HTMLElement;
       if (!node.matches(itemSelector)) continue;
-      items.push({ node, key: itemKey(node), delay: Math.min((index - start) * BROWSE_MOTION.stagger, BROWSE_MOTION.maxDelay) });
+      append(node, index - start);
     }
     if (items.length === BROWSE_MOTION.maxItems) break;
   }
@@ -52,7 +56,7 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
     if (rect.height <= 0 || rect.width <= 0 || rect.bottom <= Math.max(viewport.top, clip.top, 0)
       || rect.top >= Math.min(viewport.bottom, clip.bottom, window.innerHeight)
       || rect.right <= Math.max(viewport.left, clip.left, 0) || rect.left >= Math.min(viewport.right, clip.right, window.innerWidth)) continue;
-    items.push({ node, key: itemKey(node), delay: Math.min(items.length * BROWSE_MOTION.stagger, BROWSE_MOTION.maxDelay) });
+    append(node, items.filter(item => item.kind === "card").length);
   }
   return items;
 }
@@ -90,13 +94,14 @@ export function suspendContentAnchoring(items: ContentItem[]): () => void {
   };
 }
 
-/** A quick build-in, separate from the page's horizontal transport. */
+/** Covers build in reading order; text lists reveal together at their region. */
 export function playContentEntrance(items: ContentItem[], animate: Animate, returning: ContentFrames | null = null): void {
-  for (const { node, key, delay } of items) {
+  for (const { node, key, delay, kind } of items) {
+    if (kind !== "card") continue;
     // Regions own movement in both libraries; item baselines never change.
     const start = returning ? returning.get(key) ?? { transform: "none", opacity: "1" }
       : { transform: "none", opacity: "0" };
     const wait = returning ? 0 : delay;
-    animate(node, [{ opacity: start.opacity }, { opacity: 1 }], BROWSE_MOTION.duration, wait);
+    animate(node, [{ opacity: start.opacity }, { opacity: 1 }], BROWSE_MOTION.reveal, wait);
   }
 }

@@ -1,7 +1,7 @@
 import { NAVIGATION_MOTION, BROWSE_MOTION, MOTION_EASINGS, MOTION_DURATIONS } from "./tokens.js";
 import type { PageTransition } from "./pageTransition.js";
 import { readSurfaceFrame as frame, snapshotSurface, surfaceOffset, type Frame } from "./surfaceSnapshot.js";
-import { browseSurface, captureBrowseFrames, playBrowseTransition, type BrowseControl, type BrowseFrames } from "./browseTransition.js";
+import { browseSurface, browseContentPending, captureBrowseFrames, playBrowseTransition, type BrowseControl, type BrowseFrames } from "./browseTransition.js";
 export { snapshotSurface, surfaceOffset } from "./surfaceSnapshot.js";
 
 type Surface = { key: string; node: HTMLElement; layer: HTMLElement; animation: Animation };
@@ -52,11 +52,10 @@ export class SurfaceTransition {
     // Only data departs; never create a moving copy of persistent navigation.
     snapshot.node.querySelectorAll<HTMLElement>(".playlist-list").forEach(node => { node.style.visibility = "hidden"; });
     const start = frame(snapshot.node), offset = surfaceOffset(snapshot.node);
-    const drift = content ? BROWSE_MOTION.drift : plan.exitDriftPx;
     const animation = snapshot.node.animate([
       start,
-      { transform: `translate3d(${offset.x - plan.direction * drift}px,${offset.y}px,0)`, opacity: 0 },
-    ], { duration: content ? BROWSE_MOTION.exit : plan.exitMs, easing: content ? `cubic-bezier(${MOTION_EASINGS.standard.join(",")})` : easing, fill: "forwards" });
+      { transform: content ? start.transform : `translate3d(${offset.x - plan.direction * plan.exitDriftPx}px,${offset.y}px,0)`, opacity: 0 },
+    ], { duration: content ? BROWSE_MOTION.exit : plan.exitMs, easing: content ? `cubic-bezier(${MOTION_EASINGS.browse.join(",")})` : easing, fill: "forwards" });
     this.outgoing = { ...snapshot, key: from, animation };
     animation.onfinish = () => {
       if (this.outgoing?.animation !== animation) return;
@@ -69,12 +68,12 @@ export class SurfaceTransition {
     if (!root) return false;
     const browser = root.matches(".collection-connected,.podcast-page");
     const content = browser ? browseSurface(root) : null;
-    if (browser && !content) return false;
+    if (browser && (!content || plan && browseContentPending(content))) return false;
     this.plan = null;
     const source = this.source;
     this.source = null;
     if (plan && content) {
-      this.browsing = playBrowseTransition(content, plan.direction, content === source ? this.sourceBrowse : this.returningBrowse);
+      this.browsing = playBrowseTransition(content, plan.direction, content === source ? this.sourceBrowse : this.returningBrowse, () => this.clearOutgoing());
       this.returning = null; this.returningBrowse = null; this.sourceBrowse = null;
       return true;
     }
@@ -126,11 +125,14 @@ export class SurfaceTransition {
     this.browsing?.(); this.browsing = null;
     for (const animation of this.incoming) { animation.onfinish = null; animation.cancel(); }
     this.incoming = [];
-    if (this.outgoing) {
-      this.outgoing.animation.onfinish = null; this.outgoing.animation.cancel();
-      this.outgoing.layer.remove(); this.outgoing = null;
-    }
+    this.clearOutgoing();
     this.plan = null; this.source = null; this.returning = null;
     this.returningBrowse = null; this.sourceBrowse = null;
+  }
+
+  private clearOutgoing(): void {
+    if (!this.outgoing) return;
+    this.outgoing.animation.onfinish = null; this.outgoing.animation.cancel();
+    this.outgoing.layer.remove(); this.outgoing = null;
   }
 }

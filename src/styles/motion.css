@@ -85,6 +85,22 @@
 .collection-connected .album-tile,
 .collection-connected .artist-album-tile { animation: none; }
 
+/* Preserve the data's final geometry while allowing its small horizontal arrival. */
+.workspace:is([data-page="collection"], [data-page="podcasts"]) { overflow: clip; }
+.content-band:is(.collection-connected, .podcast-page) { overflow: visible; }
+.collection-connected :is(.collection-index-scroll, .collection-entity-scroll) {
+  margin-left: calc(-1 * var(--motion-browse-gutter));
+  margin-right: calc(-1 * var(--motion-browse-gutter));
+  padding-left: calc(4px + var(--motion-browse-gutter));
+  padding-right: calc(8px + var(--motion-browse-gutter));
+}
+.podcast-page .podcast-screen {
+  margin-left: calc(-1 * var(--motion-browse-gutter));
+  margin-right: calc(-1 * var(--motion-browse-gutter));
+  padding-left: var(--motion-browse-gutter);
+  padding-right: calc(8px + var(--motion-browse-gutter));
+}
+
 /* Managed browsing uses one WAAPI controller; CSS must not add a second entrance. */
 .podcast-page[data-browse-motion="managed"] :is(.podcast-content-section, .podcast-episode, .podcast-show-card, .podcast-continue-card, .podcast-queue-episode) {
   animation: none;
@@ -95,7 +111,7 @@
 .podcast-episode,
 .podcast-show-card,
 .podcast-continue-card,
-.podcast-queue-episode { animation-duration: var(--motion-browse); }
+.podcast-queue-episode { animation-duration: var(--motion-browse-reveal); }
 
 /* Standalone feathers use capped section and item delays. Managed pages use
    the shared controller and never replay these on asynchronous insertions. */

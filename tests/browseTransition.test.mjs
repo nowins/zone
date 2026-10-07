@@ -3,7 +3,7 @@ import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import { playBrowseTransition, prepareBrowseTransition } from '../.tmp/visualizer-tests/motion/browseTransition.js';
 import { playCollectionPivot } from '../.tmp/visualizer-tests/motion/collectionPivot.js';
-import { BROWSE_MOTION } from '../.tmp/visualizer-tests/motion/tokens.js';
+import { BROWSE_MOTION, MOTION_EASINGS } from '../.tmp/visualizer-tests/motion/tokens.js';
 
 function setup(t) {
   const dom = new JSDOM('<body></body>', { pretendToBeVisual: true });
@@ -38,20 +38,21 @@ test('collection categories and podcast sections use one controller with station
     const page = mount(`<section class="collection-connected"><header class="collection-toolbar"><button>分类</button><input></header><p>数量</p><div class="collection-content"><div class="${group}">内容</div></div></section>`);
     const stop = playBrowseTransition(page, 1);
     const active = animations.filter(a => !a.cancelled);
-    assert.equal(active.length, 1);
+    assert.equal(active.length, 2);
     assert.equal(active[0].node.className, group);
-    assert.equal(active[0].frames[0].transform, `translate3d(${BROWSE_MOTION.drift}px,0,0)`);
+    assert.equal(active[0].frames[0].transform, `translate3d(-${BROWSE_MOTION.drift}px,0,0)`, 'forward content approaches from the left');
     assert.equal(active[0].options.duration, BROWSE_MOTION.duration);
+    assert.equal(active[1].options.duration, BROWSE_MOTION.reveal);
     stop();
   }
   const podcast = mount('<section class="podcast-page"><header class="podcast-header"><nav>分区</nav><input></header><main class="podcast-screen"><section class="podcast-content-section">节目</section><section class="podcast-content-section">单集</section></main></section>');
   const stop = playBrowseTransition(podcast, -1);
   const active = animations.filter(a => !a.cancelled);
-  assert.equal(active.length, 2);
+  assert.equal(active.length, 4);
   assert.ok(active.every(a => a.node.className === 'podcast-content-section'));
-  assert.ok(active.every(a => a.frames[0].transform === `translate3d(-${BROWSE_MOTION.drift}px,0,0)`));
-  assert.ok(active.every(a => a.options.duration === BROWSE_MOTION.duration));
-  assert.equal(active[1].options.delay, BROWSE_MOTION.stagger);
+  assert.ok(active.filter(a => a.frames[0].transform).every(a => a.frames[0].transform === `translate3d(${BROWSE_MOTION.drift}px,0,0)`));
+  assert.ok(active.every(a => a.options.duration === (a.frames[0].transform ? BROWSE_MOTION.duration : BROWSE_MOTION.reveal)));
+  assert.ok(active.every(a => a.options.delay === 0), 'text regions enter together');
   stop();
   for (const markup of [
     '<section class="podcast-show-hero">节目身份</section><section class="podcast-show-episodes">单集</section>',
@@ -60,14 +61,14 @@ test('collection categories and podcast sections use one controller with station
     const detail = mount(`<section class="podcast-page"><header class="podcast-header">返回</header><main class="podcast-screen">${markup}</main></section>`);
     const release = playBrowseTransition(detail, 1);
     const current = animations.filter(a => !a.cancelled);
-    assert.equal(current.length, 2, 'identity and related content both take part in the shared transition');
+    assert.equal(current.length, 4, 'identity and related content have separate movement and reveal durations');
     assert.ok(current.every(a => a.node.parentElement.matches('.podcast-screen')));
-    assert.ok(current.every(a => a.options.duration === BROWSE_MOTION.duration));
+    assert.ok(current.every(a => a.options.duration === (a.frames[0].transform ? BROWSE_MOTION.duration : BROWSE_MOTION.reveal)));
     release();
   }
 });
 
-test('podcast reversal keeps scroll and stable episode frames while progress text changes', t => {
+test('podcast text-list reversal keeps the region frame and scroll without row animation', t => {
   const { document, animations, mount } = setup(t);
   const page = mount('<section class="podcast-page"><header class="podcast-header">导航</header><main class="podcast-screen"><section class="podcast-content-section"></section></main></section>');
   const screen = page.querySelector('main'), section = screen.firstElementChild;
@@ -84,11 +85,13 @@ test('podcast reversal keeps scroll and stable episode frames while progress tex
   addRows();
   const stop = playBrowseTransition(page, 1);
   const rows = animations.filter(a => a.node.matches('.podcast-episode') && !a.cancelled);
-  assert.deepEqual(rows.map(a => a.node.dataset.podcastEpisode), ['episode-10', 'episode-11', 'episode-12', 'episode-13', 'episode-14']);
-  assert.ok(rows.every(a => a.frames.every(frame => frame.transform === undefined)), 'row baselines never move');
-  rows[0].node.style.opacity = '0.55';
+  assert.equal(rows.length, 0, 'all episode rows appear as a coherent text region');
+  section.style.opacity = '0.55'; section.style.transform = 'matrix(1,0,0,1,-9,0)';
   prepareBrowseTransition(page, 'listen', 'discover', 1);
   const ghost = document.querySelector('.motion-departure');
+  const exit = animations.at(-1);
+  assert.equal(exit.options.duration, BROWSE_MOTION.exit);
+  assert.equal(exit.frames[0].transform, exit.frames[1].transform, 'old text clears without another slide');
   assert.ok(ghost.classList.contains('podcast-page'), 'the copied content retains podcast layout context');
   assert.equal(ghost.firstElementChild.scrollTop, 800, 'the main scroller itself is restored');
   prepareBrowseTransition(page, 'discover', 'listen', -1);
@@ -97,9 +100,11 @@ test('podcast reversal keeps scroll and stable episode frames while progress tex
   section.children[10].textContent = '单集 10 · 已播放 0:31';
   const returned = playBrowseTransition(page, -1);
   const visible = animations.filter(a => a.node.matches('.podcast-episode') && !a.cancelled);
-  assert.equal(visible[0].frames[0].opacity, '0.55', 'progress text cannot invalidate episode identity');
-  assert.equal(visible[1].frames[0].opacity, '1', 'settled rows stay visible');
-  assert.ok(visible.every(a => a.options.delay === 0));
+  assert.equal(visible.length, 0, 'progress text cannot restart individual rows');
+  const current = animations.filter(a => a.node === section && !a.cancelled);
+  assert.equal(current[0].frames[0].transform, 'translate3d(-9px,0px,0)');
+  assert.equal(current[1].frames[0].opacity, '0.55');
+  assert.ok(current.every(a => a.options.delay === 0));
   returned(); stop();
   assert.equal(screen.style.overflowAnchor, '');
   assert.equal(document.querySelector('.motion-departure'), null);
@@ -136,10 +141,81 @@ test('a podcast panel without semantic sections resumes its departure frame on r
   prepareBrowseTransition(page, 'listen', 'playlist', 1);
   const back = playBrowseTransition(page, 1);
   const current = animations.filter(a => !a.cancelled && a.node === panel);
-  assert.equal(current.length, 1);
+  assert.equal(current.length, 2);
   assert.equal(current[0].frames[0].transform, 'translate3d(7px,0px,0)');
-  assert.equal(current[0].frames[0].opacity, '0.7');
+  assert.equal(current[1].frames[0].opacity, '0.7');
   assert.ok(animations.filter(a => !a.cancelled && page.contains(a.node)).every(a => a.node === panel));
   back(); first();
   assert.equal(document.querySelector('.motion-departure'), null);
+});
+
+test('cover regions own only translation; reading-order alpha is never multiplied by an ancestor fade', t => {
+  const { animations, mount } = setup(t);
+  for (const library of ['collection', 'podcast', 'podcast-library']) {
+    const page = library === 'collection'
+      ? mount('<section class="collection-connected"><div class="collection-content"><div class="collection-album-index"><div data-collection-anchor="one">封面一</div><div data-collection-anchor="two">封面二</div></div></div></section>')
+      : mount(`<section class="podcast-page"><main class="podcast-screen"><section class="podcast-content-section"><article class="${library === 'podcast' ? 'podcast-show-card' : 'podcast-library-show'}" data-podcast-show="one">节目一</article><article class="${library === 'podcast' ? 'podcast-show-card' : 'podcast-library-show'}" data-podcast-show="two">节目二</article></section></main></section>`);
+    const group = page.querySelector('.collection-album-index,.podcast-content-section');
+    group.children[1].getBoundingClientRect = () => ({ left: 50, right: 950, top: 130, bottom: 210, width: 900, height: 80 });
+    const stop = playBrowseTransition(page, 1);
+    const current = animations.filter(a => !a.cancelled);
+    const transport = current.filter(a => a.node === group);
+    assert.equal(transport.length, 1);
+    assert.ok(transport[0].frames.every(frame => frame.opacity === undefined));
+    const cards = current.filter(a => a.node.parentElement === group);
+    assert.equal(cards.length, 2);
+    assert.deepEqual(cards.map(a => a.options.delay), [0, BROWSE_MOTION.stagger]);
+    assert.ok(cards.every(a => a.frames[0].opacity === '0' && a.options.duration === BROWSE_MOTION.reveal));
+    assert.equal(transport[0].options.easing, `cubic-bezier(${MOTION_EASINGS.browse.join(',')})`);
+    assert.ok(cards.every(a => a.options.easing === `cubic-bezier(${MOTION_EASINGS.dissolve.join(',')})`), 'alpha builds gradually rather than inheriting the steep transport curve');
+    cards.forEach(a => a.finish());
+    assert.equal(transport[0].cancelled, false, 'finished reveals leave the slower movement running');
+    stop();
+  }
+});
+
+test('persistent controls do not accelerate the arrival and old pixels cannot cover the playlist index', t => {
+  const { animations, window, document, mount } = setup(t);
+  const page = mount('<section class="collection-connected"><header><button>分类</button><input></header><div class="collection-content"><aside class="playlist-list"><button>喜欢的歌曲</button></aside><section class="playlist-content"><button>播放</button></section></div></section>');
+  const pane = page.querySelector('.playlist-content');
+  pane.getBoundingClientRect = () => ({ left: 350, right: 950, top: 50, bottom: 450, width: 600, height: 400 });
+  const ghost = document.createElement('div'); ghost.className = 'motion-departure'; document.body.append(ghost);
+  const stop = playBrowseTransition(page, 1);
+  assert.equal(ghost.style.clipPath, 'inset(0px 0px 0px 300px)');
+  const original = [...animations];
+  page.querySelector('header button').dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+  page.querySelector('input').dispatchEvent(new window.Event('keydown', { bubbles: true }));
+  page.querySelector('.playlist-list button').dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+  assert.equal(animations.length, original.length);
+  assert.ok(original.every(a => !a.cancelled));
+  pane.querySelector('button').dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+  assert.ok(original.every(a => a.cancelled), 'input in moving content can take over immediately');
+  assert.equal(animations.filter(a => !a.cancelled).length, 1, 'one current-frame settle per moving region');
+  stop();
+});
+
+test('podcast cover reversal resumes stable media identity when title text changes', t => {
+  const { animations, mount } = setup(t);
+  const page = mount('<section class="podcast-page"><main class="podcast-screen"><section class="podcast-content-section"><article class="podcast-show-card" data-podcast-show="one">旧标题</article></section></main></section>');
+  const first = playBrowseTransition(page, 1), card = page.querySelector('article');
+  card.style.opacity = '0.45';
+  prepareBrowseTransition(page, 'library', 'discover', 1);
+  prepareBrowseTransition(page, 'discover', 'library', -1);
+  card.style.opacity = ''; card.textContent = '新标题';
+  const back = playBrowseTransition(page, -1);
+  const reveal = animations.findLast(a => !a.cancelled && a.node === card);
+  assert.equal(reveal.frames[0].opacity, '0.45');
+  assert.equal(reveal.options.delay, 0, 'a return never repeats the initial sequence');
+  back(); first();
+});
+
+test('podcast local episode results enter as one group while search and filters stay stationary', t => {
+  const { animations, mount } = setup(t);
+  const page = mount('<section class="podcast-page"><main class="podcast-screen"><nav>标签</nav><div class="podcast-tab-content"><div class="podcast-episode-browser"><div class="podcast-episode-filters"><input><button>筛选</button></div><section class="podcast-episode-results"><article class="podcast-episode">单集</article></section></div></div></main></section>');
+  const results = page.querySelector('.podcast-episode-results');
+  const stop = playBrowseTransition(page.querySelector('.podcast-tab-content'), 1);
+  assert.equal(animations.length, 2);
+  assert.ok(animations.every(a => a.node === results));
+  assert.equal(animations[0].frames[0].transform, `translate3d(-${BROWSE_MOTION.drift}px,0,0)`);
+  stop();
 });

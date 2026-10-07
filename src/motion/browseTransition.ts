@@ -1,5 +1,5 @@
 import { BROWSE_MOTION, MOTION_EASINGS } from "./tokens.js";
-import { inheritedFrame, readSurfaceFrame, snapshotSurface, surfaceOffset } from "./surfaceSnapshot.js";
+import { inheritedFrame, readSurfaceFrame, snapshotSurface } from "./surfaceSnapshot.js";
 import { captureContentFrames, contentEntranceItems, playContentEntrance, suspendContentAnchoring, type ContentFrames } from "./contentEntrance.js";
 
 const pageSelector = ".collection-connected,.podcast-page";
@@ -7,22 +7,41 @@ const groupSelector = [
   ".collection-artist-index", ".collection-album-index", ".collection-track-list", ".collection-track-scroll",
   ".collection-track-head", ".playlist-content", ".playlist-heading",
   ".collection-entity-heading", ".collection-detail-tabs", ".collection-entity-section", ".podcast-content-section",
-  ".podcast-show-hero", ".podcast-show-episodes", ".podcast-detail",
+  ".podcast-show-hero", ".podcast-show-episodes", ".podcast-detail", ".podcast-episode-results",
 ].join(",");
-const easing = `cubic-bezier(${MOTION_EASINGS.standard.join(",")})`;
+const easing = `cubic-bezier(${MOTION_EASINGS.browse.join(",")})`;
+const revealEasing = `cubic-bezier(${MOTION_EASINGS.dissolve.join(",")})`;
 const groupKey = (node: HTMLElement, index: number) => `${[...node.classList].join(".")}:${index}`;
 export type BrowseFrames = { groups: Map<string, Keyframe>; items: ContentFrames };
-export type BrowseControl = (() => void) & { settle: () => void };
+export type BrowseControl = (() => void) & { settle: () => void; beforeNavigate: () => void };
 type Departure = { key: string; layer: HTMLElement; node: HTMLElement; animation: Animation; returning: BrowseFrames | null };
 const departures = new WeakMap<HTMLElement, Departure>();
 const arrivals = new WeakMap<HTMLElement, BrowseControl>();
-const idle = (): BrowseControl => Object.assign(() => {}, { settle: () => {} });
+const idle = (): BrowseControl => Object.assign(() => {}, { settle: () => {}, beforeNavigate: () => {} });
 
 /** The shell, navigation and search fields never belong to the data surface. */
 export function browseSurface(page: HTMLElement): HTMLElement | null {
   if (page.matches(".collection-connected")) return page.querySelector(".collection-content");
   if (page.matches(".podcast-page")) return page.querySelector(".podcast-screen");
   return null;
+}
+
+/** Show loading immediately; reserve the single entrance for the first real content. */
+export function browseContentPending(root: HTMLElement): boolean {
+  return Boolean(root.querySelector('.podcast-loading-state,[data-browse-pending="true"]') && !root.querySelector(
+    ".podcast-show-hero,.podcast-detail,.podcast-episode,.podcast-show-card,.podcast-library-show,.podcast-continue-card,.podcast-queue-episode",
+  ));
+}
+
+/** A full-width previous screen must not cover the new persistent playlist index. */
+function clipPlaylistDeparture(page: HTMLElement): void {
+  const pane = page.querySelector<HTMLElement>(".playlist-content");
+  if (!pane || !page.querySelector(".playlist-list")) return;
+  const rect = pane.getBoundingClientRect();
+  for (const layer of (page.closest(".shell") ?? page.ownerDocument.body).querySelectorAll<HTMLElement>(".motion-departure")) {
+    const bounds = layer.getBoundingClientRect();
+    layer.style.clipPath = `inset(${Math.max(0, rect.top - bounds.top)}px ${Math.max(0, bounds.right - rect.right)}px ${Math.max(0, bounds.bottom - rect.bottom)}px ${Math.max(0, rect.left - bounds.left)}px)`;
+  }
 }
 
 export function captureBrowseFrames(root: HTMLElement): BrowseFrames {
@@ -48,16 +67,16 @@ const clearDeparture = (root: HTMLElement, departure: Departure | undefined) => 
 export function prepareBrowseTransition(root: HTMLElement, from: string, to: string, direction: -1 | 1, enabled = true): void {
   const content = browseSurface(root), window = root.ownerDocument.defaultView;
   if (!content || !window || !enabled || root.ownerDocument.hidden || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || typeof content.animate !== "function") return;
+  arrivals.get(root)?.beforeNavigate();
   const previous = departures.get(root);
   const returning = previous?.key === to ? captureBrowseFrames(previous.node) : null;
   const snapshot = snapshotSurface(content);
   snapshot.node.querySelectorAll<HTMLElement>(".playlist-list").forEach(node => { node.style.visibility = "hidden"; });
   clearDeparture(root, previous);
   const start = readSurfaceFrame(snapshot.node);
-  const offset = surfaceOffset(snapshot.node);
   const animation = snapshot.node.animate([
     start,
-    { transform: `translate3d(${offset.x - direction * BROWSE_MOTION.drift}px,${offset.y}px,0)`, opacity: 0 },
+    { transform: start.transform, opacity: 0 },
   ], { duration: BROWSE_MOTION.exit, easing, fill: "forwards" });
   const departure = { ...snapshot, animation, key: from, returning };
   departures.set(root, departure);
@@ -65,7 +84,7 @@ export function prepareBrowseTransition(root: HTMLElement, from: string, to: str
 }
 
 /** Shared region transport and first-screen reveal for music and podcasts. */
-export function playBrowseTransition(target: HTMLElement, direction: -1 | 1, returning?: BrowseFrames | null): BrowseControl {
+export function playBrowseTransition(target: HTMLElement, direction: -1 | 1, returning?: BrowseFrames | null, beforeNavigate = () => {}): BrowseControl {
   const document = target.ownerDocument, window = document.defaultView;
   if (!window || document.hidden || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || typeof target.animate !== "function") return idle();
   const root = target.matches(pageSelector) ? browseSurface(target) : target;
@@ -75,6 +94,7 @@ export function playBrowseTransition(target: HTMLElement, direction: -1 | 1, ret
   const viewport = root.getBoundingClientRect();
   if (viewport.width <= 0 || viewport.height <= 0) return idle();
   const departure = departures.get(interactionRoot);
+  clipPlaylistDeparture(interactionRoot);
   const starts = returning ?? departure?.returning;
   const contentItems = contentEntranceItems(root);
   const restoreAnchoring = suspendContentAnchoring(contentItems);
@@ -110,15 +130,16 @@ export function playBrowseTransition(target: HTMLElement, direction: -1 | 1, ret
     cancelAnimations();
     restoreAnchoring();
     clearDeparture(interactionRoot, departure);
-    interactionRoot.removeEventListener("pointerdown", settle, true);
-    interactionRoot.removeEventListener("wheel", settle, true);
-    interactionRoot.removeEventListener("keydown", settle, true);
+    interactionRoot.removeEventListener("pointerdown", onInput, true);
+    interactionRoot.removeEventListener("wheel", onInput, true);
+    interactionRoot.removeEventListener("keydown", onInput, true);
     interactionRoot.removeEventListener("scroll", onScroll, true);
     document.removeEventListener("visibilitychange", hidden);
     window.removeEventListener("resize", stop);
   };
   const animate = (node: HTMLElement, frames: Keyframe[], duration: number, delay = 0) => {
-    const animation = node.animate(frames, { duration, delay, easing, fill: "backwards" });
+    const spatial = frames.some(frame => frame.transform !== undefined);
+    const animation = node.animate(frames, { duration, delay, easing: spatial ? easing : revealEasing, fill: "backwards" });
     animations.push({ node, animation });
     animation.onfinish = () => { if (animations.every(item => item.animation.playState === "finished")) stop(); };
   };
@@ -133,22 +154,34 @@ export function playBrowseTransition(target: HTMLElement, direction: -1 | 1, ret
   };
   const onScroll = (event: Event) => {
     const area = event.target as HTMLElement, saved = scrollPositions.get(area);
+    if (!groups.some(node => node.contains(area) || area.contains(node))) return;
     if (saved && saved.top === area.scrollTop && saved.left === area.scrollLeft) return;
     settle();
   };
+  const onInput = (event: Event) => {
+    if (event.target instanceof window.Node && groups.some(node => node.contains(event.target as Node))) settle();
+  };
   const hidden = () => { if (document.hidden) stop(); };
-  groups.forEach((node, index) => animate(node, [
-    starts?.groups.get(groupKey(node, allGroups.indexOf(node))) ?? { transform: `translate3d(${direction * BROWSE_MOTION.drift}px,0,0)`, opacity: 0 },
-    { transform: "none", opacity: 1 },
-  ], BROWSE_MOTION.duration, Math.min(index * BROWSE_MOTION.stagger, BROWSE_MOTION.maxDelay)));
+  groups.forEach(node => {
+    const start = starts?.groups.get(groupKey(node, allGroups.indexOf(node)));
+    animate(node, [
+      { transform: start?.transform ?? `translate3d(${-direction * BROWSE_MOTION.drift}px,0,0)` },
+      { transform: "none" },
+    ], BROWSE_MOTION.duration);
+    const cards = contentItems.some(item => item.kind === "card" && node.contains(item.node));
+    // Only one alpha owner: covers reveal themselves; text regions reveal together.
+    if (!cards || (start && Number(start.opacity) < 1)) animate(node, [
+      { opacity: start?.opacity ?? 0 }, { opacity: 1 },
+    ], BROWSE_MOTION.reveal);
+  });
   playContentEntrance(contentItems, animate, starts?.items);
-  interactionRoot.addEventListener("pointerdown", settle, { capture: true, passive: true });
-  interactionRoot.addEventListener("wheel", settle, { capture: true, passive: true });
-  interactionRoot.addEventListener("keydown", settle, true);
+  interactionRoot.addEventListener("pointerdown", onInput, { capture: true, passive: true });
+  interactionRoot.addEventListener("wheel", onInput, { capture: true, passive: true });
+  interactionRoot.addEventListener("keydown", onInput, true);
   interactionRoot.addEventListener("scroll", onScroll, { capture: true, passive: true });
   document.addEventListener("visibilitychange", hidden);
   window.addEventListener("resize", stop);
-  const control = Object.assign(stop, { settle });
+  const control = Object.assign(stop, { settle, beforeNavigate });
   arrivals.set(interactionRoot, control);
   return control;
 }
