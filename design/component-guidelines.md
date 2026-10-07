@@ -28,7 +28,8 @@
 
 ### 2.2 排版
 
-- 字体栈：`"Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI Light", "Microsoft YaHei UI", "Segoe UI", sans-serif`，全局 `user-select: none`（输入框除外）。
+- 字体令牌以 `src/styles/base.css` 为事实源：正文使用 `--font-body`（Segoe UI Variable Text → Segoe UI → Microsoft YaHei UI → Microsoft YaHei），展示标题与主导航使用 `--font-display`（Segoe UI Variable Display → 同一稳定回退）。中文逐字形回退到微软雅黑 UI；不把独立的 Segoe UI Light 字体放进正文回退链。全局 `user-select: none`（输入框除外）。
+- 导航字号按主导航／页面分类／子标签分三级，由同文件的 `--type-nav-primary`／`secondary`／`tertiary` 统一定义，当前为 25／18／14px。主导航使用低字重，功能性分类使用 400 字重；导航保持文字与强调线，不堆叠大标题。页头高度由 `--app-header-height` 定义，普通内容页与 quickplay 共用同一剩余高度计算。
 - 展示标题：`font-weight: 200–250`，`letter-spacing` 约 `-0.05em`，`line-height < 1`。
 - 正文/列表：400；次级信息用 `--muted`。
 - 播客正在播放的时间、倍速、睡眠与动作标签至少 12px；节目/单集详情只保留一个内容大标题。保存单集统一称“稍后听”，插入待播首位称“下一集播放”。
@@ -159,6 +160,7 @@
 - `FlipTile` 揭示真实歌曲／专辑／播放列表信息或播客最新单集，`MosaicFrames` 只替换尚未显示的封面；编辑、悬停、键盘聚焦、页面隐藏、离开可视区及 reduced-motion 时暂停自动变化。
 - now playing：拼贴背景 + 光焰 + 歌词模式同空间切换；chrome 无操作约 5s 进入沉浸态。
 - 播客：`src/views/podcast/` 按 screens/components 分层，加载态全部走 `PodcastLoading`（内含 `MetroLoader`）。
+- 播客资料库的节目排序复用 `Select`，与分组筛选及新建／编辑分组排在「已关注」标题旁的工具区；空间不足时自然换行，长分组名省略并保留完整提示。资料库子标签采用第三级导航字号，具体几何以 `podcasts.css` 为准。
 - 播客 hover 语言（已登记）：封面卡用第 4 级（封面降 opacity、轻抬 2px），列表行只做文字即时提亮，均无行级背景，详见 `design/motion-system.md` Hover 反馈分级。
 - 播客文本动作条（单集详情 `.podcast-detail-actions`、下载/待播批量条）：hover 纯白、`.primary` 实心 accent、`.danger` 文本红，是播客页面级语言，不走 `Button` variant；新增播客行内动作沿用同一模式。
 - 播客正在播放的队列面板与睡眠 popover：进退场规则就近放在 `podcast-now-playing.css`（token 时长 + `Presence` 生命周期与共享表一致），reduced-motion 仍由 `motion.css` 统一块收敛。原位阅读使用 content 档的短入场，不切换整个舞台，减少动态效果时直接显示。

@@ -1,7 +1,8 @@
 :root {
   color: #f7f2f6;
   background: #0b070c;
-  font-family: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI Light", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  font-family: var(--font-body);
+  font-weight: 400;
   font-synthesis: none;
   text-rendering: geometricPrecision;
   --app-bg: #0b070c;
@@ -13,6 +14,12 @@
   --accent: #f12486;
   --accent-pink: #f12486;
   --accent-orange: #ff5b19;
+  --font-body: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --app-header-height: 56px;
+  --type-nav-primary: 25px;
+  --type-nav-secondary: 18px;
+  --type-nav-tertiary: 14px;
 }
 
 * {
@@ -210,7 +217,7 @@ input:focus-visible {
 }
 
 .app-header {
-  height: 78px;
+  height: var(--app-header-height);
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
@@ -243,8 +250,9 @@ input:focus-visible {
   position: relative;
   padding: 0 0 8px;
   color: rgba(247, 242, 246, 0.45);
-  font-size: 27px;
-  line-height: 1;
+  font-family: var(--font-display);
+  font-size: var(--type-nav-primary);
+  line-height: 1.1;
   font-weight: 300;
   transition: color var(--motion-micro) var(--motion-ease-standard), transform var(--motion-content) var(--motion-ease-entrance);
 }
@@ -283,7 +291,7 @@ input:focus-visible {
 }
 
 .content-band {
-  height: calc(100% - 78px);
+  height: calc(100% - var(--app-header-height));
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -302,6 +310,15 @@ h1 {
   font-size: clamp(68px, 8vw, 116px);
   line-height: 0.82;
   font-weight: 200;
+}
+
+h1,
+h2,
+.quickplay-ghost,
+.collection-ghost,
+.podcast-ghost,
+.empty-mark {
+  font-family: var(--font-display);
 }
 
 h2 {

@@ -11,6 +11,7 @@ import { EpisodeBrowser } from "../components/EpisodeBrowser";
 import { PODCAST_LIBRARY_SORTS, PODCAST_DOWNLOAD_BATCH_LIMIT } from "../constants";
 import { formatEpisodeDate, formatFileSize } from "../format";
 import { MetroLoader } from "../../../components/MetroLoader";
+import { Select } from "../../../components/Select";
 import { EpisodeRow } from "../components/EpisodeRows";
 import {
   PodcastArtwork,
@@ -41,28 +42,35 @@ export function LibraryScreen({ vm }: { vm: PodcastViewModel }) {
       {tab==="saved" ? <EpisodeBrowser key="saved" vm={vm} scope="saved" initialFilter="saved"/> : null}
       {tab==="history" ? <><ListeningStats revision={vm.libraryRevision}/><EpisodeBrowser key="history" vm={vm} scope="history" initialFilter="history" initialSort="listened"/></> : null}
       {tab==="shows" ? <>
-              <PodcastSection title="已关注" count={feeds.length}>
+              <PodcastSection
+                title="已关注"
+                count={feeds.length}
+                className="podcast-library-section"
+                action={libraryState !== "loading" && feeds.length > 0 ? (
+                  <div className="podcast-library-tools">
+                    <label className="podcast-library-sorts">
+                      排序
+                      <Select
+                        aria-label="已关注节目排序"
+                        value={librarySort}
+                        onValueChange={value => {
+                          const sort = PODCAST_LIBRARY_SORTS.find(sort => sort.id === value);
+                          if (sort) setLibrarySort(sort.id);
+                        }}
+                      >
+                        {PODCAST_LIBRARY_SORTS.map(sort => (
+                          <option key={sort.id} value={sort.id}>{sort.label}</option>
+                        ))}
+                      </Select>
+                    </label>
+                    <ShowGroups feeds={feeds} revision={vm.libraryRevision} onFilter={setGroupFeedIds} />
+                  </div>
+                ) : undefined}
+              >
                 {libraryState === "loading" ? (
                   <PodcastLoading label="正在读取资料库" />
                 ) : feeds.length > 0 ? (
                   <>
-                    <div
-                      className="podcast-listen-filters podcast-library-sorts"
-                      role="group"
-                      aria-label="已关注节目排序"
-                    >
-                      {PODCAST_LIBRARY_SORTS.map((sort) => (
-                        <button
-                          key={sort.id}
-                          type="button"
-                          aria-pressed={librarySort === sort.id}
-                          onClick={() => setLibrarySort(sort.id)}
-                        >
-                          {sort.label}
-                        </button>
-                      ))}
-                    </div>
-                    <ShowGroups feeds={feeds} revision={vm.libraryRevision} onFilter={setGroupFeedIds} />
                     {groupedFeeds.length === 0 ? <PodcastEmpty label="这个分组还没有关注的节目" /> : null}
                     <div className="podcast-library-grid">
                       {groupedFeeds.map((feed, index) => (

@@ -242,10 +242,6 @@
     gap: 20px;
   }
 
-  .primary-pivot button {
-    font-size: 24px;
-  }
-
   .search-results-layout {
     grid-template-columns: 148px minmax(0, 1fr);
     gap: 26px;

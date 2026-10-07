@@ -3,7 +3,7 @@
   --quick-feature-size: clamp(278px, 29vw, 410px);
   position: relative;
   width: 100%;
-  height: calc(100% - 78px);
+  height: calc(100% - var(--app-header-height));
   min-height: 0;
   overflow: hidden;
   display: flex;
