@@ -3,6 +3,7 @@ import { BROWSE_MOTION } from "./tokens.js";
 const listSelector = ".collection-track-scroll,.collection-artist-index,.collection-album-index";
 const itemSelector = ".collection-track-row,.collection-artist-index > li,.collection-album-index > div";
 const podcastItemSelector = ".podcast-episode,.podcast-show-card,.podcast-library-show,.podcast-continue-card,.podcast-queue-episode";
+const quickplayItemSelector = ".quick-pin,.quick-album,.quick-feature";
 export type ContentFrame = { transform: string; opacity: string };
 export type ContentItem = { node: HTMLElement; key: string; delay: number; kind: "card" | "list" };
 export type ContentFrames = Map<string, ContentFrame>;
@@ -11,7 +12,7 @@ const anchoringOwners = new WeakMap<HTMLElement, { value: string; count: number 
 
 function itemKey(node: HTMLElement): string {
   const list = node.parentElement!;
-  return `${list.className}:${list.closest<HTMLElement>("[data-collection-list]")?.dataset.collectionList ?? ""}:${node.dataset.collectionAnchor ?? node.dataset.podcastEpisode ?? node.dataset.podcastShow ?? node.getAttribute("aria-label") ?? node.textContent}`;
+  return `${list.className}:${list.closest<HTMLElement>("[data-collection-list]")?.dataset.collectionList ?? ""}:${node.dataset.collectionAnchor ?? node.dataset.podcastEpisode ?? node.dataset.podcastShow ?? node.dataset.pinId ?? node.dataset.collectionFocus ?? node.getAttribute("aria-label") ?? node.textContent}`;
 }
 
 /** Uniform rows and regular grids need two item measurements, even after scroll restoration. */
@@ -47,11 +48,11 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
     }
     if (items.length === BROWSE_MOTION.maxItems) break;
   }
-  // Podcast pages are paginated and rows may vary in height; inspect only their
-  // viewport band instead of inferring a uniform stride or animating hidden rows.
-  for (const node of root.querySelectorAll<HTMLElement>(podcastItemSelector)) {
+  // Podcast rows and panorama covers have variable geometry; inspect only their
+  // viewport band instead of inferring a uniform stride or animating hidden items.
+  for (const node of root.querySelectorAll<HTMLElement>(`${podcastItemSelector},${quickplayItemSelector}`)) {
     if (items.length === BROWSE_MOTION.maxItems) break;
-    const area = node.closest<HTMLElement>(".podcast-screen") ?? root;
+    const area = node.closest<HTMLElement>(".podcast-screen,.quick-section-scroll,.quickplay-viewport") ?? root;
     const clip = area.getBoundingClientRect(), rect = node.getBoundingClientRect();
     if (rect.height <= 0 || rect.width <= 0 || rect.bottom <= Math.max(viewport.top, clip.top, 0)
       || rect.top >= Math.min(viewport.bottom, clip.bottom, window.innerHeight)
@@ -64,7 +65,7 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
 /** Snapshots already froze animated targets; settled rows need no style reads. */
 export function captureContentFrames(snapshot: HTMLElement): ContentFrames {
   const frames: ContentFrames = new Map();
-  for (const node of snapshot.querySelectorAll<HTMLElement>(`${itemSelector},${podcastItemSelector}`)) {
+  for (const node of snapshot.querySelectorAll<HTMLElement>(`${itemSelector},${podcastItemSelector},${quickplayItemSelector}`)) {
     if (node.style.transform || node.style.opacity) frames.set(itemKey(node), {
       transform: node.style.transform || "none", opacity: node.style.opacity || "1",
     });
@@ -74,7 +75,7 @@ export function captureContentFrames(snapshot: HTMLElement): ContentFrames {
 
 /** Keep scroll restoration stable while visible regions move. */
 export function suspendContentAnchoring(items: ContentItem[]): () => void {
-  const areas = new Set(items.map(({ node }) => node.closest<HTMLElement>("[data-collection-scroll],.podcast-screen") ?? node.parentElement!));
+  const areas = new Set(items.map(({ node }) => node.closest<HTMLElement>("[data-collection-scroll],.podcast-screen,.quick-section-scroll,.quickplay-viewport") ?? node.parentElement!));
   for (const area of areas) {
     const owner = anchoringOwners.get(area) ?? { value: area.style.overflowAnchor, count: 0 };
     owner.count++;

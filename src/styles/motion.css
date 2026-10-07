@@ -101,6 +101,16 @@
   padding-right: calc(8px + var(--motion-browse-gutter));
 }
 
+/* The loader stays visible; deferred headings reveal with their real data. */
+[data-browse-waiting="true"] .podcast-section-title { visibility: hidden; }
+
+/* Keep the playlist divider fixed and reserve room for the rightward return. */
+.collection-connected .playlist-browser {
+  margin-right: calc(-1 * var(--motion-browse-gutter));
+  padding-right: var(--motion-browse-gutter);
+}
+.playlist-detail { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+
 /* Managed browsing uses one WAAPI controller; CSS must not add a second entrance. */
 .podcast-page[data-browse-motion="managed"] :is(.podcast-content-section, .podcast-episode, .podcast-show-card, .podcast-continue-card, .podcast-queue-episode) {
   animation: none;

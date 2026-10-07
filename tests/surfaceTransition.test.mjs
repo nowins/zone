@@ -7,7 +7,7 @@ import { NAVIGATION_MOTION, BROWSE_MOTION } from "../.tmp/visualizer-tests/motio
 import { playBrowseTransition, prepareBrowseTransition } from "../.tmp/visualizer-tests/motion/browseTransition.js";
 
 function setup(t) {
-  const dom = new JSDOM('<body><div class="shell"><audio></audio><main class="workspace"><section class="quickplay"><div class="quick-group"><button id="pin" data-collection-focus="pin">封面</button></div><div class="quickplay-viewport"></div></section></main></div></body>', { pretendToBeVisual: true });
+  const dom = new JSDOM('<body><div class="shell"><audio></audio><main class="workspace"><section class="quickplay"><div class="quickplay-ghost">quickplay</div><div class="quickplay-viewport"><div class="quick-group"><button id="pin" data-collection-focus="pin">封面</button></div></div></section></main></div></body>', { pretendToBeVisual: true });
   t.after(() => dom.window.close());
   const { window } = dom, { document } = window, animations = [];
   window.DOMMatrixReadOnly = class {
@@ -41,6 +41,7 @@ test("outgoing pixels and the interactive target coexist; cleanup retains one au
   const departure = document.querySelector('.motion-departure');
   assert.equal(departure.inert, true);
   assert.equal(departure.getAttribute('aria-hidden'), 'true');
+  assert.ok(departure.classList.contains('quickplay'), 'content snapshots retain panorama sizing and scoped styles');
   assert.equal(departure.querySelector('[data-collection-focus]'), null);
   assert.equal(departure.querySelector('#pin'), null);
   assert.equal(departure.querySelector('.quickplay-viewport').scrollLeft, 340);
@@ -61,7 +62,7 @@ test("outgoing pixels and the interactive target coexist; cleanup retains one au
 test("a rapid return picks up the departing page frame instead of disabling or restarting motion", t => {
   const { document, motion, animations, mount } = setup(t);
   motion.prepare("quickplay", "collection", resolvePageTransition("quickplay", "collection"), true);
-  const original = document.querySelector('.motion-departure > section');
+  const original = document.querySelector('.motion-departure > .quickplay-viewport');
   original.style.transform = 'matrix(1, 0, 0, 1, -18, 0)'; original.style.opacity = '0.6';
   const collection = mount('content-band'); motion.enter();
   collection.style.transform = 'matrix(1, 0, 0, 1, 35, 0)'; collection.style.opacity = '0.8';
@@ -70,9 +71,13 @@ test("a rapid return picks up the departing page frame instead of disabling or r
   const ghost = document.querySelector('.motion-departure');
   assert.equal(ghost.style.left, '48px', "transformed bounds are not translated twice");
   assert.equal(ghost.firstElementChild.style.transform, collection.style.transform);
-  const returning = mount('quickplay'); motion.enter();
-  assert.equal(animations.findLast(a => a.node === returning && a.options.duration === NAVIGATION_MOTION.enter).frames[0].transform, original.style.transform);
-  assert.equal(animations.findLast(a => a.node === returning && a.options.duration === NAVIGATION_MOTION.fade).frames[0].opacity, '0.6');
+  const returning = mount('quickplay');
+  returning.innerHTML = '<div class="quickplay-ghost">quickplay</div><div class="quickplay-viewport"><div class="quick-group"><button>封面</button></div></div>';
+  motion.enter();
+  const group = returning.querySelector('.quick-group');
+  assert.equal(animations.findLast(a => a.node === group && a.options.duration === BROWSE_MOTION.duration).frames[0].transform, 'translate3d(-18px,0px,0)');
+  assert.equal(animations.findLast(a => a.node === group && a.options.duration === BROWSE_MOTION.reveal).frames[0].opacity, '0.6');
+  assert.ok(animations.filter(a => returning.contains(a.node)).every(a => group.contains(a.node)), 'the page and panorama depth planes never inherit arrival movement');
   motion.stop(); assert.equal(document.querySelector('.motion-departure'), null);
 });
 
@@ -119,18 +124,57 @@ test("cold podcast loading keeps chrome visible and reserves one entrance for th
   const { motion, animations, mount } = setup(t);
   motion.prepare('quickplay', 'podcasts', resolvePageTransition('quickplay', 'podcasts'), true);
   const page = mount('content-band podcast-page');
-  page.innerHTML = '<header>播客分区</header><main class="podcast-screen"><section class="podcast-content-section"><div class="podcast-loading-state">正在读取</div></section></main>';
+  page.innerHTML = '<header>播客分区</header><main class="podcast-screen"><section class="podcast-content-section"><div class="podcast-section-title">已关注</div><div class="podcast-loading-state">正在读取</div></section></main>';
   assert.equal(motion.enter(), false, 'a loading placeholder must not consume the real content entrance');
+  assert.equal(page.querySelector('.podcast-screen').dataset.browseWaiting, 'true', 'the heading cannot flash at its final position while data is deferred');
   assert.equal(animations.filter(a => page.contains(a.node)).length, 0);
   const section = page.querySelector('.podcast-content-section');
-  section.innerHTML = '<article class="podcast-library-show" data-podcast-show="one">节目一</article>';
+  section.innerHTML = '<div class="podcast-section-title">已关注</div><article class="podcast-library-show" data-podcast-show="one">节目一</article>';
   assert.equal(motion.enter(), true);
+  assert.equal(page.querySelector('.podcast-screen').dataset.browseWaiting, undefined);
   assert.equal(animations.filter(a => a.node === section).length, 1, 'the card region owns only movement');
-  assert.equal(animations.find(a => a.node === section.firstElementChild).options.duration, BROWSE_MOTION.reveal);
+  assert.equal(animations.find(a => a.node === section.lastElementChild).options.duration, BROWSE_MOTION.reveal);
+  assert.equal(animations.find(a => a.node === section.firstElementChild).frames[0].opacity, 0, 'the heading reveals with the real cards');
   const count = animations.length;
   section.firstElementChild.textContent = '节目标题更新';
   assert.equal(motion.enter(), true);
   assert.equal(animations.length, count, 'later data changes cannot replay the entry');
+  motion.stop();
+});
+
+test('abandoning deferred podcast data releases the hidden heading without replay', t => {
+  const { motion, mount } = setup(t);
+  motion.prepare('quickplay', 'podcasts', resolvePageTransition('quickplay', 'podcasts'), true);
+  const page = mount('content-band podcast-page');
+  page.innerHTML = '<main class="podcast-screen"><section class="podcast-content-section"><div class="podcast-section-title">已关注</div><div class="podcast-loading-state">正在读取</div></section></main>';
+  motion.enter();
+  const screen = page.querySelector('main');
+  assert.equal(screen.dataset.browseWaiting, 'true');
+  motion.stop();
+  assert.equal(screen.dataset.browseWaiting, undefined);
+});
+
+test('collection playlist returns through podcasts with a stationary divider and one detail animation', t => {
+  const { motion, animations, mount } = setup(t);
+  const playlist = () => {
+    const page = mount('content-band collection-connected');
+    page.innerHTML = '<div class="collection-content"><div class="playlist-list">左栏</div><section class="playlist-content"><div class="playlist-detail"><header class="playlist-heading">喜欢的歌曲</header><section class="collection-track-list">歌曲</section></div></section></div>';
+    return page;
+  };
+  playlist();
+  motion.prepare('collection', 'podcasts', resolvePageTransition('collection', 'podcasts'), true);
+  mount('content-band podcast-page').innerHTML = '<main class="podcast-screen"><section class="podcast-content-section">播客内容</section></main>';
+  motion.enter();
+  animations.find(a => !a.cancelled && a.node.closest('.motion-departure'))?.finish();
+  motion.prepare('podcasts', 'collection', resolvePageTransition('podcasts', 'collection'), true);
+  const returned = playlist();
+  motion.enter();
+  const detail = returned.querySelector('.playlist-detail');
+  const current = animations.filter(a => !a.cancelled && returned.contains(a.node));
+  assert.equal(current.length, 2);
+  assert.ok(current.every(a => a.node === detail), 'neither the divider nor the sidebar nor individual rows move');
+  assert.equal(current[0].frames[0].transform, `translate3d(${BROWSE_MOTION.drift}px,0,0)`);
+  assert.equal(current[1].frames[0].opacity, 0);
   motion.stop();
 });
 

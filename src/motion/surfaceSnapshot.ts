@@ -91,6 +91,7 @@ export function snapshotSurface(node: HTMLElement): { layer: HTMLElement; node: 
     layer.dataset.collectionSurface = collection.dataset.collectionSurface;
   }
   if (node.closest(".podcast-page")) layer.classList.add("podcast-page");
+  if (node.closest(".quickplay")) layer.classList.add("quickplay");
   layer.setAttribute("aria-hidden", "true");
   layer.inert = true;
   Object.assign(layer.style, { left: `${rect.left - offset.x}px`, top: `${rect.top - offset.y}px`, width: `${rect.width}px`, height: `${rect.height}px` });

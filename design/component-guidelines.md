@@ -55,13 +55,13 @@
 ### 3.1 页面转场（`src/motion/pageTransition.ts`）
 
 - 平级页 pivot：沿导航序（quickplay → collection → podcasts → settings）方向感知滑入滑出；nowPlaying 在其上 push/pop。
-- 顶层导航由 `SurfaceTransition` 执行成对的静态画面退场与目标页面入场；位移、早淡入和分组错峰使用 `NAVIGATION_MOTION`，快速反向从当前帧接续。具体编排与清理规则见 [动效系统](motion-system.md)。
+- 顶层导航由 `SurfaceTransition` 执行成对的静态画面退场与目标页面入场；收藏、播客与 quickplay 的内容交接统一消费 `BROWSE_MOTION`，设置消费 `NAVIGATION_MOTION`，快速反向从当前帧接续。具体编排与清理规则见 [动效系统](motion-system.md)。
 - **不要给整页根节点加 scale**——会让页面标题产生垂直漂移（两次实测教训）。纵深感属于小元素，不属于页面。
 
 ### 3.2 列表级联（feather）
 
-- 统一 `motion-feather-in`：位移 drift-m + `scale(0.96→1)` + 透明度，`backwards` 填充（`both` 会永久压住 transform，禁止）。
-- 逐项错峰用 `--stagger`，步进 24ms、封顶 144ms；quickplay 分组级错峰 60ms（0/60/120/180）。
+- 未托管的首次展示使用 `motion-feather-in`：位移 drift-m + `scale(0.96→1)` + 透明度，`backwards` 填充（`both` 会永久压住 transform，禁止）。页面交接不叠加该动画。
+- 首次展示的逐项错峰用 `--stagger`，步进 24ms、封顶 144ms；quickplay 首次分组错峰 60ms（0/60/120/180）。浏览交接及返回 quickplay 的封面节奏统一见动效系统。
 - 级联期间内容保持可交互。
 
 ### 3.3 按压反馈

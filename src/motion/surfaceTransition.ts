@@ -1,7 +1,7 @@
 import { NAVIGATION_MOTION, BROWSE_MOTION, MOTION_EASINGS, MOTION_DURATIONS } from "./tokens.js";
 import type { PageTransition } from "./pageTransition.js";
 import { readSurfaceFrame as frame, snapshotSurface, surfaceOffset, type Frame } from "./surfaceSnapshot.js";
-import { browseSurface, browseContentPending, captureBrowseFrames, playBrowseTransition, type BrowseControl, type BrowseFrames } from "./browseTransition.js";
+import { browseSurface, browseContentPending, concealPendingBrowseTitles, captureBrowseFrames, playBrowseTransition, type BrowseControl, type BrowseFrames } from "./browseTransition.js";
 export { snapshotSurface, surfaceOffset } from "./surfaceSnapshot.js";
 
 type Surface = { key: string; node: HTMLElement; layer: HTMLElement; animation: Animation };
@@ -19,6 +19,7 @@ export class SurfaceTransition {
   private browsing: BrowseControl | null = null;
   private source: HTMLElement | null = null;
   private plan: PageTransition | null = null;
+  private revealPending: (() => void) | null = null;
 
   constructor(private host: HTMLElement) {}
 
@@ -66,9 +67,14 @@ export class SurfaceTransition {
   enter(): boolean {
     const root = this.current(), plan = this.plan;
     if (!root) return false;
-    const browser = root.matches(".collection-connected,.podcast-page");
+    const browser = root.matches(".collection-connected,.podcast-page,.quickplay");
     const content = browser ? browseSurface(root) : null;
-    if (browser && (!content || plan && browseContentPending(content))) return false;
+    if (browser && !content) return false;
+    if (content && plan && browseContentPending(content)) {
+      this.revealPending ??= concealPendingBrowseTitles(content);
+      return false;
+    }
+    this.revealPending?.(); this.revealPending = null;
     this.plan = null;
     const source = this.source;
     this.source = null;
@@ -122,6 +128,7 @@ export class SurfaceTransition {
   }
 
   stop(): void {
+    this.revealPending?.(); this.revealPending = null;
     this.browsing?.(); this.browsing = null;
     for (const animation of this.incoming) { animation.onfinish = null; animation.cancel(); }
     this.incoming = [];

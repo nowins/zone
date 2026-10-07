@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
-import { playBrowseTransition, prepareBrowseTransition } from '../.tmp/visualizer-tests/motion/browseTransition.js';
+import { playBrowseTransition, prepareBrowseTransition, captureBrowseFrames } from '../.tmp/visualizer-tests/motion/browseTransition.js';
 import { playCollectionPivot } from '../.tmp/visualizer-tests/motion/collectionPivot.js';
 import { BROWSE_MOTION, MOTION_EASINGS } from '../.tmp/visualizer-tests/motion/tokens.js';
 
@@ -30,6 +30,48 @@ function setup(t) {
   const mount = markup => { document.body.innerHTML = markup; return document.body.firstElementChild; };
   return { window, document, animations, mount };
 }
+
+test('mixed cover sections reveal their headings without fading a cover ancestor', t => {
+  const { animations, mount } = setup(t);
+  const page = mount('<section class="podcast-page"><main class="podcast-screen"><section class="podcast-content-section"><div class="podcast-section-title"><h2>已关注</h2></div><div class="podcast-library-sorts">排序</div><div class="podcast-library-grid"><article class="podcast-library-show" data-podcast-show="one">节目一</article></div></section></main></section>');
+  const stop = playBrowseTransition(page, 1);
+  const title = page.querySelector('.podcast-section-title'), grid = page.querySelector('.podcast-library-grid');
+  assert.equal(animations.find(a => a.node === title).frames[0].opacity, 0);
+  assert.equal(animations.filter(a => a.node === grid).length, 0, 'card containers cannot multiply their child alpha');
+  assert.ok(animations.filter(a => a.node === title).every(a => a.frames.every(frame => frame.transform === undefined)), 'title inherits the single region translation');
+  title.style.opacity = '0.42';
+  prepareBrowseTransition(page, 'library', 'discover', 1);
+  prepareBrowseTransition(page, 'discover', 'library', -1);
+  title.style.opacity = '';
+  const back = playBrowseTransition(page, -1);
+  assert.equal(animations.findLast(a => !a.cancelled && a.node === title).frames[0].opacity, '0.42', 'reversal keeps the heading alpha as well as the covers');
+  back(); stop();
+});
+
+test('quickplay uses one content transport, reading-order covers, and fixed depth planes', t => {
+  const { animations, mount } = setup(t);
+  const page = mount('<section class="quickplay"><div class="quickplay-ghost">quickplay</div><div class="quickplay-backdrop"></div><div class="quickplay-viewport"><article class="quick-group"><h2>固定</h2><div class="pin-grid"><article class="quick-pin" data-pin-id="one">封面一</article><article class="quick-pin" data-pin-id="two">封面二</article></div></article></div></section>');
+  const stop = playBrowseTransition(page, -1);
+  const group = page.querySelector('.quick-group');
+  assert.ok(animations.every(a => group.contains(a.node)), 'root, viewport, giant title and backdrop remain stable');
+  assert.equal(animations.filter(a => a.frames[0].transform !== undefined).length, 1, 'no root + group double translation');
+  assert.equal(animations[0].frames[0].transform, `translate3d(${BROWSE_MOTION.drift}px,0,0)`);
+  assert.deepEqual(animations.filter(a => a.node.matches('.quick-pin')).map(a => a.options.delay), [0, BROWSE_MOTION.stagger]);
+  assert.equal(animations.find(a => a.node.matches('h2')).options.duration, BROWSE_MOTION.reveal);
+  stop();
+});
+
+test('heading frame capture never expands into computed-style reads across song rows', t => {
+  const { window, mount } = setup(t);
+  const page = mount('<section class="collection-connected"><div class="collection-content"><section class="collection-track-list"><div class="collection-track-head">表头</div><div class="collection-track-scroll"></div></section></div></section>');
+  const scroll = page.querySelector('.collection-track-scroll');
+  scroll.innerHTML = Array.from({length: 2000}, () => '<div class="collection-track-row">歌曲</div>').join('');
+  let rowReads = 0;
+  const read = window.getComputedStyle.bind(window);
+  window.getComputedStyle = node => { if (node.matches('.collection-track-row')) rowReads++; return read(node); };
+  captureBrowseFrames(page.querySelector('.collection-content'));
+  assert.equal(rowReads, 0, 'only cover regions contain separately animated heading alpha');
+});
 
 test('collection categories and podcast sections use one controller with stationary chrome', t => {
   assert.equal(playCollectionPivot, playBrowseTransition, 'collection cannot drift into a separate implementation');

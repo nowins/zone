@@ -115,6 +115,7 @@ export function PlaylistBrowser({
       </section>
 
       <section ref={contentRef} className="playlist-content" aria-label={selected.name}>
+        <div className="playlist-detail">
         <header className="playlist-heading">
           <div className="playlist-cover-grid" data-count={covers.length === 4 ? 4 : 1} aria-hidden="true">
             {covers.length > 0 ? covers.map((path) => <Cover key={path} artPath={path} label={selected.name} fallback={fallback} />)
@@ -147,6 +148,7 @@ export function PlaylistBrowser({
             kind: "track", title: track.title, subtitle: `${track.artist} / ${track.album}`,
             tracks: [track], playbackTracks: selected.tracks, playlistId: selected.id, playlistKind: selected.kind,
           })} />
+        </div>
       </section>
     </div>
   );

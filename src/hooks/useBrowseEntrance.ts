@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
-import { browseSurface, browseContentPending, playBrowseTransition } from "../motion/browseTransition";
+import { browseSurface, browseContentPending, concealPendingBrowseTitles, playBrowseTransition } from "../motion/browseTransition";
 import { useReducedMotion } from "../motion/useReducedMotion";
 
 /** Music and podcasts share timing, interruption and reduced-motion ownership. */
@@ -12,19 +12,25 @@ export function useBrowseEntrance(root: RefObject<HTMLElement>, key: string | nu
     const plan = latest.current;
     if (!root.current || !plan.direction || !plan.enabled || plan.reduced) return;
     let observer: MutationObserver | null = null;
+    let revealPending: (() => void) | null = null;
     const start = () => {
       if (latest.current.reduced || !latest.current.enabled) return true;
       const node = root.current;
-      if (!node || node.matches(".podcast-page,.collection-connected") && !browseSurface(node) || browseContentPending(node)) return false;
+      if (!node || node.matches(".podcast-page,.collection-connected") && !browseSurface(node)) return false;
+      if (browseContentPending(node)) {
+        revealPending ??= concealPendingBrowseTitles(node);
+        return false;
+      }
+      revealPending?.(); revealPending = null;
       running.current = playBrowseTransition(node, plan.direction as -1 | 1);
       return true;
     };
     if (!start()) {
       observer = new MutationObserver(() => { if (start()) observer?.disconnect(); });
       observer.observe(root.current, { childList: true, subtree: true });
-      running.current = () => observer?.disconnect();
+      running.current = () => { observer?.disconnect(); revealPending?.(); revealPending = null; };
     }
-    return () => { observer?.disconnect(); running.current?.(); running.current = null; };
+    return () => { observer?.disconnect(); revealPending?.(); running.current?.(); running.current = null; };
   }, [root, key]);
   useLayoutEffect(() => { if (reduced || !enabled) running.current?.(); }, [reduced, enabled]);
 }

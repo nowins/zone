@@ -2,16 +2,21 @@ import { BROWSE_MOTION, MOTION_EASINGS } from "./tokens.js";
 import { inheritedFrame, readSurfaceFrame, snapshotSurface } from "./surfaceSnapshot.js";
 import { captureContentFrames, contentEntranceItems, playContentEntrance, suspendContentAnchoring, type ContentFrames } from "./contentEntrance.js";
 
-const pageSelector = ".collection-connected,.podcast-page";
+const pageSelector = ".collection-connected,.podcast-page,.quickplay";
 const groupSelector = [
   ".collection-artist-index", ".collection-album-index", ".collection-track-list", ".collection-track-scroll",
-  ".collection-track-head", ".playlist-content", ".playlist-heading",
+  ".collection-track-head", ".playlist-content:not(:has(.playlist-detail))", ".playlist-detail", ".playlist-heading",
   ".collection-entity-heading", ".collection-detail-tabs", ".collection-entity-section", ".podcast-content-section",
   ".podcast-show-hero", ".podcast-show-episodes", ".podcast-detail", ".podcast-episode-results",
+  ".quick-group", ".quickplay-empty-content",
 ].join(",");
 const easing = `cubic-bezier(${MOTION_EASINGS.browse.join(",")})`;
 const revealEasing = `cubic-bezier(${MOTION_EASINGS.dissolve.join(",")})`;
 const groupKey = (node: HTMLElement, index: number) => `${[...node.classList].join(".")}:${index}`;
+const textKey = (node: HTMLElement, index: number, child: number) => `${groupKey(node, index)}:text:${child}`;
+const cardSelector = ".collection-artist-index > li,.collection-album-index > div,.podcast-show-card,.podcast-library-show,.podcast-continue-card,.quick-pin,.quick-album,.quick-feature";
+const textChildren = (node: HTMLElement) => node.querySelector(cardSelector) ? [...node.children].filter((child): child is HTMLElement =>
+  child instanceof node.ownerDocument.defaultView!.HTMLElement && !child.matches(cardSelector) && !child.querySelector(cardSelector)) : [];
 export type BrowseFrames = { groups: Map<string, Keyframe>; items: ContentFrames };
 export type BrowseControl = (() => void) & { settle: () => void; beforeNavigate: () => void };
 type Departure = { key: string; layer: HTMLElement; node: HTMLElement; animation: Animation; returning: BrowseFrames | null };
@@ -23,7 +28,14 @@ const idle = (): BrowseControl => Object.assign(() => {}, { settle: () => {}, be
 export function browseSurface(page: HTMLElement): HTMLElement | null {
   if (page.matches(".collection-connected")) return page.querySelector(".collection-content");
   if (page.matches(".podcast-page")) return page.querySelector(".podcast-screen");
+  if (page.matches(".quickplay")) return page.querySelector(".quickplay-viewport,.quickplay-empty-content");
   return null;
+}
+
+/** Deferred data must not paint its headings at rest before the entrance starts. */
+export function concealPendingBrowseTitles(root: HTMLElement): () => void {
+  root.dataset.browseWaiting = "true";
+  return () => { delete root.dataset.browseWaiting; };
 }
 
 /** Show loading immediately; reserve the single entrance for the first real content. */
@@ -48,6 +60,7 @@ export function captureBrowseFrames(root: HTMLElement): BrowseFrames {
   const parent = readSurfaceFrame(root), groups = new Map<string, Keyframe>();
   [...root.querySelectorAll<HTMLElement>(groupSelector)].forEach((node, index) => {
     groups.set(groupKey(node, index), inheritedFrame(node, parent, readSurfaceFrame(node)));
+    for (const child of textChildren(node)) groups.set(textKey(node, index, [...node.children].indexOf(child)), readSurfaceFrame(child));
   });
   groups.set(groupKey(root, -1), parent);
   const panel = root.querySelector<HTMLElement>(".podcast-tab-content");
@@ -115,7 +128,7 @@ export function playBrowseTransition(target: HTMLElement, direction: -1 | 1, ret
   if (!groups.length) groups.push(root.querySelector<HTMLElement>(".playlist-content,.podcast-tab-content") ?? root);
   let animations: { node: HTMLElement; animation: Animation }[] = [];
   const scrollPositions = new Map<Element, { top: number; left: number }>();
-  for (const area of [root, ...interactionRoot.querySelectorAll<HTMLElement>("[data-collection-scroll],.podcast-screen")]) {
+  for (const area of [root, ...interactionRoot.querySelectorAll<HTMLElement>("[data-collection-scroll],.podcast-screen,.quickplay-viewport,.quick-section-scroll")]) {
     scrollPositions.set(area, { top: area.scrollTop, left: area.scrollLeft });
   }
   let stopped = false, settling = false;
@@ -172,6 +185,10 @@ export function playBrowseTransition(target: HTMLElement, direction: -1 | 1, ret
     // Only one alpha owner: covers reveal themselves; text regions reveal together.
     if (!cards || (start && Number(start.opacity) < 1)) animate(node, [
       { opacity: start?.opacity ?? 0 }, { opacity: 1 },
+    ], BROWSE_MOTION.reveal);
+    if (cards) for (const child of textChildren(node)) animate(child, [
+      { opacity: starts ? starts.groups.get(textKey(node, allGroups.indexOf(node), [...node.children].indexOf(child)))?.opacity ?? 1 : 0 },
+      { opacity: 1 },
     ], BROWSE_MOTION.reveal);
   });
   playContentEntrance(contentItems, animate, starts?.items);
