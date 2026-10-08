@@ -50,7 +50,7 @@ async function run() {
     assert(toggle.getBoundingClientRect().height<=44,"global switch is oversized");
     const expected=select.dataset.value==="512"?1024:512;
     await selectValue(select,String(expected));
-    document.querySelectorAll<HTMLButtonElement>(".settings-categories button")[2].click();await delay(100);assert(document.querySelector('.settings-general')?.getAttribute('hidden')===null&&document.querySelector('.settings-layout')?.hasAttribute('hidden'),"general settings overlap music settings");document.querySelectorAll<HTMLButtonElement>(".settings-categories button")[1].click();await delay(100);assert(select.dataset.value===String(expected),"changing global categories lost podcast draft");
+    document.querySelectorAll<HTMLButtonElement>(".settings-categories button")[2].click();await delay(100);assert(document.querySelector('.settings-general')!.getClientRects().length>0&&document.querySelector('.settings-layout')!.getClientRects().length===0,"general settings overlap music settings");document.querySelectorAll<HTMLButtonElement>(".settings-categories button")[1].click();await delay(100);assert(select.dataset.value===String(expected),"changing global categories lost podcast draft");
     await invoke("client_window",{small:false});await capture("01-maintenance-1180");
     await invoke("client_window",{small:true});await capture("02-maintenance-920");
     const bounds=document.querySelector(".podcast-default-settings")!.getBoundingClientRect();

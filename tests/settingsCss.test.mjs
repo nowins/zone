@@ -67,26 +67,28 @@ test("settings live in the titlebar; collection owns search", () => {
   assert.ok(settingsControlRule.includes("border-right: 1px solid"));
 });
 
-test("settings remain reachable at the default window height", () => {
+test("settings keep category navigation fixed while content remains scrollable", () => {
   const pageRule = cssRule(settingsCss, ".settings-page");
+  const contentRule = cssRule(settingsCss, ".settings-content");
   const layoutRule = cssRule(settingsCss, ".settings-layout");
 
-  assert.ok(pageRule.includes("overflow-y: auto"));
+  assert.ok(pageRule.includes("overflow: hidden"), "the category header stays outside the scrolling content");
+  assert.ok(contentRule.includes("overflow-y: auto"));
+  assert.ok(contentRule.includes("min-height: 0"));
+  assert.ok(contentRule.includes("scrollbar-gutter: stable"), "short categories keep the same content width");
+  assert.ok(cssRules(responsiveCss, ".settings-layout").every(rule => !rule.includes("overflow-y: auto")), "narrow settings must not add another scroll owner");
   assert.ok(layoutRule.includes("overflow: visible"));
   assert.ok(responsiveCss.includes("@media (max-height: 800px)"));
   assert.ok(responsiveCss.includes(".settings-danger-action"));
 });
 
 function cssRule(source, selector) {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = source.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([\\s\\S]*?)\\}`));
-  assert.ok(match, `missing CSS rule ${selector}`);
-  return match[1];
+  return cssRules(source, selector)[0];
 }
 
-function cssRuleLast(source, selector) {
+function cssRules(source, selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const matches = [...source.matchAll(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([\\s\\S]*?)\\}`, "g"))];
+  const matches = [...source.matchAll(new RegExp(`(?:^|\\n)[ \\t]*${escaped}\\s*\\{([\\s\\S]*?)\\}`, "g"))];
   assert.ok(matches.length > 0, `missing CSS rule ${selector}`);
-  return matches.at(-1)[1];
+  return matches.map(match => match[1]);
 }

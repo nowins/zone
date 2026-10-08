@@ -110,7 +110,6 @@
 
   .settings-layout {
     gap: 36px;
-    overflow-y: auto;
   }
 
   .settings-sidebar {

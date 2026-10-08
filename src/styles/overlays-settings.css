@@ -46,8 +46,16 @@ h2 {
 }
 
 .settings-page {
+  overflow: hidden;
+}
+
+.settings-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding-bottom: clamp(20px, 3vh, 42px);
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
@@ -90,7 +98,7 @@ h2 {
 .settings-categories button[aria-current="page"] { color: var(--text); box-shadow: inset 0 -2px var(--accent); }
 .settings-categories button:hover { color: var(--text); }
 .settings-page :is(button,summary,select,input):focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
-.settings-layout[hidden], .settings-general[hidden] { display: none; }
+.settings-content[hidden] { display: none; }
 .settings-general { max-width: 760px; padding-top: 24px; }
 .settings-general > h2 { font-size: 25px; font-weight: 300; margin: 0 0 20px; }
 .settings-general .settings-diagnostics { margin-top: 24px; }
