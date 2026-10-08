@@ -32,6 +32,50 @@ async function click(element, detail = 1, type = "click") {
 }
 const mainRows = () => [...document.querySelectorAll(".collection-track-main")];
 
+async function pointer(node, type, x = 20, y = 20, pointerType = 'touch') {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y });
+  Object.defineProperties(event, { pointerId: { value: 1 }, pointerType: { value: pointerType }, isPrimary: { value: true } });
+  await act(() => node.dispatchEvent(event));
+}
+
+test("touch taps play once with the browsing source while scrolling, cancellation and long press do not play", async t => {
+  const played = [], contexts = [], source = [tracks[2], tracks[1]];
+  await mount(t, h(CollectionTrackList, { tracks, playbackTracks: source, activeTrackId: null,
+    onPlay: (...args) => played.push(args), onContextMenu: (_, track) => contexts.push(track.id) }));
+  const row = mainRows()[1];
+  await pointer(row, 'pointerdown'); await pointer(row, 'pointerup'); await click(row);
+  assert.deepEqual(played, [[tracks[1], source]]);
+  await click(row, 2, 'dblclick');
+  assert.equal(played.length, 1, 'compatibility double-click cannot replay a touch tap');
+  await pointer(row, 'pointerdown'); await pointer(row, 'pointermove', 20, 38); await pointer(row, 'pointerup', 20, 38); await click(row);
+  await pointer(row, 'pointerdown'); await pointer(row, 'pointercancel'); await click(row);
+  await pointer(row, 'pointerdown'); await click(row, 1, 'contextmenu'); await pointer(row, 'pointerup'); await click(row);
+  assert.equal(played.length, 1);
+  assert.deepEqual(contexts, ['b']);
+  await pointer(row, 'pointerdown', 20, 20, 'mouse'); await pointer(row, 'pointerup', 20, 20, 'mouse'); await click(row);
+  assert.equal(played.length, 1, 'mouse click still selects');
+  await click(row, 2, 'dblclick');
+  assert.equal(played.length, 2);
+});
+
+test("visible more actions keep their entity and never select or play", async t => {
+  const contexts = [], played = [];
+  const root = await mount(t, h(CollectionTrackList, { tracks, activeTrackId: null,
+    onPlay: (...args) => played.push(args), onContextMenu: (_, track) => contexts.push(track.id) }));
+  await click(document.querySelector('.collection-track-more'), 0);
+  assert.deepEqual(contexts, ['a']);
+  assert.equal(played.length, 0);
+  assert.equal(mainRows()[0].getAttribute('aria-pressed'), 'false');
+  let selected = 0;
+  await act(() => root.render(h(CollectionAlbumTile, { name: '专辑', artist: '艺术家', index: 0,
+    onSelect: () => selected++, onPlay: () => played.push('album'), onContextMenu: () => contexts.push('album') })));
+  await click(document.querySelector('.collection-album-more'), 0);
+  assert.deepEqual(contexts, ['a', 'album']);
+  assert.equal(selected, 0);
+  assert.equal(played.length, 0);
+  assert.equal(document.querySelector('button button'), null);
+});
+
 test("collection rows separate selection, playback and favorite actions", async t => {
   const played = [], favorites = [];
   await mount(t, h(CollectionTrackList, { tracks, activeTrackId: "a", onPlay: (...args) => played.push(args),

@@ -717,7 +717,7 @@ export function PodcastNowPlayingView({
           </div>
 
           <div className="podcast-now-volume">
-            <VolumeControl volume={volume} onVolume={onVolume} />
+            <VolumeControl volume={volume} onVolume={onVolume} inline />
           </div>
         </div>
 

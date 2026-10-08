@@ -3,7 +3,12 @@ import test from "node:test";
 import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+// Initialize React's input support detection against an actual DOM.
+const bootstrap = new JSDOM('<!doctype html>');
+globalThis.window = bootstrap.window;
+globalThis.document = bootstrap.window.document;
+const { createRoot } = await import("react-dom/client");
+bootstrap.window.close();
 
 await build({ entryPoints: ["src/components/TransportControls.tsx", "src/hooks/useNowPlayingFullscreen.ts"],
   outdir: ".tmp/transport-controls-tests", bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent" });
@@ -14,6 +19,7 @@ function setup() {
   const dom = new JSDOM('<div id="root"></div>');
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  for (const key of ["Element", "HTMLElement", "Node"]) globalThis[key] = dom.window[key];
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const root = createRoot(document.getElementById("root"));
   return { root, close: async () => { await act(() => root.unmount()); dom.window.close(); } };
@@ -50,7 +56,7 @@ test("volume wheel handles bursts, direction, fine deltas and limits without scr
   window.addEventListener("wheel", () => outerScrolls++);
   try {
     await act(() => env.root.render(React.createElement(VolumeControl, { volume: 0.8, onVolume: v => values.push(v) })));
-    const label = document.querySelector("label");
+    const label = document.querySelector(".zune-volume");
     const wheel = (deltaY, extra = {}) => {
       const event = new window.WheelEvent("wheel", { deltaY, bubbles: true, cancelable: true, ...extra });
       label.dispatchEvent(event);
@@ -73,6 +79,58 @@ test("volume wheel handles bursts, direction, fine deltas and limits without scr
     await act(() => env.root.render(React.createElement(VolumeControl, { volume: 0.5, onVolume: v => values.push(v) })));
     wheel(3, { deltaMode: 1 });
     assert.equal(values.at(-1), 0.45, "external volume updates and line-mode mouse wheels are respected");
+  } finally { await env.close(); }
+});
+
+test("volume opens by click, restores focus on Escape and leaves outside focus alone", async () => {
+  const env = setup();
+  const values = [];
+  try {
+    await act(() => env.root.render(React.createElement(React.StrictMode, null,
+      React.createElement(VolumeControl, { volume: 0.5, onVolume: value => values.push(value) }))));
+    const trigger = document.querySelector('.zune-volume-toggle');
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+    await act(() => trigger.click());
+    const panel = document.querySelector('[role="dialog"]');
+    const slider = panel.querySelector('input');
+    assert.equal(trigger.getAttribute('aria-controls'), panel.id);
+    assert.equal(document.activeElement, slider);
+    assert.equal(slider.getAttribute('aria-valuetext'), '50%');
+    assert.equal(values.length, 0, 'opening volume must not change it');
+    const wheel = new window.WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+    await act(() => slider.dispatchEvent(wheel));
+    assert.equal(wheel.defaultPrevented, true);
+    assert.equal(values.at(-1), 0.55, 'the detached popup keeps wheel volume control');
+    let escaped = false;
+    window.addEventListener('keydown', () => { escaped = true; });
+    await act(() => slider.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(document.activeElement, trigger);
+    assert.equal(panel.hasAttribute('inert'), true);
+    assert.equal(escaped, false);
+    await act(() => trigger.click());
+    assert.equal(document.activeElement, panel.querySelector('input'));
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    await act(() => outside.focus());
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(document.activeElement, outside);
+    await act(() => trigger.click());
+    await act(() => outside.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true })));
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+    outside.remove();
+  } finally { await env.close(); }
+  assert.equal(document.querySelector('.volume-popover'), null);
+});
+
+test("inline volume stays directly available without a second popover", async () => {
+  const env = setup();
+  try {
+    await act(() => env.root.render(React.createElement(VolumeControl, { volume: 0.3, onVolume() {}, inline: true })));
+    assert.ok(document.querySelector('.zune-volume.is-inline input'));
+    assert.equal(document.querySelector('.zune-volume-toggle'), null);
+    assert.equal(document.querySelector('[role="dialog"]'), null);
   } finally { await env.close(); }
 });
 

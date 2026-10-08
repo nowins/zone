@@ -1,9 +1,10 @@
 import { useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Heart, Info, Play } from "lucide-react";
+import { Heart, Info, MoreHorizontal, Play } from "lucide-react";
 import { formatTime } from "../utils/music";
 import { albumReference, artistReference } from "../utils/collectionEntities";
 import { CollectionLink, useCollectionContext } from "./CollectionContext";
 import { usePinDrag } from "./tiles/usePinDrag";
+import { Button } from "./Button";
 import type { Track } from "../types";
 
 /** Shared selection and playback behavior for every collection browser. */
@@ -33,6 +34,8 @@ export function CollectionTrackList({
   const pendingDrag = useRef<{ id: string; row: HTMLElement; pointerId: number; x: number; y: number } | null>(null);
   const draggedId = useRef<string | null>(null), dropTarget = useRef<string | null>(null);
   const suppressClick = useRef(false);
+  const touchTap = useRef<{ id: number; trackId: string; x: number; y: number; valid: boolean; released: boolean } | null>(null);
+  const lastTouchPlayback = useRef<string | null>(null);
   const pointerDrag = usePinDrag(scrollerRef, {
     ghostClassName: "collection-track-drag-ghost",
     onStart: id => { draggedId.current = id; suppressClick.current = true; },
@@ -56,6 +59,8 @@ export function CollectionTrackList({
   });
 
   function navigate(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    touchTap.current = null;
+    lastTouchPlayback.current = null;
     if (onReorder && event.altKey && !event.ctrlKey && !event.metaKey && ["ArrowUp", "ArrowDown"].includes(event.key)) {
       event.preventDefault();
       const target = tracks[index + (event.key === "ArrowUp" ? -1 : 1)];
@@ -86,14 +91,23 @@ export function CollectionTrackList({
       )}
       <div ref={scrollerRef} className="collection-track-scroll" role="list" data-collection-scroll={scrollable ? `tracks:${listKey}` : undefined}
         onPointerMove={event => {
+          const tap = touchTap.current;
+          if (tap?.id === event.pointerId && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) >= 8) tap.valid = false;
           const pending = pendingDrag.current;
           if (pending && !draggedId.current && Math.hypot(event.clientX - pending.x, event.clientY - pending.y) >= 8) {
             pointerDrag.begin(pending.id, pending.row, pending.pointerId, pending.x, pending.y);
           }
           pointerDrag.move(event);
         }}
-        onPointerUp={event => { pointerDrag.release(event); pendingDrag.current = null; }}
-        onPointerCancel={() => { pointerDrag.cancel(); pendingDrag.current = null; }}
+        onPointerUp={event => {
+          const tap = touchTap.current;
+          if (tap?.id === event.pointerId) {
+            tap.released = true;
+            if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) >= 8) tap.valid = false;
+          }
+          pointerDrag.release(event); pendingDrag.current = null;
+        }}
+        onPointerCancel={() => { if (touchTap.current) touchTap.current.valid = false; pointerDrag.cancel(); pendingDrag.current = null; }}
         onLostPointerCapture={pointerDrag.cancel}>
         {tracks.length === 0 ? <p className="collection-empty">{emptyText}</p> : tracks.map((track, index) => {
           const playing = track.id === activeTrackId;
@@ -104,12 +118,18 @@ export function CollectionTrackList({
           return (
             <div key={track.id} role="listitem" data-collection-anchor={track.id}
               className={`collection-track-row${selectedId === track.id ? " selected" : ""}${playing ? " playing" : ""}`}
-              onContextMenu={(event) => onContextMenu(event, track)}>
+              onContextMenu={(event) => {
+                if (touchTap.current) touchTap.current.valid = false;
+                onContextMenu(event, track);
+              }}>
               <button type="button" className="collection-track-main"
                 aria-keyshortcuts={onReorder ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
                 onDragStart={event => event.preventDefault()}
                 onPointerDown={event => {
                   suppressClick.current = false;
+                  lastTouchPlayback.current = null;
+                  touchTap.current = event.pointerType === "touch" && event.isPrimary && event.button === 0
+                    ? { id: event.pointerId, trackId: track.id, x: event.clientX, y: event.clientY, valid: true, released: false } : null;
                   if (onReorder && event.button === 0 && event.pointerType !== "touch") pendingDrag.current = {
                     id: track.id, row: event.currentTarget.parentElement!, pointerId: event.pointerId, x: event.clientX, y: event.clientY,
                   };
@@ -121,11 +141,19 @@ export function CollectionTrackList({
                 onClick={(event) => {
                   if (suppressClick.current && event.detail > 0) { suppressClick.current = false; return; }
                   suppressClick.current = false;
+                  const tap = touchTap.current;
+                  touchTap.current = null;
+                  if (tap && (!tap.valid || !tap.released || tap.trackId !== track.id)) return;
                   setSelectedId(track.id);
+                  if (tap) {
+                    lastTouchPlayback.current = track.id;
+                    onPlay(track, playbackTracks || tracks);
+                    return;
+                  }
                   // Native keyboard/assistive activation emits a click with detail 0.
                   if (event.detail === 0) onPlay(track, playbackTracks || tracks);
                 }}
-                onDoubleClick={() => onPlay(track, playbackTracks || tracks)}
+                onDoubleClick={() => { if (lastTouchPlayback.current !== track.id) onPlay(track, playbackTracks || tracks); }}
                 onKeyDown={(event) => navigate(event, index)}>
                 <span className="collection-track-number" aria-label={playing ? "当前曲目" : undefined}>
                   {playing ? <Play size={11} fill="currentColor" /> : String(index + 1).padStart(2, "0")}
@@ -150,7 +178,12 @@ export function CollectionTrackList({
                 data-collection-focus={`favorite:${listKey}:${track.id}`}
                 onClick={() => onToggleFavorite(track)}>
                 <Heart size={15} fill={favorite ? "currentColor" : "none"} />
-              </button>}</div>
+              </button>}
+              <Button variant="ghost" className="collection-track-more" aria-label={`更多操作：${track.title}`}
+                title="更多操作" aria-haspopup="menu" data-collection-focus={`more:${listKey}:${track.id}`}
+                onClick={event => { touchTap.current = null; onContextMenu(event, track); }}>
+                <MoreHorizontal size={17} aria-hidden="true" />
+              </Button></div>
             </div>
           );
         })}

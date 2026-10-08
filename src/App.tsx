@@ -678,7 +678,8 @@ export default function App() {
     const target = event.target instanceof Element ? event.target.closest<HTMLElement>('button,a[href],[tabindex]') : null;
     const fallback = event.currentTarget instanceof HTMLElement ? event.currentTarget.querySelector<HTMLElement>('button,a[href]') : null;
     (target || fallback)?.focus({ preventScroll: true });
-    setContextMenu({ x: event.clientX, y: event.clientY, payload });
+    const anchor = event.type === "click" ? event.currentTarget.getBoundingClientRect() : null;
+    setContextMenu({ x: anchor?.left ?? event.clientX, y: anchor ? anchor.bottom + 4 : event.clientY, payload });
   }
 
   function playContextPayload(payload: ContextPayload) {

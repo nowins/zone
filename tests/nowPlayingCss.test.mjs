@@ -289,15 +289,13 @@ test("save playlist dialog remains density-aware", () => {
   assert.ok(px(labelRule, "font-size") <= 34);
 });
 
-test("both pages share Zune's collapsed and hover-expanded volume pattern", () => {
+test("volume has an explicit click entry and a bounded slider instead of relying on hover", () => {
   const volumeRule = cssRule(playerCss, ".zune-volume");
-  const inputRule = cssRuleLast(playerCss, ".zune-volume input");
-
   assert.ok(px(volumeRule, "width") <= 74, "idle volume control should only reserve room for its value");
-  assert.ok(inputRule.includes("width: 0"));
-  assert.ok(inputRule.includes("opacity: 0"));
-  assert.ok(playerCss.includes(".zune-volume:hover .zune-volume-icon"));
-  assert.ok(playerCss.includes("width: 96px"));
+  assert.ok(playerCss.includes('.zune-volume-toggle'));
+  assert.ok(playerCss.includes('.volume-popover .zune-volume input'));
+  assert.ok(!playerCss.includes('.zune-volume:hover input'));
+  assert.ok(!playerCss.includes('transition: width'));
   assert.ok(nowPlayingView.includes("<VolumeControl"));
   assert.ok(playerBarView.includes("<VolumeControl"));
 });

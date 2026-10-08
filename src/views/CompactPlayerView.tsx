@@ -291,7 +291,7 @@ export function CompactPlayerView(props: Props) {
       <Presence show={controlsOpen} exitDurationMs={MOTION_DURATIONS.micro}>
         <div ref={mountOptions}
           id="compact-options" className="compact-options" role="group" aria-label="播放选项" aria-hidden={!controlsOpen}>
-          <VolumeControl volume={props.volume} onVolume={props.onVolume} />
+          <VolumeControl volume={props.volume} onVolume={props.onVolume} inline />
           <div className="compact-options-actions">
             <Button variant="ghost" disabled={!available} aria-pressed={favorite}
               title={episode ? favorite ? "移出稍后听" : "稍后听" : favorite ? "取消收藏" : "收藏"}
