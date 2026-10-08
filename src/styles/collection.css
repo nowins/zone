@@ -545,7 +545,6 @@
   --track-columns: 28px minmax(120px, 1.5fr) minmax(90px, 0.9fr) minmax(100px, 1fr) 44px;
   --favorite-space: 0px;
   --info-space: 0px;
-  --more-space: 32px;
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -559,7 +558,7 @@
 .collection-track-head,
 .collection-track-row {
   display: grid;
-  grid-template-columns: var(--track-columns) calc(var(--favorite-space) + var(--info-space) + var(--more-space));
+  grid-template-columns: var(--track-columns) calc(var(--favorite-space) + var(--info-space));
   gap: 12px;
   align-items: center;
   text-align: left;
@@ -638,8 +637,6 @@
 .collection-track-list.is-compact .collection-track-main { grid-template-columns: 24px minmax(0, 1fr); }
 .collection-track-artist, .collection-track-album { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 13px; }
 .collection-track-actions { display: flex; align-items: center; }
-.collection-track-more { width: 32px; height: 32px; justify-content: center; color: var(--muted); flex: none; }
-.collection-album-more { position: absolute; top: 50px; right: 8px; width: 38px; height: 32px; justify-content: center; color: var(--text); background: rgba(9,5,10,.8); }
 .collection-track-info { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--muted); }
 .collection-track-info:hover { color: var(--text); }
 .collection-track-info:focus-visible { outline-offset: -2px; }

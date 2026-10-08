@@ -1,8 +1,7 @@
-import { MoreHorizontal, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import { Cover } from "./Cover";
 import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type { MouseEvent } from "react";
-import { Button } from "./Button";
 
 export function CollectionAlbumTile({ name, artist, coverPath, index, selected, className = "album-tile", onSelect, onPlay, onContextMenu, focusKey }: {
   name: string;
@@ -25,10 +24,6 @@ export function CollectionAlbumTile({ name, artist, coverPath, index, selected, 
         <Cover artPath={coverPath} label={name} size="large" index={index} />
         <strong>{name}</strong><span>{artist}</span>
       </button>
-      <Button variant="ghost" className="collection-album-more" title="更多操作" aria-label={`更多操作：${name}`}
-        aria-haspopup="menu" data-collection-focus={focusKey ? `${focusKey}:more` : undefined} onClick={onContextMenu}>
-        <MoreHorizontal size={17} aria-hidden="true" />
-      </Button>
       <button type="button" className="album-play" title={`播放 ${name}`} onClick={onPlay}>
         <Play size={18} fill="currentColor" />
       </button>

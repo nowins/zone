@@ -459,7 +459,7 @@ export function NowPlayingView({
             fullscreenPending={fullscreen.pending}
             onFullscreen={() => { fullscreen.toggle(); wakeChrome(); }}
           />
-          <VolumeControl volume={volume} onVolume={onVolume} inline />
+          <VolumeControl volume={volume} onVolume={onVolume} />
           {fullscreen.error ? <span className="now-fullscreen-error" role="status">{fullscreen.error}</span> : null}
         </div>
       </div>

@@ -58,24 +58,6 @@ test("touch taps play once with the browsing source while scrolling, cancellatio
   assert.equal(played.length, 2);
 });
 
-test("visible more actions keep their entity and never select or play", async t => {
-  const contexts = [], played = [];
-  const root = await mount(t, h(CollectionTrackList, { tracks, activeTrackId: null,
-    onPlay: (...args) => played.push(args), onContextMenu: (_, track) => contexts.push(track.id) }));
-  await click(document.querySelector('.collection-track-more'), 0);
-  assert.deepEqual(contexts, ['a']);
-  assert.equal(played.length, 0);
-  assert.equal(mainRows()[0].getAttribute('aria-pressed'), 'false');
-  let selected = 0;
-  await act(() => root.render(h(CollectionAlbumTile, { name: '专辑', artist: '艺术家', index: 0,
-    onSelect: () => selected++, onPlay: () => played.push('album'), onContextMenu: () => contexts.push('album') })));
-  await click(document.querySelector('.collection-album-more'), 0);
-  assert.deepEqual(contexts, ['a', 'album']);
-  assert.equal(selected, 0);
-  assert.equal(played.length, 0);
-  assert.equal(document.querySelector('button button'), null);
-});
-
 test("collection rows separate selection, playback and favorite actions", async t => {
   const played = [], favorites = [];
   await mount(t, h(CollectionTrackList, { tracks, activeTrackId: "a", onPlay: (...args) => played.push(args),

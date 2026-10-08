@@ -481,8 +481,6 @@ button.tilt-pressed {
   to { opacity: 0; }
 }
 
-.motion-exit .volume-popover { opacity: 0; transform: translateY(2px); pointer-events: none; transition-timing-function: var(--motion-ease-exit); }
-
 @media (hover: none), (pointer: coarse) {
   .quick-cover-button:hover .cover,
   .quick-album > button:hover .cover,
@@ -497,7 +495,6 @@ button.tilt-pressed {
    an instant-tier opacity-only fade instead of a dead pause: the JS
    lifecycles wait the same 80ms (see resolveExitDurationMs). */
 @media (prefers-reduced-motion: reduce) {
-  .volume-popover { transform: none !important; transition-property: opacity !important; transition-duration: var(--motion-instant); }
   .select-menu { transform: none !important; transition-duration: var(--motion-instant); }
   .motion-departure { display: none; }
   .quick-group,

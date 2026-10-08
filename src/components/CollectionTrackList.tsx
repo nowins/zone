@@ -1,10 +1,9 @@
 import { useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Heart, Info, MoreHorizontal, Play } from "lucide-react";
+import { Heart, Info, Play } from "lucide-react";
 import { formatTime } from "../utils/music";
 import { albumReference, artistReference } from "../utils/collectionEntities";
 import { CollectionLink, useCollectionContext } from "./CollectionContext";
 import { usePinDrag } from "./tiles/usePinDrag";
-import { Button } from "./Button";
 import type { Track } from "../types";
 
 /** Shared selection and playback behavior for every collection browser. */
@@ -178,12 +177,7 @@ export function CollectionTrackList({
                 data-collection-focus={`favorite:${listKey}:${track.id}`}
                 onClick={() => onToggleFavorite(track)}>
                 <Heart size={15} fill={favorite ? "currentColor" : "none"} />
-              </button>}
-              <Button variant="ghost" className="collection-track-more" aria-label={`更多操作：${track.title}`}
-                title="更多操作" aria-haspopup="menu" data-collection-focus={`more:${listKey}:${track.id}`}
-                onClick={event => { touchTap.current = null; onContextMenu(event, track); }}>
-                <MoreHorizontal size={17} aria-hidden="true" />
-              </Button></div>
+              </button>}</div>
             </div>
           );
         })}

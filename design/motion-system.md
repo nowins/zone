@@ -147,7 +147,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 ## 守则（Do / Don't）
 
 - 时长/缓动只用 token；新增档位先加进 `tokens.ts` 再用。
-- 常规交互使用 `transform` / `opacity`，避免在交互路径上引入布局属性动画（width/height/top/left）。音量通过点击展开独立弹层，不再通过宽度动画挤动播放条。新增布局属性动画需记录必要性并验证性能。已有亮度/模糊细节与 Canvas 媒体背景按各自规范验证，不把 transform/opacity 偏好解释为禁止其绘制。
+- 常规交互使用 `transform` / `opacity`，避免在交互路径上引入布局属性动画（width/height/top/left）。**已登记的例外**：`.zune-volume` 音量条悬停展开（width，`player.css`）；新增布局属性动画需记录必要性并验证性能。已有亮度/模糊细节与 Canvas 媒体背景按各自规范验证，不把 transform/opacity 偏好解释为禁止其绘制。
 - 常规交互退场 ≤ 入场时长，且统一走 `--motion-ease-exit` 加速曲线；正在播放的自动闲置退隐使用上文登记的缓慢溶解。
 - 媒体时钟驱动的进度（歌词、播放）用 rAF 直读时钟，不叠加 CSS 补间。
 - 不要引入与内容无关的无限装饰动画；加载反馈与正在播放媒体背景有明确用途，分别遵守加载组件规范与 [播放视觉规范](engineering/playback-visuals.md) 的停转规则。
