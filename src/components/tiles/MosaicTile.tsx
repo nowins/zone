@@ -4,6 +4,7 @@ import { animateValue } from "../../motion/animate";
 import type { AnimationHandle } from "../../motion/animate";
 import { easeInCubic, easeOutCubic } from "../../motion/math";
 import { TILE_MOTION } from "../../motion/tokens";
+import { scheduleTileUpdate } from "../../motion/tileScheduler";
 import { useTileActivity } from "./useTileActivity";
 import { useReducedMotion } from "../../motion/useReducedMotion";
 
@@ -50,6 +51,7 @@ export function MosaicFrames({ pool, paused = false }: { pool: ReactNode[]; paus
   const reducedMotion = useReducedMotion();
   const innerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const flipsRef = useRef<(AnimationHandle | null)[]>([]);
+  const hasUpdatedRef = useRef(false);
   // Mirror cells so the scheduler always reads the current assignment, not a
   // stale closure value.
   const cellsRef = useRef(cells);
@@ -64,7 +66,7 @@ export function MosaicFrames({ pool, paused = false }: { pool: ReactNode[]; paus
     // Need spare covers to rotate; a fully-shown pool stays still.
     if (images.length <= cellCount || paused || !active || reducedMotion) return undefined;
     let cancelled = false;
-    let timer: number | undefined;
+    let cancelSchedule: (() => void) | undefined;
 
     const setAngle = (cellIndex: number, value: number) => {
       innerRefs.current[cellIndex]?.style.setProperty("--cell-flip", `${value.toFixed(2)}deg`);
@@ -81,9 +83,9 @@ export function MosaicFrames({ pool, paused = false }: { pool: ReactNode[]; paus
 
     // Single-cell card flip: edge-on, swap content at the apex, continue from
     // the opposite edge so the motion reads as one continuous turn.
-    const flipCell = (cellIndex: number, poolIndex: number) => {
+    const flipCell = (cellIndex: number, poolIndex: number, done: () => void) => {
       const inner = innerRefs.current[cellIndex];
-      if (!inner || flipsRef.current[cellIndex]) return;
+      if (!inner || flipsRef.current[cellIndex]) { done(); return; }
       // Promote the cell only for the flip's duration — a permanent
       // will-change on every cell keeps dozens of idle layers alive.
       inner.style.willChange = "transform";
@@ -105,6 +107,7 @@ export function MosaicFrames({ pool, paused = false }: { pool: ReactNode[]; paus
             onComplete: () => {
               flipsRef.current[cellIndex] = null;
               inner.style.willChange = "";
+              done();
             },
           });
           flipsRef.current[cellIndex] = secondHalf;
@@ -132,17 +135,26 @@ export function MosaicFrames({ pool, paused = false }: { pool: ReactNode[]; paus
       return { cellIndex, poolIndex };
     };
 
-    const tick = () => {
+    const schedule = (first = false) => {
+      cancelSchedule = scheduleTileUpdate(randomDelay(
+        first ? TILE_MOTION.firstMin : TILE_MOTION.cellMin,
+        first ? TILE_MOTION.firstMax : TILE_MOTION.cellMax,
+      ), tick);
+    };
+    const tick = (done: () => void) => {
       if (cancelled) return;
       const move = chooseMove();
-      if (move) flipCell(move.cellIndex, move.poolIndex);
-      timer = window.setTimeout(tick, randomDelay(TILE_MOTION.cellMin, TILE_MOTION.cellMax));
+      const finish = () => { done(); if (!cancelled) schedule(); };
+      if (move) {
+        hasUpdatedRef.current = true;
+        flipCell(move.cellIndex, move.poolIndex, finish);
+      } else finish();
     };
 
-    timer = window.setTimeout(tick, randomDelay(TILE_MOTION.firstMin, TILE_MOTION.firstMax));
+    schedule(!hasUpdatedRef.current);
     return () => {
       cancelled = true;
-      if (timer !== undefined) window.clearTimeout(timer);
+      cancelSchedule?.();
       for (const handle of flipsRef.current) handle?.cancel();
       flipsRef.current = [];
       for (const inner of innerRefs.current) {

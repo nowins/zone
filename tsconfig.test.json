@@ -58,6 +58,7 @@
     "src/utils/metadata.ts",
     "src/motion/math.ts",
     "src/motion/tokens.ts",
+    "src/motion/tileScheduler.ts",
     "src/motion/spring.ts",
     "src/motion/tween.ts",
     "src/motion/animate.ts",

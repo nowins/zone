@@ -17,6 +17,7 @@ function environment() {
   for (const key of ["window", "document", "Node", "Element", "HTMLElement", "getComputedStyle"]) globalThis[key] = dom.window[key];
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   let now = 0, id = 0, hidden = false;
+  Object.defineProperty(window.performance, "now", { value: () => now });
   const timers = new Map(), frames = [], observers = new Set(), listeners = new Set();
   const media = { matches: false, addEventListener: (_, fn) => listeners.add(fn), removeEventListener: (_, fn) => listeners.delete(fn) };
   window.matchMedia = () => media;
@@ -211,4 +212,39 @@ test("pointer reordering commits only on an inside release and cancels cleanly",
     await start();
   } finally { await env.cleanup(); }
   assert.equal(document.querySelector(".quick-pin-drag-ghost"), null, "unmount removes the floating preview");
+});
+
+test("a wall of live tiles and mosaics never updates in lockstep, even with identical random delays", async () => {
+  const env = environment();
+  const random = Math.random;
+  Math.random = () => 0;
+  const pool = Array.from({ length: 9 }, (_, i) => React.createElement("span", { key: i }, i));
+  try {
+    await env.render(React.createElement("div", null,
+      ...Array.from({ length: 6 }, (_, key) => React.createElement(FlipTile, { key, variant: "peek", front: "正面", back: "更新" })),
+      React.createElement(MosaicFrames, { pool })));
+    await env.intersect(true);
+    assert.equal(env.timers.size, 1, "one shared wakeup serves all pending tiles");
+    await env.advance(17_000);
+    assert.equal(document.querySelectorAll(".is-back").length, 0, "the initial wall rests");
+    let previous = null, reveals = 0;
+    for (let i = 0; i < 240; i++) {
+      await env.advance(500);
+      const back = document.querySelectorAll(".tile.is-back");
+      assert.ok(back.length <= 1, "a readable dwell never overlaps another tile");
+      const moving = [...document.querySelectorAll(".tile-face-back")].filter(el => !["", "100.00%"].includes(el.style.getPropertyValue("--tile-peek")));
+      const mosaicMoving = [...document.querySelectorAll(".tile-mosaic-cell-inner")].some(el => el.style.willChange === "transform");
+      assert.ok(!(back.length && mosaicMoving), "cover replacement shares the reveal queue");
+      assert.ok(moving.length + Number(mosaicMoving) <= 1, "reveal and return animations never overlap another tile");
+      const current = back[0] ?? null;
+      if (current && current !== previous) reveals++;
+      previous = current;
+    }
+    assert.ok(reveals >= 6, "the queue makes progress for the whole wall");
+    await env.hide(true);
+    assert.equal(env.timers.size, 0, "hiding cancels queued and running work");
+    await env.hide(false);
+    await env.advance(17_000);
+    assert.equal(document.querySelectorAll(".is-back").length, 0, "resuming does not replay a short initial burst");
+  } finally { Math.random = random; await env.cleanup(); }
 });

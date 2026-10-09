@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { animateValue } from "../../motion/animate";
 import type { AnimationHandle } from "../../motion/animate";
 import { TILE_MOTION } from "../../motion/tokens";
+import { scheduleTileUpdate } from "../../motion/tileScheduler";
 import { cubicBezier } from "../../motion/tween";
 import { easeInCubic as accelerate, easeOutCubic as decelerate } from "../../motion/math";
 import { useTileActivity } from "./useTileActivity";
@@ -50,7 +51,7 @@ export function FlipTile({
   disabled?: boolean;
   /** When false the tile never flips on its own (nothing live to reveal). */
   live?: boolean;
-  /** Edit-mode pins render as a div so the article can own HTML5 drag. */
+  /** Edit-mode pins render as a div so the article can own pointer dragging. */
   asButton?: boolean;
 }) {
   const [showBack, setShowBack] = useState(false);
@@ -60,13 +61,14 @@ export function FlipTile({
   const active = useTileActivity(surfaceRef, asButton);
   const revealingRef = useRef(false);
   const animationRef = useRef<AnimationHandle | null>(null);
+  const hasUpdatedRef = useRef(false);
 
   useEffect(() => {
     if (paused || !live || !active || reducedMotion) {
       setShowBack(false);
       return undefined;
     }
-    let timer: number | undefined;
+    let cancelSchedule: (() => void) | undefined;
     let holdTimer: number | undefined;
     let cancelled = false;
     // Direction state lives in the closure, not React state: flipping state
@@ -86,7 +88,7 @@ export function FlipTile({
 
     const schedule = (first = false) => {
       if (cancelled) return;
-      timer = window.setTimeout(runCycle, nextDelay(first));
+      cancelSchedule = scheduleTileUpdate(nextDelay(first), runCycle);
     };
 
     const finishTo = (shown: boolean, onDone: () => void) => {
@@ -137,12 +139,14 @@ export function FlipTile({
       });
     };
 
-    const runCycle = () => {
+    const runCycle = (done: () => void) => {
       if (cancelled || revealingRef.current) {
+        done();
         schedule();
         return;
       }
       revealingRef.current = true;
+      hasUpdatedRef.current = true;
       // One full cycle: slide up, hold so the live line is readable, slide
       // away, then schedule the next cycle.
       revealTo(variant === "flip" ? 180 : 1, () => {
@@ -150,17 +154,18 @@ export function FlipTile({
           if (cancelled) return;
           revealTo(0, () => {
             revealingRef.current = false;
+            done();
             schedule();
           });
         }, TILE_MOTION.hold);
       });
     };
 
-    schedule(true);
+    schedule(!hasUpdatedRef.current);
     return () => {
       cancelled = true;
       revealingRef.current = false;
-      if (timer !== undefined) window.clearTimeout(timer);
+      cancelSchedule?.();
       if (holdTimer !== undefined) window.clearTimeout(holdTimer);
       animationRef.current?.cancel();
       animationRef.current = null;

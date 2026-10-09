@@ -170,8 +170,8 @@ test("flat Metro baseline: no acrylic glass variant, sharp edges", () => {
 
 test("tiles flip sparingly and only when there is live content to reveal", () => {
   // Slow, WP-like cadence (tens of seconds), not a constant blink.
-  assert.ok(tokenSource.includes("intervalMin: 24_000"));
-  assert.ok(tokenSource.includes("intervalMax: 48_000"));
+  assert.ok(tokenSource.includes("intervalMin: 45_000"));
+  assert.ok(tokenSource.includes("intervalMax: 90_000"));
   // A live gate: tiles with nothing to reveal never flip on their own.
   assert.ok(flipSource.includes("live?: boolean"));
   assert.ok(/if \(paused \|\| !live \|\| !active \|\| reducedMotion\) \{[\s\S]*?return undefined;/.test(flipSource));
@@ -258,7 +258,7 @@ test("mosaic layout tiers by pool size and never duplicates a cover", () => {
   assert.ok(!/\[a, current\[b\]\],\s*\[b, current\[a\]\]/s.test(mosaicSource), "must not exchange two cells as a pair");
   assert.ok(mosaicSource.includes("images.length <= cellCount"), "must rest when every cover is already shown");
   // Cadence is sparse, not screensaver-fast.
-  assert.ok(tokenSource.includes("cellMin: 8_000"), "min flip interval should be multi-second");
+  assert.ok(tokenSource.includes("cellMin: 24_000"), "cover replacements should wait tens of seconds");
   // Empty cells / initials placeholders stay gone — capacity matches pool.
   assert.ok(!mosaicSource.includes("placeholder"), "initials placeholders must be gone");
   // will-change is JS-managed for the flip's duration, not a permanent layer

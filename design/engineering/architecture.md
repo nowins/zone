@@ -45,7 +45,7 @@
 - `src/views/`：页面级视图。
   - 播客页与设置页通过 React `lazy` / `Suspense` 按需加载，等待时使用 `MetroLoader`；React 运行时独立分块。主音频、播放 hook 和音乐正在播放页保持挂载与同步入口，避免加载边界打断播放或共享封面动效。
   - `CompactPlayerView.tsx`：Zune HD 风格的小屏界面，消费已有收藏索引、列表解析和音乐／播客播放动作，内部浏览独立于正常页面历史；样式在 `styles/compact-player.css`，功能范围与验证见 [组件规范](../component-guidelines.md)。
-  - `QuickplayView.tsx`：Zune quickplay 首页，解析固定内容；`components/tiles/QuickplayPinBoard.tsx` 负责 WP 风格磁贴编辑、重排与外观，`usePinDrag.ts` 通过指针捕获管理拖动、跟随预览与取消，不依赖 WebView2 的 HTML 拖放；`useTileActivity.ts` 管理动态可见性。
+  - `QuickplayView.tsx`：Zune quickplay 首页，解析固定内容；`components/tiles/QuickplayPinBoard.tsx` 负责 WP 风格磁贴编辑、重排与外观，`usePinDrag.ts` 通过指针捕获管理拖动、跟随预览与取消，不依赖 WebView2 的 HTML 拖放；`useTileActivity.ts` 管理动态可见性，`motion/tileScheduler.ts` 串行调度翻面及封面墙更新。
   - `src/hooks/useQuickplayPanorama.ts`：首页视口滚动、短滚动条显隐与拖拽、背景视差、鼠标拖动、滚轮／键盘归属与返回位置恢复；`src/utils/quickplayPanorama.ts` 提供键盘分组边界和输入意图的纯函数。背景与滚动条位置由 DOM ref 更新，React 仅接收是否存在横向溢出。
   - `CollectionView.tsx` / `CollectionEntityView.tsx`：收藏索引／搜索／详情外壳及歌曲、专辑、艺术家对象详情，关系通过 `CollectionContext` 的统一入口跳转。
   - `LibraryView.tsx`：歌曲、专辑、艺术家索引与播放列表的展示分派；共享 `CollectionTrackList` 与 `CollectionAlbumTile`。
