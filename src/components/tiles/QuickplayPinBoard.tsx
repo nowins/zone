@@ -11,6 +11,7 @@ import { MOTION_DURATIONS, TILE_MOTION } from "../../motion/tokens";
 import { MOTION_TWEENS } from "../../motion/tween";
 import { useReducedMotion } from "../../motion/useReducedMotion";
 import { HOME_PIN_SIZES, HOME_PIN_TONES, moveHomePin, nextHomePinSize, stepHomePinSize } from "../../utils/homePins";
+import { resolveHomePinPlacement, type PinPlacement } from "../../utils/homePinLayout";
 import { FlipTile } from "./FlipTile";
 import { MosaicFrames } from "./MosaicTile";
 import { usePinDrag } from "./usePinDrag";
@@ -34,7 +35,7 @@ export type ResolvedPin = {
 const SIZE_LABELS: Record<HomePinSize, string> = { small: "小", medium: "中", wide: "宽", large: "大" };
 const KIND_LABELS = { track: "歌曲", album: "专辑", artist: "艺术家", playlist: "播放列表", podcastFeed: "播客节目" };
 const KIND_ICONS = { track: Music2, album: Disc3, artist: UserRound, playlist: ListMusic, podcastFeed: Podcast };
-type Placement = { target: string; after: boolean };
+type Placement = PinPlacement;
 
 export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollection, onMovePin, onShiftPin, onResizePin, onCustomizePin, onUnpin, onActivate, onContextMenu }: {
   items: ResolvedPin[];
@@ -59,7 +60,6 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
   const suppressClickRef = useRef(false);
   const focusPinRef = useRef(false);
   const dragRef = useRef<{ id: string; placement: Placement | null } | null>(null);
-  const lastDragPoint = useRef({ x: -1, y: -1 });
   const rectsRef = useRef(new Map<string, DOMRect>());
   const animationsRef = useRef<AnimationHandle[]>([]);
   const reducedMotion = useReducedMotion();
@@ -204,7 +204,6 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
     onStart: id => {
       clearHold();
       dragRef.current = { id, placement: null };
-      lastDragPoint.current = { x: -1, y: -1 };
       setSelectedId(id);
       setDraggedId(id);
     },
@@ -219,7 +218,7 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
       focusPinRef.current = true;
     },
   });
-  function previewDrop(x: number, y: number) {
+  function previewDrop(x: number, y: number, offset: { x: number; y: number }) {
     const drag = dragRef.current;
     if (!drag) return;
     const viewport = gridRef.current?.closest<HTMLElement>(".quickplay-viewport");
@@ -228,19 +227,23 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
       if (x > bounds.right - 48) viewport.scrollLeft += 18;
       else if (x < bounds.left + 48) viewport.scrollLeft -= 18;
     }
-    if (Math.abs(x - lastDragPoint.current.x) + Math.abs(y - lastDragPoint.current.y) < 8) return;
-    lastDragPoint.current = { x, y };
-    const element = document.elementFromPoint(x, y)?.closest<HTMLElement>(".quick-pin");
     const grid = gridRef.current;
-    if (element && !grid?.contains(element)) return;
-    const target = element ? items.find(item => item.pin.id === element.dataset.pinId) : items[items.length - 1];
-    if (!target || target.pin.id === drag.id) return;
-    const bounds = (element ?? grid)?.getBoundingClientRect();
-    if (!bounds || (!element && (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom))) return;
-    const after = !element || y > bounds.top + bounds.height / 2;
-    if (drag.placement?.target === target.pin.id && drag.placement.after === after) return;
+    if (!grid) return;
+    const bounds = grid.getBoundingClientRect();
+    if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return;
+    const style = getComputedStyle(grid);
+    const tracks = style.gridTemplateRows.split(" ").map(Number.parseFloat).filter(Number.isFinite);
+    const unit = Number.parseFloat(style.gridAutoColumns);
+    if (!tracks.length || !unit) return;
+    const columnStep = unit + (Number.parseFloat(style.columnGap) || 0);
+    const rowStep = tracks[0] + (Number.parseFloat(style.rowGap) || 0);
+    const placement = resolveHomePinPlacement(items.map(item => ({ id: item.pin.id, size: item.size })), drag.id,
+      (x - offset.x - bounds.left - (Number.parseFloat(style.paddingLeft) || 0)) / columnStep,
+      (y - offset.y - bounds.top - (Number.parseFloat(style.paddingTop) || 0)) / rowStep,
+      tracks.length);
+    if (drag.placement?.target === placement?.target && drag.placement?.after === placement?.after) return;
     captureLayout();
-    drag.placement = { target: target.pin.id, after };
+    drag.placement = placement;
     setPlacement(drag.placement);
   }
   const customization = items.find(item => item.pin.id === customizingId);

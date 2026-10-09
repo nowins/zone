@@ -147,9 +147,10 @@ test("quickplay pins are user-resizable and freely placeable in edit mode", () =
   assert.ok(/调整为/.test(quickplaySource), "resize tooltip must be localized");
   // Keyboard parity: Alt+Up/Down steps sizes (Alt+Left/Right moves).
   assert.ok(quickplaySource.includes("stepHomePinSize"));
-  // Drop position picks the insertion side; the grid background appends.
+  // Drop position resolves reachable mixed-size slots, including grid holes.
   assert.ok(quickplaySource.includes("placement.after"));
   assert.ok(quickplaySource.includes("onMove: previewDrop"));
+  assert.ok(quickplaySource.includes("resolveHomePinPlacement"));
 });
 
 test("entrance is a turnstile pivot from the bottom edge, staggered, flash-free", () => {

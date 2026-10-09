@@ -189,6 +189,7 @@ test("pointer reordering commits only on an inside release and cancels cleanly",
     source = grid.querySelector('[data-pin-id="one"]');
     target = grid.querySelector('[data-pin-id="two"]');
     grid.getBoundingClientRect = () => rect(0, 300);
+    Object.assign(grid.style, { gridTemplateRows: "50px 50px 50px 50px 50px 50px", gridAutoColumns: "50px" });
     source.getBoundingClientRect = () => rect(0, 100);
     target.getBoundingClientRect = () => rect(100, 100);
     document.elementFromPoint = () => target;
@@ -247,4 +248,41 @@ test("a wall of live tiles and mosaics never updates in lockstep, even with iden
     await env.advance(17_000);
     assert.equal(document.querySelectorAll(".is-back").length, 0, "resuming does not replay a short initial burst");
   } finally { Math.random = random; await env.cleanup(); }
+});
+
+test("pointer dragging into an empty lower-left slot previews, commits and can return to its starting position", async () => {
+  const env = environment();
+  const moves = [];
+  const items = ["artist", "album", "mosaic", "podcast", "drag"].map((id, index) => ({
+    pin: { id, kind: "track", targetId: id, createdAt: 0 }, title: id, subtitle: "艺术家", tracks: [], artPaths: [],
+    payload: null, size: index === 2 ? "large" : "wide", isSmart: false, liveLine: "今天听过",
+  }));
+  const props = { items, animateEntrance: false, onActivate() {}, onOpenCollection() {}, onContextMenu() {}, onUnpin() {},
+    onResizePin() {}, onShiftPin() {}, onCustomizePin() {}, onMovePin: (...args) => moves.push(args) };
+  const rect = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height });
+  const pointer = async (element, type, x, y) => act(async () => element.dispatchEvent(new window.MouseEvent(type,
+    { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y })));
+  try {
+    await env.render(React.createElement(QuickplayPinBoard, props));
+    await act(async () => document.querySelector(".quick-pins-edit").click());
+    const grid = document.querySelector(".quick-pins-grid");
+    Object.assign(grid.style, { gridTemplateRows: "50px 50px 50px 50px 50px 50px", gridAutoColumns: "50px" });
+    grid.getBoundingClientRect = () => rect(0, 0, 600, 300);
+    const positions = [[0, 0], [0, 100], [200, 0], [200, 200], [400, 0]];
+    [...grid.children].forEach((element, index) => { element.getBoundingClientRect = () => rect(...positions[index], 200, index === 2 ? 200 : 100); });
+    const source = grid.querySelector('[data-pin-id="drag"]');
+    await pointer(source, "pointerdown", 500, 50);
+    await pointer(grid, "pointermove", 100, 250);
+    assert.deepEqual([...grid.children].map(el => el.dataset.pinId), ["artist", "album", "drag", "mosaic", "podcast"]);
+    assert.equal(moves.length, 0);
+    await pointer(grid, "pointerup", 100, 250);
+    assert.deepEqual(moves, [["drag", "mosaic", false]], "empty slot saves its actual insertion");
+    assert.equal(document.activeElement, source);
+    await pointer(source, "pointerdown", 500, 50);
+    await pointer(grid, "pointermove", 100, 250);
+    await pointer(grid, "pointermove", 500, 50);
+    assert.deepEqual([...grid.children].map(el => el.dataset.pinId), items.map(item => item.pin.id));
+    await pointer(grid, "pointerup", 500, 50);
+    assert.equal(moves.length, 1, "returning to the start does not write another order");
+  } finally { await env.cleanup(); }
 });

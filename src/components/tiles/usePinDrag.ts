@@ -14,7 +14,7 @@ type DragSession = {
 /** Pointer capture keeps reordering inside the app, including in WebView2. */
 export function usePinDrag(gridRef: RefObject<HTMLElement | null>, callbacks: {
   onStart: (id: string) => void;
-  onMove: (x: number, y: number) => void;
+  onMove: (x: number, y: number, offset: { x: number; y: number }) => void;
   onEnd: (commit: boolean) => void;
   ghostClassName?: string;
 }) {
@@ -83,12 +83,12 @@ export function usePinDrag(gridRef: RefObject<HTMLElement | null>, callbacks: {
     }
     // Direct manipulation follows the pointer without a React render per frame.
     drag.ghost.style.transform = `translate3d(${event.clientX - drag.offsetX}px, ${event.clientY - drag.offsetY}px, 0)`;
-    latest.current.onMove(event.clientX, event.clientY);
+    latest.current.onMove(event.clientX, event.clientY, { x: drag.offsetX, y: drag.offsetY });
   }
 
   function release(event: PointerEvent<HTMLElement>) {
     if (session.current?.pointerId !== event.pointerId) return;
-    if (session.current.ghost) latest.current.onMove(event.clientX, event.clientY);
+    if (session.current.ghost) latest.current.onMove(event.clientX, event.clientY, { x: session.current.offsetX, y: session.current.offsetY });
     const grid = gridRef.current?.getBoundingClientRect();
     const viewport = gridRef.current?.closest(".quickplay-viewport")?.getBoundingClientRect();
     const within = (rect?: DOMRect) => !rect || (event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom);

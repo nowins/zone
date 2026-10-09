@@ -164,7 +164,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - `tests/reducedMotion.test.mjs`：reduced-motion 下退出淡出与 JS 生命周期的同步守卫。
 - `tests/lyricsSettingsUi.test.mjs` / `tests/lyricsDisplay.test.mjs`：歌词设置面板的 Presence 接线、显示偏好持久化和字号归一化。
 - CSS/结构守卫（`nowPlayingCss.test.mjs` 等）会因类名/编排变化失败，按新结构同步，不放宽语义。
-- `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、内容停留、多磁贴与封面墙串行更新、隐藏／编辑／reduced-motion 停转与恢复，以及长按、键盘和外观设置行为；`tests/tileScheduler.test.mjs` 验证同刻就绪、完整周期互斥、静置间隔及取消清理。
+- `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、内容停留、多磁贴与封面墙串行更新、隐藏／编辑／reduced-motion 停转与恢复，以及长按、混合尺寸空位拖动、键盘和外观设置行为；`tests/tileScheduler.test.mjs` 验证同刻就绪、完整周期互斥、静置间隔及取消清理。
 - `tests/panoramaBehavior.test.mjs`：首页分组与视差边界、滚轮归属，以及真实 hook 在 StrictMode 下的滚轮接力、键盘打断、滚动条显隐／拖拽、滚动恢复、窗口变化、reduced-motion 与隐藏／卸载清理。
 - `tests/collectionPivot.test.mjs`：分类／详情／返回方向、可见区域分组与数量上限、有界条目测量、输入从当前帧收稳与恢复滚动事件的区分，以及真实导航／面板动效 hook 的 StrictMode、快速连切和 reduced-motion 清理。
 - `tests/browseTransition.test.mjs`：收藏、播客和 quickplay 共用控制器、静止导航与背景、标题及封面的独立显现、播客根滚动恢复和稳定媒体身份、有界样式读取、面板接管及隐藏／reduced-motion 清理。
