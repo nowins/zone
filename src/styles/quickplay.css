@@ -199,22 +199,28 @@
 .quick-pin.small { grid-column: span 1; grid-row: span 1; }
 .quick-pin.wide { grid-column: span 4; }
 .quick-pin.large { grid-column: span 4; grid-row: span 4; }
-.quick-pin > .tile { width: 100%; height: 100%; }
+.quick-pin-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
+  transition: transform var(--motion-tile-lift) var(--motion-ease-navigation),
+    opacity var(--motion-tile-lift) var(--motion-ease-navigation);
+}
+.quick-pin-surface > .tile { width: 100%; height: 100%; }
 .quick-pins-grid.editing .quick-pin { cursor: grab; }
 .quick-pins-grid.editing { touch-action: none; user-select: none; }
-.quick-pins-grid.editing .quick-pin:not(.selected) > .tile { opacity: 0.72; }
-.quick-pins-grid.editing .quick-pin > .tile { pointer-events: none; }
-.quick-pin.selected { z-index: 3; outline: 2px solid #fff; outline-offset: 2px; }
-.quick-pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.quick-pin.dragging { cursor: grabbing; outline: 2px dashed var(--accent); outline-offset: -2px; }
-.quick-pin.dragging > .tile { opacity: 0.18; }
-.quick-pin.dragging::after {
-  content: "";
-  position: absolute;
-  inset: 2px;
-  background: rgba(236, 0, 140, 0.12);
-  pointer-events: none;
+.quick-pins-grid.editing .quick-pin:not(.selected) .quick-pin-surface {
+  opacity: var(--tile-rest-opacity);
+  transform: scale(var(--tile-rest-scale));
 }
+.quick-pins-grid.editing .quick-pin > .quick-pin-surface { pointer-events: none; }
+.quick-pin.selected { z-index: 3; }
+.quick-pin.selected .quick-pin-surface { transform: scale(var(--tile-edit-scale)); }
+.quick-pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.quick-pin.dragging { cursor: grabbing; }
+.quick-pin.dragging .quick-pin-surface,
+.quick-pin.dragging .quick-pin-edit-tools { visibility: hidden; }
 .quick-pin.quick-pin-drag-ghost {
   position: fixed;
   left: 0;
@@ -222,9 +228,11 @@
   z-index: 90;
   pointer-events: none;
   transition: none;
-  outline: 2px solid #fff;
-  outline-offset: 2px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.quick-pin.quick-pin-drag-ghost .quick-pin-surface {
+  opacity: 1;
+  transform: scale(var(--tile-edit-scale));
+  transition: none;
 }
 
 .quick-album > button {
@@ -291,9 +299,7 @@
   pointer-events: none;
 }
 
-/* ...but under the peek variant that z-index would float the band above the
-   rising back panel. z-index auto lets the back face win by DOM order, so
-   the panel wipes over the whole front like a real WP8 peek. */
+/* Keep the front band within its moving panel's stacking order. */
 .tile-flip-v-peek .quick-pin-front-band {
   z-index: auto;
 }
@@ -352,7 +358,16 @@
 .quick-pin-badge { position: absolute; top: 3px; right: 4px; padding: 1px 3px; font-size: 11px; background: #111; color: #fff; }
 .quick-pin .tile-back-kicker { font-size: 10px; letter-spacing: 0; line-height: 1.2; margin-bottom: 4px; }
 .quick-pin .tile-face-back strong { font-size: 15px; line-height: 1.2; flex-shrink: 0; }
-.quick-pin .tile-face-back { justify-content: center; padding: 9px 10px; }
+.quick-pin .tile-face-back { justify-content: flex-end; padding: 9px 10px; }
+.quick-pin-back-art { position: absolute; inset: 0; pointer-events: none; }
+.quick-pin-back-art > .cover { width: 100%; height: 100%; aspect-ratio: auto; margin: 0; outline: 0; }
+.quick-pin-back-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8, 5, 9, 0.3), rgba(8, 5, 9, 0.86));
+}
+.quick-pin-back-copy { position: relative; min-width: 0; display: flex; flex-direction: column; }
 .quick-pin .tile-back-live { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
 .quick-pin .tile-face-back small { color: rgba(255,255,255,0.75); }
 .quick-pin.large .tile-face-back strong { font-size: 24px; }

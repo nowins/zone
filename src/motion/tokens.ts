@@ -40,7 +40,13 @@ export const TILE_MOTION = {
   intervalMax: 90_000,
   ambientGap: 4_000,
   hold: 5_000,
-  peek: 600,
+  peek: 2_000,
+  lift: 240,
+  reflow: 400,
+  settle: 500,
+  editScale: 1.05,
+  restScale: 0.95,
+  restOpacity: 0.52,
   flipHalf: 200,
   cellHalf: 280,
   cellMin: 24_000,
@@ -48,7 +54,7 @@ export const TILE_MOTION = {
   stagger: 46,
   staggerMax: 460,
   entranceWindow: 900,
-  peekEasing: [0.22, 0, 0.05, 1],
+  peekEasing: [0.1, 0.9, 0.2, 1],
 } as const;
 
 /** Panorama depth follows real scroll distance; no idle movement. */
@@ -152,6 +158,12 @@ function cubicBezierCss(points: readonly [number, number, number, number]): stri
  */
 export function applyMotionTokens(root: HTMLElement = document.documentElement): void {
   const { style } = root;
+  for (const name of ["lift", "reflow", "settle"] as const) {
+    style.setProperty(`--motion-tile-${name}`, `${TILE_MOTION[name]}ms`);
+  }
+  style.setProperty("--tile-edit-scale", `${TILE_MOTION.editScale}`);
+  style.setProperty("--tile-rest-scale", `${TILE_MOTION.restScale}`);
+  style.setProperty("--tile-rest-opacity", `${TILE_MOTION.restOpacity}`);
   style.setProperty("--motion-browse", `${BROWSE_MOTION.duration}ms`);
   style.setProperty("--motion-browse-reveal", `${BROWSE_MOTION.reveal}ms`);
   style.setProperty("--motion-browse-gutter", `${BROWSE_MOTION.drift}px`);

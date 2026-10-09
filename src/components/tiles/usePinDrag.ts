@@ -15,7 +15,7 @@ type DragSession = {
 export function usePinDrag(gridRef: RefObject<HTMLElement | null>, callbacks: {
   onStart: (id: string) => void;
   onMove: (x: number, y: number, offset: { x: number; y: number }) => void;
-  onEnd: (commit: boolean) => void;
+  onEnd: (commit: boolean, releaseRect?: DOMRect) => void;
   ghostClassName?: string;
 }) {
   const session = useRef<DragSession | null>(null);
@@ -26,10 +26,11 @@ export function usePinDrag(gridRef: RefObject<HTMLElement | null>, callbacks: {
     const drag = session.current;
     session.current = null;
     if (!drag) return;
+    const releaseRect = commit ? drag.ghost?.getBoundingClientRect() : undefined;
     drag.ghost?.remove();
     const grid = gridRef.current;
     if (grid?.hasPointerCapture?.(drag.pointerId)) grid.releasePointerCapture(drag.pointerId);
-    if (drag.ghost) latest.current.onEnd(commit);
+    if (drag.ghost) latest.current.onEnd(commit, releaseRect);
   }
 
   useEffect(() => {

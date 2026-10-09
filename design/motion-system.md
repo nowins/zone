@@ -53,7 +53,7 @@ src/motion/*.ts               内核：弹簧/补间/动画器/FLIP/Presence/页
 | `--motion-stagger-step/max` | 24/144ms | 列表错峰步进与上限 |
 | `--motion-feather-scale` | 0.96 | feather 入场起始缩放 |
 
-TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`MOTION_STAGGER`、`SPRING_PRESETS`（`snappy` 近临界阻尼 / `gentle` 页面级 / `bouncy` 约 20% 过冲）。其中 `snappy` 是现役生产预设（FLIP、quickplay 滚轮）；`MOTION_TWEENS.standard` 用于磁贴重排／尺寸调整的 FLIP 补间；`gentle` / `bouncy` 仍是**备料预设**。
+TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`MOTION_STAGGER`、`SPRING_PRESETS`（`snappy` 近临界阻尼 / `gentle` 页面级 / `bouncy` 约 20% 过冲）。其中 `snappy` 是现役生产预设（共享封面 FLIP、quickplay 滚轮）；磁贴重排／尺寸调整的 FLIP 使用 `TILE_MOTION` 时长与 navigation 曲线；`gentle` / `bouncy` 仍是**备料预设**。
 
 通用短时长原则用于交互反馈，不给分层编排、悬停等待、循环加载或音频 DSP 包络套统一上限。正在播放入场和 Canvas 收敛使用 `tokens.ts` 中的 `NOW_PLAYING_MOTION`，不要在组件中复制时长。
 
@@ -69,7 +69,9 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 收藏的纵向滚动区与首页内部纵向列表通过 `useWheelScroll` 接入同一弹簧。`wheelScroll.ts` 使用信号启发式：行／页单位或纯纵向、整数且至少 `SCROLL_MOTION.coarseDelta` 的像素步进接续到累积目标，当前阈值 50px；这不是硬件识别。细小、带小数、斜向、Shift 与缩放输入保留原有归属。滚动边界保持列表归属，不启动空转；原生滚动定位、拖滚动条、键盘、指针按下、窗口调整、隐藏和卸载立即停止接续，reduced-motion 下保留原生滚动。滚动位置逐帧写 DOM，不用 React state。
 
-其他已登记的当前编排：歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、`TILE_MOTION` 中的 Lumia/Metro 校准组（`FlipTile` peek 600ms 与其 MetroSlideIn 曲线 `(0.22,0,0.05,1)`、flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。收藏页 `.album-play` 在封面项悬停或键盘聚焦时用 press 档淡入，无额外等待。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
+`FlipTile` 的 peek 让正反两块完整面板沿同一进度上下滑动，以 2000ms 和 `(0.1,0.9,0.2,1)` 减速收稳；封面和文字一起移动，背面沿用封面或所选纯色。编辑态通过稳定的 `.quick-pin-surface` 在 240ms 内将选中磁贴放大至 1.05，其余磁贴缩至 0.95、透明度降至 0.52，播客更新角标跟随同一表面。重排／尺寸调整使用 400ms FLIP；拖动中只显示浮起的磁贴，松手后捕获浮层矩形，由真实磁贴从该位置用 500ms 落位。再次拖动先捕获当前动画矩形，避免从旧终点重启；键盘焦点仍有独立描边。reduced-motion 下取消位移和缩放，直接落位，保留选中与退暗提示。
+
+其他已登记的当前编排：歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、`TILE_MOTION` 中的 Lumia/Metro 校准组（flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。收藏页 `.album-play` 在封面项悬停或键盘聚焦时用 press 档淡入，无额外等待。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
 
 ## 内核 API（`src/motion/`）
 
@@ -164,7 +166,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - `tests/reducedMotion.test.mjs`：reduced-motion 下退出淡出与 JS 生命周期的同步守卫。
 - `tests/lyricsSettingsUi.test.mjs` / `tests/lyricsDisplay.test.mjs`：歌词设置面板的 Presence 接线、显示偏好持久化和字号归一化。
 - CSS/结构守卫（`nowPlayingCss.test.mjs` 等）会因类名/编排变化失败，按新结构同步，不放宽语义。
-- `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、内容停留、多磁贴与封面墙串行更新、隐藏／编辑／reduced-motion 停转与恢复，以及长按、混合尺寸空位拖动、键盘和外观设置行为；`tests/tileScheduler.test.mjs` 验证同刻就绪、完整周期互斥、静置间隔及取消清理。
+- `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、两块 peek 面板的连续位移、内容停留、多磁贴与封面墙串行更新、隐藏／编辑／reduced-motion 停转与恢复，以及长按、混合尺寸空位拖动、释放后接续落位、键盘和外观设置行为；`tests/tileScheduler.test.mjs` 验证同刻就绪、完整周期互斥、静置间隔及取消清理。
 - `tests/panoramaBehavior.test.mjs`：首页分组与视差边界、滚轮归属，以及真实 hook 在 StrictMode 下的滚轮接力、键盘打断、滚动条显隐／拖拽、滚动恢复、窗口变化、reduced-motion 与隐藏／卸载清理。
 - `tests/collectionPivot.test.mjs`：分类／详情／返回方向、可见区域分组与数量上限、有界条目测量、输入从当前帧收稳与恢复滚动事件的区分，以及真实导航／面板动效 hook 的 StrictMode、快速连切和 reduced-motion 清理。
 - `tests/browseTransition.test.mjs`：收藏、播客和 quickplay 共用控制器、静止导航与背景、标题及封面的独立显现、播客根滚动恢复和稳定媒体身份、有界样式读取、面板接管及隐藏／reduced-motion 清理。
@@ -190,5 +192,6 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 
 - [Zune 桌面前端负责人的项目记录](https://www.heysroons.com/projects/zune-music-player)说明其排版、媒体内容和运动属于同一体验；[同期实测](https://www.gsmarena.com/zune_software-review-539p2.php)记录 quickplay 通过大小、透明度和前后层次交接。Zone 保留自己的桌面布局及全景视差。
 - [WP 导航原始文档](https://learn.microsoft.com/en-us/archive/msdn-magazine/2011/april/msdn-magazine-mobile-matters-windows-phone-navigation-part-2-advanced-recipes)区分空间切换、共享元素连续性和浮层运动，强调成对交接；不把 Turnstile 强行套在每次列表浏览上。
+- [Windows 8.1: Live Tiles](https://www.youtube.com/watch?v=raMN90tJD0s)可观察图片与文字面板的滑动更新；[Windows Phone Holly Pinning Live Tiles 2013](https://www.youtube.com/watch?v=CaCFNRJRoNQ&t=7s)约 7–8.5 秒展示编辑态浮起、周围退暗及连续重排。`TILE_MOTION` 的 peek 2000ms、浮起 240ms、重排 400ms、落位 500ms 与缩放量参照 [WinJS 动画源码](https://github.com/winjs/winjs/blob/master/src/js/WinJS/Animations.js) 的 Peek、dragSource、Reflow；退暗与桌面交互经过 Zone 适配，并非从 WP 视频逐帧测得的原版参数。
 - [WinJS 动画源码](https://github.com/winjs/winjs/blob/master/src/js/WinJS/Animations.js)的 `enterPage` 将 1000ms 位移与 170ms 淡入分开，使用 `(0.1,0.9,0.2,1)` 缓动及有上限的错峰；`enterContent` 则独立采用 28px 纵向位移、550ms 收稳和 170ms 淡入。Zone 借鉴页面交接与内容进入分别编排的方式，单独调校首屏条目的行程、时长与错峰；这些值不是 Zune 原版的测量参数。
 - [Rune 的动效实验](https://github.com/Losses/rune)可作为现代复刻的编排参考，其 Turnstile 实验采用 600ms 及分组区间；它不能证明原版参数。

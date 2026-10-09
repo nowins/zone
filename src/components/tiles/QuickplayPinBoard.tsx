@@ -62,6 +62,7 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
   const dragRef = useRef<{ id: string; placement: Placement | null } | null>(null);
   const rectsRef = useRef(new Map<string, DOMRect>());
   const animationsRef = useRef<AnimationHandle[]>([]);
+  const releasedIdRef = useRef<string | null>(null);
   const reducedMotion = useReducedMotion();
   const reducedRef = useRef(reducedMotion);
   reducedRef.current = reducedMotion;
@@ -102,13 +103,15 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
       const sy = from.height / to.height;
       if (Math.abs(dx) + Math.abs(dy) + Math.abs(sx - 1) + Math.abs(sy - 1) < 0.01) continue;
       animationsRef.current.push(animateValue({ from: 0, to: 1,
-        tween: { durationMs: MOTION_DURATIONS.content, easing: MOTION_TWEENS.standard },
+        tween: { durationMs: element.dataset.pinId === releasedIdRef.current ? TILE_MOTION.settle : TILE_MOTION.reflow,
+          easing: MOTION_TWEENS.navigation },
         onUpdate: value => { element.style.transform = `translate(${dx * (1 - value)}px, ${dy * (1 - value)}px) scale(${sx + (1 - sx) * value}, ${sy + (1 - sy) * value})`; },
         onComplete: () => { element.style.transform = ""; },
       }));
     }
     rectsRef.current.clear();
-  }, [layoutKey, reducedMotion]);
+    releasedIdRef.current = null;
+  }, [layoutKey, reducedMotion, draggedId]);
 
   useEffect(() => {
     if (items.length === 0) { setEditing(false); setSelectedId(null); }
@@ -203,14 +206,19 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
   const pointerDrag = usePinDrag(gridRef, {
     onStart: id => {
       clearHold();
+      captureLayout();
       dragRef.current = { id, placement: null };
       setSelectedId(id);
       setDraggedId(id);
     },
     onMove: previewDrop,
-    onEnd: commit => {
+    onEnd: (commit, releaseRect) => {
       const drag = dragRef.current;
       captureLayout();
+      if (drag && releaseRect?.width && releaseRect.height) {
+        rectsRef.current.set(drag.id, releaseRect);
+        releasedIdRef.current = drag.id;
+      }
       if (commit && drag?.placement) onMovePin(drag.id, drag.placement.target, drag.placement.after);
       dragRef.current = null;
       setDraggedId(null);
@@ -295,6 +303,7 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
               else onContextMenu(event, item);
             }}
             onDragStart={event => event.preventDefault()}>
+            <div className="quick-pin-surface">
             <FlipTile size={item.size} variant={item.podcastFeed || item.size === "wide" ? "peek" : "flip"}
               className="quick-pin-tile" paused={editing} disabled={editing} asButton={!editing}
               live={item.pin.live !== false && item.size !== "small"}
@@ -302,12 +311,18 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
               onPress={() => { if (!editing) onActivate(item); }}
               front={<PinFront item={item} index={index} paused={editing || item.pin.live === false} />}
               back={<>
-                <span className="tile-back-kicker">{item.isSmart ? "智能歌单" : KIND_LABELS[item.pin.kind]}</span>
-                <strong className="quick-pin-back-headline">{item.podcastFeed?.latestEpisodeTitle ?? item.title}</strong>
-                <span className="tile-back-live">{[item.podcastRecency, item.liveLine].filter(Boolean).join(" · ")}</span>
-                {(item.pin.kind === "track" || item.pin.kind === "album") && <small>{item.subtitle}</small>}
+                {(!item.pin.tone || item.pin.tone === "cover") && <span className="quick-pin-back-art" aria-hidden="true">
+                  <Cover artPath={item.podcastFeed ? undefined : item.artPaths[0]} src={item.podcastArtwork} label={item.title} index={index} />
+                </span>}
+                <div className="quick-pin-back-copy">
+                  <span className="tile-back-kicker">{item.isSmart ? "智能歌单" : KIND_LABELS[item.pin.kind]}</span>
+                  <strong className="quick-pin-back-headline">{item.podcastFeed?.latestEpisodeTitle ?? item.title}</strong>
+                  <span className="tile-back-live">{[item.podcastRecency, item.liveLine].filter(Boolean).join(" · ")}</span>
+                  {(item.pin.kind === "track" || item.pin.kind === "album") && <small>{item.subtitle}</small>}
+                </div>
               </>} />
             {(item.podcastFeed?.newEpisodeCount??0)>0 && <span className="quick-pin-badge" aria-label={`${item.podcastFeed!.newEpisodeCount} 集更新`}>{item.podcastFeed!.newEpisodeCount!>99?"99+":item.podcastFeed!.newEpisodeCount}</span>}
+            </div>
             {editing && selectedId === item.pin.id && <div className="quick-pin-edit-tools">
               <button className="quick-pin-unpin" title={`取消固定 ${item.title}`} onClick={() => { captureLayout(); onUnpin(item); }}><PinOff size={15} /></button>
               <button className="quick-pin-resize" title={`调整为${SIZE_LABELS[nextHomePinSize(item.size)]}磁贴`}

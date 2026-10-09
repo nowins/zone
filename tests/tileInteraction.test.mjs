@@ -4,6 +4,7 @@ import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import { TILE_MOTION } from "../.tmp/visualizer-tests/motion/tokens.js";
 
 await build({ stdin: { contents: `export { QuickplayPinBoard } from './src/components/tiles/QuickplayPinBoard';
 export { FlipTile } from './src/components/tiles/FlipTile';
@@ -56,7 +57,7 @@ for (const variant of ["flip", "peek"]) test(`${variant} live content dwells, sl
     assert.equal(env.timers.size, 0, "offscreen tiles schedule no ambient work");
     await env.intersect(true);
     const first = [...env.timers.values()][0].at;
-    await env.advance(first + 800);
+    await env.advance(first + (variant === "peek" ? TILE_MOTION.peek : TILE_MOTION.flipHalf * 2) + 80);
     assert.ok(document.querySelector(".tile.is-back"), "first visible update arrives");
     await env.advance(3000);
     assert.ok(document.querySelector(".tile.is-back"), "information remains readable during its dwell");
@@ -80,6 +81,24 @@ for (const variant of ["flip", "peek"]) test(`${variant} live content dwells, sl
     await env.intersect(false);
     await env.reduce(false);
     assert.equal(env.timers.size, 0);
+  } finally { await env.cleanup(); }
+});
+
+test("peek carries both panels through the same offset and parks both on interruption", async () => {
+  const env = environment();
+  try {
+    await env.render(React.createElement(FlipTile, { variant: "peek", front: "封面", back: "内容" }));
+    await env.intersect(true);
+    const first = [...env.timers.values()][0].at;
+    await env.advance(first + 320);
+    const front = document.querySelector(".tile-face-front"), back = document.querySelector(".tile-face-back");
+    const outgoing = Number.parseFloat(front.style.getPropertyValue("--tile-peek-front"));
+    const incoming = Number.parseFloat(back.style.getPropertyValue("--tile-peek"));
+    assert.ok(outgoing < 0 && outgoing > -100);
+    assert.ok(Math.abs(incoming - outgoing - 100) < 0.02, "the two edges stay joined during the slide");
+    await env.hide(true);
+    assert.equal(front.style.getPropertyValue("--tile-peek-front"), "0.00%");
+    assert.equal(back.style.getPropertyValue("--tile-peek"), "100.00%");
   } finally { await env.cleanup(); }
 });
 
@@ -196,9 +215,15 @@ test("pointer reordering commits only on an inside release and cancels cleanly",
     await start();
     assert.ok(document.querySelector(".quick-pin-drag-ghost"));
     assert.equal(moves.length, 0, "preview must not write persistent order");
+    document.querySelector(".quick-pin-drag-ghost").getBoundingClientRect = () => ({ ...rect(170, 100), left: 30, right: 130 });
     await pointer(grid, "pointerup", 180);
     assert.deepEqual(moves, [["one", "two", true]]);
     assert.equal(document.querySelector(".quick-pin-drag-ghost"), null);
+    assert.ok(source.style.transform.includes("translate(30px, 170px)"), "the real tile starts at the released ghost position");
+    await env.advance(100);
+    assert.notEqual(source.style.transform, "", "landing remains continuous after release");
+    await env.advance(TILE_MOTION.settle);
+    assert.equal(source.style.transform, "", "landing clears its transient transform");
 
     for (const reason of ["escape", "outside", "cancel", "blur"]) {
       await start();

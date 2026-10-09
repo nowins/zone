@@ -22,6 +22,7 @@
   cursor: default;
   filter: none;
 }
+.tile.tilt-pressed { transition-duration: var(--motion-press); }
 
 /* Intrinsic WP tile sizes (small 70px, medium 150px, wide/large 2x150 + one 10px
    gutter). Zero-specificity :where() defaults, so any host sizing — e.g.
@@ -82,8 +83,7 @@
   background: linear-gradient(180deg, rgba(16, 16, 18, 0.97), rgba(12, 12, 14, 0.98));
 }
 
-/* Peek variant (wide tiles): the back layer's vertical offset is driven
-   per-frame from JS via --tile-peek (100% = parked below, 0% = covering). */
+/* Both peek panels move as one conveyor, rather than wiping a stationary image. */
 .tile-flip-v-peek .tile-flip-surface {
   /* Clip the parked back layer. This must stay off the base surface:
      overflow here forces transform-style: flat, which kills the flip
@@ -93,6 +93,9 @@
 }
 .tile-flip-v-peek .tile-face-back {
   transform: translateY(var(--tile-peek, 100%));
+}
+.tile-flip-v-peek .tile-face-front {
+  transform: translateY(var(--tile-peek-front, 0%));
 }
 
 /* Flip variant (square tiles): the whole surface card-flips around its

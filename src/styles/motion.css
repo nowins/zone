@@ -674,6 +674,13 @@ button.tilt-pressed {
     transform: none;
     transition: opacity var(--motion-instant) linear;
   }
+  .quick-pin .quick-pin-surface {
+    transform: none !important;
+    transition: opacity var(--motion-instant) linear;
+  }
+  .tile-flip-v-peek .tile-face-front {
+    transform: none;
+  }
   .tile-face {
     transition: opacity var(--motion-micro) linear;
   }

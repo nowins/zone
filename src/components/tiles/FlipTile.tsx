@@ -57,6 +57,7 @@ export function FlipTile({
   const [showBack, setShowBack] = useState(false);
   const reducedMotion = useReducedMotion();
   const backRef = useRef<HTMLDivElement | null>(null);
+  const frontRef = useRef<HTMLDivElement | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const active = useTileActivity(surfaceRef, asButton);
   const revealingRef = useRef(false);
@@ -76,10 +77,10 @@ export function FlipTile({
     // mid-cycle, which is why the live info never stayed visible.
     let showingBack = false;
 
-    // Peek driver: progress 0..1 -> back layer offset in % of tile height
-    // (100% = hidden below the tile, 0% = fully covering the front).
+    // Peek carries the outgoing and incoming panels along a shared progress.
     const setProgress = (value: number) => {
       backRef.current?.style.setProperty("--tile-peek", `${((1 - value) * 100).toFixed(2)}%`);
+      frontRef.current?.style.setProperty("--tile-peek-front", `${(-value * 100).toFixed(2)}%`);
     };
     // Flip driver: rotation angle of the whole surface around the X axis.
     const setAngle = (value: number) => {
@@ -187,7 +188,7 @@ export function FlipTile({
       asButton={asButton}
     >
       <div ref={surfaceRef} className="tile-flip-surface">
-        <div className="tile-face tile-face-front" aria-hidden={showBack}>
+        <div ref={frontRef} className="tile-face tile-face-front" aria-hidden={showBack}>
           {front}
         </div>
         <div ref={backRef} className="tile-face tile-face-back" aria-hidden={!showBack}>

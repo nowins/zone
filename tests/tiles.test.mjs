@@ -28,9 +28,10 @@ test("tile system exports Flip/Cycle/Iconic and wires its stylesheet", () => {
 });
 
 test("two reveal variants: peek slides, flip card-flips, both scoped", () => {
-  // Peek (wide tiles): back layer parks below and slides up to cover.
+  // Peek panels move together; the incoming panel pushes out the image.
   assert.ok(/\.tile-flip-v-peek \.tile-face-back\s*\{[^}]*translateY\(var\(--tile-peek, 100%\)\)/s.test(tilesCss));
   assert.ok(flipSource.includes("--tile-peek"));
+  assert.ok(/\.tile-flip-v-peek \.tile-face-front\s*\{[^}]*translateY\(var\(--tile-peek-front, 0%\)\)/s.test(tilesCss));
   // Flip (square tiles): 3D card flip machinery, scoped to the variant.
   assert.ok(/\.tile-flip-v-flip \.tile-face-back\s*\{[^}]*rotateX\(180deg\)/s.test(tilesCss));
   assert.ok(/\.tile-flip-v-flip \.tile-face\s*\{[^}]*backface-visibility:\s*hidden/s.test(tilesCss));
@@ -95,11 +96,10 @@ test("peek state machine: dwell exists, direction state stays out of effect deps
 });
 
 test("each variant uses its calibrated curve and duration", () => {
-  // Peek: one continuous 600ms sweep on the MangoTile MetroSlideIn curve
-  // (0.22, 0, 0.05, 1) — a gentle push off, then a long glide home.
-  assert.ok(tokenSource.includes("peek: 600") && flipSource.includes("TILE_MOTION.peek"));
+  // WinJS peek: fast initial response followed by a long deceleration.
+  assert.ok(tokenSource.includes("peek: 2_000") && flipSource.includes("TILE_MOTION.peek"));
   assert.ok(flipSource.includes("metroSlideIn"));
-  assert.ok(tokenSource.includes("peekEasing: [0.22, 0, 0.05, 1]") && flipSource.includes("cubicBezier(...TILE_MOTION.peekEasing)"));
+  assert.ok(tokenSource.includes("peekEasing: [0.1, 0.9, 0.2, 1]") && flipSource.includes("cubicBezier(...TILE_MOTION.peekEasing)"));
   // Flip: two brisk physical half-sweeps across the apex (WP7 People-hub feel).
   assert.ok(tokenSource.includes("flipHalf: 200") && flipSource.includes("TILE_MOTION.flipHalf"));
   assert.ok(flipSource.includes("easing: accelerate"));
