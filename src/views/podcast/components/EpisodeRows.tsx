@@ -69,7 +69,7 @@ function EpisodeRow({
       }${selecting ? " selecting" : ""}${selected ? " selected" : ""
       }`}
       data-podcast-episode={episode.id}
-      onContextMenu={onContextMenu}
+      data-touch-menu onContextMenu={onContextMenu}
     >
       {showArtwork ? (
         <div className="podcast-episode-artwork">
@@ -213,7 +213,7 @@ function CurrentEpisodeRow({
   return (
     <article
       className="podcast-current-episode"
-      onContextMenu={onContextMenu}
+      data-touch-menu onContextMenu={onContextMenu}
     >
       <PodcastArtwork
         url={episode.artworkUrl ?? episode.feedArtworkUrl}

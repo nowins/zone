@@ -3,7 +3,10 @@ import test from "node:test";
 import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+
+const bootstrapDom = new JSDOM('<div></div>');
+for (const key of ["window", "document", "Element", "HTMLElement", "Node"]) globalThis[key] = bootstrapDom.window[key];
+const { createRoot } = await import("react-dom/client");
 
 await build({ entryPoints: ["src/components/TransportControls.tsx", "src/hooks/useNowPlayingFullscreen.ts"],
   outdir: ".tmp/transport-controls-tests", bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent" });
@@ -14,6 +17,8 @@ function setup() {
   const dom = new JSDOM('<div id="root"></div>');
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
+  for (const key of ["Element", "HTMLElement", "Node"]) globalThis[key] = dom.window[key];
+  globalThis.getComputedStyle = dom.window.getComputedStyle;
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const root = createRoot(document.getElementById("root"));
   return { root, close: async () => { await act(() => root.unmount()); dom.window.close(); } };
@@ -74,6 +79,59 @@ test("volume wheel handles bursts, direction, fine deltas and limits without scr
     wheel(3, { deltaMode: 1 });
     assert.equal(values.at(-1), 0.45, "external volume updates and line-mode mouse wheels are respected");
   } finally { await env.close(); }
+});
+
+async function volumeTouchFixture() {
+  const env=setup(),values=[];
+  function Fixture(){const [volume,setVolume]=React.useState(.5);return React.createElement(React.StrictMode,null,
+    React.createElement(VolumeControl,{volume,onVolume:value=>{values.push(value);setVolume(value);}}));}
+  await act(()=>env.root.render(React.createElement(Fixture)));
+  const label=document.querySelector('.zune-volume'),text=label.querySelector('span'),input=label.querySelector('input');
+  const captures=new Set();
+  label.setPointerCapture=id=>captures.add(id);label.hasPointerCapture=id=>captures.has(id);label.releasePointerCapture=id=>captures.delete(id);
+  async function pointer(type,x=50,y=50,extra={}) {
+    const event=new window.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:x,clientY:y});
+    Object.defineProperties(event,{pointerId:{value:extra.id??1},pointerType:{value:extra.pointerType??'touch'},isPrimary:{value:extra.primary??true}});
+    await act(()=> (extra.target??text).dispatchEvent(event));
+    return event;
+  }
+  return {...env,values,label,text,input,captures,pointer};
+}
+
+test('touch volume opens the existing slider without changing its value and closes outside or on Escape',async()=>{
+  const f=await volumeTouchFixture();
+  try {
+    await f.pointer('pointerdown');await f.pointer('pointerup');
+    assert.equal(document.activeElement,f.input);assert.deepEqual(f.values,[]);assert.equal(f.captures.size,0);
+    const click=new window.MouseEvent('click',{bubbles:true,cancelable:true,detail:1});f.text.dispatchEvent(click);
+    assert.equal(click.defaultPrevented,true,'label activation cannot jump the range to the tap coordinate');
+    await act(()=>f.input.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true})));
+    assert.notEqual(document.activeElement,f.input);
+    await f.pointer('pointerdown');await f.pointer('pointerup');
+    await act(()=>document.body.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true})));
+    assert.notEqual(document.activeElement,f.input);
+    assert.equal(document.querySelector('.volume-popover'),null);assert.equal(document.querySelectorAll('.zune-volume').length,1);
+  }finally{await f.close();}
+});
+
+test('volume text scrubs in narrow layouts, clamps and cancels safely while mouse and ranges remain native',async()=>{
+  const f=await volumeTouchFixture();
+  try {
+    f.input.style.display='none';
+    await f.pointer('pointerdown');await f.pointer('pointermove',90);await f.pointer('pointerup',90);
+    assert.equal(f.values.at(-1),.75);assert.equal(f.input.value,'0.75');assert.equal(f.captures.size,0);
+    await f.pointer('pointerdown');await f.pointer('pointermove',500);assert.equal(f.values.at(-1),1);
+    await f.pointer('pointercancel');const count=f.values.length;await f.pointer('pointermove',10);assert.equal(f.values.length,count);
+    await f.pointer('pointerdown');await f.pointer('pointermove',-500);await f.pointer('pointerup',-500);assert.equal(f.values.at(-1),0);
+    await f.pointer('pointerdown');await f.pointer('pointermove',50,95);await f.pointer('pointerup',50,95);assert.equal(f.values.at(-1),0);
+    await f.pointer('pointerdown');await f.pointer('pointerdown',50,50,{id:2,primary:false});await f.pointer('pointermove',130);await f.pointer('pointerup',130);
+    assert.equal(f.values.at(-1),0);
+    await f.pointer('pointerdown');window.dispatchEvent(new window.Event('blur'));await f.pointer('pointermove',130);await f.pointer('pointerup',130);assert.equal(f.values.at(-1),0);
+    assert.equal(f.captures.size,0);
+    const mouse=await f.pointer('pointerdown',50,50,{pointerType:'mouse'});await f.pointer('pointermove',130,50,{pointerType:'mouse'});assert.equal(mouse.defaultPrevented,false);assert.equal(f.values.at(-1),0);
+    f.input.style.display='';
+    const range=await f.pointer('pointerdown',50,50,{target:f.input});assert.equal(range.defaultPrevented,false);assert.equal(f.captures.size,0);
+  }finally{await f.close();}
 });
 
 async function fullscreenFixture(invoke) {

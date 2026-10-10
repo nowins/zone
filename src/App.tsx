@@ -9,6 +9,7 @@ import { Titlebar } from "./components/Titlebar";
 import { CompactPlayerView } from "./views/CompactPlayerView";
 import { useCompactMode } from "./hooks/useCompactMode";
 import { useNativeWindowVisibility } from "./hooks/useNativeWindowVisibility";
+import { useTouchInteractions } from "./hooks/useTouchInteractions";
 import { AppHeader } from "./components/AppHeader";
 import { PlayerBar } from "./components/PlayerBar";
 import { AudioGlowCanvas } from "./components/AudioGlowCanvas";
@@ -80,6 +81,8 @@ const PodcastView = lazy(() => import("./views/PodcastView").then(module => ({ d
 const loadingPage = <div role="status" aria-label="正在加载"><MetroLoader /></div>;
 
 export default function App() {
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  useTouchInteractions(shellRef);
   useNativeWindowVisibility();
   const compactMode = useCompactMode();
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -1044,7 +1047,7 @@ export default function App() {
 
   return (
     <div
-      className={`shell ${compactMode.active ? "shell-compact" : page === "nowPlaying" ? "shell-now-playing" : ""}`}
+      ref={shellRef} className={`shell ${compactMode.active ? "shell-compact" : page === "nowPlaying" ? "shell-now-playing" : ""}`}
       data-page-motion="managed"
       style={
         {

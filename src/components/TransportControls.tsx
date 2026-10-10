@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties, type PointerEvent } from "react";
 import { ListMusic, Maximize, Minimize, MicVocal, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2 } from "lucide-react";
 import { clamp } from "../motion/math";
 import type { RepeatMode } from "../types";
@@ -115,8 +115,54 @@ export function TransportControls({
 
 export function VolumeControl({ volume, onVolume }: { volume: number; onVolume: (value: number) => void }) {
   const elementRef = useRef<HTMLLabelElement>(null);
+  const scrub = useRef<{ id: number; x: number; y: number; volume: number; moved: boolean } | null>(null);
+  const touchedText = useRef(false);
+  const openedByTouch = useRef(false);
   const latest = useRef({ volume, onVolume });
   latest.current = { volume, onVolume };
+  function updateVolume(value: number) {
+    const next = clamp(value, 0, 1);
+    latest.current.volume = next;
+    latest.current.onVolume(next);
+  }
+  function endScrub() {
+    const gesture = scrub.current;
+    scrub.current = null;
+    const element = elementRef.current;
+    if (gesture && element?.hasPointerCapture?.(gesture.id)) element.releasePointerCapture(gesture.id);
+  }
+  function pointerDown(event: PointerEvent<HTMLLabelElement>) {
+    if (event.pointerType !== "touch") { touchedText.current = false; return; }
+    if (!event.isPrimary) { endScrub(); return; }
+    if (event.button !== 0 || event.target === event.currentTarget.querySelector("input")) return;
+    touchedText.current = true;
+    scrub.current = { id: event.pointerId, x: event.clientX, y: event.clientY, volume: latest.current.volume, moved: false };
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+  function pointerMove(event: PointerEvent<HTMLLabelElement>) {
+    const gesture = scrub.current;
+    if (!gesture || gesture.id !== event.pointerId) return;
+    const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+    if (Math.hypot(dx, dy) < 8 && !gesture.moved) return;
+    if (!gesture.moved && Math.abs(dy) > Math.abs(dx)) { endScrub(); return; }
+    gesture.moved = true;
+    // Keep vertical movements from unexpectedly changing volume.
+    if (Math.abs(dy) > Math.abs(dx)) return;
+    updateVolume(gesture.volume + dx / 160);
+  }
+  function pointerUp(event: PointerEvent<HTMLLabelElement>) {
+    const gesture = scrub.current;
+    if (!gesture || gesture.id !== event.pointerId) return;
+    pointerMove(event);
+    if (scrub.current !== gesture) return;
+    endScrub();
+    const input = event.currentTarget.querySelector("input");
+    if (!gesture.moved && input && getComputedStyle(input).display !== "none") {
+      openedByTouch.current = true;
+      input.focus({ preventScroll: true });
+    }
+  }
   useEffect(() => {
     const element = elementRef.current;
     if (!element) return;
@@ -131,10 +177,46 @@ export function VolumeControl({ volume, onVolume }: { volume: number; onVolume: 
       latest.current.onVolume(next);
     }
     element.addEventListener("wheel", onWheel, { passive: false });
-    return () => element.removeEventListener("wheel", onWheel);
+    function touchStart(event: TouchEvent) {
+      if (event.touches.length > 1) { endScrub(); return; }
+      // Only the existing volume text owns scrubbing; ranges keep native input.
+      if (event.target !== element?.querySelector("input")) event.preventDefault();
+    }
+    function outside(event: Event) {
+      const pointer = event as globalThis.PointerEvent;
+      if (pointer.pointerType === "touch" && !pointer.isPrimary) endScrub();
+      if (openedByTouch.current && event.target instanceof Node && !element?.contains(event.target)) {
+        openedByTouch.current = false;
+        element?.querySelector("input")?.blur();
+      }
+    }
+    function cancel() { endScrub(); }
+    function visibility() { if (document.hidden) cancel(); }
+    element.addEventListener("touchstart", touchStart, { passive: false });
+    document.addEventListener("pointerdown", outside, true);
+    window.addEventListener("blur", cancel);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      endScrub();
+      element.removeEventListener("wheel", onWheel);
+      element.removeEventListener("touchstart", touchStart);
+      document.removeEventListener("pointerdown", outside, true);
+      window.removeEventListener("blur", cancel);
+      document.removeEventListener("visibilitychange", visibility);
+    };
   }, []);
   return (
-    <label ref={elementRef} className="zune-volume" title="音量（滚轮调节）">
+    <label ref={elementRef} className="zune-volume" title="音量（滚轮或左右滑动调节）"
+      onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp}
+      onPointerCancel={endScrub} onLostPointerCapture={endScrub}
+      onClick={event => { if (touchedText.current && event.target !== event.currentTarget.querySelector("input")) event.preventDefault(); }}
+      onKeyDown={event => {
+        touchedText.current = false;
+        if (event.key === "Escape" && openedByTouch.current) {
+          event.preventDefault(); event.stopPropagation(); openedByTouch.current = false;
+          event.currentTarget.querySelector("input")?.blur();
+        }
+      }}>
       <Volume2 className="zune-volume-icon" size={13} aria-hidden="true" />
       <input
         type="range"
@@ -142,7 +224,7 @@ export function VolumeControl({ volume, onVolume }: { volume: number; onVolume: 
         max={1}
         step={0.01}
         value={volume}
-        onChange={(event) => onVolume(Number(event.target.value))}
+        onChange={(event) => updateVolume(Number(event.target.value))}
         aria-label="音量"
         style={{ "--range-progress": `${volume * 100}%` } as CSSProperties}
       />

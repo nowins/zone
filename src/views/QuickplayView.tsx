@@ -397,7 +397,7 @@ export function QuickplayView({
           <h2>继续播放</h2>
             <div className="quick-section-scroll">
               <div
-                className="quick-feature"
+                className="quick-feature" data-touch-menu
                 onContextMenu={(event) => {
                   const payload = continueContextPayload();
                   if (payload) onContextMenu(event, payload);
@@ -434,7 +434,7 @@ export function QuickplayView({
               <div className="quick-mosaic">
               {mostPlayedTracks.map((track, index) => (
                 <div
-                  className="quick-album"
+                  className="quick-album" data-touch-menu
                   key={`most-${track.id}`}
                   data-collection-focus={`quick-most:${track.id}`}
                   onContextMenu={(event) =>
@@ -475,7 +475,7 @@ export function QuickplayView({
               <div className="quick-mosaic">
               {forgottenFavoriteTracks.map((track, index) => (
                 <div
-                  className="quick-album"
+                  className="quick-album" data-touch-menu
                   key={`forgotten-${track.id}`}
                   data-collection-focus={`quick-forgotten:${track.id}`}
                   onContextMenu={(event) =>
@@ -515,7 +515,7 @@ export function QuickplayView({
             <div className="quick-mosaic">
             {recentAlbums.map((album, index) => (
               <div
-                className="quick-album"
+                className="quick-album" data-touch-menu
                 key={album.key}
                 data-collection-focus={`quick-recent:${album.key}`}
                 onContextMenu={(event) =>
@@ -555,7 +555,7 @@ export function QuickplayView({
               <ol className="quick-history-list">
                 {historyTracks.map((track, index) => (
                   <li key={track.id}>
-                  <Button variant="ghost" className="quick-history-row"
+                  <Button variant="ghost" className="quick-history-row" data-touch-menu
                     data-collection-focus={`quick-history:${track.id}`}
                     onClick={() => onPlay(track, tracks)}
                     aria-label={`播放 ${track.title} · ${track.artist}`}

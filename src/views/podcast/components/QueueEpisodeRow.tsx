@@ -69,7 +69,7 @@ function QueueEpisodeRow({
       data-drop-position={dropPlacement}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      onContextMenu={onContextMenu}
+      data-touch-menu onContextMenu={onContextMenu}
     >
       {selecting ? (
         <button

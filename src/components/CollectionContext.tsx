@@ -23,7 +23,7 @@ export function CollectionLink({ entity, children, label, focusKey }: {
     onKeyDown={event => {
       if (event.key === " ") { event.preventDefault(); context?.open(entity); }
     }}
-    onContextMenu={event => {
+    data-touch-menu onContextMenu={event => {
       if (!context) return;
       const value = resolveCollectionEntity(context.index, entity);
       if (!value || value.kind === "playlist") return;

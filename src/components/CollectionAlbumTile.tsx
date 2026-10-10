@@ -16,7 +16,7 @@ export function CollectionAlbumTile({ name, artist, coverPath, index, selected, 
   focusKey?: string;
 }) {
   return (
-    <div className={`${className} collection-album-tile${selected ? " selected" : ""}`} onContextMenu={onContextMenu}>
+    <div className={`${className} collection-album-tile${selected ? " selected" : ""}`} data-touch-menu onContextMenu={onContextMenu}>
       <button type="button" className="collection-album-select" aria-pressed={selected} data-collection-focus={focusKey}
         title={`${name} · ${artist}`} onClick={onSelect}
         onPointerDown={tiltPressDown} onPointerUp={tiltPressClear}

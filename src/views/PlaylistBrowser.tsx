@@ -92,7 +92,7 @@ export function PlaylistBrowser({
             data-collection-anchor={playlist.id} data-collection-focus={`playlist:${playlist.id}`}
             className={playlist.id === selected.id ? "selected" : ""}
             aria-pressed={playlist.id === selected.id}
-            title={playlist.name}
+            title={playlist.name} data-touch-menu
             onClick={() => onSelectPlaylist(playlist.id)}
             onContextMenu={(event) =>
               onContextMenu(event, {

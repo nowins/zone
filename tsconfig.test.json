@@ -35,6 +35,7 @@
     "src/utils/podcastDiscovery.ts",
     "src/utils/podcastChapters.ts",
     "src/utils/music.ts",
+    "src/utils/touchInteractions.ts",
     "src/utils/lyrics.ts",
     "src/utils/lyricsCache.ts",
     "src/utils/lyricsDisplay.ts",

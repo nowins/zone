@@ -115,7 +115,7 @@ export function CollectionTrackList({
           const artist = context?.index.artistsByName.get(track.artist);
           const album = context?.index.albumByTrackId.get(track.id);
           return (
-            <div key={track.id} role="listitem" data-collection-anchor={track.id}
+            <div key={track.id} role="listitem" data-collection-anchor={track.id} data-touch-menu
               className={`collection-track-row${selectedId === track.id ? " selected" : ""}${playing ? " playing" : ""}`}
               onContextMenu={(event) => {
                 if (touchTap.current) touchTap.current.valid = false;

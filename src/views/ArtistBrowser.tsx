@@ -12,7 +12,7 @@ export function ArtistBrowser({ artists, onOpen, onContextMenu }: {
     const cover = [...artist.albums, ...artist.appearances].find(album => album.coverPath);
     return <li key={artist.artist} data-collection-anchor={`artist:${artist.artist}`}>
       <button type="button" className="collection-artist-entry" data-collection-focus={`artist-index:${artist.artist}`}
-        title={artist.artist} onClick={() => onOpen(artistReference(artist))}
+        title={artist.artist} data-touch-menu onClick={() => onOpen(artistReference(artist))}
         onContextMenu={event => onContextMenu(event, { kind: "artist", title: artist.artist, subtitle: "艺术家",
           tracks: artist.tracks, targetId: artist.artist })}>
         <span className={`collection-artist-image${artist.imagePath ? " is-profile" : ""}`} aria-hidden="true">

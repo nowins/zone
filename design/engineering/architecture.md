@@ -64,7 +64,8 @@
   - `useLyricsProviderSettings.ts`：歌词 provider 启用与优先级（键 `zone-lyrics-providers-v1`）。
   - `useSystemMedia.ts`：与 Rust 端 SMTC 集成（`update_system_media*` 命令与媒体按键事件）。
 - `src/lyrics/providers.ts`：AMLL TTML DB、QQ 音乐、网易云音乐、LRCLIB 四个在线歌词 provider 的定义与编排。自动查找按优先级回退并在高置信命中后停止；手动在线搜索并行查询全部已启用来源。请求统一经 Rust 命令 `request_lyrics_provider` 中转。
-- `src/utils/`：纯逻辑模块（详见各测试）。
+- `src/utils/`：共享工具模块（详见各测试）。
+  - `touchInteractions.ts`：应用根节点的 DOM 触摸守卫，处理滚动／取消／多指后的兼容点击与已标记实体的长按菜单；`hooks/useTouchInteractions.ts` 负责安装和生命周期清理，行为边界见 [组件规范](../component-guidelines.md)。
   - `music.ts`：专辑分组、曲目排序、播放列表默认值、`normalizePlaylists`。
   - `podcastArtwork.ts` / `podcastPlayback.ts`：播客代理封面 URL、播放模型归一化、实时播放状态覆盖和待播顺序移动。
   - `playback.ts`：队列移动/随机顺序/边界解析。
