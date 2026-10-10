@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { animateValue } from "../../motion/animate";
 import type { AnimationHandle } from "../../motion/animate";
@@ -10,6 +10,7 @@ import { useTileActivity } from "./useTileActivity";
 import { useReducedMotion } from "../../motion/useReducedMotion";
 import { Tile } from "./Tile";
 import type { TileSize } from "./Tile";
+import { frameReady } from "./tileFrames";
 
 /** How a live tile reveals its back layer. */
 export type TileRevealVariant = "peek" | "flip";
@@ -55,6 +56,9 @@ export function FlipTile({
   asButton?: boolean;
 }) {
   const [showBack, setShowBack] = useState(false);
+  const [faces, setFaces] = useState({ front, back });
+  const latestFacesRef = useRef({ front, back });
+  latestFacesRef.current = { front, back };
   const reducedMotion = useReducedMotion();
   const backRef = useRef<HTMLDivElement | null>(null);
   const frontRef = useRef<HTMLDivElement | null>(null);
@@ -66,6 +70,10 @@ export function FlipTile({
   const revealingRef = useRef(false);
   const animationRef = useRef<AnimationHandle | null>(null);
   const hasUpdatedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!revealingRef.current) setFaces({ front, back });
+  }, [front, back]);
 
   useEffect(() => {
     if (paused || !live || !visible || reducedMotion) {
@@ -155,9 +163,13 @@ export function FlipTile({
         holdTimer = undefined;
         if (cancelled) return;
         phase = "returning";
+        // The front is hidden here. Capture the return target before moving it.
+        setFaces(current => ({ ...current, front: latestFacesRef.current.front }));
         revealTo(0, () => {
           phase = "waiting";
           revealingRef.current = false;
+          // Prepare the next back only after it is fully hidden.
+          setFaces(current => ({ ...current, back: latestFacesRef.current.back }));
           cancelSchedule = undefined;
           finishCycle?.();
           finishCycle = undefined;
@@ -186,7 +198,7 @@ export function FlipTile({
     activityChangeRef.current = updateActivity;
 
     const runCycle = (done: () => void) => {
-      if (cancelled || !activeRef.current || revealingRef.current) {
+      if (cancelled || !activeRef.current || revealingRef.current || !frameReady(backRef.current)) {
         done();
         cancelSchedule = undefined;
         schedule();
@@ -194,6 +206,8 @@ export function FlipTile({
       }
       finishCycle = done;
       revealingRef.current = true;
+      // Freeze the outgoing panel and capture the incoming content for this turn.
+      setFaces(current => ({ ...current, back: latestFacesRef.current.back }));
       hasUpdatedRef.current = true;
       phase = "revealing";
       // One full cycle: slide up, hold so the live line is readable, slide
@@ -217,6 +231,7 @@ export function FlipTile({
       setProgress(0);
       setAngle(0);
       setShowBack(false);
+      setFaces(latestFacesRef.current);
     };
   }, [paused, live, visible, reducedMotion, variant]);
 
@@ -235,10 +250,10 @@ export function FlipTile({
     >
       <div ref={surfaceRef} className="tile-flip-surface">
         <div ref={frontRef} className="tile-face tile-face-front" aria-hidden={showBack}>
-          {front}
+          {faces.front}
         </div>
         <div ref={backRef} className="tile-face tile-face-back" aria-hidden={!showBack}>
-          {back}
+          {faces.back}
         </div>
       </div>
     </Tile>

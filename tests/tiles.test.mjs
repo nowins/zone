@@ -258,7 +258,7 @@ test("mosaic layout tiers by pool size and never duplicates a cover", () => {
   // paired exchange of two cells (that read as the whole tile flashing).
   assert.ok(mosaicSource.includes("unused"), "must track unshown covers");
   assert.ok(!/\[a, current\[b\]\],\s*\[b, current\[a\]\]/s.test(mosaicSource), "must not exchange two cells as a pair");
-  assert.ok(mosaicSource.includes("images.length <= cellCount"), "must rest when every cover is already shown");
+  assert.ok(mosaicSource.includes("poolRef.current.some(frame => !shown.has(frame.id))"), "must rest when every cover identity is already shown");
   // Cadence is sparse, not screensaver-fast.
   assert.ok(tokenSource.includes("cellMin: 24_000"), "cover replacements should wait tens of seconds");
   // Empty cells / initials placeholders stay gone — capacity matches pool.

@@ -56,14 +56,15 @@ export function PodcastNowBackdrop({ artworkSrc }: { artworkSrc: string | null }
   // Reduced motion keeps both layers in their static CSS state.
   useEffect(() => {
     if (reducedMotion) return undefined;
-    const art = artRef.current;
     const ember = emberRef.current;
-    if (!art && !ember) return undefined;
+    if (!ember) return undefined;
     let raf = 0;
     let emberLevel = EMBER_FLOOR;
     const startedAt = performance.now();
     const tick = (now: number) => {
       const t = (now - startedAt) / 1000;
+      // Artwork can mount later or be replaced without restarting ambience.
+      const art = artRef.current;
       if (art) {
         const driftX = Math.sin((t / DRIFT_PERIOD_A_S) * Math.PI * 2) * 1.4;
         const driftY = Math.cos((t / DRIFT_PERIOD_B_S) * Math.PI * 2) * 1.1;
@@ -81,7 +82,7 @@ export function PodcastNowBackdrop({ artworkSrc }: { artworkSrc: string | null }
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
-      art?.style.removeProperty("transform");
+      artRef.current?.style.removeProperty("transform");
       ember?.style.removeProperty("opacity");
     };
   }, [reducedMotion]);

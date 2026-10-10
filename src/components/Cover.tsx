@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { initials } from "../utils/music";
 import { cancelPodcastNetworkRequest, isPodcastArtworkProtocol, newPodcastNetworkRequestId, podcastProtocolRequestUrl } from "../utils/podcastNetwork.js";
@@ -43,6 +43,7 @@ export function Cover({
     : baseSrc;
 
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   useEffect(() => {
     setFailedSrc(null);
   }, [imageSrc]);
@@ -50,13 +51,19 @@ export function Cover({
   const showImage = Boolean(imageSrc) && failedSrc !== imageSrc;
 
   return (
-    <div className={resolvedClassName} style={{ "--accent-index": index % 6 } as CSSProperties}>
+    <div className={resolvedClassName} data-cover-ready={baseSrc && (!imageSrc || failedSrc === imageSrc) ? "false" : undefined}
+      style={{ "--accent-index": index % 6 } as CSSProperties}>
       {showImage && imageSrc ? (
         <img
+          key={imageSrc}
+          ref={imageRef}
           src={imageSrc}
           alt=""
           draggable={false}
-          onError={() => setFailedSrc(imageSrc)}
+          onError={event => {
+            // A detached request must not fail (or resurrect) its replacement.
+            if (event.currentTarget === imageRef.current) setFailedSrc(imageSrc);
+          }}
         />
       ) : fallback ?? <span>{initials(label)}</span>}
     </div>

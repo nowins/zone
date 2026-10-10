@@ -9,9 +9,10 @@ import { TILE_MOTION } from "../.tmp/visualizer-tests/motion/tokens.js";
 await build({ stdin: { contents: `export { QuickplayPinBoard } from './src/components/tiles/QuickplayPinBoard';
 export { FlipTile } from './src/components/tiles/FlipTile';
 export { MosaicFrames } from './src/components/tiles/MosaicTile';
+export { CycleFrames } from './src/components/tiles/CycleTile';
 export { _setAnimationClockForTesting } from './src/motion/animate';`, resolveDir: process.cwd(), loader: "tsx" },
   outfile: ".tmp/tile-tests/runtime.js", bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent" });
-const { QuickplayPinBoard, FlipTile, MosaicFrames, _setAnimationClockForTesting } = await import("../.tmp/tile-tests/runtime.js");
+const { QuickplayPinBoard, FlipTile, MosaicFrames, CycleFrames, _setAnimationClockForTesting } = await import("../.tmp/tile-tests/runtime.js");
 
 function environment() {
   const dom = new JSDOM('<body><div id="root"></div></body>');
@@ -224,6 +225,138 @@ test("a mosaic cell keeps the cover revealed at its apex after completion and in
     assert.equal(cell.textContent, back, "reduced motion keeps the revealed cover");
     await env.render(React.createElement(MosaicFrames, { pool: [...pool], paused: true }));
     assert.equal(cell.textContent, back, "entering edit mode does not restore the original cover");
+  } finally { Math.random = random; await env.cleanup(); }
+});
+
+for (const variant of ["flip", "peek"]) test(`${variant} captures each incoming panel before moving and never substitutes it at landing`, async () => {
+  const env = environment(), random = Math.random;
+  Math.random = () => 0;
+  const render = (front, back) => env.render(React.createElement(FlipTile, { variant, front, back }));
+  const duration = variant === "peek" ? TILE_MOTION.peek : TILE_MOTION.flipHalf * 2;
+  try {
+    await render("A", "B"); await env.intersect(true);
+    await env.advance(TILE_MOTION.firstMin + 100);
+    await render("D", "C");
+    assert.equal(document.querySelector(".tile-face-front").textContent, "A");
+    assert.equal(document.querySelector(".tile-face-back").textContent, "B");
+    await env.advance(duration + 100);
+    assert.equal(document.querySelector(".tile-face-back").textContent, "B", "landing keeps the captured back");
+    const tile = document.querySelector(".tile");
+    await act(async () => tile.dispatchEvent(new window.Event("pointerenter")));
+    await render("E", "F");
+    assert.equal(document.querySelector(".tile-face-back").textContent, "B", "hover and new props cannot replace the held face");
+    await act(async () => tile.dispatchEvent(new window.Event("pointerleave")));
+    const hold = [...env.timers.values()][0].at;
+    await env.advance(hold - env.now() + 100);
+    await render("G", "H");
+    await env.advance(duration + 100);
+    assert.equal(document.querySelector(".tile-face-front").textContent, "E", "return lands the front captured while hidden");
+  } finally { Math.random = random; await env.cleanup(); }
+});
+
+test("a live tile waits for its incoming artwork before starting a reveal", async () => {
+  const env = environment(), random = Math.random;
+  Math.random = () => 0;
+  try {
+    await env.render(React.createElement(FlipTile, { variant: "flip", front: "A", back: React.createElement("img", { src: "pending" }) }));
+    await env.intersect(true); await env.advance(TILE_MOTION.firstMin + 1000);
+    assert.ok(document.querySelector(".tile.is-front"));
+    assert.equal(env.frames.length, 0, "no turn starts toward an undecoded image");
+    const image = document.querySelector(".tile-face-back img");
+    Object.defineProperty(image, "complete", { value: true });
+    Object.defineProperty(image, "naturalWidth", { value: 100 });
+    const due = [...env.timers.values()][0].at;
+    await env.advance(due - env.now() + TILE_MOTION.flipHalf * 2 + 80);
+    assert.ok(document.querySelector(".tile.is-back"), "the ready cover can enter on its next scheduled reveal");
+  } finally { Math.random = random; await env.cleanup(); }
+});
+
+test("mosaic pools may reorder or shrink while a captured back lands", async () => {
+  const env = environment(), random = Math.random;
+  Math.random = () => 0;
+  const pool = Array.from({ length: 9 }, (_, i) => React.createElement("span", { key: i }, i));
+  try {
+    await env.render(React.createElement(MosaicFrames, { pool })); await env.intersect(true);
+    await env.advance(TILE_MOTION.firstMin + TILE_MOTION.cellHalf + 40);
+    assert.equal(document.querySelector(".tile-mosaic-cell-inner").textContent, "8");
+    await env.render(React.createElement(MosaicFrames, { pool: [...pool].reverse() }));
+    assert.equal(document.querySelector(".tile-mosaic-cell-inner").textContent, "8");
+    await env.render(React.createElement(MosaicFrames, { pool: pool.slice(0, 4) }));
+    await env.advance(TILE_MOTION.cellHalf + 60);
+    assert.equal(document.querySelector(".tile-mosaic-cell-inner").textContent, "8", "new layout does not remap the landed cover");
+    assert.equal(document.querySelectorAll(".tile-mosaic-cell").length, 4);
+    await act(async () => document.querySelector(".tile-mosaic").dispatchEvent(new window.Event("pointerenter")));
+    assert.equal(document.querySelector(".tile-mosaic-cell-inner").textContent, "8");
+  } finally { Math.random = random; await env.cleanup(); }
+});
+
+test("a fully displayed mosaic pool sleeps until genuinely new cover identities arrive", async () => {
+  const env = environment();
+  const pool = ["A", "B", "C", "D"].map(id => React.createElement("span", { key: id }, id));
+  try {
+    await env.render(React.createElement(MosaicFrames, { pool })); await env.intersect(true);
+    assert.equal(env.timers.size, 0);
+    await env.render(React.createElement(MosaicFrames, { pool: [...pool].reverse() }));
+    assert.equal(env.timers.size, 0, "reordering a fully displayed pool schedules no replacement");
+    await env.render(React.createElement(MosaicFrames, { pool: pool.map((_, index) => React.createElement("span", { key: `new-${index}` }, index)) }));
+    assert.equal(env.timers.size, 1, "same-size pools with new identities may replace removed covers");
+  } finally { await env.cleanup(); }
+});
+
+test("mosaic hover and a pool refresh before the apex still land the captured decoded back", async () => {
+  const env = environment(), random = Math.random;
+  Math.random = () => 0;
+  const pool = Array.from({ length: 9 }, (_, i) => React.createElement("span", { key: i }, i));
+  try {
+    await env.render(React.createElement(MosaicFrames, { pool })); await env.intersect(true);
+    await env.advance(TILE_MOTION.firstMin + 80);
+    const host = document.querySelector(".tile-mosaic");
+    await act(async () => host.dispatchEvent(new window.Event("pointerenter")));
+    await env.render(React.createElement(MosaicFrames, { pool: pool.map((_, i) => React.createElement("span", { key: `new-${i}` }, `C${i}`)) }));
+    await env.advance(TILE_MOTION.cellHalf * 2 + 80);
+    assert.equal(document.querySelector(".tile-mosaic-cell-inner").textContent, "8");
+    assert.equal(env.timers.size, 0, "the captured turn finishes before the hovered wall sleeps");
+    assert.equal(env.frames.length, 0);
+  } finally { Math.random = random; await env.cleanup(); }
+});
+
+test("mosaic never turns toward an undecoded or failed spare image", async () => {
+  const env = environment(), random = Math.random;
+  Math.random = () => 0;
+  const shown = Array.from({ length: 8 }, (_, i) => React.createElement("span", { key: i }, i));
+  try {
+    await env.render(React.createElement(MosaicFrames, { pool: [...shown, React.createElement("img", { key: "pending", src: "pending" })] }));
+    await env.intersect(true); await env.advance(TILE_MOTION.firstMin + 1000);
+    assert.equal(document.querySelector(".tile-mosaic-cell-inner").textContent, "0");
+    assert.equal(env.frames.length, 0);
+    await env.render(React.createElement(MosaicFrames, { pool: [...shown, React.createElement("div", { key: "failed", "data-cover-ready": "false" }, "占位")] }));
+    const due = [...env.timers.values()][0].at;
+    await env.advance(due - env.now() + 1000);
+    assert.equal(document.querySelector(".tile-mosaic-cell-inner").textContent, "0");
+    assert.equal(env.frames.length, 0);
+  } finally { Math.random = random; await env.cleanup(); }
+});
+
+test("cycle frames retain both decoded identities across pool replacement and interruption", async () => {
+  const env = environment(), random = Math.random;
+  Math.random = () => 0;
+  const frames = ["A", "B", "C"].map(id => React.createElement("span", { key: id }, id));
+  try {
+    await env.render(React.createElement(CycleFrames, { images: frames })); await env.intersect(true);
+    await env.advance(TILE_MOTION.firstMin + 20);
+    assert.equal(document.querySelector(".is-active").textContent, "B");
+    await env.render(React.createElement(CycleFrames, { images: [frames[2]] }));
+    assert.equal(document.querySelector(".is-active").textContent, "B");
+    assert.equal(document.querySelector(".is-leaving").textContent, "A");
+    await act(async () => document.querySelector(".tile-cycle-frames").dispatchEvent(new window.Event("pointerenter")));
+    await env.advance(1000);
+    assert.equal(document.querySelector(".is-active").textContent, "B");
+    assert.equal(document.querySelector(".is-leaving"), null);
+    await env.reduce(true);
+    assert.equal(document.querySelector(".is-active").textContent, "B");
+    assert.equal(env.timers.size, 0);
+    await env.render(React.createElement(CycleFrames, { images: [] }));
+    assert.equal(document.querySelector(".is-active"), null);
   } finally { Math.random = random; await env.cleanup(); }
 });
 

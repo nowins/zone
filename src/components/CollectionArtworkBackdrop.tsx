@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useReducedMotion } from "../motion/useReducedMotion";
+import { MOTION_DURATIONS } from "../motion/tokens";
 import {
   buildCollectionBackdropLayout,
   collectionParallaxOffset,
@@ -10,6 +11,7 @@ import {
 const ARTWORK_PRELOAD_TIMEOUT_MS = 1_200;
 const IMAGE_CACHE_LIMIT = 32;
 const imageCache = new Map<string, HTMLImageElement>();
+type PreparedScene = { scene: NonNullable<CollectionBackdropScene>; images: Map<string, HTMLImageElement> };
 
 export function CollectionArtworkBackdrop({
   scene,
@@ -22,8 +24,9 @@ export function CollectionArtworkBackdrop({
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRefs = useRef<Array<HTMLCanvasElement | null>>([null, null]);
-  const canvasScenesRef = useRef<Array<CollectionBackdropScene | null>>([null, null]);
+  const canvasScenesRef = useRef<Array<PreparedScene | null>>([null, null]);
   const visibleCanvasRef = useRef(0);
+  const fadeUntilRef = useRef(0);
   const parallaxOffsetRef = useRef(0);
   const redrawFrameRef = useRef<number | null>(null);
   const reducedMotion = useReducedMotion();
@@ -83,36 +86,49 @@ export function CollectionArtworkBackdrop({
 
   useEffect(() => {
     let cancelled = false;
+    let timer: number | undefined;
+    let frame: number | undefined;
     const canvases = canvasRefs.current;
     if (!scene) {
       canvases.forEach((canvas) => canvas?.classList.remove("is-visible"));
-      canvasScenesRef.current = [null, null];
+      fadeUntilRef.current = performance.now() + (reducedMotion ? 0 : MOTION_DURATIONS.content);
       return;
     }
 
     const prepare = async () => {
-      await preloadSceneImages(scene);
+      const prepared = await preloadSceneImages(scene);
+      if (cancelled || prepared.images.size === 0) return;
+      // Both canvases remain visible during a crossfade. Never repaint the
+      // outgoing one with a third scene until its opacity has reached zero.
+      const wait = reducedMotion ? 0 : Math.max(0, fadeUntilRef.current - performance.now());
+      if (wait > 0) timer = window.setTimeout(() => commit(prepared), wait);
+      else commit(prepared);
+    };
+    const commit = (prepared: PreparedScene) => {
       if (cancelled) return;
       const nextIndex = visibleCanvasRef.current === 0 ? 1 : 0;
       const nextCanvas = canvasRefs.current[nextIndex];
       const previousCanvas = canvasRefs.current[visibleCanvasRef.current];
       if (!nextCanvas) return;
 
-      canvasScenesRef.current[nextIndex] = scene;
-      drawCollectionBackdrop(nextCanvas, scene, parallaxOffsetRef.current);
-      window.requestAnimationFrame(() => {
+      canvasScenesRef.current[nextIndex] = prepared;
+      drawCollectionBackdrop(nextCanvas, prepared, parallaxOffsetRef.current);
+      frame = window.requestAnimationFrame(() => {
         if (cancelled) return;
         nextCanvas.classList.add("is-visible");
         previousCanvas?.classList.remove("is-visible");
         visibleCanvasRef.current = nextIndex;
+        fadeUntilRef.current = performance.now() + (reducedMotion ? 0 : MOTION_DURATIONS.content);
       });
     };
 
     void prepare();
     return () => {
       cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      if (frame !== undefined) window.cancelAnimationFrame(frame);
     };
-  }, [sceneSignature]);
+  }, [sceneSignature, reducedMotion]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -148,9 +164,10 @@ export function CollectionArtworkBackdrop({
 
 function drawCollectionBackdrop(
   canvas: HTMLCanvasElement,
-  scene: CollectionBackdropScene,
+  prepared: PreparedScene,
   parallaxOffset = 0,
 ) {
+  const { scene, images } = prepared;
   const bounds = canvas.getBoundingClientRect();
   const width = Math.max(1, Math.floor(bounds.width));
   const height = Math.max(1, Math.floor(bounds.height));
@@ -176,7 +193,7 @@ function drawCollectionBackdrop(
   );
   for (const placement of placements) {
     const asset = scene.assets[placement.assetIndex];
-    const image = asset ? getCachedImage(asset.path) : null;
+    const image = asset ? images.get(asset.path) : null;
     if (!image?.complete || image.naturalWidth <= 0) continue;
 
     const centerX = placement.x + placement.width / 2;
@@ -225,7 +242,7 @@ function drawCollectionBackdrop(
 
 function redrawBackdropCanvases(
   canvases: Array<HTMLCanvasElement | null>,
-  scenes: Array<CollectionBackdropScene | null>,
+  scenes: Array<PreparedScene | null>,
   parallaxOffset: number,
 ) {
   scenes.forEach((scene, index) => {
@@ -270,8 +287,14 @@ function drawImageCover(
   );
 }
 
-async function preloadSceneImages(scene: CollectionBackdropScene) {
-  await Promise.all(scene.assets.map((asset) => waitForImage(getCachedImage(asset.path))));
+async function preloadSceneImages(scene: NonNullable<CollectionBackdropScene>): Promise<PreparedScene> {
+  // These references belong to the painted scene, independently of cache LRU.
+  const images = new Map(scene.assets.map(asset => [asset.path, getCachedImage(asset.path)]));
+  await Promise.all([...images.values()].map(waitForImage));
+  for (const [path, image] of images) {
+    if (!image.complete || image.naturalWidth <= 0) images.delete(path);
+  }
+  return { scene, images };
 }
 
 function waitForImage(image: HTMLImageElement) {

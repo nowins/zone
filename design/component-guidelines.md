@@ -108,7 +108,7 @@
 | `Select` | 单选下拉原语；`option` 子元素只作数据，以中文 `aria-label` 命名，受控值经 `onValueChange` 更新。触发器与展开面板共用深色、粉色选中标记和焦点样式；播客筛选、分组、列表、设置及音乐智能列表统一使用。方向键／Home／End 选择活动项，Enter／空格确认，Escape 取消，Tab 或外部点击收起；打开时不自动提交新值 |
 | `Dialog` | 深色确认/表单对话框壳：遮罩 + kicker/标题 + 可选右侧动作行，Escape/点遮罩取消、`busy` 时锁定；保留 `playlist-dialog` 基类让 swivel 入场与 Presence 退场继续生效。例外：`SmartPlaylistDialog` 是编辑器表面（不走壳，底部动作用 `Button`）；正在播放的保存列表对话框是刻意的浅色主题，保持独立 |
 | `tiles/`（`Tile` / `FlipTile` / `CycleTile` / `IconicTile` / `MosaicFrames`） | Metro 磁贴系统（`tiles.css`）：`Tile` 提供统一倾斜按压与裁切表面；`FlipTile` 有 peek/flip 两种背面揭示；`MosaicFrames` 是 People-hub 封面墙；`CycleTile` / `IconicTile` 是备料模板——暂无消费方，接入前不算「已在用」。quickplay 固定项由 `QuickplayPinBoard` 编排，宽磁贴与播客用 peek，其余音乐磁贴用 flip；小磁贴静态显示 |
-| `Cover` | 唯一封面渲染入口：`artPath`（本地文件）与 `src`（已解析 URL）二选一；默认音乐封面类（accent-index 渐变占位 + 首字母），`className`/`fallback` 供上下文适配——播客经 `PodcastArtwork` 适配器（`podcast-artwork` 类 + 字符/Podcast 图标占位） |
+| `Cover` | 唯一封面渲染入口：`artPath`（本地文件）与 `src`（已解析 URL）二选一；每个图片请求有独立 DOM 节点，旧请求错误不能覆盖替换后的封面；受控封面尚未挂载或加载失败时标记未就绪，磁贴不将其当成可翻入内容。默认音乐封面类（accent-index 渐变占位 + 首字母），`className`/`fallback` 供上下文适配——播客经 `PodcastArtwork` 适配器（`podcast-artwork` 类 + 字符/Podcast 图标占位） |
 | `CollectionTrackList` / `CollectionAlbumTile` | 收藏页共享歌曲行与专辑封面项。歌曲行统一选择、键盘定位、播放来源、当前曲目和收藏状态；专辑的选择按钮与悬停播放按钮互为独立控件，避免嵌套按钮 |
 | `MetroLoader` | 唯一加载指示（见 §3.5） |
 | `EmptyState` | 页面级空态（空曲库：字标 + `Button` solid xl 动作）；区块级空态/加载用播客 `primitives.tsx` 的 `PodcastEmpty` / `PodcastLoading`（`MetroLoader` + 延迟淡入）。不写解释段落 |
@@ -169,7 +169,8 @@
 - 固定区由 `QuickplayPinBoard` 负责：编辑按钮、长按或 F2 进入，选中一块后显示取消固定与缩放角标；拖动采用指针捕获，磁贴跟随指针并预览重排，在固定区内释放后保存。`utils/homePinLayout.ts` 按六行、列优先的稀疏网格及四种尺寸模拟插入后的布局，用保留抓取偏移的位置选择最近的可达插入点，混排空位也可放入，不将所有空白当成追加到末尾。落点计算独立于预览 FLIP 的中间矩形，拖回原位撤销预览。移出固定区松手、Esc、指针取消或窗口失焦均取消当前拖动，不改持久顺序。Alt+左右移动、Alt+上下缩放、非拖动时 Esc 完成；编辑时不触发播放。
 - 编辑态选中磁贴浮起放大，其余磁贴收缩退暗；动态内容和播客更新角标共用稳定表面，切换编辑宿主时不重置该层过渡。拖动中隐藏原位表面，释放后由真实磁贴接续浮层当前位置再落位；重排和缩放保持连续。鼠标选择用层次表达，键盘焦点保留可见描边。具体参数与 reduced-motion 行为见 [动效系统](motion-system.md)。
 - “外观”用 `Dialog` + `Presence` 提供尺寸、封面／纯色背景和动态内容开关。中及以上尺寸正面保留名称，小磁贴保留封面或图标，按钮始终有稳定的可访问名称；播客小磁贴可显示未听数。外观与顺序按 [持久化规范](engineering/persistence.md) 保存。
-- `FlipTile` 揭示真实歌曲／专辑／播放列表信息或播客最新单集；宽磁贴与播客正反面板一起滑动，背面继续使用封面或所选纯色，文字靠下呈现。悬停或键盘聚焦保留展示面，正在翻转的这一段先收稳，背面停留计时暂停，离开后继续剩余时间；编辑、隐藏、离开可视区、关闭动态或 reduced-motion 才停转并归位。`MosaicFrames` 只替换尚未显示的封面，处理中的磁贴暂停自动替换。
+- `FlipTile` 揭示真实歌曲／专辑／播放列表信息或播客最新单集；宽磁贴与播客正反面板一起滑动，背面继续使用封面或所选纯色，文字靠下呈现。背面图片就绪后才启动揭示；每段移动先捕获将要显示的面板，父组件更新不在揭示、停留或返回途中替换它，下一次背面只在完全隐藏后准备。悬停或键盘聚焦保留展示面，正在翻转的这一段先收稳，背面停留计时暂停，离开后继续剩余时间；编辑、隐藏、离开可视区、关闭动态或 reduced-motion 才停转并归位。`MosaicFrames` 与备料 `CycleFrames` 按封面身份持有展示内容，图片池重排或缩短不重映射当前画面；只让已加载且尚未显示的内容进入下一次替换，正在移动的一段先收稳。
+- 收藏背景交叉淡入时，两层 Canvas 各自持有场景和已解码图片；新场景复用已经淡出的画布，快速切换只接管最新准备结果。缓存淘汰不影响可见场景的滚动／尺寸重绘，全部封面加载失败时保留原场景。播客背景异步调色忽略旧请求，延后挂载的图片接续当前环境动效。
 - 磁贴封面按实际显示框居中裁切，宽磁贴显示封面中央区域，拼贴每格按各自边界裁切；封面的 Grid 轨道用可收缩的边界，图片固有尺寸不撑大显示框。
 - now playing：拼贴背景 + 光焰 + 歌词模式同空间切换；chrome 无操作约 5s 进入沉浸态。
 - 播客：`src/views/podcast/` 按 screens/components 分层，加载态全部走 `PodcastLoading`（内含 `MetroLoader`）。

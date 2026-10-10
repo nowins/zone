@@ -15,11 +15,11 @@ const ID = "cover:behavior";
 // checks exercise real interpolation; these tests guard ownership and timing.
 function withDom(run) {
   let now = 0;
-  const animations = [], draws = [], created = [];
+  const animations = [], draws = [], created = [], observers = new Set();
   const media = Object.assign(new EventTarget(), { matches: false });
   const document = Object.assign(new EventTarget(), { hidden: false });
   const window = Object.assign(new EventTarget(), { matchMedia: () => media });
-  function element(rect, image = { complete: true, naturalWidth: 600, naturalHeight: 600 }) {
+  function element(rect, image = { complete: true, naturalWidth: 600, naturalHeight: 600, getAttribute: () => "decoded-cover" }) {
     return {
       rect, image, style: { visibility: "" }, dataset: {}, attributes: {}, isConnected: true,
       measures: 0,
@@ -45,11 +45,17 @@ function withDom(run) {
     created.push(clone);
     return clone;
   };
-  const globals = { document, window, performance: { now: () => now }, getComputedStyle: () => ({ borderRadius: "0px" }) };
+  const globals = { document, window, performance: { now: () => now }, getComputedStyle: () => ({ borderRadius: "0px" }),
+    MutationObserver: class {
+      constructor(callback) { this.callback = callback; }
+      observe(target) { this.target = target; observers.add(this); }
+      disconnect() { observers.delete(this); }
+    } };
   const saved = Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]);
   Object.entries(globals).forEach(([key, value]) => Object.defineProperty(globalThis, key, { configurable: true, value }));
   const dom = {
     document, window, media, element, animations, created, draws,
+    mutate: target => [...observers].filter(o => o.target === target).forEach(o => o.callback()),
     live: () => created.filter(node => node.isConnected),
     tick(ms) {
       const until = now + ms;
@@ -160,21 +166,51 @@ test("a late bar mount cannot replay a completed or stale return for another tra
   assert.equal(dom.live().length, 0);
 }));
 
+test("a bar mounting another track cancels the old return before it can cover the new artwork", () => withDom(dom => {
+  rememberCoverReturnTarget(dom.element(BAR));
+  const outgoing = dom.element(CARD);
+  startCoverReturn(ID, outgoing);
+  dom.tick(80);
+  const target = dom.element(BAR);
+  assert.equal(attachCoverReturn("cover:new-track", target), false);
+  assert.equal(dom.live().length, 0);
+  assert.equal(outgoing.style.visibility, "");
+  assert.equal(target.style.visibility, "");
+  dom.tick(1000);
+  assert.equal(dom.live().length, 0);
+}));
+
 test("reversing preserves visible geometry and the old view cannot cancel the new return", () => withDom(dom => {
   rememberCoverReturnTarget(dom.element(BAR));
   const target = dom.element(CARD), source = dom.source();
   const enter = playCoverFlip({ id: ID, source, target });
+  const captured = dom.live()[0];
+  source.image.naturalWidth = 900;
   dom.live()[0].rect = { x: 180, y: 120, width: 160, height: 160 };
   startCoverReturn(ID, target);
   assert.equal(dom.live().length, 1);
   assert.equal(dom.live()[0].style.left, "180px");
   assert.equal(dom.live()[0].style.width, "160px");
-  assert.equal(dom.draws.at(-1)[0], source.image);
+  assert.equal(dom.draws.at(-1)[0], captured, "reverse paints the visible pixels, even after the original image changed");
   enter.cancel();
   assert.equal(dom.live().length, 1, "departing view cleanup owns only its old entry flight");
   dom.tick(NOW_PLAYING_MOTION.coverExit);
   assert.equal(dom.live().length, 0);
   assert.equal(target.style.visibility, "");
+}));
+
+test("a destination cover replacement cancels its obsolete flight and cannot be hidden by late completion", () => withDom(dom => {
+  const target = dom.element(CARD, { getAttribute: () => "A" });
+  playCoverFlip({ id: ID, source: dom.source(), target });
+  const completion = dom.animations[0].onfinish;
+  target.image = { getAttribute: () => "C" };
+  dom.mutate(target);
+  assert.equal(dom.live().length, 0);
+  assert.equal(target.style.visibility, "");
+  completion();
+  dom.tick(1000);
+  assert.equal(target.style.visibility, "");
+  assert.equal(dom.animations.length, 1);
 }));
 
 test("cancel, hidden, resize and a reduced-motion change restore all hidden covers", () => withDom(dom => {

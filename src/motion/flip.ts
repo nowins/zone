@@ -7,7 +7,7 @@ export interface FlipRect {
 
 /** A decoded image may travel with its rect across an unmounted view. */
 export interface FlipSource extends FlipRect {
-  image?: HTMLImageElement;
+  image?: HTMLImageElement | HTMLCanvasElement;
 }
 
 export interface FlipDelta {

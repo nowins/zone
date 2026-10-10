@@ -1,21 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { Tile } from "./Tile";
 import type { TileSize } from "./Tile";
+import { useTileActivity } from "./useTileActivity";
+import { useReducedMotion } from "../../motion/useReducedMotion";
+import { MOTION_DURATIONS, TILE_MOTION } from "../../motion/tokens";
+import { scheduleTileUpdate } from "../../motion/tileScheduler";
+import { frameReady, tileFrames, type TileFrame } from "./tileFrames";
 
-const CYCLE_INTERVAL_MS = 5_000;
 const MAX_CYCLE_IMAGES = 9;
-// How long the outgoing frame keeps its is-leaving drift class before it
-// settles back to the base (parked) state — slightly past the CSS transition.
-const LEAVING_CLEAR_MS = 900;
 
 /**
  * WP8 cycle tile: rotates slowly through up to nine images with a gentle
- * cross-fade, staying restrained and content-driven. Under reduced motion the
- * conveyor drift collapses to a quick in-place fade — owned by the shared
- * reduced-motion block in motion.css, with no JS-side switch. Each instance
- * starts at a random phase offset so a wall of cycle tiles never switches in
- * lockstep.
+ * cross-fade, staying restrained and content-driven. The cycle stops under
+ * reduced motion, offscreen or during interaction. Updates
+ * use the same sparse, serial schedule as the other live tiles.
  */
 export function CycleTile({
   size = "medium",
@@ -60,52 +59,88 @@ export function CycleTile({
  * rotates its tracks' covers. Cycles automatically once given 2+ images.
  */
 export function CycleFrames({ images }: { images: ReactNode[] }) {
-  const frames = images.slice(0, MAX_CYCLE_IMAGES);
-  const [index, setIndex] = useState(0);
-  const [leaving, setLeaving] = useState<number | null>(null);
-  const timerRef = useRef<number | undefined>(undefined);
-  const leavingTimerRef = useRef<number | undefined>(undefined);
-  // Mirror the index so the timer tick always reads the current frame, not a
-  // stale closure value.
-  const indexRef = useRef(0);
-  indexRef.current = index;
+  const hostRef = useRef<HTMLDivElement>(null);
+  const { active, visible } = useTileActivity(hostRef);
+  const reducedMotion = useReducedMotion();
+  const frames = useMemo(() => tileFrames(images, MAX_CYCLE_IMAGES), [images]);
+  const poolRef = useRef(frames);
+  poolRef.current = frames;
+  const [current, setCurrent] = useState<TileFrame | null>(() => frames[0] ?? null);
+  const [leaving, setLeaving] = useState<TileFrame | null>(null);
+  const currentRef = useRef(current);
+  currentRef.current = current;
+  const nodesRef = useRef(new Map<string, HTMLDivElement>());
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const activityChangeRef = useRef<(() => void) | null>(null);
+  const hasUpdatedRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!frames.length) { setCurrent(null); setLeaving(null); }
+    else if (!currentRef.current) setCurrent(frames[0]);
+  }, [frames]);
 
   useEffect(() => {
-    if (frames.length <= 1) return undefined;
+    if (!visible || reducedMotion) return undefined;
     let cancelled = false;
-    const jitter = Math.random() * 1200;
-    const tick = () => {
-      if (cancelled) return;
-      const current = indexRef.current;
-      // The outgoing frame keeps drifting upward while it fades (is-leaving),
-      // so both frames travel in the same direction like a conveyor.
-      setLeaving(current);
-      if (leavingTimerRef.current !== undefined) window.clearTimeout(leavingTimerRef.current);
-      leavingTimerRef.current = window.setTimeout(() => {
-        if (!cancelled) setLeaving(null);
-      }, LEAVING_CLEAR_MS);
-      setIndex((current + 1) % frames.length);
-      timerRef.current = window.setTimeout(tick, CYCLE_INTERVAL_MS);
+    let cancelSchedule: (() => void) | undefined;
+    let leavingTimer: number | undefined;
+    const schedule = () => {
+      if (cancelled || !activeRef.current || cancelSchedule) return;
+      if (!poolRef.current.some(frame => frame.id !== currentRef.current?.id)) return;
+      const min = hasUpdatedRef.current ? TILE_MOTION.intervalMin : TILE_MOTION.firstMin;
+      const max = hasUpdatedRef.current ? TILE_MOTION.intervalMax : TILE_MOTION.firstMax;
+      cancelSchedule = scheduleTileUpdate(min + Math.random() * (max - min), tick);
     };
-    timerRef.current = window.setTimeout(tick, CYCLE_INTERVAL_MS + jitter);
+    const tick = (done: () => void) => {
+      const pool = poolRef.current;
+      const index = pool.findIndex(frame => frame.id === currentRef.current?.id);
+      const next = pool[(index + 1) % Math.max(1, pool.length)];
+      if (cancelled || !activeRef.current || !next || !frameReady(nodesRef.current.get(next.id))) {
+        cancelSchedule = undefined; done(); schedule(); return;
+      }
+      hasUpdatedRef.current = true;
+      // Store the two actual nodes, rather than indexes into a mutable pool.
+      setLeaving(currentRef.current);
+      currentRef.current = next;
+      setCurrent(next);
+      leavingTimer = window.setTimeout(() => {
+        leavingTimer = undefined;
+        if (cancelled) return;
+        setLeaving(null);
+        cancelSchedule = undefined;
+        done(); schedule();
+      }, MOTION_DURATIONS.cycle + MOTION_DURATIONS.instant);
+    };
+    const updateActivity = () => {
+      if (activeRef.current) schedule();
+      else if (leavingTimer === undefined) { cancelSchedule?.(); cancelSchedule = undefined; }
+    };
+    activityChangeRef.current = updateActivity;
+    schedule();
     return () => {
       cancelled = true;
-      if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
-      if (leavingTimerRef.current !== undefined) window.clearTimeout(leavingTimerRef.current);
+      activityChangeRef.current = null;
+      cancelSchedule?.();
+      if (leavingTimer !== undefined) window.clearTimeout(leavingTimer);
+      setLeaving(null);
     };
-  }, [frames.length]);
+  }, [visible, reducedMotion]);
+  useEffect(() => { activityChangeRef.current?.(); }, [active, frames]);
 
+  const displayed = [current, leaving].filter((frame): frame is TileFrame => frame !== null);
+  const rendered = [...displayed, ...frames.filter(frame => !displayed.some(item => item.id === frame.id))];
   return (
-    <div className="tile-cycle-frames">
-      {frames.map((frame, frameIndex) => (
+    <div ref={hostRef} className="tile-cycle-frames">
+      {rendered.map(frame => (
         <div
-          key={frameIndex}
-          className={`tile-cycle-frame ${frameIndex === index ? "is-active" : ""} ${
-            frameIndex === leaving && frameIndex !== index ? "is-leaving" : ""
+          key={frame.id}
+          ref={element => { if (element) nodesRef.current.set(frame.id, element); else nodesRef.current.delete(frame.id); }}
+          className={`tile-cycle-frame ${frame.id === current?.id ? "is-active" : ""} ${
+            frame.id === leaving?.id && frame.id !== current?.id ? "is-leaving" : ""
           }`}
-          aria-hidden={frameIndex !== index}
+          aria-hidden={frame.id !== current?.id}
         >
-          {frame}
+          {frame.content}
         </div>
       ))}
     </div>

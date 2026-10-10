@@ -9,7 +9,6 @@ export interface CoverFlipHandle {
 interface Flight extends CoverFlipHandle {
   id: string;
   clone: HTMLCanvasElement;
-  image: HTMLImageElement;
   attach(target: HTMLElement): void;
 }
 
@@ -28,7 +27,7 @@ function viewportRect(element: HTMLElement): FlipRect {
 export function registerCoverFlipSource(id: string, element: HTMLElement): FlipSource {
   const image = element.querySelector<HTMLImageElement>("img");
   const source: FlipSource = activeFlight?.id === id
-    ? { ...viewportRect(activeFlight.clone), image: activeFlight.image }
+    ? { ...viewportRect(activeFlight.clone), image: activeFlight.clone }
     : { ...viewportRect(element), image: image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0 ? image : undefined };
   activeFlight?.cancel();
   pendingReturn = null;
@@ -52,7 +51,12 @@ export function startCoverReturn(id: string, element: HTMLElement): void {
 
 /** Bind the returning clone to the newly mounted bar; never restart its trip. */
 export function attachCoverReturn(id: string, target: HTMLElement): boolean {
-  if (!pendingReturn || pendingReturn.id !== id) return false;
+  if (!pendingReturn) return false;
+  if (pendingReturn.id !== id) {
+    // The bar mounted a new track while the old cover was returning.
+    if (activeFlight?.id === pendingReturn.id) { activeFlight.cancel(); pendingReturn = null; }
+    return false;
+  }
   const fresh = pendingReturn.until >= performance.now();
   pendingReturn = null;
   if (!fresh) return false;
@@ -73,8 +77,12 @@ export function playCoverFlip({ id, source, target, direction = "enter" }: {
 function startFlight(id: string, source: FlipSource, destination: HTMLElement | FlipRect,
   direction: "enter" | "exit", outgoing?: HTMLElement): Flight | null {
   const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-  if (media.matches || document.hidden || !source.image?.complete || source.image.naturalWidth <= 0 ||
-    source.image.naturalHeight <= 0 || source.width <= 0 || source.height <= 0) return null;
+  const image = source.image;
+  if (!image) return null;
+  const imageWidth = "naturalWidth" in image ? image.complete ? image.naturalWidth : 0 : image.width;
+  const imageHeight = "naturalHeight" in image ? image.naturalHeight : image.height;
+  if (media.matches || document.hidden || imageWidth <= 0 || imageHeight <= 0 ||
+    source.width <= 0 || source.height <= 0) return null;
   activeFlight?.cancel();
   let target = "getBoundingClientRect" in destination ? destination : null;
   let dock = target ? viewportRect(target) : destination as FlipRect;
@@ -85,10 +93,10 @@ function startFlight(id: string, source: FlipSource, destination: HTMLElement | 
   const clone = document.createElement("canvas");
   const context = clone.getContext("2d");
   if (!context) return null;
-  clone.width = clone.height = Math.min(512, source.image.naturalWidth);
-  const crop = Math.min(source.image.naturalWidth, source.image.naturalHeight);
-  context.drawImage(source.image, (source.image.naturalWidth - crop) / 2,
-    (source.image.naturalHeight - crop) / 2, crop, crop, 0, 0, clone.width, clone.height);
+  clone.width = clone.height = Math.min(512, imageWidth);
+  const crop = Math.min(imageWidth, imageHeight);
+  context.drawImage(image, (imageWidth - crop) / 2,
+    (imageHeight - crop) / 2, crop, crop, 0, 0, clone.width, clone.height);
   clone.setAttribute("aria-hidden", "true");
   clone.dataset.coverFlight = direction;
   const { style } = clone;
@@ -117,12 +125,29 @@ function startFlight(id: string, source: FlipSource, destination: HTMLElement | 
   let animation: Animation | null = null;
   let reveal: Animation | null = null;
   let finished = false;
+  let targetObserver: MutationObserver | null = null;
+
+  function watchTarget(element: HTMLElement) {
+    targetObserver?.disconnect();
+    if (typeof MutationObserver === "undefined") return;
+    const artwork = () => element.querySelector("img")?.getAttribute("src") ?? null;
+    let captured = artwork();
+    targetObserver = new MutationObserver(() => {
+      const current = artwork();
+      // Initial decode/controlled-protocol mounting may add the same cover.
+      // Once present, a replacement belongs to a different handoff.
+      if (captured && captured !== current) finish();
+      else captured = current;
+    });
+    targetObserver.observe(element, { subtree: true, childList: true, attributes: true, attributeFilter: ["src", "srcset"] });
+  }
 
   function finish() {
     if (finished) return;
     finished = true;
     if (animation) { animation.onfinish = null; animation.cancel(); }
     if (reveal) { reveal.onfinish = null; reveal.cancel(); }
+    targetObserver?.disconnect();
     clone.remove();
     hidden.forEach((visibility, element) => { element.style.visibility = visibility; });
     document.removeEventListener("visibilitychange", onVisibility);
@@ -157,11 +182,12 @@ function startFlight(id: string, source: FlipSource, destination: HTMLElement | 
   }
 
   const flight: Flight = {
-    id, clone, image: source.image, cancel: finish,
+    id, clone, cancel: finish,
     attach(element) {
       if (finished) return;
       target = element;
       hide(element);
+      watchTarget(element);
       const actual = viewportRect(element);
       // Usually identical. Correct once if the returning page reflows; do
       // not chase layout or paint a blur on every animation frame.
@@ -174,6 +200,7 @@ function startFlight(id: string, source: FlipSource, destination: HTMLElement | 
     },
   };
   activeFlight = flight;
+  if (target) watchTarget(target);
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("resize", finish);
   media.addEventListener("change", finish);
