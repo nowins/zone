@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-const css = readFileSync("src/styles/collection-details.css", "utf8");
+import { resolveTypography } from "./helpers/typography.mjs";
+const css = resolveTypography(readFileSync("src/styles/collection-details.css", "utf8"));
 const source = readFileSync("src/views/ArtistBrowser.tsx", "utf8");
 test("artist media index keeps two compact columns without permanent card chrome", () => {
   assert.ok(css.includes("grid-template-columns: repeat(2, minmax(0, 1fr))"));

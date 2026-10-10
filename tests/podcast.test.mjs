@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import test from "node:test";
+import { resolveTypography } from "./helpers/typography.mjs";
 
 const appSource = [
   "src/app/podcastPlaybackSettings.ts",
@@ -44,7 +45,7 @@ const podcastNowPlayingSource = readFileSync("src/views/PodcastNowPlayingView.ts
 const podcastArtworkSource = readFileSync("src/utils/podcastArtwork.ts", "utf8");
 const podcastPlaybackSource = readFileSync("src/utils/podcastPlayback.ts", "utf8");
 const baseCss = readFileSync("src/styles/base.css", "utf8");
-const podcastCss = readFileSync("src/styles/podcasts.css", "utf8");
+const podcastCss = resolveTypography(readFileSync("src/styles/podcasts.css", "utf8"));
 const podcastNowPlayingCss = readFileSync("src/styles/podcast-now-playing.css", "utf8");
 const motionCss = readFileSync("src/styles/motion.css", "utf8");
 const nowPlayingSource = readFileSync("src/views/NowPlayingView.tsx", "utf8");
@@ -916,7 +917,7 @@ test("podcast detail, menus, and full-screen layout cover keyboard and minimum-w
   );
   includes(
     podcastCss,
-    /\.podcast-detail-meta\s*\{(?=[^}]*font-size:\s*11px)(?=[^}]*color:\s*rgba\(247,\s*242,\s*246,\s*0\.52\))[^}]*\}/,
+    /\.podcast-detail-meta\s*\{(?=[^}]*font-size:\s*12px)(?=[^}]*color:\s*rgba\(247,\s*242,\s*246,\s*0\.52\))[^}]*\}/,
     "episode detail metadata must not fall back to micro-copy contrast",
   );
   includes(
@@ -926,7 +927,7 @@ test("podcast detail, menus, and full-screen layout cover keyboard and minimum-w
   );
   includes(
     podcastCss,
-    /\.podcast-inline-state\s*\{(?=[^}]*font-size:\s*11px)(?=[^}]*color:\s*rgba\(247,\s*242,\s*246,\s*0\.52\))[^}]*\}/,
+    /\.podcast-inline-state\s*\{(?=[^}]*font-size:\s*12px)(?=[^}]*color:\s*rgba\(247,\s*242,\s*246,\s*0\.52\))[^}]*\}/,
     "podcast loading and empty states must remain legible",
   );
   includes(

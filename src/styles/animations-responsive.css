@@ -61,7 +61,8 @@
   }
 
   .settings-header h1 {
-    font-size: clamp(68px, 11vh, 86px);
+    font-size: var(--type-page-title);
+    font-weight: var(--weight-display);
   }
 
   .settings-header > div > p {
@@ -133,7 +134,8 @@
   .now-panel-current strong,
   .now-panel-upcoming strong,
   .now-panel-empty strong {
-    font-size: 19px;
+    font-size: var(--type-item-title);
+    font-weight: var(--weight-body);
   }
 
   .now-panel-upcoming {
@@ -188,7 +190,8 @@
   }
 
   .save-playlist-dialog label span {
-    font-size: 30px;
+    font-size: var(--type-dialog-title);
+    font-weight: var(--weight-heading);
   }
 
   .now-track-card {

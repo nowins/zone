@@ -4,14 +4,14 @@
 .collection-connected[data-collection-surface="detail"] .collection-artwork-backdrop { opacity: 0.32; }
 .collection-toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 44px; gap: 24px; padding: 0 4px 4px; flex: none; }
 .collection-categories { display: flex; align-items: center; gap: 26px; min-width: 0; }
-.collection-categories > button { position: relative; padding: 6px 0 8px; color: var(--muted); font-size: var(--type-nav-secondary); font-weight: 400; line-height: 1.3; white-space: nowrap; }
+.collection-categories > button { position: relative; padding: 6px 0 8px; color: var(--muted); font-size: var(--type-nav-secondary); font-weight: var(--weight-body); line-height: 1.3; white-space: nowrap; }
 .collection-categories > .selected { color: var(--text); }
 .collection-categories > .selected::after { content: ""; position: absolute; height: 2px; bottom: 0; inset-inline: 0; background: var(--accent); }
-.collection-back { display: flex; align-items: center; gap: 9px; min-width: 0; max-width: 400px; min-height: 36px; padding: 6px 0; color: var(--muted); font-size: 13px; }
+.collection-back { display: flex; align-items: center; gap: 9px; min-width: 0; max-width: 400px; min-height: 36px; padding: 6px 0; color: var(--muted); font-size: var(--type-control); }
 .collection-back span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .collection-back svg { flex: none; }
 .collection-index-caption { flex: none; }
-.collection-index-caption p { margin: 8px 4px 12px; font-size: 12px; color: var(--muted); }
+.collection-index-caption p { margin: 8px 4px 12px; font-size: var(--type-caption); color: var(--muted); }
 .collection-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .collection-content { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
 .collection-index-scroll, .collection-entity-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--faint) transparent; scrollbar-gutter: stable; padding: 4px 8px 28px 4px; }
@@ -22,18 +22,18 @@
 .collection-artist-image { display: block; position: relative; width: 72px; height: 72px; flex: none; }
 .collection-artist-image .cover { width: 100%; height: 100%; margin: 0; }
 .collection-artist-image.is-profile img { object-fit: contain; }
-.collection-artist-image > small { position: absolute; inset: auto 0 0; padding: 3px 0; text-align: center; background: rgba(9, 6, 10, 0.85); color: #eee7ed; font-size: 10px; line-height: 1.2; }
+.collection-artist-image > small { position: absolute; inset: auto 0 0; padding: 3px 0; text-align: center; background: rgba(9, 6, 10, 0.85); color: #eee7ed; font-size: var(--type-caption); line-height: 1.2; }
 .collection-artist-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.collection-artist-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 18px; font-weight: 400; }
-.collection-artist-copy > small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.collection-artist-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-item-title); font-weight: var(--weight-body); }
+.collection-artist-copy > small { color: var(--muted); font-size: var(--type-caption); line-height: 1.5; }
 .collection-album-index { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 164px)); gap: 24px; align-content: start; }
 .collection-album-index > div { min-width: 0; container-type: inline-size; }
 /* Reserve the real square cover and two caption lines before auto content renders. */
 .collection-album-index .collection-album-tile { width: 100%; padding: 0; animation: none; contain-intrinsic-block-size: auto calc(100cqw + 9px + 14px * 1.4 + 3px + 12px * 1.4); }
 .collection-album-index .collection-album-select { width: 100%; padding: 0; }
 .collection-album-index .cover { width: 100%; aspect-ratio: 1; height: auto; }
-.collection-album-index .collection-album-select strong { font-size: 14px; font-weight: 400; }
-.collection-album-index .collection-album-select > span { font-size: 12px; }
+.collection-album-index .collection-album-select strong { font-size: var(--type-body); font-weight: var(--weight-body); }
+.collection-album-index .collection-album-select > span { font-size: var(--type-caption); }
 .collection-relation { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: rgba(247, 242, 246, 0.25); text-underline-offset: 3px; }
 .collection-relation:hover { color: var(--text); text-decoration-color: var(--accent); }
 .collection-relation:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
@@ -46,46 +46,46 @@
 .collection-entity-heading.is-artist .collection-entity-art { width: 136px; height: 136px; }
 .collection-entity-heading.is-artist .collection-entity-art img { object-fit: contain; }
 .collection-entity-copy { min-width: 0; flex: 1; }
-.collection-category-link { color: var(--muted); font-size: 12px; margin: 0 0 6px; }
+.collection-category-link { color: var(--muted); font-size: var(--type-caption); margin: 0 0 6px; }
 .collection-category-link:hover { color: var(--text); }
-.collection-entity-copy h1 { font-size: 38px; line-height: 1.18; font-weight: 300; letter-spacing: -0.035em; margin: 0 0 10px; overflow-wrap: anywhere; }
-.collection-entity-heading.is-artist h1 { font-size: 42px; }
-.collection-entity-artist { font-size: 18px; margin: 0 0 10px; }
-.collection-entity-meta { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 0; }
+.collection-entity-copy h1 { font-size: var(--type-page-title); line-height: 1.18; font-weight: var(--weight-display); letter-spacing: -0.035em; margin: 0 0 10px; overflow-wrap: anywhere; }
+.collection-entity-heading.is-artist h1 { font-size: var(--type-page-title); font-weight: var(--weight-display); }
+.collection-entity-artist { font-size: var(--type-subsection-title); margin: 0 0 10px; font-weight: var(--weight-body); }
+.collection-entity-meta { color: var(--muted); font-size: var(--type-caption); line-height: 1.6; margin: 0; }
 .collection-entity-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
-.collection-entity-actions .button { min-height: 32px; font-size: 12px; }
-.collection-artist-biography { width: 32%; max-width: 360px; flex: none; color: var(--muted); font-size: 14px; font-weight: 300; line-height: 1.9; }
-.collection-artist-biography-kicker { display: block; color: var(--quiet); font-size: 11px; font-weight: 400; letter-spacing: 0.14em; margin-bottom: 10px; }
+.collection-entity-actions .button { min-height: 32px; font-size: var(--type-caption); }
+.collection-artist-biography { width: 32%; max-width: 360px; flex: none; color: var(--muted); font-size: var(--type-body); font-weight: var(--weight-body); line-height: 1.9; }
+.collection-artist-biography-kicker { display: block; color: var(--quiet); font-size: var(--type-kicker); font-weight: var(--weight-emphasis); letter-spacing: 0.14em; margin-bottom: 10px; }
 .collection-artist-biography p { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; margin: 0 0 8px; max-width: 72ch; }
-.collection-artist-biography button { color: var(--muted); font-size: 12px; padding: 0; }
+.collection-artist-biography button { color: var(--muted); font-size: var(--type-caption); padding: 0; }
 .collection-artist-biography button:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
-.collection-biography-full { font-size: 14px; color: var(--muted); line-height: 1.9; white-space: pre-wrap; }
+.collection-biography-full { font-size: var(--type-body); color: var(--muted); line-height: 1.9; white-space: pre-wrap; }
 .playlist-dialog.biography-dialog { max-height: 100%; display: flex; flex-direction: column; }
 .biography-dialog .collection-biography-full { flex: 1; min-height: 0; margin: 0; overflow-y: auto; scrollbar-width: thin; }
 .biography-dialog .playlist-dialog-actions { flex: none; }
 .collection-detail-tabs { display: flex; gap: 28px; margin-top: 24px; border-bottom: 1px solid var(--faint); }
-.collection-detail-tabs > button { color: var(--muted); padding: 0 0 9px; font-size: 20px; font-weight: 300; }
+.collection-detail-tabs > button { color: var(--muted); padding: 0 0 9px; font-size: var(--type-nav-tertiary); font-weight: var(--weight-body); }
 .collection-detail-tabs > .selected { color: var(--text); box-shadow: 0 2px var(--accent); }
 .collection-artist-overview { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 38px; }
 .collection-artist-overview .collection-album-index { grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); gap: 20px; }
 .collection-entity-section { margin-top: 26px; min-width: 0; }
-.collection-entity-section h2 { margin: 0 0 14px; font-size: 20px; font-weight: 300; line-height: 1.4; }
-.collection-entity-section h2 small { font-size: 12px; color: var(--muted); margin-left: 6px; }
+.collection-entity-section h2 { margin: 0 0 14px; font-size: var(--type-section-title); font-weight: var(--weight-heading); line-height: 1.4; }
+.collection-entity-section h2 small { font-size: var(--type-caption); color: var(--muted); margin-left: 6px; }
 .collection-entity-scroll .collection-track-list { overflow: visible; }
 .collection-entity-scroll .collection-track-scroll { overflow: visible; flex: none; }
 .collection-entity-scroll .collection-track-row { animation: none; }
 .collection-entity-section > .button { margin-top: 12px; }
-.collection-disc-label { font-size: 13px; font-weight: 400; color: var(--muted); margin: 24px 12px 10px; }
+.collection-disc-label { font-size: var(--type-body); font-weight: var(--weight-body); color: var(--muted); margin: 24px 12px 10px; }
 .collection-track-relations { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
-.collection-related-album { display: flex; align-items: center; gap: 16px; font-size: 18px; }
+.collection-related-album { display: flex; align-items: center; gap: 16px; font-size: var(--type-item-title); }
 .collection-related-art { width: 80px; height: 80px; flex: none; }
 .collection-related-art .cover { width: 100%; height: 100%; margin: 0; }
-.collection-related-album p { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.collection-related-album p { color: var(--muted); font-size: var(--type-caption); margin: 8px 0 0; }
 .collection-playlist-relations { list-style: none; padding: 0; margin: 0; }
 .collection-playlist-relations li { display: flex; gap: 12px; align-items: baseline; padding: 8px 0; }
-.collection-playlist-relations small { color: var(--muted); font-size: 12px; }
+.collection-playlist-relations small { color: var(--muted); font-size: var(--type-caption); }
 .collection-unavailable { padding: 32px 4px; }
-.collection-unavailable h1 { font-size: 26px; font-weight: 300; line-height: 1.3; margin-bottom: 24px; }
+.collection-unavailable h1 { font-size: var(--type-page-title); font-weight: var(--weight-display); line-height: 1.3; margin-bottom: 24px; }
 .collection-connected .search-results-scroll .collection-track-scroll { overflow: visible; }
 .collection-connected .search-results-scroll .collection-track-list { flex: none; }
 .collection-connected .search-results-scroll .collection-artist-index { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 24px; }
@@ -100,8 +100,8 @@
   .collection-artist-biography { width: 100%; max-width: none; flex-basis: 100%; }
   .collection-entity-art { width: 150px; height: 150px; }
   .collection-entity-heading.is-artist .collection-entity-art { width: 112px; height: 112px; }
-  .collection-entity-copy h1 { font-size: 31px; }
-  .collection-entity-heading.is-artist h1 { font-size: 37px; }
+  .collection-entity-copy h1 { font-size: var(--type-page-title); font-weight: var(--weight-display); }
+  .collection-entity-heading.is-artist h1 { font-size: var(--type-page-title); font-weight: var(--weight-display); }
   .collection-artist-overview { gap: 26px; }
   .collection-track-list { --track-columns: 28px minmax(80px, 1.5fr) minmax(54px, 0.9fr) minmax(64px, 1fr) 36px; }
   .collection-track-head, .collection-track-row, .collection-track-main { column-gap: 8px; }

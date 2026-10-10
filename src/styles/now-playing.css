@@ -117,8 +117,8 @@
   height: var(--now-cover-size);
   overflow: hidden;
   color: rgba(255, 255, 255, 0.82);
-  font-size: 16px;
-  font-weight: 200;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-ghost);
   outline: clamp(3px, 0.24vw, 5px) solid rgba(255, 255, 255, 0.92);
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.42);
 }
@@ -149,8 +149,8 @@
 }
 
 .now-track-card strong {
-  font-size: clamp(20px, 1.65vw, 34px);
-  font-weight: 600;
+  font-size: var(--type-now-artist);
+  font-weight: var(--weight-emphasis);
   letter-spacing: -0.015em;
   text-transform: uppercase;
 }
@@ -158,8 +158,8 @@
 .now-track-card span {
   margin-top: clamp(5px, 0.42vw, 9px);
   color: rgba(255, 255, 255, 0.94);
-  font-size: clamp(18px, 1.34vw, 28px);
-  font-weight: 400;
+  font-size: var(--type-now-album);
+  font-weight: var(--weight-body);
   letter-spacing: -0.01em;
   text-transform: uppercase;
 }
@@ -170,8 +170,8 @@
   max-width: 100%;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.96);
-  font-size: clamp(20px, 1.46vw, 31px);
-  font-weight: 400;
+  font-size: var(--type-now-track);
+  font-weight: var(--weight-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -330,24 +330,24 @@
 
 .now-panel-current strong {
   color: #ff2cae;
-  font-size: clamp(15px, 1.05vw, 20px);
-  font-weight: 400;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-body);
 }
 
 .now-panel-current span {
   margin-top: 3px;
   padding-left: clamp(18px, 1.3vw, 25px);
   color: rgba(255, 255, 255, 0.56);
-  font-size: clamp(10px, 0.68vw, 13px);
-  font-weight: 300;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
   text-transform: uppercase;
 }
 
 .now-panel-upcoming strong,
 .now-panel-empty strong {
   color: rgba(255, 255, 255, 0.9);
-  font-size: 17px;
-  font-weight: 300;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-body);
 }
 
 .now-panel-upcoming button > span {
@@ -366,8 +366,8 @@
 .now-panel-empty span {
   margin-top: 4px;
   color: rgba(255, 255, 255, 0.52);
-  font-size: 12px;
-  font-weight: 300;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
 }
 
 .save-queue {
@@ -379,8 +379,8 @@
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.62);
   border-radius: 2px;
-  font-size: clamp(9px, 0.68vw, 13px);
-  font-weight: 400;
+  font-size: var(--type-control);
+  font-weight: var(--weight-body);
   text-align: center;
   transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), opacity var(--motion-micro) var(--motion-ease-standard);
 }
@@ -479,7 +479,7 @@
   width: 190px;
   height: 16px;
   justify-content: center;
-  font-size: 10px;
+  font-size: var(--type-caption);
 }
 
 .now-transport .zune-volume:hover,
@@ -506,7 +506,7 @@
   padding: 6px 10px;
   color: #fff;
   background: #181818;
-  font-size: 12px;
+  font-size: var(--type-caption);
 }
 
 .chrome-immersive {
@@ -562,8 +562,8 @@
 
 .save-playlist-dialog label span {
   color: rgba(40, 40, 40, 0.92);
-  font-size: clamp(28px, 2.2vw, 34px);
-  font-weight: 300;
+  font-size: var(--type-dialog-title);
+  font-weight: var(--weight-heading);
   line-height: 1.05;
 }
 
@@ -576,8 +576,8 @@
   border: 2px solid #ff63c8;
   border-radius: 0;
   outline: none;
-  font-size: clamp(15px, 1.15vw, 17px);
-  font-weight: 300;
+  font-size: var(--type-body);
+  font-weight: var(--weight-body);
 }
 
 .save-playlist-dialog input:focus {
@@ -598,8 +598,8 @@
   background: rgba(250, 250, 250, 0.94);
   border: 2px solid rgba(0, 0, 0, 0.16);
   border-radius: 5px;
-  font-size: 14px;
-  font-weight: 300;
+  font-size: var(--type-control);
+  font-weight: var(--weight-body);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
 }
 

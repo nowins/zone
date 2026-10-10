@@ -30,19 +30,19 @@
 
 .context-title strong {
   margin-top: 5px;
-  font-size: 18px;
-  font-weight: 400;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-body);
 }
 
 .context-title span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--type-body);
 }
 
 .context-title .context-title-kicker {
   color: var(--accent);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--type-kicker);
+  font-weight: var(--weight-emphasis);
   line-height: 1;
   letter-spacing: 0.12em;
 }
@@ -65,7 +65,7 @@
   text-align: left;
   color: rgba(255, 255, 255, 0.82);
   border-left: 2px solid transparent;
-  font-size: 14px;
+  font-size: var(--type-control);
   transition: color var(--motion-press) var(--motion-ease-standard), background var(--motion-press) var(--motion-ease-standard), border-color var(--motion-press) var(--motion-ease-standard);
 }
 
@@ -123,7 +123,7 @@
   display: block;
   padding: 3px 17px 7px;
   color: rgba(255, 255, 255, 0.45);
-  font-size: 11px;
+  font-size: var(--type-kicker);
   letter-spacing: 0.06em;
 }
 
@@ -135,7 +135,8 @@
 
 .playlist-dialog.playlist-picker-dialog h2 {
   margin: 8px 0 17px;
-  font-size: 30px;
+  font-size: var(--type-dialog-title);
+  font-weight: var(--weight-heading);
 }
 
 .playlist-picker-list {
@@ -171,15 +172,15 @@
 
 .playlist-picker-list strong {
   overflow: hidden;
-  font-size: 14px;
-  font-weight: 400;
+  font-size: var(--type-body);
+  font-weight: var(--weight-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .playlist-picker-list span {
   color: rgba(255, 255, 255, 0.38);
-  font-size: 10px;
+  font-size: var(--type-caption);
 }
 
 .playlist-picker-name {
@@ -210,7 +211,8 @@
 
 .playlist-dialog.metadata-dialog h2 {
   margin: 8px 0 22px;
-  font-size: 34px;
+  font-size: var(--type-dialog-title);
+  font-weight: var(--weight-heading);
 }
 
 .metadata-search-summary {
@@ -250,27 +252,27 @@
 
 .metadata-dialog-identity strong {
   color: rgba(255, 255, 255, 0.9);
-  font-size: 16px;
-  font-weight: 400;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-body);
 }
 
 .metadata-dialog-identity span {
   margin-top: 5px;
   color: rgba(255, 255, 255, 0.55);
-  font-size: 13px;
+  font-size: var(--type-body);
 }
 
 .metadata-dialog-identity small {
   margin-top: 7px;
   color: rgba(255, 255, 255, 0.35);
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 
 .metadata-search-field > span {
   display: block;
   margin-bottom: 6px;
   color: rgba(255, 255, 255, 0.56);
-  font-size: 12px;
+  font-size: var(--type-caption);
 }
 
 .metadata-search-field > div {
@@ -280,7 +282,7 @@
 .metadata-dialog .metadata-search-field input {
   height: 36px;
   padding-right: 36px;
-  font-size: 15px;
+  font-size: var(--type-control);
 }
 
 .metadata-search-field svg {
@@ -352,20 +354,20 @@
 }
 
 .metadata-search-results strong {
-  font-size: 14px;
-  font-weight: 400;
+  font-size: var(--type-body);
+  font-weight: var(--weight-body);
 }
 
 .metadata-search-results small {
   margin-top: 2px;
   color: rgba(255, 255, 255, 0.48);
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 
 .metadata-search-results em {
   margin-top: 2px;
   color: rgba(255, 255, 255, 0.32);
-  font-size: 10px;
+  font-size: var(--type-caption);
   font-style: normal;
 }
 
@@ -386,7 +388,7 @@
   width: 106px;
   margin-top: 10px;
   color: rgba(255, 255, 255, 0.35);
-  font-size: 10px;
+  font-size: var(--type-caption);
   line-height: 1.45;
 }
 
@@ -403,12 +405,12 @@
 
 .metadata-dialog .metadata-edit-grid label > span {
   margin-bottom: 5px;
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 
 .metadata-dialog .metadata-edit-grid input {
   height: 34px;
-  font-size: 14px;
+  font-size: var(--type-control);
 }
 
 .metadata-edit-grid textarea {
@@ -424,7 +426,7 @@
   border-radius: 0;
   outline: 0;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--type-control);
   line-height: 1.5;
 }
 
@@ -479,7 +481,7 @@
 .metadata-dialog-notice {
   margin: 12px 0 0;
   color: rgba(255, 255, 255, 0.52);
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 
 .playlist-dialog-overlay {
@@ -505,8 +507,8 @@
 
 .playlist-dialog-kicker {
   color: var(--accent);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--type-kicker);
+  font-weight: var(--weight-emphasis);
   line-height: 1;
   letter-spacing: 0.13em;
 }
@@ -514,8 +516,8 @@
 .playlist-dialog h2 {
   margin: 10px 0 26px;
   color: #fff;
-  font-size: 36px;
-  font-weight: 300;
+  font-size: var(--type-dialog-title);
+  font-weight: var(--weight-heading);
   line-height: 1.05;
 }
 
@@ -530,7 +532,7 @@
 .playlist-dialog label > span {
   margin-bottom: 8px;
   color: rgba(255, 255, 255, 0.66);
-  font-size: 13px;
+  font-size: var(--type-body);
 }
 
 .playlist-dialog input {
@@ -542,8 +544,8 @@
   border-bottom-color: var(--accent);
   border-radius: 0;
   outline: 0;
-  font-size: 17px;
-  font-weight: 300;
+  font-size: var(--type-control);
+  font-weight: var(--weight-body);
 }
 
 .playlist-dialog input:focus {
@@ -559,16 +561,16 @@
 .playlist-dialog label small {
   margin-top: 8px;
   color: rgba(255, 255, 255, 0.4);
-  font-size: 11px;
-  font-weight: 300;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
 }
 
 .playlist-dialog-message {
   max-width: 390px;
   margin: 0;
   color: rgba(255, 255, 255, 0.68);
-  font-size: 15px;
-  font-weight: 300;
+  font-size: var(--type-body);
+  font-weight: var(--weight-body);
   line-height: 1.65;
 }
 
@@ -616,15 +618,15 @@
 }
 
 .playlist-kind-options strong {
-  font-size: 17px;
-  font-weight: 400;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-body);
 }
 
 .playlist-kind-options small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 300;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
 }
 
 .smart-playlist-overlay {
@@ -664,8 +666,8 @@
 .smart-editor-header h2 {
   margin: 7px 0 5px;
   color: #fff;
-  font-size: 28px;
-  font-weight: 300;
+  font-size: var(--type-dialog-title);
+  font-weight: var(--weight-heading);
   line-height: 1;
 }
 
@@ -674,7 +676,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--type-caption);
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -691,8 +693,8 @@
 .smart-preview-heading span,
 .smart-mix-settings label > span {
   color: rgba(255, 255, 255, 0.47);
-  font-size: 10px;
-  font-weight: 500;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
   letter-spacing: 0.08em;
 }
 
@@ -776,15 +778,15 @@
 }
 
 .smart-presets strong {
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--type-body);
+  font-weight: var(--weight-body);
 }
 
 .smart-presets small {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 10px;
-  font-weight: 300;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
   line-height: 1.35;
 }
 
@@ -804,8 +806,8 @@
 .smart-preview-heading strong {
   display: block;
   margin-top: 3px;
-  font-size: 16px;
-  font-weight: 350;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-heading);
 }
 
 .smart-segmented {
@@ -818,7 +820,7 @@
   min-width: 52px;
   height: 27px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--type-caption);
   transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard);
 }
 
@@ -839,7 +841,7 @@
   color: var(--muted);
   background: rgba(255, 255, 255, 0.025);
   border-left: 2px solid rgba(255, 255, 255, 0.14);
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 
 .smart-rule-row {
@@ -896,7 +898,7 @@
 .smart-inline-fields small {
   flex: none;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--type-caption);
 }
 
 .smart-range-value input {
@@ -1018,8 +1020,8 @@
 }
 
 .smart-toggle strong {
-  font-size: 11px;
-  font-weight: 350;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
 }
 
 .smart-preview {
@@ -1047,7 +1049,7 @@
   display: block;
   margin: 7px 0 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--type-caption);
   line-height: 1.45;
 }
 
@@ -1055,7 +1057,7 @@
   margin-top: 12px;
   padding: 6px 0;
   color: rgba(255, 255, 255, 0.56);
-  font-size: 10px;
+  font-size: var(--type-caption);
   border-bottom: 1px solid rgba(241, 36, 134, 0.42);
   transition: color var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard);
 }
@@ -1081,7 +1083,7 @@
 
 .smart-preview-tracks > div > span {
   color: var(--quiet);
-  font-size: 9px;
+  font-size: var(--type-caption);
 }
 
 .smart-preview-tracks p,
@@ -1096,14 +1098,14 @@
 }
 
 .smart-preview-tracks strong {
-  font-size: 11px;
-  font-weight: 400;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
 }
 
 .smart-preview-tracks small {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--type-caption);
 }
 
 .smart-preview-empty {
@@ -1123,13 +1125,13 @@
 
 .smart-preview-empty strong {
   color: rgba(255, 255, 255, 0.76);
-  font-size: 12px;
-  font-weight: 400;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
 }
 
 .smart-preview-empty span {
   max-width: 170px;
-  font-size: 10px;
+  font-size: var(--type-caption);
   line-height: 1.5;
 }
 
@@ -1145,7 +1147,7 @@
 
 .smart-editor-footer > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--type-caption);
 }
 
 .smart-editor-footer > div {
@@ -1198,8 +1200,8 @@
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-left: 3px solid var(--accent);
   box-shadow: 0 14px 42px rgba(0, 0, 0, 0.48);
-  font-size: 13px;
-  font-weight: 300;
+  font-size: var(--type-body);
+  font-weight: var(--weight-body);
   text-overflow: ellipsis;
   white-space: nowrap;
   transform: translateX(-50%);

@@ -2,7 +2,8 @@
   color: #f7f2f6;
   background: #0b070c;
   font-family: var(--font-body);
-  font-weight: 400;
+  font-size: var(--type-body);
+  font-weight: var(--weight-body);
   font-synthesis: none;
   text-rendering: geometricPrecision;
   --app-bg: #0b070c;
@@ -20,6 +21,40 @@
   --type-nav-primary: 25px;
   --type-nav-secondary: 18px;
   --type-nav-tertiary: 14px;
+  --type-display: clamp(68px, 8vw, 116px);
+  --type-page-title: 38px;
+  --type-section-title: 24px;
+  --type-subsection-title: 18px;
+  --type-dialog-title: 28px;
+  --type-item-title: 16px;
+  --type-body: 14px;
+  --type-control: 13px;
+  --type-caption: 12px;
+  --type-kicker: 11px;
+  --type-badge: 11px;
+  --type-counter: 40px;
+  --type-feature-title: clamp(38px, 3.5vw, 54px);
+  --type-now-title: clamp(32px, 3.5vw, 48px);
+  --type-now-artist: clamp(20px, 1.65vw, 34px);
+  --type-now-album: clamp(18px, 1.34vw, 28px);
+  --type-now-track: clamp(20px, 1.46vw, 31px);
+  --type-ghost: clamp(150px, 18vw, 248px);
+  --type-ghost-podcast: clamp(110px, 14vw, 210px);
+  --type-ghost-playing: clamp(88px, 13vw, 190px);
+  --type-artwork: 54px;
+  --type-artwork-compact: 64px;
+  --type-icon-number: 7px;
+  --weight-ghost: 200;
+  --weight-display: 250;
+  --weight-heading: 300;
+  --weight-body: 400;
+  --weight-emphasis: 600;
+}
+
+@media (max-width: 1000px) {
+  :root {
+    --type-page-title: 32px;
+  }
 }
 
 * {
@@ -111,13 +146,14 @@ input:focus-visible {
 }
 
 .fatal-screen h1 {
-  font-size: 82px;
+  font-size: var(--type-display);
+  font-weight: var(--weight-display);
 }
 
 .fatal-screen p {
   max-width: 720px;
   color: var(--muted);
-  font-size: 18px;
+  font-size: var(--type-item-title);
 }
 .fatal-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 
@@ -197,7 +233,7 @@ input:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: var(--type-caption);
   border-right: 1px solid rgba(247, 242, 246, 0.09);
 }
 
@@ -234,9 +270,9 @@ input:focus-visible {
 .brand {
   margin: 0;
   color: rgba(255, 255, 255, 0.92);
-  font-size: 18px;
+  font-size: var(--type-subsection-title);
   line-height: 1;
-  font-weight: 650;
+  font-weight: var(--weight-emphasis);
   letter-spacing: 0.08em;
 }
 
@@ -253,7 +289,7 @@ input:focus-visible {
   font-family: var(--font-display);
   font-size: var(--type-nav-primary);
   line-height: 1.1;
-  font-weight: 300;
+  font-weight: var(--weight-heading);
   transition: color var(--motion-micro) var(--motion-ease-standard), transform var(--motion-content) var(--motion-ease-entrance);
 }
 
@@ -307,9 +343,20 @@ p {
 
 h1 {
   margin-bottom: 0;
-  font-size: clamp(68px, 8vw, 116px);
+  font-size: var(--type-page-title);
   line-height: 0.82;
-  font-weight: 200;
+  font-weight: var(--weight-display);
+}
+
+h3,
+h4 {
+  font-size: var(--type-subsection-title);
+  font-weight: var(--weight-body);
+}
+
+strong,
+b {
+  font-weight: var(--weight-emphasis);
 }
 
 h1,
@@ -323,8 +370,8 @@ h2,
 
 h2 {
   margin-bottom: 16px;
-  font-size: 28px;
-  font-weight: 300;
+  font-size: var(--type-section-title);
+  font-weight: var(--weight-heading);
 }
 
 .quiet {

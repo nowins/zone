@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { resolveTypography } from "./helpers/typography.mjs";
 
 const appSource = [
   "src/app/podcastPlaybackSettings.ts",
@@ -76,10 +77,12 @@ test("quickplay ghost stays stable through cold-start hydration and scroll resto
   assert.equal(quickplaySource.match(/quickplay-ghost/g)?.length, 1, "one ghost persists across empty and hydrated states");
 });
 
-test("pins title stays secondary to the continue stage", () => {
+test("pins title shares the restrained panorama heading scale", () => {
   const pinsTitle = cssRule(quickplayCss, ".quick-pins h2");
-  assert.ok(pinsTitle.includes("clamp(42px, 4vw, 58px)"));
-  assert.ok(!pinsTitle.includes("6.3vw"), "old oversized pins title must stay gone");
+  assert.ok(pinsTitle.includes("var(--type-feature-title)"));
+  const resolved = resolveTypography(pinsTitle);
+  assert.ok(resolved.includes("clamp(38px, 3.5vw, 54px)"));
+  assert.ok(!resolved.includes("6.3vw"), "old oversized pins title must stay gone");
 });
 
 test("home pins persist and support all durable collection entity types", () => {

@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { resolveTypography } from "./helpers/typography.mjs";
 
-const nowPlayingCss = readFileSync("src/styles/now-playing.css", "utf8");
+const nowPlayingCss = resolveTypography(readFileSync("src/styles/now-playing.css", "utf8"));
 const playerCss = readFileSync("src/styles/player.css", "utf8");
 const animationCss = readFileSync("src/styles/animations-responsive.css", "utf8");
 const motionCss = readFileSync("src/styles/motion.css", "utf8");

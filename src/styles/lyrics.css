@@ -78,7 +78,7 @@
   gap: 18px;
   max-width: min(40vw, 480px);
   color: rgba(255, 255, 255, 0.36);
-  font-size: 12px;
+  font-size: var(--type-caption);
   letter-spacing: 0.025em;
   opacity: 0.72;
   transition: opacity var(--motion-micro) var(--motion-ease-standard);
@@ -103,7 +103,7 @@
   padding: 4px 0;
   border-bottom: 1px solid transparent;
   color: rgba(255, 255, 255, 0.64);
-  font-size: 12px;
+  font-size: var(--type-caption);
   transition:
     color var(--motion-micro) var(--motion-ease-standard),
     border-color var(--motion-micro) var(--motion-ease-standard),
@@ -178,19 +178,25 @@
   flex: 0 0 auto;
 }
 
-.lyrics-settings-panel > header span,
+.lyrics-settings-panel > header span {
+  color: var(--accent);
+  font-size: var(--type-kicker);
+  font-weight: var(--weight-emphasis);
+  letter-spacing: 0.12em;
+}
+
 .lyrics-settings-section > h3 {
   color: var(--accent);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
   letter-spacing: 0.12em;
 }
 
 .lyrics-settings-panel > header h2 {
   margin: 8px 0 0;
   color: rgba(255, 255, 255, 0.96);
-  font-size: clamp(30px, 2.4vw, 40px);
-  font-weight: 300;
+  font-size: var(--type-dialog-title);
+  font-weight: var(--weight-heading);
   letter-spacing: -0.035em;
 }
 
@@ -198,7 +204,7 @@
   padding: 3px 0;
   border-bottom: 1px solid transparent;
   color: rgba(255, 255, 255, 0.58);
-  font-size: 12px;
+  font-size: var(--type-caption);
   transition:
     color var(--motion-micro) var(--motion-ease-standard),
     border-color var(--motion-micro) var(--motion-ease-standard);
@@ -269,8 +275,8 @@
 .lyrics-settings-actions strong {
   display: block;
   color: rgba(255, 255, 255, 0.88);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--type-body);
+  font-weight: var(--weight-body);
 }
 
 .lyrics-settings-row small,
@@ -278,8 +284,8 @@
   display: block;
   margin-top: 5px;
   color: rgba(255, 255, 255, 0.44);
-  font-size: 10px;
-  font-weight: 350;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
   line-height: 1.35;
 }
 
@@ -334,7 +340,7 @@
   padding: 3px 0;
   border-bottom: 1px solid transparent;
   color: rgba(255, 255, 255, 0.44);
-  font-size: 11px;
+  font-size: var(--type-caption);
   transition:
     color var(--motion-micro) var(--motion-ease-standard),
     border-color var(--motion-micro) var(--motion-ease-standard),
@@ -364,7 +370,7 @@
   padding: 3px 0;
   border-bottom: 1px solid transparent;
   color: rgba(255, 255, 255, 0.62);
-  font-size: 11px;
+  font-size: var(--type-caption);
   transition:
     color var(--motion-micro) var(--motion-ease-standard),
     border-color var(--motion-micro) var(--motion-ease-standard);
@@ -379,7 +385,7 @@
 
 .lyrics-settings-timing output {
   color: rgba(255, 255, 255, 0.88);
-  font-size: 11px;
+  font-size: var(--type-caption);
   font-variant-numeric: tabular-nums;
   text-align: center;
   white-space: nowrap;
@@ -403,7 +409,7 @@
 
 .lyrics-settings-current-source > span {
   color: rgba(255, 255, 255, 0.36);
-  font-size: 10px;
+  font-size: var(--type-caption);
 }
 
 .lyrics-settings-current-source strong {
@@ -414,7 +420,7 @@
 
 .lyrics-settings-current-source em {
   color: var(--accent);
-  font-size: 9px;
+  font-size: var(--type-caption);
   font-style: normal;
   letter-spacing: 0.04em;
 }
@@ -449,7 +455,7 @@
   display: block;
   margin-top: 10px;
   color: rgba(255, 255, 255, 0.52);
-  font-size: 10px;
+  font-size: var(--type-caption);
 }
 
 .lyrics-settings-export > output.is-success {
@@ -518,8 +524,8 @@
 
 .lyrics-source-browser > header span {
   color: var(--accent);
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--type-kicker);
+  font-weight: var(--weight-emphasis);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -527,8 +533,8 @@
 .lyrics-source-browser > header h2 {
   margin: 8px 0 0;
   color: rgba(255, 255, 255, 0.96);
-  font-size: clamp(28px, 2.5vw, 42px);
-  font-weight: 300;
+  font-size: var(--type-dialog-title);
+  font-weight: var(--weight-heading);
   letter-spacing: -0.035em;
 }
 
@@ -536,7 +542,7 @@
 .lyrics-source-refresh {
   padding: 2px 0;
   color: rgba(255, 255, 255, 0.62);
-  font-size: 12px;
+  font-size: var(--type-caption);
   border-bottom: 1px solid transparent;
 }
 
@@ -574,20 +580,20 @@
 
 .lyrics-search-metadata-summary strong {
   color: rgba(255, 255, 255, 0.9);
-  font-size: 15px;
-  font-weight: 430;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-body);
 }
 
 .lyrics-search-metadata-summary span {
   margin-top: 5px;
   color: rgba(255, 255, 255, 0.4);
-  font-size: 10px;
+  font-size: var(--type-caption);
 }
 
 .lyrics-search-metadata-summary em {
   flex: 0 0 auto;
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--type-caption);
   font-style: normal;
   letter-spacing: 0.06em;
 }
@@ -598,7 +604,7 @@
   padding: 3px 0;
   border-bottom: 1px solid transparent;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 
 .lyrics-search-metadata-summary button:hover,
@@ -627,7 +633,7 @@
   display: block;
   margin-bottom: 6px;
   color: rgba(255, 255, 255, 0.4);
-  font-size: 9px;
+  font-size: var(--type-caption);
   letter-spacing: 0.08em;
 }
 
@@ -641,7 +647,7 @@
   background: transparent;
   color: rgba(255, 255, 255, 0.9);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--type-control);
   transition: border-color var(--motion-micro) var(--motion-ease-standard);
 }
 
@@ -662,7 +668,7 @@
 .lyrics-source-browser > p {
   margin: 18px 0 14px;
   color: rgba(255, 255, 255, 0.42);
-  font-size: 11px;
+  font-size: var(--type-caption);
 }
 
 .lyrics-source-browser > p.is-error {
@@ -675,7 +681,7 @@
   gap: 7px 18px;
   padding: 0 0 14px;
   color: rgba(255, 255, 255, 0.46);
-  font-size: 11px;
+  font-size: var(--type-caption);
   letter-spacing: 0.02em;
 }
 
@@ -687,7 +693,7 @@
 
 .lyrics-provider-outcomes strong {
   color: rgba(255, 255, 255, 0.68);
-  font-weight: 500;
+  font-weight: var(--weight-emphasis);
 }
 
 .lyrics-provider-outcomes em {
@@ -732,8 +738,8 @@
 
 .lyrics-candidate-score {
   color: var(--accent);
-  font-size: 20px;
-  font-weight: 300;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-body);
   font-variant-numeric: tabular-nums;
 }
 
@@ -752,16 +758,16 @@
 
 .lyrics-candidate-copy strong {
   color: rgba(255, 255, 255, 0.9);
-  font-size: 16px;
-  font-weight: 400;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-body);
 }
 
 .lyrics-candidate-copy span,
 .lyrics-candidate-meta {
   margin-top: 5px;
   color: rgba(255, 255, 255, 0.42);
-  font-size: 10px;
-  font-weight: 300;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
 }
 
 .lyrics-candidate-meta {
@@ -851,7 +857,7 @@
   max-width: 100%;
   color: rgba(255, 255, 255, 0.42);
   font-size: var(--lyrics-main-font-size);
-  font-weight: 600;
+  font-weight: var(--weight-emphasis);
   letter-spacing: -0.045em;
   line-height: 1.08;
   text-wrap: balance;
@@ -918,7 +924,7 @@
   margin-top: 10px;
   color: rgba(255, 255, 255, 0.58);
   font-size: var(--lyrics-translation-font-size);
-  font-weight: 400;
+  font-weight: var(--weight-body);
   letter-spacing: -0.015em;
   line-height: 1.24;
 }
@@ -928,7 +934,7 @@
   margin-top: 5px;
   color: rgba(255, 255, 255, 0.4);
   font-size: var(--lyrics-transliteration-font-size);
-  font-weight: 350;
+  font-weight: var(--weight-body);
   letter-spacing: 0.012em;
   line-height: 1.24;
 }
@@ -958,7 +964,7 @@
 
 .lyrics-background-copy {
   font-size: var(--lyrics-background-font-size);
-  font-weight: 500;
+  font-weight: var(--weight-emphasis);
   letter-spacing: -0.025em;
   line-height: 1.12;
   text-shadow: 0 6px 22px rgba(0, 0, 0, 0.28);
@@ -973,7 +979,7 @@
   margin-left: 10px;
   color: rgba(255, 255, 255, 0.5);
   font-size: var(--lyrics-background-support-font-size);
-  font-weight: 350;
+  font-weight: var(--weight-body);
   letter-spacing: 0;
 }
 
@@ -992,8 +998,8 @@
 
 .lyrics-empty p {
   margin: 0;
-  font-size: clamp(28px, 3vw, 52px);
-  font-weight: 300;
+  font-size: var(--type-page-title);
+  font-weight: var(--weight-display);
   letter-spacing: -0.035em;
 }
 
@@ -1031,7 +1037,7 @@
 
 .lyrics-stage.is-plain .lyrics-line-copy {
   font-size: var(--lyrics-plain-font-size);
-  font-weight: 400;
+  font-weight: var(--weight-body);
   letter-spacing: -0.03em;
   line-height: 1.2;
   text-wrap: pretty;

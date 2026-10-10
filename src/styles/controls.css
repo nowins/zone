@@ -7,8 +7,8 @@
   align-items: center;
   justify-content: center;
   gap: 9px;
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--type-control);
+  font-weight: var(--weight-body);
   transition:
     color var(--motion-micro) var(--motion-ease-standard),
     background var(--motion-micro) var(--motion-ease-standard),
@@ -24,7 +24,8 @@
   min-height: 34px;
   padding: 0 11px;
   gap: 7px;
-  font-size: 11px;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
 }
 
 .button-md {
@@ -42,7 +43,8 @@
   min-height: 48px;
   padding: 0 18px;
   gap: 10px;
-  font-size: 20px;
+  font-size: var(--type-subsection-title);
+  font-weight: var(--weight-body);
 }
 
 /* Bordered default (dialog actions, secondary confirmations). */
@@ -132,13 +134,13 @@
 
 
 .select-control { display: inline-block; min-width: 0; vertical-align: middle; }
-.select-trigger { width: 100%; min-height: 36px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid rgba(255,255,255,.22); background: transparent; color: var(--text); font-size: 13px; text-align: left; }
+.select-trigger { width: 100%; min-height: 36px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid rgba(255,255,255,.22); background: transparent; color: var(--text); font-size: var(--type-control); text-align: left; font-weight: var(--weight-body); }
 .select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-trigger > svg { flex: none; color: var(--muted); }
 .select-trigger:hover:not(:disabled), .select-trigger[aria-expanded="true"] { border-color: var(--accent); }
 .select-trigger:disabled { opacity: .4; cursor: default; }
 .select-menu { position: fixed; inset: auto; margin: 0; box-sizing: border-box; padding: 4px; border: 1px solid rgba(255,255,255,.2); color: var(--text); background: var(--app-bg-raised); box-shadow: 0 12px 32px rgba(0,0,0,.45); overflow-y: auto; scrollbar-width: thin; transition: opacity var(--motion-micro) var(--motion-ease-entrance), transform var(--motion-micro) var(--motion-ease-entrance); }
-.select-option { min-height: 34px; padding: 7px 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 1.4; cursor: pointer; }
+.select-option { min-height: 34px; padding: 7px 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: var(--type-control); line-height: 1.4; cursor: pointer; font-weight: var(--weight-body); }
 .select-option > span { min-width: 0; overflow-wrap: anywhere; }
 .select-option > svg { flex: none; color: var(--accent); }
 .select-option:hover:not([aria-disabled="true"]), .select-option[data-active="true"] { background: rgba(255,255,255,.07); }

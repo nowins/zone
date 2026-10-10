@@ -79,8 +79,8 @@
   height: 44px;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.82);
-  font-size: 14px;
-  font-weight: 200;
+  font-size: var(--type-body);
+  font-weight: var(--weight-ghost);
 }
 
 .player-primary > .zune-progress {
@@ -113,8 +113,8 @@
   padding: 0;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.66);
-  font-size: 12px;
-  font-weight: 300;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
   line-height: 1;
   text-align: left;
   text-overflow: ellipsis;
@@ -145,8 +145,8 @@
 .zune-progress-time {
   grid-row: 3;
   color: rgba(247, 242, 246, 0.56);
-  font-size: 9px;
-  font-weight: 300;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -262,8 +262,8 @@
   justify-content: flex-end;
   gap: 6px;
   color: rgba(247, 242, 246, 0.48);
-  font-size: 9px;
-  font-weight: 300;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
   line-height: 1;
   white-space: nowrap;
   transition: width var(--motion-content) var(--motion-ease-standard), color var(--motion-micro) var(--motion-ease-standard);

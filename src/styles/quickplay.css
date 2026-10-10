@@ -103,9 +103,9 @@
   top: clamp(6px, 1vh, 14px);
   left: 70px;
   color: rgba(128, 35, 76, 0.36);
-  font-size: clamp(150px, 18vw, 258px);
+  font-size: var(--type-ghost);
   line-height: 0.8;
-  font-weight: 200;
+  font-weight: var(--weight-ghost);
   letter-spacing: -0.07em;
   white-space: nowrap;
   pointer-events: none;
@@ -126,9 +126,9 @@
 .quick-group h2 {
   margin: 0 0 15px;
   color: rgba(247, 242, 246, 0.72);
-  font-size: clamp(38px, 3.5vw, 54px);
+  font-size: var(--type-feature-title);
   line-height: 0.92;
-  font-weight: 250;
+  font-weight: var(--weight-display);
   letter-spacing: -0.045em;
   white-space: nowrap;
 }
@@ -147,15 +147,16 @@
 
 .quick-pins h2 {
   color: #fff;
-  font-size: clamp(42px, 4vw, 58px);
+  font-size: var(--type-feature-title);
   line-height: 0.9;
   letter-spacing: -0.04em;
+  font-weight: var(--weight-display);
 }
 
 .quick-pins-edit {
   padding: 4px 1px;
   color: var(--quiet);
-  font-size: 13px;
+  font-size: var(--type-body);
   border-bottom: 1px solid transparent;
   opacity: 0.7;
   transition: color var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), opacity var(--motion-micro) var(--motion-ease-standard);
@@ -277,8 +278,8 @@
   padding: 18px 10px 7px;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.94);
-  font-size: 12px;
-  font-weight: 400;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
   text-overflow: ellipsis;
   white-space: nowrap;
   background: linear-gradient(180deg, transparent, rgba(8, 5, 9, 0.78));
@@ -339,13 +340,13 @@
   margin: 8px 7px 0;
   contain: inline-size;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--type-caption);
   line-height: 1.6;
 }
 .quick-pins .quick-pins-edit,
 .quick-pins .quick-pins-customize { min-width: 0; padding: 4px 1px; }
-.quick-pins .quick-pins-edit { font-size: 13px; }
-.quick-pins .quick-pins-customize { color: var(--muted); font-size: 13px; }
+.quick-pins .quick-pins-edit { font-size: var(--type-body); }
+.quick-pins .quick-pins-customize { color: var(--muted); font-size: var(--type-body); }
 .quick-pin.toned .tile-face-front,
 .quick-pin.toned .tile-face-back { background: var(--pin-tone); }
 .quick-pin.toned .quick-pin-front-title,
@@ -355,9 +356,9 @@
 .quick-pin.small .quick-pin-symbol { inset: 0; }
 .quick-pin.small .quick-pin-symbol svg { width: 27px; height: 27px; }
 .quick-pin.large .quick-pin-symbol svg { width: 68px; height: 68px; }
-.quick-pin-badge { position: absolute; top: 3px; right: 4px; padding: 1px 3px; font-size: 11px; background: #111; color: #fff; }
-.quick-pin .tile-back-kicker { font-size: 10px; letter-spacing: 0; line-height: 1.2; margin-bottom: 4px; }
-.quick-pin .tile-face-back strong { font-size: 15px; line-height: 1.2; flex-shrink: 0; }
+.quick-pin-badge { position: absolute; top: 3px; right: 4px; padding: 1px 3px; font-size: var(--type-badge); background: #111; color: #fff; }
+.quick-pin .tile-back-kicker { font-size: var(--type-kicker); letter-spacing: 0; line-height: 1.2; margin-bottom: 4px; }
+.quick-pin .tile-face-back strong { font-size: var(--type-body); line-height: 1.2; flex-shrink: 0; }
 .quick-pin .tile-face-back { justify-content: flex-end; padding: 9px 10px; }
 .quick-pin-back-art { position: absolute; inset: 0; pointer-events: none; }
 .quick-pin-back-art > .cover { width: 100%; height: 100%; aspect-ratio: auto; margin: 0; outline: 0; }
@@ -370,15 +371,15 @@
 .quick-pin-back-copy { position: relative; min-width: 0; display: flex; flex-direction: column; }
 .quick-pin .tile-back-live { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
 .quick-pin .tile-face-back small { color: rgba(255,255,255,0.75); }
-.quick-pin.large .tile-face-back strong { font-size: 24px; }
-.quick-pin.large .quick-pin-front-title { font-size: 16px; }
+.quick-pin.large .tile-face-back strong { font-size: var(--type-section-title); font-weight: var(--weight-heading); }
+.quick-pin.large .quick-pin-front-title { font-size: var(--type-item-title); }
 
 .playlist-dialog.pin-appearance-dialog { width: min(460px, calc(100vw - 48px)); max-height: calc(100vh - 150px); overflow-y: auto; padding: 24px 28px; }
 .playlist-dialog.pin-appearance-dialog h2 { overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .playlist-dialog.pin-appearance-dialog fieldset { padding: 0; margin: 20px 0; border: 0; min-width: 0; }
-.playlist-dialog.pin-appearance-dialog legend { margin-bottom: 12px; color: var(--muted); font-size: 13px; }
+.playlist-dialog.pin-appearance-dialog legend { margin-bottom: 12px; color: var(--muted); font-size: var(--type-body); }
 .playlist-dialog .pin-size-choices, .playlist-dialog .pin-tone-choices { display: flex; gap: 12px; flex-wrap: wrap; }
-.playlist-dialog .pin-size-choices label { display: flex; align-items: center; gap: 7px; padding: 6px 0; font-size: 13px; cursor: pointer; width: auto; }
+.playlist-dialog .pin-size-choices label { display: flex; align-items: center; gap: 7px; padding: 6px 0; font-size: var(--type-body); cursor: pointer; width: auto; }
 .playlist-dialog.pin-appearance-dialog input { accent-color: var(--accent); width: 14px; height: 14px; padding: 0; margin: 0; box-shadow: none; }
 .playlist-dialog.pin-appearance-dialog input:focus { box-shadow: none; }
 .playlist-dialog.pin-appearance-dialog input:focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
@@ -392,9 +393,9 @@
 .playlist-dialog .pin-tone-choices input:checked + span { outline: 2px solid white; outline-offset: 3px; }
 .playlist-dialog .pin-tone-choices input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 3px; }
 .playlist-dialog .pin-tone-choices .cover { width: 100%; height: 100%; margin: 0; }
-.playlist-dialog .pin-tone-choices small { color: var(--muted); font-size: 11px; }
-.playlist-dialog .pin-live-choice { display: flex; align-items: center; gap: 8px; font-size: 14px; width: auto; }
-.playlist-dialog .pin-live-hint { margin: 8px 0 0 24px; font-size: 12px; color: var(--muted); }
+.playlist-dialog .pin-tone-choices small { color: var(--muted); font-size: var(--type-caption); }
+.playlist-dialog .pin-live-choice { display: flex; align-items: center; gap: 8px; font-size: var(--type-body); width: auto; }
+.playlist-dialog .pin-live-hint { margin: 8px 0 0 24px; font-size: var(--type-caption); color: var(--muted); }
 
 
 .quick-pins-empty {
@@ -575,14 +576,14 @@
 
 .quick-caption strong {
   color: #fff;
-  font-size: 18px;
-  font-weight: 400;
+  font-size: var(--type-item-title);
+  font-weight: var(--weight-body);
 }
 
 .quick-caption span {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--type-body);
 }
 
 .quick-recent {
@@ -622,14 +623,14 @@
 
 .quick-album strong {
   margin-top: 6px;
-  font-size: 12px;
-  font-weight: 400;
+  font-size: var(--type-caption);
+  font-weight: var(--weight-body);
 }
 
 .quick-album span {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--type-caption);
 }
 
 .quick-history {
@@ -674,10 +675,10 @@
 }
 .quick-history-copy strong {
   color: rgba(255, 255, 255, 0.88);
-  font-size: 14px;
-  font-weight: 400;
+  font-size: var(--type-body);
+  font-weight: var(--weight-body);
 }
-.quick-history-copy > span { margin-top: 4px; font-size: 12px; }
+.quick-history-copy > span { margin-top: 4px; font-size: var(--type-caption); }
 .quick-history-row:hover .quick-history-copy strong { color: #fff; }
 
 .quickplay-empty {
@@ -697,7 +698,7 @@
 .quickplay-empty-content button {
   padding: 12px 0;
   color: var(--muted);
-  font-size: 19px;
+  font-size: var(--type-control);
   border-bottom: 2px solid var(--accent);
 }
 
