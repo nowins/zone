@@ -5,7 +5,7 @@ import type { AnimationHandle } from "../../motion/animate";
 import { TILE_MOTION } from "../../motion/tokens";
 import { scheduleTileUpdate } from "../../motion/tileScheduler";
 import { cubicBezier } from "../../motion/tween";
-import { easeInCubic as accelerate, easeOutCubic as decelerate } from "../../motion/math";
+import { easeInOutCubic } from "../../motion/math";
 import { useTileActivity } from "./useTileActivity";
 import { useReducedMotion } from "../../motion/useReducedMotion";
 import { Tile } from "./Tile";
@@ -92,9 +92,9 @@ export function FlipTile({
     let showingBack = false;
 
     // Peek carries the outgoing and incoming panels along a shared progress.
-    const setProgress = (value: number) => {
-      backRef.current?.style.setProperty("--tile-peek", `${((1 - value) * 100).toFixed(2)}%`);
-      frontRef.current?.style.setProperty("--tile-peek-front", `${(-value * 100).toFixed(2)}%`);
+    const setProgress = (value: number, returning = false) => {
+      backRef.current?.style.setProperty("--tile-peek", `${((returning ? -value : 1 - value) * 100).toFixed(2)}%`);
+      frontRef.current?.style.setProperty("--tile-peek-front", `${((returning ? 1 - value : -value) * 100).toFixed(2)}%`);
     };
     // Flip driver: rotation angle of the whole surface around the X axis.
     const setAngle = (value: number) => {
@@ -113,43 +113,36 @@ export function FlipTile({
       onDone();
     };
 
-    // Peek: slide the back layer to `to` (1 = covering, 0 = parked), starting
-    // from the layer's actual current position so no frame ever snaps.
-    // Flip: rotate the surface 0<->180, swapping faces at the apex.
+    // Peek keeps moving upward; the hidden front wraps below the back.
+    // Flip uses one clock across the edge instead of restarting at 90 degrees.
     const revealTo = (to: number, onDone: () => void) => {
       if (variant === "flip") {
         const from = showingBack ? 180 : 0;
-        const apex = (from + to) / 2;
+        let crossed = false;
         animationRef.current = animateValue({
           from,
-          to: apex,
-          tween: { durationMs: TILE_MOTION.flipHalf, easing: accelerate },
-          onUpdate: setAngle,
-          onComplete: () => {
-            if (cancelled) return;
-            showingBack = to === 180;
-            setShowBack(showingBack);
-            animationRef.current = animateValue({
-              from: apex,
-              to,
-              tween: { durationMs: TILE_MOTION.flipHalf, easing: decelerate },
-              onUpdate: setAngle,
-              onComplete: () => {
-                if (cancelled) return;
-                onDone();
-              },
-            });
+          to,
+          tween: { durationMs: TILE_MOTION.flipHalf * 2, easing: easeInOutCubic },
+          onUpdate: value => {
+            setAngle(value);
+            if (!crossed && Math.abs(value - from) >= 90) {
+              crossed = true;
+              setShowBack(to === 180);
+            }
           },
+          onComplete: () => { if (!cancelled) finishTo(to === 180, onDone); },
         });
         return;
       }
+      const returning = showingBack;
       animationRef.current = animateValue({
-        from: showingBack ? 1 : 0,
-        to,
+        from: 0,
+        to: 1,
         tween: { durationMs: TILE_MOTION.peek, easing: metroSlideIn },
-        onUpdate: setProgress,
+        onUpdate: value => setProgress(value, returning),
         onComplete: () => {
           if (cancelled) return;
+          if (returning) setProgress(0);
           finishTo(to === 1, onDone);
         },
       });

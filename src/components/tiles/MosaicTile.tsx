@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { animateValue } from "../../motion/animate";
 import type { AnimationHandle } from "../../motion/animate";
-import { easeInCubic, easeOutCubic } from "../../motion/math";
+import { easeInOutCubic } from "../../motion/math";
 import { TILE_MOTION } from "../../motion/tokens";
 import { scheduleTileUpdate } from "../../motion/tileScheduler";
 import { useTileActivity } from "./useTileActivity";
@@ -87,26 +88,26 @@ export function MosaicFrames({ pool, paused = false }: { pool: ReactNode[]; paus
       runningRef.current = true;
       hasUpdatedRef.current = true;
       inner.style.willChange = "transform";
-      animationRef.current = animateValue({ from: 0, to: -90,
-        tween: { durationMs: TILE_MOTION.cellHalf, easing: easeInCubic },
-        onUpdate: value => setAngle(index, value),
+      let crossed = false;
+      animationRef.current = animateValue({ from: 0, to: 1,
+        tween: { durationMs: TILE_MOTION.cellHalf * 2, easing: easeInOutCubic },
+        onUpdate: value => {
+          if (!crossed && value >= 0.5) {
+            crossed = true;
+            // Commit at the hidden edge before revealing the captured cover.
+            setAngle(index, 90);
+            flushSync(() => setGrid(current => ({ ...current, cells: current.cells.map((frame, cell) => cell === index ? target : frame) })));
+          }
+          setAngle(index, crossed ? 180 * (1 - value) : -180 * value);
+        },
         onComplete: () => {
           if (cancelled) return;
-          setGrid(current => ({ ...current, cells: current.cells.map((frame, cell) => cell === index ? target : frame) }));
-          setAngle(index, 90);
-          animationRef.current = animateValue({ from: 90, to: 0,
-            tween: { durationMs: TILE_MOTION.cellHalf, easing: easeOutCubic },
-            onUpdate: value => setAngle(index, value),
-            onComplete: () => {
-              if (cancelled) return;
-              animationRef.current = null;
-              runningRef.current = false;
-              inner.style.willChange = "";
-              reconcile();
-              cancelSchedule = undefined;
-              done(); schedule();
-            },
-          });
+          animationRef.current = null;
+          runningRef.current = false;
+          inner.style.willChange = "";
+          reconcile();
+          cancelSchedule = undefined;
+          done(); schedule();
         },
       });
       // Keep ownership until the captured back face has landed.

@@ -81,9 +81,11 @@ test("peek state machine: dwell exists, direction state stays out of effect deps
   assert.ok(flipSource.includes("[paused, live, visible, reducedMotion, variant]"));
   assert.ok(flipSource.includes("activityChangeRef.current?.(); }, [active]"), "interaction is independent from visibility cleanup");
   assert.ok(!flipSource.includes("showBack]"), "showBack must not be an effect dep");
-  // Slides start from the layer's actual position, never snapping to a fixed
-  // endpoint first.
-  assert.ok(flipSource.includes("from: showingBack ? 1 : 0"));
+  // Returning wraps only the hidden front, then joins the same upward sweep.
+  assert.ok(flipSource.includes("const returning = showingBack"));
+  assert.ok(flipSource.includes("setProgress(value, returning)"));
+  assert.ok(flipSource.includes("returning ? -value : 1 - value"));
+  assert.ok(flipSource.includes("returning ? 1 - value : -value"));
   // Cleanup parks the back layer and clears the state so pausing (edit mode)
   // never leaves a stale visible back.
   assert.ok(flipSource.includes("setShowBack(false)"));
@@ -101,10 +103,10 @@ test("each variant uses its calibrated curve and duration", () => {
   assert.ok(tokenSource.includes("peek: 2_000") && flipSource.includes("TILE_MOTION.peek"));
   assert.ok(flipSource.includes("metroSlideIn"));
   assert.ok(tokenSource.includes("peekEasing: [0.1, 0.9, 0.2, 1]") && flipSource.includes("cubicBezier(...TILE_MOTION.peekEasing)"));
-  // Flip: two brisk physical half-sweeps across the apex (WP7 People-hub feel).
+  // Flip: one clock joins both physical half-sweeps without an edge pause.
   assert.ok(tokenSource.includes("flipHalf: 200") && flipSource.includes("TILE_MOTION.flipHalf"));
-  assert.ok(flipSource.includes("easing: accelerate"));
-  assert.ok(flipSource.includes("easing: decelerate"));
+  assert.ok(flipSource.includes("durationMs: TILE_MOTION.flipHalf * 2, easing: easeInOutCubic"));
+  assert.ok(flipSource.includes("Math.abs(value - from) >= 90"));
 });
 
 test("keyboard reorder stays reachable in edit mode", () => {
@@ -229,9 +231,10 @@ test("wide multi-cover pins use the People-hub mosaic, never cropped strips", ()
   assert.ok(mosaicSource.includes("TILE_MOTION.cellMin"));
   assert.ok(mosaicSource.includes("Math.random()"));
   assert.ok(mosaicSource.includes("--cell-flip"));
-  // Card-swap rotates edge-on, swaps, then returns from the opposite edge.
-  assert.ok(mosaicSource.includes("to: -90"));
-  assert.ok(mosaicSource.includes("from: 90"));
+  // The opposite edges share one clock, and React commits the cover at the edge.
+  assert.ok(mosaicSource.includes("durationMs: TILE_MOTION.cellHalf * 2, easing: easeInOutCubic"));
+  assert.ok(mosaicSource.includes("crossed ? 180 * (1 - value) : -180 * value"));
+  assert.ok(mosaicSource.includes("flushSync(() => setGrid"));
   // Cleanup must reset the driven angle, not just cancel the animation —
   // a rescan or reduced-motion toggle mid-flip would otherwise park a cell
   // edge-on at +/-90 degrees.

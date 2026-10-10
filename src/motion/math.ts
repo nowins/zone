@@ -30,3 +30,9 @@ export function easeInCubic(t: number): number {
   const clamped = clamp(t, 0, 1);
   return clamped * clamped * clamped;
 }
+
+/** Joined cubic half-sweeps share one clock and velocity at the midpoint. */
+export function easeInOutCubic(t: number): number {
+  const progress = clamp(t, 0, 1);
+  return progress < 0.5 ? 4 * progress ** 3 : 1 - 4 * (1 - progress) ** 3;
+}

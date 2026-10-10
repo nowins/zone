@@ -10,7 +10,7 @@ import {
   registerFlipSource,
   takeFlipSource,
 } from "../.tmp/visualizer-tests/motion/flip.js";
-import { clamp, easeOutCubic, lerp, smoothstep } from "../.tmp/visualizer-tests/motion/math.js";
+import { clamp, easeInOutCubic, easeOutCubic, lerp, smoothstep } from "../.tmp/visualizer-tests/motion/math.js";
 import { resolvePageTransition } from "../.tmp/visualizer-tests/motion/pageTransition.js";
 import {
   advanceSpring,
@@ -45,6 +45,17 @@ function createFakeRaf() {
     hasPending: () => pending !== null,
   };
 }
+
+test("joined flip sweep has continuous velocity through the midpoint", () => {
+  const delta = 0.0001;
+  assert.equal(easeInOutCubic(-1), 0);
+  assert.equal(easeInOutCubic(2), 1);
+  assert.equal(easeInOutCubic(0.5), 0.5);
+  const before = (easeInOutCubic(0.5) - easeInOutCubic(0.5 - delta)) / delta;
+  const after = (easeInOutCubic(0.5 + delta) - easeInOutCubic(0.5)) / delta;
+  assert.ok(Math.abs(before - after) < 0.00001);
+  assert.ok(before > 2.99, "the sweep continues at full speed through its edge");
+});
 
 test("math: clamp/lerp/smoothstep/easeOutCubic boundaries", () => {
   assert.equal(clamp(5, 0, 10), 5);

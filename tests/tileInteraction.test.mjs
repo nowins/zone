@@ -186,6 +186,50 @@ test("peek carries both panels through the same offset and parks both on interru
   } finally { await env.cleanup(); }
 });
 
+test("peek returns through joined upward panels instead of reversing the visible panel", async () => {
+  const env = environment();
+  try {
+    await env.render(React.createElement(FlipTile, { variant: "peek", front: "封面", back: "内容" }));
+    await env.intersect(true);
+    const first = [...env.timers.values()][0].at;
+    await env.advance(first + TILE_MOTION.peek);
+    await env.advance(TILE_MOTION.hold + 320);
+    const front = document.querySelector(".tile-face-front"), back = document.querySelector(".tile-face-back");
+    const incoming = Number.parseFloat(front.style.getPropertyValue("--tile-peek-front"));
+    const outgoing = Number.parseFloat(back.style.getPropertyValue("--tile-peek"));
+    assert.ok(outgoing < 0 && outgoing > -100);
+    assert.ok(incoming > 0 && incoming < 100);
+    assert.ok(Math.abs(incoming - outgoing - 100) < 0.02);
+    await env.advance(TILE_MOTION.peek);
+    assert.equal(front.style.getPropertyValue("--tile-peek-front"), "0.00%");
+    assert.equal(back.style.getPropertyValue("--tile-peek"), "100.00%");
+  } finally { await env.cleanup(); }
+});
+
+for (const variant of ["flip", "mosaic"]) test(`${variant} crosses its edge and lands on one uninterrupted animation clock`, async () => {
+  const env = environment();
+  try {
+    await env.render(variant === "flip" ? React.createElement(FlipTile, { variant, front: "封面", back: "内容" })
+      : React.createElement(MosaicFrames, { pool: Array.from({ length: 9 }, (_, i) => React.createElement("span", { key: i }, i)) }));
+    await env.intersect(true);
+    const first = [...env.timers.values()][0].at;
+    await env.advance(first);
+    const half = variant === "flip" ? TILE_MOTION.flipHalf : TILE_MOTION.cellHalf;
+    const moving = () => variant === "flip" ? document.querySelector(".tile-flip-surface")
+      : [...document.querySelectorAll(".tile-mosaic-cell-inner")].find(cell => cell.style.willChange === "transform");
+    const element = moving();
+    const property = variant === "flip" ? "--tile-flip" : "--cell-flip";
+    await env.advance(half);
+    assert.equal(Number.parseFloat(element.style.getPropertyValue(property)), 90);
+    await env.advance(16);
+    const angle = Number.parseFloat(element.style.getPropertyValue(property));
+    assert.ok(variant === "flip" ? angle > 105 : angle < 77, "the next frame continues past the edge at full speed");
+    await env.advance(half - 16);
+    assert.equal(Number.parseFloat(element.style.getPropertyValue(property)), variant === "flip" ? 180 : 0,
+      "both halves complete at the original deadline");
+  } finally { await env.cleanup(); }
+});
+
 test("mosaic cells stop in edit mode, offscreen and under reduced motion", async () => {
   const env = environment();
   const pool = Array.from({ length: 9 }, (_, i) => React.createElement("span", { key: i }, i));
@@ -455,10 +499,12 @@ test("pointer reordering commits only on an inside release and cancels cleanly",
     await start();
     assert.ok(document.querySelector(".quick-pin-drag-ghost"));
     assert.equal(moves.length, 0, "preview must not write persistent order");
-    document.querySelector(".quick-pin-drag-ghost").getBoundingClientRect = () => ({ ...rect(170, 100), left: 30, right: 130 });
+    const ghost = document.querySelector(".quick-pin-drag-ghost");
+    ghost.getBoundingClientRect = () => ({ ...rect(170, 100), left: 30, right: 130 });
     await pointer(grid, "pointerup", 180);
     assert.deepEqual(moves, [["one", "two", true]]);
     assert.equal(document.querySelector(".quick-pin-drag-ghost"), null);
+    assert.ok(ghost.style.transform.includes("160px"), "release follows the final pointer position even without another move event");
     assert.ok(source.style.transform.includes("translate(30px, 170px)"), "the real tile starts at the released ghost position");
     await env.advance(100);
     assert.notEqual(source.style.transform, "", "landing remains continuous after release");
@@ -467,17 +513,47 @@ test("pointer reordering commits only on an inside release and cancels cleanly",
 
     for (const reason of ["escape", "outside", "cancel", "blur"]) {
       await start();
+      const floating = document.querySelector(".quick-pin-drag-ghost");
+      floating.getBoundingClientRect = () => ({ ...rect(180, 100), left: 40, right: 140 });
       if (reason === "escape") await act(async () => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
       else if (reason === "blur") await act(async () => window.dispatchEvent(new window.Event("blur")));
       else await pointer(grid, reason === "outside" ? "pointerup" : "pointercancel", 500);
       assert.equal(document.querySelector(".quick-pin-drag-ghost"), null, reason);
       assert.equal(document.querySelector(".quick-pin.dragging"), null, reason);
+      assert.ok(source.style.transform.includes("translate(40px, 180px)"), `${reason} must return from its floating pose`);
       assert.equal(moves.length, 1, `${reason} must not commit`);
       assert.ok(grid.classList.contains("editing"), "cancelling a drag keeps editing available");
     }
     await start();
   } finally { await env.cleanup(); }
   assert.equal(document.querySelector(".quick-pin-drag-ghost"), null, "unmount removes the floating preview");
+});
+
+test("drop compensates the centered edit scale using the floating surface rectangle", async () => {
+  const env = environment();
+  const item = { pin: { id: "one", kind: "track", targetId: "one", createdAt: 0 }, title: "歌曲",
+    subtitle: "艺术家", tracks: [], artPaths: [], payload: null, size: "medium", isSmart: false, liveLine: "今天听过" };
+  const rect = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height });
+  const pointer = async (element, type, y) => act(async () => element.dispatchEvent(new window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: 20, clientY: y })));
+  try {
+    await env.render(React.createElement(QuickplayPinBoard, { items: [item], onActivate() {}, onOpenCollection() {}, onContextMenu() {}, onUnpin() {}, onResizePin() {}, onShiftPin() {}, onCustomizePin() {}, onMovePin() {} }));
+    await act(async () => document.querySelector(".quick-pins-edit").click());
+    const grid = document.querySelector(".quick-pins-grid"), source = grid.querySelector(".quick-pin");
+    grid.getBoundingClientRect = () => rect(0, 0, 300, 300);
+    source.getBoundingClientRect = () => rect(0, 0, 100, 100);
+    source.querySelector(".quick-pin-surface").getBoundingClientRect = () => rect(-2.5, -2.5, 105, 105);
+    await pointer(source, "pointerdown", 20); await pointer(grid, "pointermove", 170);
+    const surface = document.querySelector(".quick-pin-drag-ghost .quick-pin-surface");
+    surface.getBoundingClientRect = () => rect(38, 171, 99.75, 99.75);
+    await pointer(grid, "pointerup", 180);
+    const values = source.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+), ([-\d.]+)\)/).slice(1).map(Number);
+    assert.ok(Math.abs(values[0] - values[2] * 2.5 - 38) < 0.001);
+    assert.ok(Math.abs(values[1] - values[3] * 2.5 - 171) < 0.001);
+    assert.ok(Math.abs(105 * values[2] - 99.75) < 0.001);
+    assert.ok(Math.abs(105 * values[3] - 99.75) < 0.001);
+    await env.advance(TILE_MOTION.settle);
+    assert.equal(source.style.transform, "");
+  } finally { await env.cleanup(); }
 });
 
 test("a wall of live tiles and mosaics never updates in lockstep, even with identical random delays", async () => {

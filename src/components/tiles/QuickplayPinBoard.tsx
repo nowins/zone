@@ -63,6 +63,7 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
   const rectsRef = useRef(new Map<string, DOMRect>());
   const animationsRef = useRef<AnimationHandle[]>([]);
   const releasedIdRef = useRef<string | null>(null);
+  const releasedPoseRef = useRef<{ surface: boolean; opacity: number } | null>(null);
   const reducedMotion = useReducedMotion();
   const reducedRef = useRef(reducedMotion);
   reducedRef.current = reducedMotion;
@@ -97,10 +98,23 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
       const from = rectsRef.current.get(element.dataset.pinId!);
       const to = element.getBoundingClientRect();
       if (!from || !to.width || !to.height || reducedMotion) continue;
-      const dx = from.left - to.left;
-      const dy = from.top - to.top;
-      const sx = from.width / to.width;
-      const sy = from.height / to.height;
+      const surface = element.querySelector<HTMLElement>(".quick-pin-surface");
+      const release = element.dataset.pinId === releasedIdRef.current ? releasedPoseRef.current : null;
+      if (surface && release) {
+        // Carry the floating lift's opacity even when released before it settles.
+        surface.style.transition = "none";
+        surface.style.opacity = `${release.opacity}`;
+        void getComputedStyle(surface).opacity;
+        surface.style.removeProperty("transition");
+        surface.style.removeProperty("opacity");
+      }
+      const visual = release?.surface ? surface?.getBoundingClientRect() : undefined;
+      const target = visual?.width && visual.height ? visual : to;
+      const sx = from.width / target.width;
+      const sy = from.height / target.height;
+      // The edit lift has a centered origin; outer FLIP scales from top left.
+      const dx = from.left - to.left - sx * (target.left - to.left);
+      const dy = from.top - to.top - sy * (target.top - to.top);
       if (Math.abs(dx) + Math.abs(dy) + Math.abs(sx - 1) + Math.abs(sy - 1) < 0.01) continue;
       animationsRef.current.push(animateValue({ from: 0, to: 1,
         tween: { durationMs: element.dataset.pinId === releasedIdRef.current ? TILE_MOTION.settle : TILE_MOTION.reflow,
@@ -111,6 +125,7 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
     }
     rectsRef.current.clear();
     releasedIdRef.current = null;
+    releasedPoseRef.current = null;
   }, [layoutKey, reducedMotion, draggedId]);
 
   useEffect(() => {
@@ -204,6 +219,7 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
     else onResizePin(item.pin.id, stepHomePinSize(item.size, event.key === "ArrowUp" ? 1 : -1));
   }
   const pointerDrag = usePinDrag(gridRef, {
+    surfaceSelector: ".quick-pin-surface",
     onStart: id => {
       clearHold();
       captureLayout();
@@ -212,12 +228,14 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
       setDraggedId(id);
     },
     onMove: previewDrop,
-    onEnd: (commit, releaseRect) => {
+    onEnd: (commit, release) => {
       const drag = dragRef.current;
       captureLayout();
+      const releaseRect = release?.rect;
       if (drag && releaseRect?.width && releaseRect.height) {
         rectsRef.current.set(drag.id, releaseRect);
         releasedIdRef.current = drag.id;
+        releasedPoseRef.current = release ?? null;
       }
       if (commit && drag?.placement) onMovePin(drag.id, drag.placement.target, drag.placement.after);
       dragRef.current = null;
