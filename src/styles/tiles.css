@@ -148,6 +148,18 @@
   margin: 0;
   outline: 0;
 }
+/* Intrinsic image sizes must not expand a cover's grid track past a wide tile. */
+.tile :is(.cover, .mini-cover) {
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.tile :is(.cover, .mini-cover) img {
+  min-width: 0;
+  min-height: 0;
+  object-position: center;
+}
 .tile-back-action {
   display: inline-flex;
   align-items: center;
