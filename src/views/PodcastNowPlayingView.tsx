@@ -643,6 +643,7 @@ export function PodcastNowPlayingView({
 
       <footer className="podcast-now-transport">
         <PlaybackProgress
+          mediaKey={episode.episodeId}
           label={`${episode.title} · ${episode.podcastTitle}`}
           progress={safeProgress}
           duration={mediaDuration}

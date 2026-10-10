@@ -74,6 +74,7 @@ export function PodcastPlayerBar({
           )}
         </button>
         <PlaybackProgress
+          mediaKey={episode.episodeId}
           label={`${episode.title} · ${episode.podcastTitle}`}
           progress={progress}
           duration={duration}

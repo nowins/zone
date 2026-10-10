@@ -433,6 +433,7 @@ export function NowPlayingView({
 
       <div ref={attachChrome} className="now-transport" aria-hidden={chromeMode === "immersive"}>
         <PlaybackProgress
+          mediaKey={track?.id}
           label={track?.title ?? "Zone"}
           progress={progress}
           duration={duration}

@@ -108,6 +108,7 @@ export function PlayerBar({
           <Cover artPath={track?.cover_path} label={track?.album ?? ""} size="mini" />
         </button>
         <PlaybackProgress
+          mediaKey={track?.id}
           label={track?.title ?? "暂无播放"}
           progress={progress}
           duration={duration}

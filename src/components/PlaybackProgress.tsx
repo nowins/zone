@@ -1,11 +1,13 @@
 import type { CSSProperties } from "react";
 import { Heart } from "lucide-react";
 import { formatTime } from "../utils/music";
+import { usePlaybackScrub } from "../hooks/usePlaybackScrub";
 
 export function PlaybackProgress({
   label,
   progress,
   duration,
+  mediaKey,
   disabled = false,
   isFavorite,
   onLabelClick,
@@ -15,6 +17,7 @@ export function PlaybackProgress({
   label: string;
   progress: number;
   duration: number;
+  mediaKey?: string;
   disabled?: boolean;
   isFavorite?: boolean;
   onLabelClick?: () => void;
@@ -22,7 +25,10 @@ export function PlaybackProgress({
   onToggleFavorite?: () => void;
 }) {
   const safeDuration = Number.isFinite(duration) ? Math.max(0, duration) : 0;
-  const safeProgress = Math.min(Math.max(0, progress), safeDuration);
+  const playbackProgress = Number.isFinite(progress) ? Math.min(Math.max(0, progress), safeDuration) : 0;
+  const { value: safeProgress, inputProps } = usePlaybackScrub({
+    progress: playbackProgress, duration: safeDuration, disabled, mediaKey, onSeek,
+  });
   const progressPercent = safeDuration > 0 ? (safeProgress / safeDuration) * 100 : 0;
   const remaining = Math.max(0, safeDuration - safeProgress);
 
@@ -53,9 +59,10 @@ export function PlaybackProgress({
         min={0}
         max={safeDuration}
         value={safeProgress}
-        onChange={(event) => onSeek(Number(event.target.value))}
+        {...inputProps}
         disabled={disabled}
         aria-label="播放进度"
+        aria-valuetext={formatTime(safeProgress)}
         style={{ "--range-progress": `${progressPercent}%` } as CSSProperties}
       />
       <span className="zune-progress-time zune-progress-time-end">

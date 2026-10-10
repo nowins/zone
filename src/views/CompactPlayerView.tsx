@@ -316,7 +316,7 @@ export function CompactPlayerView(props: Props) {
       </Presence>
       {episode && podcastStatus === "error" ? <div className="compact-playback-status" role="alert"><span>播放失败</span><Button variant="ghost" size="sm" onClick={props.onRetryPodcast}>重试</Button></div>
         : busy ? <div className="compact-playback-status" role="status"><MetroLoader size={12} /><span>{podcastStatus === "loading" ? "正在加载" : "正在缓冲"}</span></div> : null}
-      <PlaybackProgress label={title} progress={props.progress} duration={props.duration} disabled={!available || props.duration <= 0}
+      <PlaybackProgress mediaKey={episode ? `podcast:${episode.episodeId}` : track?.id} label={title} progress={props.progress} duration={props.duration} disabled={!available || props.duration <= 0}
         onSeek={props.onSeek} onLabelClick={() => navigate("now")} />
       <div className="compact-transport">
         <Button variant="ghost" title={episode ? "后退 15 秒" : "上一首"} disabled={!available}
