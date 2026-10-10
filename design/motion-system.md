@@ -63,7 +63,9 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 正在播放闲置隐藏是自动退隐的刻意例外：返回、队列、底部控制区共用 chrome 档 700ms 与 dissolve 曲线，在原位同步降低透明度；唤回用 content 档 220ms 与 standard 曲线，CSS transition 从中间值反向接续，不重新挂载或重播入场。歌曲信息不随闲置状态变暗。用户主动隐藏队列仍走 micro 档 Presence；reduced-motion 下两类过渡均收缩至 instant 档。暂停、焦点和操作中的计时保护见 [播放视觉规范](engineering/playback-visuals.md)。
 
-`tokens.ts` 中的 `TILE_MOTION` 统一维护磁贴长按、首次更新、后续更新间隔、背面停留、peek／flip／单格翻面及入场错峰参数。当前首轮更新在可见后 18–42 秒就绪，翻面完成后等待 45–90 秒，封面墙单格替换完成后等待 24–48 秒，背面停留 5 秒。`tileScheduler.ts` 在同一窗口串行调度翻面与封面墙替换：一次只运行一个完整周期（含停留与翻回），完成后至少静置 4 秒；就绪时间只是最早开始时间，多块磁贴排队时会进一步推迟。已更新的磁贴恢复可见或结束悬停后采用后续间隔，不重播较短的首轮等待。小磁贴与关闭动态的磁贴不循环；`useTileActivity` 统一监听可视区、页面可见性与悬停／聚焦，编辑切换 DOM 宿主时重新绑定，暂停或卸载释放排队及活动任务。reduced-motion 下停止自动翻面和封面替换，重排直接落到终态。
+`tokens.ts` 中的 `TILE_MOTION` 统一维护磁贴长按、首次更新、后续更新间隔、背面停留、peek／flip／单格翻面及入场错峰参数。当前首轮更新在可见后 18–42 秒就绪，翻面完成后等待 45–90 秒，封面墙单格替换完成后等待 24–48 秒，背面停留 5 秒。`tileScheduler.ts` 在同一窗口串行调度翻面与封面墙替换：一次只运行一个完整周期（含停留与翻回），完成后至少静置 4 秒；就绪时间只是最早开始时间，多块磁贴排队时会进一步推迟。已更新的磁贴恢复可见或完成互动后的周期采用后续间隔，不重播较短的首轮等待。小磁贴与关闭动态的磁贴不循环。
+
+`useTileActivity` 区分是否可见与是否正在悬停／聚焦，编辑切换 DOM 宿主时重新绑定。`FlipTile` 在悬停或聚焦时取消尚未开始的更新；正在揭示或翻回的动画先自然收稳，背面停留保留剩余时间并暂停，离开后接续，不重置展示面。持有背面的完整周期保留串行调度席位直到翻回，停留期间没有计时器或空闲 rAF。进入编辑、不可见、关闭动态或卸载时释放排队及活动任务并归位。reduced-motion 下停止自动翻面和封面替换，重排直接落到终态。
 
 `PANORAMA_MOTION` 维护首页视差、拖动惯性和滚动条停留：背景大字和底色当前分别跟随横向滚动的 22% / 8%，最大行程 480 / 240px；底色平面按 token 扩展，平移时不露出边缘。`useQuickplayPanorama` 直接写 DOM transform 与滚动条位置，不用逐帧 React state；返回页面时在同一 layout effect 内恢复位置，不闪现滚动条。粗步进滚轮与拖动释放使用可打断的 `snappy` 弹簧；触控板横向输入、细小或带小数的连续输入、滑块拖动和键盘定位不叠加惯性。拖动释放将实际速度传入弹簧，不从零速度重启。短滚动条在最后一次位移后停留 700ms，再按 micro 档淡出；拖住滑块时不隐藏，键盘焦点由 `:focus-visible` 保持可见。页面隐藏或卸载时取消动画与显隐计时器，reduced-motion 下停止视差、即时定位并收缩淡出；没有持续空闲动画。
 
@@ -166,7 +168,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - `tests/reducedMotion.test.mjs`：reduced-motion 下退出淡出与 JS 生命周期的同步守卫。
 - `tests/lyricsSettingsUi.test.mjs` / `tests/lyricsDisplay.test.mjs`：歌词设置面板的 Presence 接线、显示偏好持久化和字号归一化。
 - CSS/结构守卫（`nowPlayingCss.test.mjs` 等）会因类名/编排变化失败，按新结构同步，不放宽语义。
-- `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、两块 peek 面板的连续位移、内容停留、多磁贴与封面墙串行更新、隐藏／编辑／reduced-motion 停转与恢复，以及长按、混合尺寸空位拖动、释放后接续落位、键盘和外观设置行为；`tests/tileScheduler.test.mjs` 验证同刻就绪、完整周期互斥、静置间隔及取消清理。
+- `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、两块 peek 面板的连续位移、悬停／聚焦保留展示面与剩余停留、揭示及翻回期间互动不跳帧、多磁贴与封面墙串行更新、隐藏／编辑／reduced-motion 停转与恢复，以及长按、混合尺寸空位拖动、释放后接续落位、键盘和外观设置行为；`tests/tileScheduler.test.mjs` 验证同刻就绪、完整周期互斥、静置间隔及取消清理。
 - `tests/panoramaBehavior.test.mjs`：首页分组与视差边界、滚轮归属，以及真实 hook 在 StrictMode 下的滚轮接力、键盘打断、滚动条显隐／拖拽、滚动恢复、窗口变化、reduced-motion 与隐藏／卸载清理。
 - `tests/collectionPivot.test.mjs`：分类／详情／返回方向、可见区域分组与数量上限、有界条目测量、输入从当前帧收稳与恢复滚动事件的区分，以及真实导航／面板动效 hook 的 StrictMode、快速连切和 reduced-motion 清理。
 - `tests/browseTransition.test.mjs`：收藏、播客和 quickplay 共用控制器、静止导航与背景、标题及封面的独立显现、播客根滚动恢复和稳定媒体身份、有界样式读取、面板接管及隐藏／reduced-motion 清理。

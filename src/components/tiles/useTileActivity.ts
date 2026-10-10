@@ -3,14 +3,19 @@ import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../../utils/visualiz
 
 /** Ambient work belongs only to visible tiles that the user is not handling. */
 export function useTileActivity(ref: RefObject<HTMLElement | null>, ownerKey?: unknown) {
-  const [active, setActive] = useState(false);
+  const [activity, setActivity] = useState({ visible: false, active: false });
   useEffect(() => {
     const element = ref.current?.closest<HTMLElement>(".tile") ?? ref.current;
     if (!element) return;
     let visible = typeof IntersectionObserver === "undefined";
     let hovered = element.matches(":hover");
     let focused = element.contains(document.activeElement);
-    const update = () => setActive(visible && isDocumentVisible() && !hovered && !focused);
+    const update = () => {
+      const shown = visible && isDocumentVisible();
+      const active = shown && !hovered && !focused;
+      setActivity(previous => previous.visible === shown && previous.active === active
+        ? previous : { visible: shown, active });
+    };
     const enter = () => { hovered = true; update(); };
     const leave = () => { hovered = false; update(); };
     const focus = () => { focused = true; update(); };
@@ -40,5 +45,5 @@ export function useTileActivity(ref: RefObject<HTMLElement | null>, ownerKey?: u
       document.removeEventListener(WINDOW_VISIBILITY_EVENT, update);
     };
   }, [ref, ownerKey]);
-  return active;
+  return activity;
 }

@@ -78,7 +78,8 @@ test("peek state machine: dwell exists, direction state stays out of effect deps
   assert.ok(flipSource.includes("TILE_MOTION.hold"), "peek must hold the back layer visible");
   // Direction state lives in the effect closure; putting showBack in the deps
   // re-ran the effect mid-cycle and cleanup parked the back layer instantly.
-  assert.ok(flipSource.includes("[paused, live, active, reducedMotion, variant]"));
+  assert.ok(flipSource.includes("[paused, live, visible, reducedMotion, variant]"));
+  assert.ok(flipSource.includes("activityChangeRef.current?.(); }, [active]"), "interaction is independent from visibility cleanup");
   assert.ok(!flipSource.includes("showBack]"), "showBack must not be an effect dep");
   // Slides start from the layer's actual position, never snapping to a fixed
   // endpoint first.
@@ -175,7 +176,7 @@ test("tiles flip sparingly and only when there is live content to reveal", () =>
   assert.ok(tokenSource.includes("intervalMax: 90_000"));
   // A live gate: tiles with nothing to reveal never flip on their own.
   assert.ok(flipSource.includes("live?: boolean"));
-  assert.ok(/if \(paused \|\| !live \|\| !active \|\| reducedMotion\) \{[\s\S]*?return undefined;/.test(flipSource));
+  assert.ok(/if \(paused \|\| !live \|\| !visible \|\| reducedMotion\) \{[\s\S]*?return undefined;/.test(flipSource));
   // Quickplay reveals a real glanceable line (recent-play/stats), not a static
   // "已固定" placeholder.
   assert.ok(quickplaySource.includes("liveLine"));

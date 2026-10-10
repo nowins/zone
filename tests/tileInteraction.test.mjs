@@ -32,7 +32,7 @@ function environment() {
   };
   _setAnimationClockForTesting(() => now, fn => frames.push(fn));
   const root = createRoot(document.getElementById("root"));
-  return { root, timers, observers, frames,
+  return { root, timers, observers, frames, now: () => now,
     render: async element => act(async () => root.render(React.createElement(React.StrictMode, null, element))),
     intersect: async visible => act(async () => observers.forEach(o => o.fn([{ isIntersecting: visible }]))),
     hide: async value => act(async () => { hidden = value; document.dispatchEvent(new window.Event("visibilitychange")); }),
@@ -83,6 +83,89 @@ for (const variant of ["flip", "peek"]) test(`${variant} live content dwells, sl
     assert.equal(env.timers.size, 0);
   } finally { await env.cleanup(); }
 });
+
+for (const variant of ["flip", "peek"]) {
+  test(`${variant} retains its displayed face on hover and focus, then resumes its remaining dwell`, async () => {
+    const env = environment();
+    const duration = variant === "peek" ? TILE_MOTION.peek : TILE_MOTION.flipHalf * 2;
+    const dispatch = async (tile, type) => act(async () => tile.dispatchEvent(new window.Event(type)));
+    try {
+      await env.render(React.createElement(FlipTile, { variant, front: "正面", back: "信息" }));
+      await env.intersect(true);
+      const first = [...env.timers.values()][0].at;
+      await env.advance(first + duration + 80);
+      const tile = document.querySelector(".tile");
+      await env.advance(1000);
+      await dispatch(tile, "pointerenter");
+      assert.ok(tile.classList.contains("is-back"), "hover must not reset the displayed information");
+      assert.equal(env.timers.size, 0, "the dwell sleeps during interaction");
+      await env.advance(30_000);
+      assert.ok(tile.classList.contains("is-back"));
+      assert.equal(env.frames.length, 0, "holding a face does not spin animation frames");
+      await act(async () => tile.focus());
+      await dispatch(tile, "pointerleave");
+      assert.equal(env.timers.size, 0, "keyboard focus continues the hold after the pointer leaves");
+      await act(async () => tile.blur());
+      assert.equal(env.timers.size, 1);
+      await env.advance(TILE_MOTION.hold - 1200);
+      assert.ok(tile.classList.contains("is-back"), "remaining dwell is preserved");
+      await env.advance(400 + duration);
+      assert.ok(tile.classList.contains("is-front"), "leaving resumes a normal animated return");
+      assert.equal(env.timers.size, 1, "only one future cycle is queued");
+    } finally { await env.cleanup(); }
+  });
+
+  test(`${variant} completes an in-flight reveal on hover and resets only on visibility or motion changes`, async () => {
+    const env = environment();
+    const duration = variant === "peek" ? TILE_MOTION.peek : TILE_MOTION.flipHalf * 2;
+    try {
+      await env.render(React.createElement(FlipTile, { variant, front: "正面", back: "信息" }));
+      await env.intersect(true);
+      const first = [...env.timers.values()][0].at;
+      await env.advance(first + 120);
+      const tile = document.querySelector(".tile"), surface = document.querySelector(".tile-flip-surface");
+      const back = document.querySelector(".tile-face-back");
+      const pose = () => variant === "peek" ? back.style.getPropertyValue("--tile-peek") : surface.style.getPropertyValue("--tile-flip");
+      const midway = pose();
+      await act(async () => tile.dispatchEvent(new window.Event("pointerenter")));
+      assert.equal(pose(), midway, "entering does not jump from the current frame");
+      await env.advance(duration + TILE_MOTION.hold);
+      assert.ok(tile.classList.contains("is-back"), "the reveal settles before holding");
+      assert.equal(env.timers.size, 0);
+      await env.intersect(false);
+      assert.ok(tile.classList.contains("is-front"));
+      await act(async () => tile.dispatchEvent(new window.Event("pointerleave")));
+      await env.intersect(true);
+      const next = [...env.timers.values()][0].at;
+      await env.advance(next - env.now() + duration + 80);
+      await act(async () => tile.dispatchEvent(new window.Event("pointerenter")));
+      assert.ok(tile.classList.contains("is-back"));
+      await env.reduce(true);
+      assert.ok(tile.classList.contains("is-front"), "reduced motion parks both faces");
+      assert.equal(env.timers.size, 0);
+    } finally { await env.cleanup(); }
+  });
+
+  test(`${variant} finishes an in-flight return without a hover snap or a new cycle`, async () => {
+    const env = environment();
+    const duration = variant === "peek" ? TILE_MOTION.peek : TILE_MOTION.flipHalf * 2;
+    try {
+      await env.render(React.createElement(FlipTile, { variant, front: "正面", back: "信息" }));
+      await env.intersect(true);
+      const first = [...env.timers.values()][0].at;
+      await env.advance(first + duration + TILE_MOTION.hold + 120);
+      const tile = document.querySelector(".tile"), surface = document.querySelector(".tile-flip-surface");
+      const back = document.querySelector(".tile-face-back");
+      const pose = () => variant === "peek" ? back.style.getPropertyValue("--tile-peek") : surface.style.getPropertyValue("--tile-flip");
+      const midway = pose();
+      await act(async () => tile.dispatchEvent(new window.Event("pointerenter")));
+      assert.equal(pose(), midway, "hover does not snap an ongoing return");
+      await env.advance(duration + 100);
+      assert.ok(tile.classList.contains("is-front"));
+      assert.equal(env.timers.size, 0, "no new update begins while handling the tile");
+    } finally { await env.cleanup(); }
+  });
+}
 
 test("peek carries both panels through the same offset and parks both on interruption", async () => {
   const env = environment();

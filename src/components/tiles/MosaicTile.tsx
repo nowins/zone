@@ -44,7 +44,7 @@ function initialCells(poolSize: number, cellCount: number): number[] {
  */
 export function MosaicFrames({ pool, paused = false }: { pool: ReactNode[]; paused?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const active = useTileActivity(hostRef);
+  const { active } = useTileActivity(hostRef);
   const images = pool.slice(0, 9);
   const { layout, cells: cellCount } = layoutForPool(images.length);
   const [cells, setCells] = useState<number[]>(() => initialCells(images.length, cellCount));

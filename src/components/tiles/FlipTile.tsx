@@ -59,18 +59,24 @@ export function FlipTile({
   const backRef = useRef<HTMLDivElement | null>(null);
   const frontRef = useRef<HTMLDivElement | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
-  const active = useTileActivity(surfaceRef, asButton);
+  const { active, visible } = useTileActivity(surfaceRef, asButton);
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const activityChangeRef = useRef<(() => void) | null>(null);
   const revealingRef = useRef(false);
   const animationRef = useRef<AnimationHandle | null>(null);
   const hasUpdatedRef = useRef(false);
 
   useEffect(() => {
-    if (paused || !live || !active || reducedMotion) {
+    if (paused || !live || !visible || reducedMotion) {
       setShowBack(false);
       return undefined;
     }
     let cancelSchedule: (() => void) | undefined;
     let holdTimer: number | undefined;
+    let holdRemaining: number = TILE_MOTION.hold;
+    let holdDeadline = 0;
+    let phase: "waiting" | "revealing" | "holding" | "returning" = "waiting";
     let cancelled = false;
     // Direction state lives in the closure, not React state: flipping state
     // used to re-run this effect and the cleanup parked the back layer
@@ -89,6 +95,7 @@ export function FlipTile({
 
     const schedule = (first = false) => {
       if (cancelled) return;
+      if (!activeRef.current || cancelSchedule) return;
       cancelSchedule = scheduleTileUpdate(nextDelay(first), runCycle);
     };
 
@@ -140,31 +147,68 @@ export function FlipTile({
       });
     };
 
+    let finishCycle: (() => void) | undefined;
+    const armHold = () => {
+      if (cancelled || !activeRef.current || phase !== "holding" || holdTimer !== undefined) return;
+      holdDeadline = window.performance.now() + holdRemaining;
+      holdTimer = window.setTimeout(() => {
+        holdTimer = undefined;
+        if (cancelled) return;
+        phase = "returning";
+        revealTo(0, () => {
+          phase = "waiting";
+          revealingRef.current = false;
+          cancelSchedule = undefined;
+          finishCycle?.();
+          finishCycle = undefined;
+          schedule();
+        });
+      }, holdRemaining);
+    };
+
+    // Interaction preserves the displayed face; visibility/editing still reset it.
+    // A turn already in flight settles before waiting, avoiding an edge-on freeze.
+    const updateActivity = () => {
+      if (activeRef.current) {
+        if (phase === "waiting") schedule(!hasUpdatedRef.current);
+        else armHold();
+        return;
+      }
+      if (phase === "waiting") {
+        cancelSchedule?.();
+        cancelSchedule = undefined;
+      } else if (phase === "holding" && holdTimer !== undefined) {
+        holdRemaining = Math.max(0, holdDeadline - window.performance.now());
+        window.clearTimeout(holdTimer);
+        holdTimer = undefined;
+      }
+    };
+    activityChangeRef.current = updateActivity;
+
     const runCycle = (done: () => void) => {
-      if (cancelled || revealingRef.current) {
+      if (cancelled || !activeRef.current || revealingRef.current) {
         done();
+        cancelSchedule = undefined;
         schedule();
         return;
       }
+      finishCycle = done;
       revealingRef.current = true;
       hasUpdatedRef.current = true;
+      phase = "revealing";
       // One full cycle: slide up, hold so the live line is readable, slide
       // away, then schedule the next cycle.
       revealTo(variant === "flip" ? 180 : 1, () => {
-        holdTimer = window.setTimeout(() => {
-          if (cancelled) return;
-          revealTo(0, () => {
-            revealingRef.current = false;
-            done();
-            schedule();
-          });
-        }, TILE_MOTION.hold);
+        phase = "holding";
+        holdRemaining = TILE_MOTION.hold;
+        armHold();
       });
     };
 
     schedule(!hasUpdatedRef.current);
     return () => {
       cancelled = true;
+      activityChangeRef.current = null;
       revealingRef.current = false;
       cancelSchedule?.();
       if (holdTimer !== undefined) window.clearTimeout(holdTimer);
@@ -174,7 +218,9 @@ export function FlipTile({
       setAngle(0);
       setShowBack(false);
     };
-  }, [paused, live, active, reducedMotion, variant]);
+  }, [paused, live, visible, reducedMotion, variant]);
+
+  useEffect(() => { activityChangeRef.current?.(); }, [active]);
 
   return (
     <Tile
