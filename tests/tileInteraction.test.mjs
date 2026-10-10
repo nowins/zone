@@ -203,6 +203,30 @@ test("mosaic cells stop in edit mode, offscreen and under reduced motion", async
   } finally { await env.cleanup(); }
 });
 
+test("a mosaic cell keeps the cover revealed at its apex after completion and interaction", async () => {
+  const env = environment();
+  const random = Math.random;
+  Math.random = () => 0;
+  const pool = Array.from({ length: 9 }, (_, i) => React.createElement("span", { key: i }, i));
+  try {
+    await env.render(React.createElement(MosaicFrames, { pool }));
+    await env.intersect(true);
+    const first = [...env.timers.values()][0].at;
+    await env.advance(first + TILE_MOTION.cellHalf + 40);
+    const cell = document.querySelector(".tile-mosaic-cell-inner");
+    const back = cell.textContent;
+    assert.equal(back, "8", "the spare cover is assigned while the cell is edge-on");
+    await env.advance(TILE_MOTION.cellHalf + 40);
+    assert.equal(cell.textContent, back, "completion keeps the revealed cover");
+    await act(async () => document.querySelector(".tile-mosaic").dispatchEvent(new window.Event("pointerenter")));
+    assert.equal(cell.textContent, back, "hover keeps the revealed cover");
+    await env.reduce(true);
+    assert.equal(cell.textContent, back, "reduced motion keeps the revealed cover");
+    await env.render(React.createElement(MosaicFrames, { pool: [...pool], paused: true }));
+    assert.equal(cell.textContent, back, "entering edit mode does not restore the original cover");
+  } finally { Math.random = random; await env.cleanup(); }
+});
+
 test("tile arrival runs only for first entry and never replays after restoration or reduced motion", async () => {
   const env = environment();
   const items = [{ pin: { id: "one", kind: "track", targetId: "one", createdAt: 0 }, title: "歌曲",

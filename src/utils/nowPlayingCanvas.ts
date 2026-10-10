@@ -254,6 +254,8 @@ export function updateMosaicFlipState(
     beatConfidence,
     albums,
     time,
+    canFlipTile,
+    canUseAlbum,
   }: {
     isPlaying: boolean;
     beatPulse: number;
@@ -261,6 +263,8 @@ export function updateMosaicFlipState(
     beatConfidence: number;
     albums: AlbumGroup[];
     time: number;
+    canFlipTile?: (tile: MosaicTile, index: number) => boolean;
+    canUseAlbum?: (index: number) => boolean;
   },
 ) {
   if (tiles.length === 0) {
@@ -294,11 +298,12 @@ export function updateMosaicFlipState(
   const waitForBeat = beatConfidence >= 0.34 && beatPulse < 0.24 && beatPhase > 0.14;
   if (waitForBeat && time < state.nextAt + 650) return state;
 
-  const selected = selectFlipTile(tiles, time, state.lastTileIndex);
+  const selected = selectFlipTile(tiles, time, state.lastTileIndex, canFlipTile);
+  if (selected < 0) return state;
   const tile = tiles[selected];
   const sourceLength = Math.max(1, albums.length);
   const fromAlbumIndex = positiveModulo(tile?.albumIndex ?? 0, sourceLength);
-  const toAlbumIndex = selectBackAlbumIndex(albums, fromAlbumIndex, time + (tile?.seed ?? 0.5) * 47_000);
+  const toAlbumIndex = selectBackAlbumIndex(albums, fromAlbumIndex, time + (tile?.seed ?? 0.5) * 47_000, canUseAlbum);
   if (toAlbumIndex === fromAlbumIndex) {
     state.nextAt = time + 5_200;
     return state;
@@ -399,11 +404,14 @@ function cellKey(column: number, row: number) {
   return `${column}:${row}`;
 }
 
-function selectFlipTile(tiles: MosaicTile[], time: number, lastTileIndex: number) {
-  const largeTiles = tiles
+function selectFlipTile(tiles: MosaicTile[], time: number, lastTileIndex: number,
+  canFlipTile?: (tile: MosaicTile, index: number) => boolean) {
+  const eligible = tiles
     .map((tile, index) => ({ tile, index }))
-    .filter(({ tile }) => tile.width === tile.height && tile.width >= 104);
-  const source = largeTiles.length > 0 ? largeTiles : tiles.map((tile, index) => ({ tile, index }));
+    .filter(({ tile, index }) => !canFlipTile || canFlipTile(tile, index));
+  const largeTiles = eligible.filter(({ tile }) => tile.width === tile.height && tile.width >= 104);
+  const source = largeTiles.length > 0 ? largeTiles : eligible;
+  if (source.length === 0) return -1;
   if (source.length === 1) return source[0].index;
 
   const selected = source[Math.floor(seededNoise(time * 0.0031 + source.length * 13) * source.length)]?.index ?? 0;
@@ -412,12 +420,14 @@ function selectFlipTile(tiles: MosaicTile[], time: number, lastTileIndex: number
   return source[fallbackIndex]?.index ?? selected;
 }
 
-function selectBackAlbumIndex(albums: AlbumGroup[], fromAlbumIndex: number, seed: number) {
+function selectBackAlbumIndex(albums: AlbumGroup[], fromAlbumIndex: number, seed: number,
+  canUseAlbum?: (index: number) => boolean) {
   const front = albums[fromAlbumIndex];
   const frontIdentity = front?.coverPath ?? front?.key;
   const candidates = albums
     .map((album, index) => ({ album, index }))
-    .filter(({ album, index }) => index !== fromAlbumIndex && (album.coverPath ?? album.key) !== frontIdentity);
+    .filter(({ album, index }) => index !== fromAlbumIndex && (album.coverPath ?? album.key) !== frontIdentity
+      && (!canUseAlbum || canUseAlbum(index)));
   if (candidates.length === 0) return fromAlbumIndex;
   return candidates[Math.floor(seededNoise(seed * 0.0023) * candidates.length)]?.index ?? fromAlbumIndex;
 }

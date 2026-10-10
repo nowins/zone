@@ -31,6 +31,8 @@ test("actual Canvas effects survive StrictMode, sleep when static and wake for c
   window.requestAnimationFrame = callback => { frames.set(++nextId, callback); return nextId; };
   window.cancelAnimationFrame = id => frames.delete(id);
   // Zero-size layout bypasses rasterization, keeping this a lifecycle test.
+  let canvasWidth = 0;
+  dom.window.HTMLCanvasElement.prototype.getBoundingClientRect = () => ({ width: canvasWidth, height: 0 });
   dom.window.HTMLCanvasElement.prototype.getContext = () => ({});
   globalThis.ResizeObserver = class { constructor(callback) { resize = callback; } observe() {} disconnect() {} };
   const root = createRoot(document.getElementById("root"));
@@ -67,7 +69,10 @@ test("actual Canvas effects survive StrictMode, sleep when static and wake for c
     step(2000);
     assert.equal(frames.size, 0, "reduced motion reaches a static frame even while playing");
     resize();
-    assert.equal(frames.size, 1, "a resize wakes its Canvas");
+    assert.equal(frames.size, 0, "an unchanged size notification leaves the static Canvas asleep");
+    canvasWidth = 2;
+    resize();
+    assert.equal(frames.size, 1, "a changed size wakes its Canvas");
     step(2000);
     assert.equal(frames.size, 0);
   } finally {
