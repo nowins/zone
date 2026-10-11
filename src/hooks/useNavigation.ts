@@ -98,9 +98,17 @@ export function useNavigation({
 
   useEffect(() => {
     if (page !== "collection" || !focusSearchPendingRef.current) return;
-    focusSearchPendingRef.current = false;
-    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
+    // The collection chunk may mount after the navigation's first frame.
+    const observer = new window.MutationObserver(() => focusSearch());
+    const focusSearch = () => {
+      if (!focusSearchPendingRef.current || pageRef.current !== "collection" || !searchInputRef.current) return;
+      focusSearchPendingRef.current = false;
+      searchInputRef.current.focus();
+      observer.disconnect();
+    };
+    if (workspaceRef.current) observer.observe(workspaceRef.current, { childList: true, subtree: true });
+    const frame = window.requestAnimationFrame(focusSearch);
+    return () => { window.cancelAnimationFrame(frame); observer.disconnect(); };
   }, [page]);
 
   // Commit the intent synchronously, including reversals in one React batch.

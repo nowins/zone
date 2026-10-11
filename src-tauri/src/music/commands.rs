@@ -12,24 +12,30 @@ use tauri::State;
 use crate::library::MusicFolder;
 
 #[tauri::command]
-pub(crate) fn music_get_library_snapshot(
+pub(crate) async fn music_get_library_snapshot(
   app: tauri::AppHandle,
   state: State<'_, MusicState>,
 ) -> Result<MusicLibrarySnapshot, String> {
-  let snapshot = load_library_snapshot(state.inner())?;
-  crate::image_scope::allow_tracks(&app, &snapshot.tracks);
-  Ok(snapshot)
+  let state = state.inner().clone();
+  tauri::async_runtime::spawn_blocking(move || {
+    let snapshot = load_library_snapshot(&state)?;
+    crate::image_scope::allow_tracks(&app, &snapshot.tracks);
+    Ok(snapshot)
+  }).await.map_err(|error| format!("资料库读取任务异常结束：{error}"))?
 }
 
 #[tauri::command]
-pub(crate) fn music_import_legacy_player_state(
+pub(crate) async fn music_import_legacy_player_state(
   app: tauri::AppHandle,
   state: State<'_, MusicState>,
   legacy: LegacyPlayerStateV1,
 ) -> Result<MusicLibrarySnapshot, String> {
-  let snapshot = import_legacy_player_state(state.inner(), legacy)?;
-  crate::image_scope::allow_tracks(&app, &snapshot.tracks);
-  Ok(snapshot)
+  let state = state.inner().clone();
+  tauri::async_runtime::spawn_blocking(move || {
+    let snapshot = import_legacy_player_state(&state, legacy)?;
+    crate::image_scope::allow_tracks(&app, &snapshot.tracks);
+    Ok(snapshot)
+  }).await.map_err(|error| format!("资料库迁移任务异常结束：{error}"))?
 }
 
 #[tauri::command]

@@ -10,6 +10,7 @@
     "types": []
   },
   "include": [
+    "src/utils/backgroundTask.ts",
     "src/utils/legacyMigration.ts",
     "src/utils/diagnostics.ts",
     "src/hooks/useAppHotkeys.ts",

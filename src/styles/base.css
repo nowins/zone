@@ -145,6 +145,31 @@ input:focus-visible {
   color: var(--text);
 }
 
+.startup-view {
+  height: calc(100% - var(--app-header-height));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--muted);
+}
+
+.startup-view p { margin: 0; font-size: var(--type-control); }
+.startup-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  animation: startup-loading-reveal var(--motion-micro) var(--motion-ease-standard) var(--startup-loading-delay) backwards;
+}
+
+@keyframes startup-loading-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .fatal-screen h1 {
   font-size: var(--type-display);
   font-weight: var(--weight-display);

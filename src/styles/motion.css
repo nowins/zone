@@ -528,6 +528,7 @@ button.tilt-pressed {
   .lyrics-source-browser.is-searching::after,
   .podcast-loading-state,
   .podcast-opening-state,
+  .startup-loading,
   .metro-loader > span,
   .podcast-now-playing-stage,
   .podcast-now-reading-body,

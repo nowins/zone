@@ -10,7 +10,7 @@ const { useNavigation } = await import("../.tmp/navigation-motion-runtime.js");
 
 test("navigation mounts immediately, accepts batched reversals and keeps keyboard search responsive", async () => {
   const dom = new JSDOM('<body><div id="root"></div></body>', { pretendToBeVisual: true });
-  for (const key of ["window", "document", "Node", "Element", "HTMLElement"]) globalThis[key] = dom.window[key];
+  for (const key of ["window", "document", "Node", "Element", "HTMLElement", "MutationObserver"]) globalThis[key] = dom.window[key];
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const { createRoot } = await import("react-dom/client");
   const listeners = new Set(), frames = [];
@@ -18,12 +18,13 @@ test("navigation mounts immediately, accepts batched reversals and keeps keyboar
   window.matchMedia = () => media;
   window.requestAnimationFrame = fn => { frames.push(fn); return frames.length; };
   let navigation;
+  let collectionMounted = true;
   const targets = { current: { activeTrack: { id: "song" }, activePodcastEpisode: null } };
   function Fixture() {
     navigation = useNavigation({ contextMenu: null, infoTarget: null, addToPlaylistTarget: null,
       playlistDialog: null, smartPlaylistDialog: null, nowPlayingTargetsRef: targets });
-    return React.createElement("section", { "data-page": navigation.page },
-      navigation.page === "collection" && React.createElement("input", { ref: navigation.searchInputRef, "aria-label": "搜索收藏" }));
+    return React.createElement("section", { ref: navigation.workspaceRef, "data-page": navigation.page },
+      navigation.page === "collection" && collectionMounted && React.createElement("input", { ref: navigation.searchInputRef, "aria-label": "搜索收藏" }));
   }
   const root = createRoot(document.getElementById("root"));
   try {
@@ -53,5 +54,12 @@ test("navigation mounts immediately, accepts batched reversals and keeps keyboar
     await act(async () => navigation.openNowPlaying());
     assert.equal(navigation.page, "nowPlaying");
     assert.equal(navigation.previousPageRef.current, "settings");
+    collectionMounted = false;
+    await act(async () => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "f", ctrlKey: true, cancelable: true })));
+    await act(async () => frames.splice(0).forEach(fn => fn(0)));
+    assert.equal(navigation.searchInputRef.current, null, "a lazy collection can miss the navigation frame");
+    collectionMounted = true;
+    await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Fixture))));
+    assert.equal(document.activeElement, navigation.searchInputRef.current, "late content consumes the pending search focus");
   } finally { await act(async () => root.unmount()); assert.equal(listeners.size, 0); dom.window.close(); }
 });

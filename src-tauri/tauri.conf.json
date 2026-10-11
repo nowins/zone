@@ -19,6 +19,7 @@
         "minHeight": 620,
         "decorations": false,
         "transparent": false,
+        "backgroundColor": "#0b070c",
         "resizable": true,
         "center": true,
         "additionalBrowserArgs": "--disable-features=HardwareMediaKeyHandling"

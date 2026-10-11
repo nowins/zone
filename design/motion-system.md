@@ -159,6 +159,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - 常规交互退场 ≤ 入场时长，且统一走 `--motion-ease-exit` 加速曲线；正在播放的自动闲置退隐使用上文登记的缓慢溶解。
 - 媒体时钟驱动的进度（歌词、播放）用 rAF 直读时钟，不叠加 CSS 补间。
 - 不要引入与内容无关的无限装饰动画；加载反馈与正在播放媒体背景有明确用途，分别遵守加载组件规范与 [播放视觉规范](engineering/playback-visuals.md) 的停转规则。
+- 启动加载反馈只做透明度显现，等待与显现时长分别消费 page／micro token；使用文档时钟接续入口分块和资料库恢复两个阶段，减少动态效果时直接显示静态 Metro 五点。不增加启动动画的最低停留时间。
 - 每帧数据（可视化帧）走 `visualizerBus.ts` 单槽总线，不走 React state/props。
 
 ## reduced-motion 约定

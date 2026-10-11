@@ -2,11 +2,12 @@ import { recordDiagnostic } from "./utils/diagnostics";
 import { Button } from "./components/Button";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { MetroLoader } from "./components/MetroLoader";
+import { StartupView } from "./components/StartupView";
+import { scheduleBackgroundTask } from "./utils/backgroundTask";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Titlebar } from "./components/Titlebar";
-import { CompactPlayerView } from "./views/CompactPlayerView";
 import { useCompactMode } from "./hooks/useCompactMode";
 import { useNativeWindowVisibility } from "./hooks/useNativeWindowVisibility";
 import { useTouchInteractions } from "./hooks/useTouchInteractions";
@@ -22,7 +23,6 @@ import { PlaylistDialog, type PlaylistDialogState } from "./components/PlaylistD
 import { SmartPlaylistDialog } from "./components/SmartPlaylistDialog";
 import { QuickplayView } from "./views/QuickplayView";
 import { NowPlayingView } from "./views/NowPlayingView";
-import { PodcastNowPlayingView } from "./views/PodcastNowPlayingView";
 import { DEFAULT_PLAYLIST_ID, LIBRARY_SCHEMA_VERSION, STORAGE_KEY } from "./constants";
 import { migrateLegacyState } from "./utils/legacyMigration";
 import { useMountedRef } from "./hooks/useMountedRef";
@@ -43,7 +43,6 @@ import { seedFromTracks } from "./utils/smartDj";
 import { customizeHomePin, homePinStateForPayload, moveHomePin, normalizeHomePins, setHomePinSize, shiftHomePin } from "./utils/homePins";
 import { useSystemMedia } from "./hooks/useSystemMedia";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
-import { CollectionView } from "./views/CollectionView";
 import { referenceForPayload, albumReference, artistReference, sameCollectionEntity, type CollectionEntityRef } from "./utils/collectionEntities";
 import { useNavigation, type NowPlayingTargets } from "./hooks/useNavigation";
 import { useMusicLibrary } from "./hooks/useMusicLibrary";
@@ -78,6 +77,9 @@ let lastPodcastTileRefreshAt = 0;
 
 const SettingsView = lazy(() => import("./views/SettingsView").then(module => ({ default: module.SettingsView })));
 const PodcastView = lazy(() => import("./views/PodcastView").then(module => ({ default: module.PodcastView })));
+const CollectionView = lazy(() => import("./views/CollectionView").then(module => ({ default: module.CollectionView })));
+const CompactPlayerView = lazy(() => import("./views/CompactPlayerView").then(module => ({ default: module.CompactPlayerView })));
+const PodcastNowPlayingView = lazy(() => import("./views/PodcastNowPlayingView").then(module => ({ default: module.PodcastNowPlayingView })));
 const loadingPage = <div role="status" aria-label="正在加载"><MetroLoader /></div>;
 
 export default function App() {
@@ -104,6 +106,8 @@ export default function App() {
   const [playlistDialog, setPlaylistDialog] = useState<PlaylistDialogState | null>(null);
   const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
   const [persistenceFailed, setPersistenceFailed] = useState(false);
+  const [libraryRestoreFailed, setLibraryRestoreFailed] = useState(false);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [retryingPersistence, setRetryingPersistence] = useState(false);
   const [clearingLibrary, setClearingLibrary] = useState(false);
   const clearingLibraryRef = useRef(false);
@@ -225,6 +229,7 @@ export default function App() {
     playNextPodcastEpisode,
     flushPodcastProgress,
   } = podcast;
+  const startupReady = restored && podcastSessionHydrated && !libraryRestoreFailed;
   const {
     isPlaying,
     setIsPlaying,
@@ -463,9 +468,12 @@ export default function App() {
     let cancelled = false;
 
     async function restoreLibrary() {
+      setLibraryRestoreFailed(false);
+      setRestored(false);
+      libraryPersistenceReadyRef.current = false;
       try {
         let snapshot = await musicGetLibrarySnapshot();
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = !snapshot.hasLibrary ? localStorage.getItem(STORAGE_KEY) : null;
         if (!snapshot.hasLibrary && saved) {
           snapshot = await migrateLegacyState(localStorage, STORAGE_KEY, (legacy) =>
             musicImportLegacyPlayerState(legacy as Parameters<typeof musicImportLegacyPlayerState>[0]),
@@ -491,7 +499,7 @@ export default function App() {
         setNeedsMetadataRefresh(false);
       } catch (error) {
         if (cancelled) return;
-        showActionNotice("音乐资料库恢复失败，旧数据已保留，请重启重试");
+        let recoveredLegacy = false;
         if (import.meta.env.DEV) console.warn("[library] restore failed", error);
         // Fallback to legacy localStorage if DB path is unavailable.
         const saved = localStorage.getItem(STORAGE_KEY);
@@ -516,10 +524,13 @@ export default function App() {
             setSelectedPlaylistId(state.selectedPlaylistId ?? DEFAULT_PLAYLIST_ID);
             setHomePins(normalizeHomePins(state.homePins));
             setNeedsMetadataRefresh(state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION);
+            recoveredLegacy = Array.isArray(state.tracks);
           } catch {
             // Retain even malformed data so recovery never destroys the source.
           }
         }
+        setLibraryRestoreFailed(!recoveredLegacy);
+        if (recoveredLegacy) showActionNotice("音乐资料库恢复失败，已读取旧数据，自动保存已暂停");
       } finally {
         if (!cancelled) setRestored(true);
       }
@@ -529,7 +540,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [restoreAttempt]);
 
   useEffect(() => {
     if (!restored || !libraryPersistenceReadyRef.current) return;
@@ -556,7 +567,7 @@ export default function App() {
   }, [restored, clearingLibrary, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId, isPlaying, activePodcastEpisode?.episodeId, isPlaying || activePodcastEpisode ? null : progress]);
 
   useEffect(() => {
-    if (!restored || tracks.length === 0) return;
+    if (!startupReady || tracks.length === 0) return;
     let cancelled = false;
     async function hydrateFeatures() {
       try {
@@ -567,11 +578,12 @@ export default function App() {
         if (import.meta.env.DEV) console.warn("[features] hydrate failed", error);
       }
     }
-    void hydrateFeatures();
+    const cancelBackgroundTask = scheduleBackgroundTask(() => void hydrateFeatures());
     return () => {
       cancelled = true;
+      cancelBackgroundTask();
     };
-  }, [restored, tracks.length]);
+  }, [startupReady, tracks.length]);
 
   useEffect(() => {
     if (!restored || tracks.length === 0) return;
@@ -838,7 +850,7 @@ export default function App() {
     onDislikeSmartDj: () => {
       if (!activePodcastEpisode) dislikeSmartDjTrack();
     },
-  });
+  }, startupReady);
 
   useSystemMedia({
     media: systemMediaItem,
@@ -880,10 +892,11 @@ export default function App() {
   const appHeaderElement = chromeVisible ? (
     <AppHeader
       page={page}
+      disabled={!startupReady}
       onNavigate={navigatePage}
     />
   ) : null;
-  const playerBarElement = chromeVisible && podcastSessionHydrated ? (
+  const playerBarElement = chromeVisible && startupReady ? (
     activePodcastEpisode ? (
       <PodcastPlayerBar
         rateScope={podcast.podcastPlaybackRateScope}
@@ -1079,12 +1092,12 @@ export default function App() {
         onEnded={onEnded}
       />
       <Titlebar
-        showSettings={!compactMode.active && page !== "nowPlaying"}
+        showSettings={startupReady && !compactMode.active && page !== "nowPlaying"}
         isSettings={page === "settings"}
         onOpenSettings={animate => navigatePage("settings", animate)}
         closeToTray={closeToTray}
         compact={compactMode.active}
-        modePending={compactMode.pending}
+        modePending={compactMode.pending || !startupReady}
         onToggleCompact={() => void changeCompactMode(!compactMode.active)}
         pinned={compactMode.pinned}
         onTogglePinned={() => {
@@ -1094,11 +1107,11 @@ export default function App() {
         }}
       />
 
-      {!compactMode.active && page !== "nowPlaying" && (
+      {startupReady && !compactMode.active && page !== "nowPlaying" && (
         <AudioGlowCanvas isPlaying={isPlaying && activePlayback?.kind === "music"} volume={volume} />
       )}
 
-      {compactMode.active ? <CompactPlayerView
+      {compactMode.active ? <Suspense fallback={loadingPage}><CompactPlayerView
         index={collectionIndex} playlists={playlists} activity={trackActivity} favoriteTrackIds={favoriteTrackIds}
         track={activeTrack} queueIds={playbackQueueIds} episode={activePodcastEpisode} podcastQueue={podcastQueue}
         podcastStatus={podcastPlaybackStatus} playbackRate={podcastPlaybackRate} playbackRateScope={podcast.podcastPlaybackRateScope} isPlaying={isPlaying}
@@ -1115,12 +1128,12 @@ export default function App() {
             else requestNavigation(target);
           }
         }}
-      /> : <main ref={workspaceRef} className="workspace" data-page={page}>
+      /></Suspense> : <main ref={workspaceRef} className="workspace" data-page={page} aria-busy={!startupReady}>
         <Presence show={appHeaderElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
           {appHeaderElement ?? lastAppHeaderElement ?? <span style={{ display: "none" }} />}
         </Presence>
 
-        {page === "quickplay" ? (
+        {!startupReady ? <StartupView failed={libraryRestoreFailed} onRetry={() => setRestoreAttempt(value => value + 1)} /> : page === "quickplay" ? (
           <QuickplayView
             animateEntrance={quickplayEntrance && navigationAnimated}
             tracks={tracks}
@@ -1155,7 +1168,7 @@ export default function App() {
           />
         ) : null}
 
-        {page === "collection" && <CollectionView view={view} index={collectionIndex} navigation={collection}
+        {startupReady && page === "collection" && <Suspense fallback={loadingPage}><CollectionView view={view} index={collectionIndex} navigation={collection}
           onTravel={travelCollection} onOpen={openCollectionEntity} searchInputRef={searchInputRef}
           onQuery={setCollectionSearchQuery} onClearSearch={clearCollectionSearch}
           queueIds={playbackQueueIds} activeTrackId={activeTrackId} onPlay={playTrack} onPlayTracks={playTracks}
@@ -1165,9 +1178,9 @@ export default function App() {
           trackActivity={trackActivity} favoriteTrackIds={favoriteTrackIds} onToggleFavorite={toggleFavoriteTrack}
           onAddFolder={addFolder} isScanning={isScanning} scanNote={scanNote}
           onReorderPlaylist={reorderPlaylist}
-          onAddToQueue={appendToQueue} onInfo={openMetadata} onAddToPlaylist={setAddToPlaylistTarget} />}
+          onAddToQueue={appendToQueue} onInfo={openMetadata} onAddToPlaylist={setAddToPlaylistTarget} /></Suspense>}
 
-        {page === "podcasts" && (
+        {startupReady && page === "podcasts" && (
           <Suspense fallback={loadingPage}>
           <PodcastView
             queueRequest={podcastQueueRequest} onQueueRequestHandled={nonce=>setPodcastQueueRequest(value=>value===nonce?0:value)}
@@ -1216,9 +1229,9 @@ export default function App() {
           </Suspense>
         )}
 
-        {page === "nowPlaying" && (
+        {startupReady && page === "nowPlaying" && (
           activePodcastEpisode ? (
-            <PodcastNowPlayingView
+            <Suspense fallback={loadingPage}><PodcastNowPlayingView
               rateScope={podcast.podcastPlaybackRateScope}
               onRecordMoment={() => void podcast.recordPodcastMoment()}
               episode={activePodcastEpisode}
@@ -1249,7 +1262,7 @@ export default function App() {
               onToggleSaved={toggleActivePodcastSaved}
               onNext={() => playNextPodcastEpisode()}
               onRetry={retryPodcastPlayback}
-            />
+            /></Suspense>
           ) : (
             <NowPlayingView
               track={activeTrack}
@@ -1280,7 +1293,7 @@ export default function App() {
           )
         )}
 
-        {page === "settings" && (
+        {startupReady && page === "settings" && (
           <Suspense fallback={loadingPage}>
           <SettingsView
             folders={folders}
