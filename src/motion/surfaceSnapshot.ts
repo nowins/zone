@@ -30,9 +30,28 @@ export function snapshotSurface(node: HTMLElement): { layer: HTMLElement; node: 
   const rect = node.getBoundingClientRect();
   const offset = surfaceOffset(node);
   const lookup = new Map<HTMLElement, HTMLElement>();
+  const clips = new Map<Element, DOMRect>();
+  const clipSelector = "[data-collection-scroll],.quick-section-scroll,.quickplay-viewport,.podcast-screen,.now-panel-tracks";
+  const variableItem = ".quick-group,.quick-pin,.quick-album,.quick-feature,.podcast-content-section,.podcast-episode,.podcast-queue-episode,.podcast-library-show,.podcast-show-card,.podcast-continue-card,.now-panel-upcoming > button";
   const duplicate = (source: HTMLElement): HTMLElement => {
     const clone = source.cloneNode(false) as HTMLElement;
     lookup.set(source, clone);
+    if (source.matches(variableItem)) {
+      const owner = source.closest(clipSelector);
+      if (owner) {
+        let clip = clips.get(owner);
+        if (!clip) { clip = owner.getBoundingClientRect(); clips.set(owner, clip); }
+        const bounds = source.getBoundingClientRect();
+        if (bounds.height > 0 && bounds.width > 0 && (bounds.bottom <= Math.max(0, clip.top, rect.top)
+          || bounds.top >= Math.min(window.innerHeight, clip.bottom, rect.bottom)
+          || bounds.right <= Math.max(0, clip.left, rect.left) || bounds.left >= Math.min(window.innerWidth, clip.right, rect.right))) {
+          // Keep variable-height rows and panorama columns in their layout slots,
+          // without copying offscreen artwork, controls or media subtrees.
+          Object.assign(clone.style, { width: `${bounds.width}px`, height: `${bounds.height}px`, boxSizing: "border-box", flexShrink: "0" });
+          return clone;
+        }
+      }
+    }
     if (source.matches(".collection-browse-album-group")) {
       const bounds = source.getBoundingClientRect();
       const clip = source.closest("[data-collection-scroll]")!.getBoundingClientRect();
@@ -111,7 +130,7 @@ export function snapshotSurface(node: HTMLElement): { layer: HTMLElement; node: 
   Object.assign(layer.style, { left: `${rect.left - offset.x}px`, top: `${rect.top - offset.y}px`, width: `${rect.width}px`, height: `${rect.height}px` });
   layer.append(copy);
   (node.closest(".shell") ?? node.ownerDocument.body).append(layer);
-  const scrollSelector = "[data-collection-scroll],.quickplay-viewport,.quick-section-scroll,.settings-main,.podcast-content,.now-queue-list";
+  const scrollSelector = `${clipSelector},.settings-main,.podcast-content,.now-queue-list`;
   for (const source of node.querySelectorAll<HTMLElement>(scrollSelector)) {
     const clone = lookup.get(source);
     if (!clone) continue;

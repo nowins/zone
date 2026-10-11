@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { flushSync } from "react-dom";
 import { useEntranceCompletion } from "../hooks/useEntranceCompletion";
 import { useNowPlayingFullscreen } from "../hooks/useNowPlayingFullscreen";
+import { useEvent } from "../hooks/useEvent";
 import { ArrowLeft, AudioLines, Heart } from "lucide-react";
 import { AudioGlowCanvas } from "../components/AudioGlowCanvas";
 import { Cover } from "../components/Cover";
@@ -91,6 +92,17 @@ export function NowPlayingView({
   const pointerHeld = useRef(false);
   const previousTrackIdRef = useRef(track?.id ?? null);
   const displayedQueue = useMemo(() => queue.length ? queue : track ? [track] : [], [queue, track]);
+  const playQueueItem = useEvent((item: Track) => item.id === track?.id ? onPlayPause() : onPlay(item, queue));
+  const queueRows = useMemo(() => displayedQueue.map((item, index) => (
+    <button key={`${item.id}-${index}`} className={item.id === track?.id ? "now-panel-current" : undefined}
+      aria-current={item.id === track?.id ? "true" : undefined} onClick={() => playQueueItem(item)}>
+      <div className="queue-row">
+        <AudioLines size={16} aria-hidden="true" style={{ visibility: item.id === track?.id ? "visible" : "hidden" }} />
+        <strong>{item.title}</strong>
+      </div>
+      <span>{item.artist}</span>
+    </button>
+  )), [displayedQueue, track?.id, playQueueItem]);
   const lyricsOpen = surfaceMode === "lyrics" && Boolean(track);
   const queueOpen = !lyricsOpen && queueVisible;
   const lyrics = useLyrics(track, duration);
@@ -385,20 +397,7 @@ export function NowPlayingView({
             ) : null}
 
             <div className="now-panel-upcoming">
-              {displayedQueue.map((item, index) => (
-                <button
-                  key={`${item.id}-${index}`}
-                  className={item.id === track?.id ? "now-panel-current" : undefined}
-                  aria-current={item.id === track?.id ? "true" : undefined}
-                  onClick={() => item.id === track?.id ? onPlayPause() : onPlay(item, queue)}
-                >
-                  <div className="queue-row">
-                    <AudioLines size={16} aria-hidden="true" style={{ visibility: item.id === track?.id ? "visible" : "hidden" }} />
-                    <strong>{item.title}</strong>
-                  </div>
-                  <span>{item.artist}</span>
-                </button>
-              ))}
+              {queueRows}
             </div>
           </div>
 

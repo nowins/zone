@@ -34,6 +34,64 @@ function setup(t) {
   return { document, host, motion, animations, mount };
 }
 
+test("podcast and now-playing snapshots retain variable-height slots and restore their actual scrollers", t => {
+  const { document, mount } = setup(t);
+  for (const kind of ["podcasts", "now"]) {
+    const root = mount(kind === "podcasts" ? "podcast-page" : "now-playing-stage");
+    root.innerHTML = kind === "podcasts" ? '<main class="podcast-screen"><section></section></main>'
+      : '<aside><div class="now-panel-tracks"><div class="now-panel-upcoming"></div></div></aside>';
+    const area = root.querySelector(kind === "podcasts" ? '.podcast-screen' : '.now-panel-tracks');
+    const list = area.firstElementChild;
+    area.scrollTop = 2100;
+    const bounds = (top, height) => ({ top, bottom: top + height, left: 48, right: 948, width: 900, height });
+    area.getBoundingClientRect = () => bounds(106, 480);
+    let offset = 0;
+    for (let i = 0; i < 100; i++) {
+      const row = document.createElement(kind === "podcasts" ? "article" : "button");
+      row.className = kind === "podcasts" ? "podcast-episode" : "";
+      row.dataset.item = String(i);
+      row.innerHTML = '<img><strong>标题</strong><span>简介</span><svg><path></path></svg>';
+      const top = offset, height = i % 2 ? 110 : 72;
+      offset += height;
+      row.getBoundingClientRect = () => bounds(106 + top - area.scrollTop, height);
+      list.append(row);
+    }
+    const snapshot = snapshotSurface(root);
+    const frozen = snapshot.node.querySelector(kind === "podcasts" ? '.podcast-screen' : '.now-panel-tracks');
+    const copied = frozen.firstElementChild;
+    assert.equal(frozen.scrollTop, 2100);
+    assert.equal(copied.children.length, 100, "empty offscreen slots preserve the variable layout extent");
+    assert.equal(copied.firstElementChild.style.height, "72px");
+    assert.ok(copied.querySelectorAll('strong').length > 0 && copied.querySelectorAll('strong').length < 9);
+    for (const row of list.children) {
+      const rect = row.getBoundingClientRect();
+      if (rect.bottom > 106 && rect.top < 586) assert.equal(copied.querySelector(`[data-item="${row.dataset.item}"]`).textContent, row.textContent);
+    }
+    assert.equal(list.querySelectorAll('strong').length, 100, "the original rows and controls are never removed");
+    snapshot.layer.remove();
+  }
+});
+
+test("quickplay snapshots omit offscreen column contents without losing horizontal position", t => {
+  const { document, mount } = setup(t);
+  const root = mount('quickplay');
+  root.innerHTML = '<div class="quickplay-viewport"><div class="quick-strip"></div></div>';
+  const area = root.firstElementChild, strip = area.firstElementChild;
+  area.scrollLeft = 1400;
+  for (let i = 0; i < 6; i++) {
+    const group = document.createElement('section'); group.className = 'quick-group';
+    group.innerHTML = '<h2>分组</h2><button>播放</button><img>';
+    group.getBoundingClientRect = () => ({ left: 48 + i * 700 - 1400, right: 748 + i * 700 - 1400, top: 106, bottom: 686, width: 700, height: 580 });
+    strip.append(group);
+  }
+  const snapshot = snapshotSurface(root);
+  assert.equal(snapshot.node.querySelector('.quickplay-viewport').scrollLeft, 1400);
+  assert.equal(snapshot.node.querySelectorAll('h2').length, 2);
+  assert.equal(snapshot.node.querySelector('.quick-group').style.width, '700px');
+  assert.equal(strip.querySelectorAll('h2').length, 6);
+  snapshot.layer.remove();
+});
+
 test("collection snapshots bound name and cover cloning while preserving scroll geometry", t => {
   const { document, mount } = setup(t);
   const root = mount("collection-content");

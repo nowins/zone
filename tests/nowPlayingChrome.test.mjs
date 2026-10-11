@@ -3,6 +3,7 @@ import test from "node:test";
 import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
+import { AudioLines } from "lucide-react";
 
 // Let React detect modern input events against a DOM before it is imported.
 const bootstrap = new JSDOM('<body></body>');
@@ -30,7 +31,7 @@ await build({ entryPoints: ["src/views/NowPlayingView.tsx"], outfile: ".tmp/now-
 const { NowPlayingView } = await import("../.tmp/now-chrome-tests/view.js");
 const tracks = Array.from({ length: 14 }, (_, i) => ({ id: String(i), title: `歌曲 ${i + 1}`, artist: `艺术家 ${i + 1}`, album: "专辑", path: String(i), duration: 300 }));
 
-async function fixture() {
+async function fixture(queue = tracks) {
   const dom = new JSDOM('<body><div id="root"></div></body>', { pretendToBeVisual: true });
   for (const key of ["window", "document", "HTMLElement", "Element", "Node"]) globalThis[key] = dom.window[key];
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -45,7 +46,7 @@ async function fixture() {
   const root = createRoot(document.getElementById("root"));
   const noop = () => {};
   const played = [];
-  let props = { track: tracks[0], tracks, queue: tracks, isPlaying: true, playbackClock: () => 10,
+  let props = { track: tracks[0], tracks: queue, queue, isPlaying: true, playbackClock: () => 10,
     progress: 10, duration: 300, shuffle: false, repeat: "off", isFavorite: false, volume: 0.5,
     onBack: noop, onPlay: track => played.push(track.id), onPlayPause: noop, onToggleFavorite: noop,
     onPrevious: noop, onNext: noop, onSeek: noop, onShuffle: noop, onRepeat: noop, onVolume: noop, onSaveQueueAsPlaylist: noop };
@@ -93,6 +94,31 @@ test("idle chrome becomes inert, wakes from document keys and preserves the moun
     await env.advance(5000); assert.equal(env.isIdle(), true);
     await env.event(env.stage(), "mousemove"); assert.equal(env.isIdle(), false);
   } finally { await env.close(); }
+});
+
+test("progress updates reuse long queue elements while handlers keep current playback behavior", async () => {
+  let iconRenders = 0;
+  const original = AudioLines.render;
+  AudioLines.render = (...args) => { iconRenders++; return original(...args); };
+  const queue = Array.from({ length: 300 }, (_, i) => ({ ...tracks[0], id: String(i), title: "歌曲 " + i }));
+  const env = await fixture(queue);
+  try {
+    const rows = [...document.querySelectorAll('.now-panel-upcoming button')];
+    const calls = [];
+    iconRenders = 0;
+    for (let progress = 20; progress < 25; progress++) await env.render({ progress,
+      onPlay: (item, source) => calls.push([progress, item.id, source]), onPlayPause: () => calls.push([progress, "pause"]) });
+    assert.equal(iconRenders, 0, "the queue is not reconciled for clock ticks or new callback identities");
+    await env.event(rows[6], "click");
+    assert.deepEqual(calls[0], [24, "6", queue], "a cached row calls the latest playback handler with the complete source");
+    await env.event(rows[0], "click");
+    assert.deepEqual(calls[1], [24, "pause"]);
+    await env.render({ track: queue[6] });
+    assert.equal(rows[6].getAttribute('aria-current'), 'true');
+    assert.equal(rows[0].getAttribute('aria-current'), null);
+    await env.render({ queue: queue.slice(4, 12) });
+    assert.deepEqual([...document.querySelectorAll('.now-panel-upcoming strong')].map(row => row.textContent), queue.slice(4, 12).map(item => item.title));
+  } finally { await env.close(); AudioLines.render = original; }
 });
 
 test("pause, held pointers, keyboard focus and the save dialog keep controls available", async () => {

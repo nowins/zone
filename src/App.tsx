@@ -302,6 +302,10 @@ export default function App() {
     setPlayHistory,
     podcast: podcastTransport,
   });
+  const playbackQueueTracks = useMemo(() => playbackQueueIds.flatMap(id => {
+    const track = collectionIndex.trackById.get(id);
+    return track ? [track] : [];
+  }), [playbackQueueIds, collectionIndex]);
   // Late-bound: podcast domain calls arm/seek/toggle without a circular hook import.
   playbackControlsRef.current = {
     seek,
@@ -1267,7 +1271,7 @@ export default function App() {
             <NowPlayingView
               track={activeTrack}
               tracks={tracks}
-              queue={playbackQueueIds.map((id) => tracks.find((track) => track.id === id)).filter(Boolean) as Track[]}
+              queue={playbackQueueTracks}
               isPlaying={isPlaying}
               playbackClock={() => audioRef.current?.currentTime ?? progress}
               progress={progress}

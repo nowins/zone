@@ -4,6 +4,9 @@ import { clamp } from "./math.js";
 
 type WheelSignal = Pick<WheelEvent, "deltaX" | "deltaY" | "deltaMode">;
 
+// Virtualized readers must update in the same frame as a spring's scroll write.
+export const SCROLL_FRAME_EVENT = "zone-scroll-frame";
+
 /** Signal heuristic, not device detection: fine/fractional gestures stay native. */
 export function isCoarseVerticalWheel(signal: WheelSignal): boolean {
   return signal.deltaX === 0 && signal.deltaY !== 0 && (signal.deltaMode !== 0
@@ -36,6 +39,7 @@ export function attachWheelScroll(root: HTMLElement, selector: string): () => vo
       onUpdate: value => {
         area.scrollTop = clamp(value, 0, Math.max(0, area.scrollHeight - area.clientHeight));
         motion.written = area.scrollTop;
+        area.dispatchEvent(new window.Event(SCROLL_FRAME_EVENT));
       },
       onComplete: () => motions.delete(area),
     });

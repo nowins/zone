@@ -13,6 +13,29 @@ function setup(t) {
   return { dom, root, list };
 }
 
+test("offscreen panorama groups skip item geometry and visible items share their clip measurement", t => {
+  const { dom, root } = setup(t);
+  root.innerHTML = '<div class="quickplay-viewport"><section class="quick-group"></section><section class="quick-group"></section></div>';
+  const area = root.firstElementChild, groups = area.children;
+  let clipReads = 0, hiddenReads = 0;
+  area.getBoundingClientRect = () => { clipReads++; return rect(100, 500); };
+  groups[0].getBoundingClientRect = () => rect(100, 500, -900, 700);
+  groups[1].getBoundingClientRect = () => rect(100, 500, 0, 700);
+  for (let i = 0; i < 200; i++) {
+    const item = dom.window.document.createElement('button'); item.className = 'quick-pin';
+    item.getBoundingClientRect = () => { hiddenReads++; return rect(100, 100, -900, 100); };
+    groups[0].append(item);
+  }
+  for (let i = 0; i < 4; i++) {
+    const item = dom.window.document.createElement('button'); item.className = 'quick-pin';
+    item.getBoundingClientRect = () => rect(100 + i * 100, 90);
+    groups[1].append(item);
+  }
+  assert.equal(contentEntranceItems(root).length, 4);
+  assert.equal(hiddenReads, 0);
+  assert.equal(clipReads, 1);
+});
+
 test("restored long lists select visible rows for anchoring without individual reveals", t => {
   const { dom, root, list } = setup(t);
   list.scrollTop = 4400;

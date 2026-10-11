@@ -4,7 +4,7 @@ import { JSDOM } from "jsdom";
 import React, { act } from "react";
 import { build } from "esbuild";
 
-await build({ stdin: { contents: "export { CollectionView } from './src/views/CollectionView'; export { useCollectionNavigation } from './src/hooks/useCollectionNavigation'; export { buildCollectionIndex } from './src/utils/collectionEntities';",
+await build({ stdin: { contents: "export { CollectionView } from './src/views/CollectionView'; export { useCollectionNavigation } from './src/hooks/useCollectionNavigation'; export { buildCollectionIndex } from './src/utils/collectionEntities'; export { attachWheelScroll } from './src/motion/wheelScroll'; export { _setAnimationClockForTesting } from './src/motion/animate';",
   resolveDir: process.cwd(), loader: "tsx" }, outfile: ".tmp/collection-browser-runtime/view.mjs", bundle: true,
   packages: "external", format: "esm", platform: "browser", logLevel: "silent" });
 const dom = new JSDOM('<body><div id="root"></div></body>', { pretendToBeVisual: true });
@@ -14,7 +14,7 @@ window.__TAURI_INTERNALS__ = { convertFileSrc: path => path };
 HTMLElement.prototype.scrollIntoView = function () {};
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { createRoot } = await import("react-dom/client");
-const { CollectionView, useCollectionNavigation, buildCollectionIndex } = await import("../.tmp/collection-browser-runtime/view.mjs");
+const { CollectionView, useCollectionNavigation, buildCollectionIndex, attachWheelScroll, _setAnimationClockForTesting } = await import("../.tmp/collection-browser-runtime/view.mjs");
 const h = React.createElement;
 const tracks = [
   { id: "a", title: "Second", artist: "Coldplay", album: "Main", track_number: 2, duration_seconds: 30, genres: ["Rock"] },
@@ -23,7 +23,7 @@ const tracks = [
   { id: "d", title: "Third", artist: "Another", album: "Other", genres: ["Rock"] },
   { id: "e", title: "Unknown", artist: "Unknown", album: "Single" },
 ].map(track => ({ path: track.id, file_name: track.id + ".flac", extension: "flac", ...track }));
-let navigation, played, contexts, replaceTracks, initialLibrary = tracks;
+let navigation, played, contexts, replaceTracks, initialLibrary = tracks, commits = 0;
 const noop = () => {};
 function Harness() {
   navigation = useCollectionNavigation();
@@ -45,7 +45,7 @@ async function mount(t, library = tracks) {
   initialLibrary = library;
   played = []; contexts = [];
   const root = createRoot(document.getElementById("root"));
-  await act(async () => root.render(h(React.StrictMode, null, h(Harness))));
+  await act(async () => root.render(h(React.StrictMode, null, h(React.Profiler, { id: "collection", onRender: () => commits++ }, h(Harness)))));
   t.after(async () => act(async () => root.unmount()));
 }
 async function click(node, detail = 1, type = "click") {
@@ -93,6 +93,41 @@ test("artist and album selection keeps three panes, scroll and transport separat
   await key(choice("Coldplay"), "ArrowDown");
   assert.equal(document.activeElement.textContent, "Unknown");
   assert.equal(choice("Unknown").getAttribute("aria-pressed"), "true");
+  assert.deepEqual(played, []);
+});
+
+test("spring writes, reverse jumps and fractional rows commit a filled viewport before painting", async t => {
+  let height = 400, stride = 39.25, resize;
+  globalThis.ResizeObserver = class { constructor(callback) { resize = callback; } observe() {} disconnect() {} };
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return this.matches(".collection-track-scroll") ? height : 0; } });
+  Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get() { return this.matches(".collection-track-scroll") ? 300 * stride : 0; } });
+  const originalRect = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function () {
+    if (this.matches(".collection-track-row")) return { ...originalRect.call(this), height: stride };
+    return originalRect.call(this);
+  };
+  t.after(() => { delete globalThis.ResizeObserver; delete HTMLElement.prototype.clientHeight; delete HTMLElement.prototype.scrollHeight; HTMLElement.prototype.getBoundingClientRect = originalRect; });
+  await mount(t, Array.from({ length: 300 }, (_, i) => ({ ...tracks[0], id: "scroll" + i, title: "Track " + i })));
+  const area = document.querySelector(".collection-track-scroll");
+  const filled = () => {
+    const window = area.firstElementChild;
+    const start = Number(window.firstElementChild.getAttribute("aria-posinset")) - 1;
+    assert.equal(parseFloat(window.style.paddingTop), start * stride, "fractional row height is not rounded");
+    assert.ok(start * stride <= area.scrollTop, "no blank above the rendered window");
+    assert.ok((start + window.children.length) * stride >= area.scrollTop + height, "no blank below the rendered window");
+  };
+  await act(() => { area.scrollTop = 7000; area.dispatchEvent(new window.Event("scroll")); filled(); });
+  const before = commits;
+  await act(() => { area.scrollTop += 1; area.dispatchEvent(new window.Event("scroll")); });
+  assert.equal(commits, before, "scrolling inside the same row window does not reconcile the list");
+  let time = 0; const frames = [];
+  _setAnimationClockForTesting(() => time, callback => frames.push(callback));
+  const stop = attachWheelScroll(area.parentElement, ".collection-track-scroll"); t.after(stop);
+  for (const deltaY of [-6000, 9000, -12000]) {
+    area.dispatchEvent(new window.WheelEvent("wheel", { deltaY, bubbles: true, cancelable: true }));
+    for (let i = 0; i < 80; i++) await act(() => { time += 16; frames.splice(0).forEach(frame => frame(time)); filled(); });
+  }
+  await act(() => { height = 540; stride = 39.5; resize(); filled(); });
   assert.deepEqual(played, []);
 });
 
