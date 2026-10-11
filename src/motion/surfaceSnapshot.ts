@@ -33,10 +33,22 @@ export function snapshotSurface(node: HTMLElement): { layer: HTMLElement; node: 
   const duplicate = (source: HTMLElement): HTMLElement => {
     const clone = source.cloneNode(false) as HTMLElement;
     lookup.set(source, clone);
-    const first = source.firstElementChild, second = first?.nextElementSibling;
-    if (source.matches(".collection-track-scroll") && first?.matches(".collection-track-row") && second?.matches(".collection-track-row")) {
-      // Track rows are uniform single-line rows. Two measurements bound the
-      // snapshot independently of library size, preserving the full scroll range.
+    if (source.matches(".collection-browse-album-group")) {
+      const bounds = source.getBoundingClientRect();
+      const clip = source.closest("[data-collection-scroll]")!.getBoundingClientRect();
+      if (bounds.height > 0 && (bounds.bottom <= Math.max(0, clip.top) || bounds.top >= Math.min(window.innerHeight, clip.bottom))) {
+        clone.style.height = `${bounds.height}px`;
+        return clone;
+      }
+    }
+    const grid = source.matches(".collection-album-index") && source.closest(".collection-browse-records");
+    const names = source.matches(".collection-browse-index");
+    const tracks = source.matches(".collection-track-scroll") && source.firstElementChild?.matches(".collection-track-row");
+    const columns = grid ? Math.max(1, window.getComputedStyle(source).gridTemplateColumns.split(/\s+/).filter(value => value.endsWith("px")).length) : 1;
+    const first = source.firstElementChild, second = source.children[columns];
+    if ((grid || names || tracks) && first && second) {
+      // Uniform name/song rows and regular cover grids need two measurements,
+      // independent of library size. Padding preserves grid column alignment.
       const firstRect = first.getBoundingClientRect();
       // Staggered row translations are visual offsets, not the layout stride.
       const firstTop = firstRect.top - surfaceOffset(first as HTMLElement).y;
@@ -44,18 +56,20 @@ export function snapshotSurface(node: HTMLElement): { layer: HTMLElement; node: 
       const owner = source.closest("[data-collection-scroll]") ?? source;
       const clip = owner.getBoundingClientRect();
       if (stride > 0) {
-        const count = source.children.length;
-        const start = Math.max(0, Math.min(count, Math.floor((Math.max(0, clip.top) - firstTop) / stride) - NAVIGATION_MOTION.snapshotOverscanRows));
-        const end = Math.max(start, Math.min(count, Math.ceil((Math.min(window.innerHeight, clip.bottom) - firstTop) / stride) + NAVIGATION_MOTION.snapshotOverscanRows));
+        const count = source.children.length, rows = Math.ceil(count / columns);
+        const startRow = Math.max(0, Math.min(rows, Math.floor((Math.max(0, clip.top) - firstTop) / stride) - NAVIGATION_MOTION.snapshotOverscanRows));
+        const endRow = Math.max(startRow, Math.min(rows, Math.ceil((Math.min(window.innerHeight, clip.bottom) - firstTop) / stride) + NAVIGATION_MOTION.snapshotOverscanRows));
+        const start = startRow * columns, end = Math.min(count, endRow * columns);
         const spacer = (height: number) => {
           if (height <= 0) return;
           const gap = document.createElement("div");
           gap.style.height = `${height}px`; gap.style.flexShrink = "0";
           clone.append(gap);
         };
-        spacer(start * stride);
+        if (tracks) spacer(startRow * stride);
+        else { clone.style.paddingTop = `${startRow * stride}px`; clone.style.paddingBottom = `${(rows - endRow) * stride}px`; }
         for (let index = start; index < end; index++) clone.append(duplicate(source.children[index] as HTMLElement));
-        spacer((count - end) * stride);
+        if (tracks) spacer((rows - endRow) * stride);
         return clone;
       }
       if (firstRect.height === 0) return clone;

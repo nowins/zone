@@ -29,6 +29,7 @@
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
   - `useNavigation.ts`：顶层 page、`requestNavigation` 页面过渡、对象入口及来源返回、搜索／历史快捷键、`openNowPlaying`；内部调用 `useCollectionNavigation`。
   - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId、连续浏览选择与歌曲列排序），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；新 revision 提交前由动效内核保存有限退场画面；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。索引内选择与排序只 patch 当前条目，不增加返回步骤。
+  - `useCollectionRows.ts` / `useCollectionItemWindow.ts`：收藏长索引的可见范围渲染、完整数据的键盘定位及历史焦点恢复。歌曲用固定行高留白，名称和封面保留等高锚点并共用区域内的可见性观察器；不改变排序、队列或普通播放列表改序的数据来源。
   - `useCollectionPivot.ts`：收藏分类、详情及返回的方向接线；内部入场与 `useCollectionPanelMotion` 均复用 `useBrowseEntrance.ts`。共享浏览控制器 `motion/browseTransition.ts` 用 `BROWSE_MOTION` 管理收藏、播客及 quickplay 内容的入退场、快速反向及输入接管，分类／搜索保持原位，quickplay 的大字与视差层不继承页面位移。`SurfaceTransition` 与内部 hook 共用异步标题暂隐及首批真实数据入场规则。
   - `useWheelScroll.ts`：收藏与首页内部纵向列表的粗步进滚轮接续，底层 `motion/wheelScroll.ts` 共用动画器与 `snappy` 弹簧；细小连续输入、原生定位和 reduced-motion 保留直接响应。
   - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、只读 `collectionIndex`（albums/artists 等关系集中在 `utils/collectionEntities.ts`）、addFolder/rescan 与 `useLibraryWatcher` 接线。

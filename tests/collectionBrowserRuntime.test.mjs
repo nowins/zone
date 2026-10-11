@@ -23,11 +23,11 @@ const tracks = [
   { id: "d", title: "Third", artist: "Another", album: "Other", genres: ["Rock"] },
   { id: "e", title: "Unknown", artist: "Unknown", album: "Single" },
 ].map(track => ({ path: track.id, file_name: track.id + ".flac", extension: "flac", ...track }));
-let navigation, played, contexts, replaceTracks;
+let navigation, played, contexts, replaceTracks, initialLibrary = tracks;
 const noop = () => {};
 function Harness() {
   navigation = useCollectionNavigation();
-  const [library, setLibrary] = React.useState(tracks);
+  const [library, setLibrary] = React.useState(initialLibrary);
   replaceTracks = setLibrary;
   const index = React.useMemo(() => buildCollectionIndex(library), [library]);
   return h(CollectionView, {
@@ -41,7 +41,8 @@ function Harness() {
     trackActivity: {}, favoriteTrackIds: new Set(), onToggleFavorite: noop, onAddToQueue: noop, onInfo: noop, onAddToPlaylist: noop,
   });
 }
-async function mount(t) {
+async function mount(t, library = tracks) {
+  initialLibrary = library;
   played = []; contexts = [];
   const root = createRoot(document.getElementById("root"));
   await act(async () => root.render(h(React.StrictMode, null, h(Harness))));
@@ -166,4 +167,69 @@ test("a removed selection shows unavailable content and clearing it reveals the 
   await click(document.querySelector('[aria-label="全部艺术家"]'));
   assert.deepEqual(rows(), ["e"]);
   assert.deepEqual(played, []);
+});
+
+test("large browsers mount a viewport, navigate the full source and restore offscreen detail focus", async t => {
+  const observers = new Set();
+  globalThis.IntersectionObserver = class {
+    constructor(callback) { this.callback = callback; this.targets = new Set(); observers.add(this); }
+    observe(target) { this.targets.add(target); }
+    disconnect() { this.targets.clear(); observers.delete(this); }
+  };
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return this.matches(".collection-track-scroll") ? 400 : 0; } });
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get() { return this.matches(".collection-track-row") ? this.closest(".is-compact") ? 39 : 45 : 0; } });
+  t.after(() => { delete globalThis.IntersectionObserver; delete HTMLElement.prototype.clientHeight; delete HTMLElement.prototype.offsetHeight; });
+  const library = Array.from({ length: 300 }, (_, i) => ({ ...tracks[0], id: "large" + i, path: "large" + i,
+    title: "Track " + i, artist: "Artist " + String(i).padStart(3, "0"), album: "Album " + String(i).padStart(3, "0"), track_number: 1 }));
+  await mount(t, library);
+  assert.ok(document.querySelectorAll(".collection-browse-choice").length <= 64);
+  assert.ok(document.querySelectorAll(".collection-album-select").length <= 48);
+  assert.ok(rows().length < 30);
+  assert.equal(document.querySelectorAll('[data-collection-window-item^="album:"]').length, 300, "empty anchors retain the complete grid geometry");
+  await act(async () => {
+    for (const observer of observers) observer.callback([...observer.targets].map((target, i) => ({ target, isIntersecting: i >= 100 && i < 110 })));
+  });
+  assert.equal(choice("Artist 100")?.textContent, "Artist 100", "scroll visibility mounts the newly visible names");
+  assert.equal(choice("Artist 000")?.tabIndex, 0, "scrolling keeps the roving Tab entry available");
+  assert.equal(album("Album 000")?.tabIndex, 0);
+  await key(choice("Artist 100"), "End");
+  assert.equal(document.activeElement.textContent, "Artist 299");
+  assert.equal(choice("Artist 299").getAttribute("aria-pressed"), "true");
+  assert.equal(rows().length, 1);
+  await click(document.querySelector('[aria-label="全部艺术家"]'));
+  await key(album("Album 000"), "End");
+  assert.equal(document.activeElement, album("Album 299"));
+  assert.deepEqual(rows(), ["large299"]);
+  assert.deepEqual(played, [], "offscreen browsing never starts transport");
+  await act(async () => navigation.openIndex("genres"));
+  await key(album("Album 000"), "End");
+  assert.equal(document.activeElement, album("Album 299"), "End crosses unmounted artist groups");
+  await act(async () => navigation.openIndex("songs"));
+  assert.equal(observers.size, 0, "leaving the browser releases both visibility observers");
+  await key(document.querySelector(".collection-track-main"), "End");
+  assert.equal(document.activeElement.title, "Track 299 · Artist 299 · Album 299");
+  assert.ok(rows().length < 30);
+  assert.equal(document.querySelector('[data-collection-anchor="large299"]').getAttribute("aria-posinset"), "300");
+  const scrollTop = document.querySelector(".collection-track-scroll").scrollTop;
+  assert.ok(scrollTop > 10000);
+  await click(document.querySelector('[aria-label="查看歌曲 Track 299"]'));
+  await click(document.querySelector(".collection-back"));
+  assert.equal(document.querySelector(".collection-track-scroll").scrollTop, scrollTop);
+  assert.equal(document.activeElement.getAttribute("aria-label"), "查看歌曲 Track 299");
+  await click(document.querySelector('[data-collection-anchor="large299"] .collection-track-main'), 2, "dblclick");
+  assert.equal(played[0][0], "large299");
+  assert.equal(played[0][1].length, 300, "playback receives all sorted songs, not the mounted viewport");
+  await click(sort("歌曲"));
+  assert.equal(document.querySelector(".collection-track-scroll").scrollTop, 0);
+  assert.equal(rows()[0], "large299");
+  assert.equal(document.querySelector('[data-collection-anchor="large299"] .collection-track-main').getAttribute("aria-pressed"), "true");
+  await key(document.querySelector(".collection-track-main"), "End");
+  assert.equal(document.activeElement.title, "Track 0 · Artist 000 · Album 000");
+  assert.equal(played.length, 1);
+  await act(async () => replaceTracks(library.slice(0, 100)));
+  assert.ok(rows().length > 0 && rows().length < 30, "shrinking a scrolled library retains a bounded, nonempty viewport");
+  await act(async () => replaceTracks(library.slice(0, 79)));
+  document.querySelector(".collection-track-scroll").scrollTop = 90;
+  await act(async () => replaceTracks(library));
+  assert.equal(document.querySelector(".collection-track-scroll").scrollTop, 90, "crossing the windowing threshold preserves current scrolling instead of replaying history");
 });

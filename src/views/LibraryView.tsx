@@ -55,7 +55,7 @@ function SongIndex(props: LibraryViewProps) {
   const [fallback, setFallback] = useState(initialCollectionBrowser);
   const browser = context?.navigation.location.browser || fallback;
   const tracks = useMemo(() => sortCollectionTracks(props.index.tracks, browser.songSort), [props.index.tracks, browser.songSort]);
-  return <CollectionTrackList tracks={tracks} activeTrackId={props.activeTrackId} onPlay={props.onPlay}
+  return <CollectionTrackList tracks={tracks} windowed activeTrackId={props.activeTrackId} onPlay={props.onPlay}
     listKey="songs" label="所有歌曲" favoriteTrackIds={props.favoriteTrackIds} onToggleFavorite={props.onToggleFavorite}
     sort={browser.songSort} showGenre={browser.showGenre} onSortChange={songSort => {
       const next = { ...browser, songSort };

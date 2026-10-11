@@ -34,6 +34,39 @@ function setup(t) {
   return { document, host, motion, animations, mount };
 }
 
+test("collection snapshots bound name and cover cloning while preserving scroll geometry", t => {
+  const { document, mount } = setup(t);
+  const root = mount("collection-content");
+  root.innerHTML = '<div data-collection-scroll="names"><ul class="collection-browse-index"></ul></div><section class="collection-browse-records"><div data-collection-scroll="albums"><div class="collection-album-index" style="display:grid;grid-template-columns:128px 128px;gap:22px"></div></div></section>';
+  const names = root.querySelector("ul"), grid = root.querySelector(".collection-album-index");
+  names.parentElement.scrollTop = 3600;
+  grid.parentElement.scrollTop = 4000;
+  let nameReads = 0, coverReads = 0;
+  for (let i = 0; i < 2000; i++) {
+    const name = document.createElement("li"); name.textContent = "Artist " + i;
+    name.getBoundingClientRect = () => { nameReads++; return { top: 106 + i * 36 - 3600, bottom: 142 + i * 36 - 3600, height: 36 }; };
+    names.append(name);
+    const album = document.createElement("div"); album.dataset.collectionAnchor = "album:" + i; album.innerHTML = '<button data-collection-focus="cover"><img><strong>专辑</strong></button>';
+    album.getBoundingClientRect = () => { coverReads++; const top = 106 + Math.floor(i / 2) * 200 - 4000; return { top, bottom: top + 178, height: 178 }; };
+    grid.append(album);
+  }
+  const snapshot = snapshotSurface(root);
+  t.after(() => snapshot.layer.remove());
+  const copiedNames = snapshot.node.querySelector("ul"), copiedGrid = snapshot.node.querySelector(".collection-album-index");
+  assert.equal(nameReads, 2);
+  assert.equal(coverReads, 2);
+  assert.ok(copiedNames.children.length < 24);
+  assert.ok(copiedGrid.children.length < 16);
+  assert.equal(copiedNames.style.paddingTop, "3528px");
+  assert.equal(copiedGrid.firstElementChild.dataset.collectionAnchor, "album:36");
+  assert.equal(copiedGrid.style.paddingTop, "3600px");
+  assert.equal(copiedNames.parentElement.scrollTop, 3600);
+  assert.equal(copiedGrid.parentElement.scrollTop, 4000);
+  assert.equal(snapshot.node.querySelector("[data-collection-focus]"), null);
+  assert.equal(names.children.length, 2000);
+  assert.equal(grid.children.length, 2000);
+});
+
 test("outgoing pixels and the interactive target coexist; cleanup retains one audio", t => {
   const { document, motion, animations, mount } = setup(t);
   document.querySelector('.quickplay-viewport').scrollLeft = 340;

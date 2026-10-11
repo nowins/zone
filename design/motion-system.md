@@ -91,7 +91,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 - `pageTransition.ts` — 顶层方向解析（pivot/push/pop）。`surfaceTransition.ts` 在导航意图提交时冻结旧画面，浏览页面只复制数据区并委托 `browseTransition.ts` 入场，分类及搜索始终保持原位；延迟加载通过 MutationObserver 等待实际内容挂载。非浏览页面保持页面运动，正在播放仍由舞台与封面 FLIP 负责。
 - `collectionPivot.ts` — 收藏分类、详情和历史的方向解析及快照准备包装；入场直接复用 `playBrowseTransition`。`useCollectionPivot` 连接浏览 revision；收藏详情标签与播放列表选择复用 `useBrowsePanelMotion`。
 - `browseTransition.ts` — 收藏与播客共用的数据区快照、语义区域位移、可见条目显现、快速反向与输入收稳；同一页同时只有一个入场控制器，子面板接管时释放上一轮效果。`useBrowseEntrance` 统一 reduced-motion、延迟挂载和卸载清理；播客页壳在 screen 改变前准备快照，资料库和播放列表子标签只接管内容面板。
-- `surfaceSnapshot.ts` — 有限、inert 的静态画面复制，冻结当前动画／Canvas、保留根及子滚动位置；长歌曲列表仅复制可见行与少量边缘行，旧 React 生命周期正常卸载。
+- `surfaceSnapshot.ts` — 有限、inert 的静态画面复制，冻结当前动画／Canvas、保留根及子滚动位置；歌曲行、连续浏览名称与封面网格仅复制可见范围及少量边缘行，流派中不可见的艺术家分组只保留原高度。等行距和规则网格以两次条目测量定位，留白保留滚动与列对齐；旧 React 生命周期正常卸载。
 - `contentEntrance.ts` — 两类浏览共用的首屏条目选择与透明度显现；展开期间暂时停用滚动锚定，结束后恢复。快速反向复用快照中的稳定条目标识及透明度，已显现条目不重新隐藏。
 - `useReducedMotion.ts` — `useReducedMotion()` hook，JS/rAF 侧统一入口。
 

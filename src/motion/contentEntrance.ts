@@ -1,6 +1,6 @@
 import { BROWSE_MOTION } from "./tokens.js";
 
-const listSelector = ".collection-track-scroll,.collection-artist-index,.collection-album-index,.collection-browse-index";
+const listSelector = ".collection-track-scroll,.collection-track-window,.collection-artist-index,.collection-album-index,.collection-browse-index";
 const itemSelector = ".collection-track-row,.collection-artist-index > li,.collection-album-index > div,.collection-browse-index > li";
 const podcastItemSelector = ".podcast-episode,.podcast-show-card,.podcast-library-show,.podcast-continue-card,.podcast-queue-episode";
 const quickplayItemSelector = ".quick-pin,.quick-album,.quick-feature";
