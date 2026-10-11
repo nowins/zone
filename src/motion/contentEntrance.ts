@@ -1,7 +1,7 @@
 import { BROWSE_MOTION } from "./tokens.js";
 
-const listSelector = ".collection-track-scroll,.collection-artist-index,.collection-album-index";
-const itemSelector = ".collection-track-row,.collection-artist-index > li,.collection-album-index > div";
+const listSelector = ".collection-track-scroll,.collection-artist-index,.collection-album-index,.collection-browse-index";
+const itemSelector = ".collection-track-row,.collection-artist-index > li,.collection-album-index > div,.collection-browse-index > li";
 const podcastItemSelector = ".podcast-episode,.podcast-show-card,.podcast-library-show,.podcast-continue-card,.podcast-queue-episode";
 const quickplayItemSelector = ".quick-pin,.quick-album,.quick-feature";
 export type ContentFrame = { transform: string; opacity: string };
@@ -21,7 +21,7 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
   const viewport = root.getBoundingClientRect();
   const items: ContentItem[] = [];
   const append = (node: HTMLElement, index: number) => {
-    const kind = node.matches(".collection-track-row,.podcast-episode,.podcast-queue-episode") ? "list" : "card";
+    const kind = node.matches(".collection-track-row,.collection-browse-index > li,.podcast-episode,.podcast-queue-episode") ? "list" : "card";
     items.push({ node, key: itemKey(node), kind, delay: kind === "card" ? Math.min(index * BROWSE_MOTION.stagger, BROWSE_MOTION.maxDelay) : 0 });
   };
   for (const list of [...root.querySelectorAll<HTMLElement>(listSelector)].slice(0, BROWSE_MOTION.maxRegions)) {

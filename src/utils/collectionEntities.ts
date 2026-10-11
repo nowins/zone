@@ -62,10 +62,10 @@ export function buildCollectionIndex(tracks: Track[]) {
 }
 export type CollectionIndex = ReturnType<typeof buildCollectionIndex>;
 
-export function albumReference(album: AlbumGroup): CollectionEntityRef {
+export function albumReference(album: AlbumGroup): Extract<CollectionEntityRef, { kind: "album" }> {
   return { kind: "album", key: album.key, anchorTrackId: album.tracks[0].id };
 }
-export function artistReference(artist: CollectionArtist): CollectionEntityRef {
+export function artistReference(artist: CollectionArtist): Extract<CollectionEntityRef, { kind: "artist" }> {
   const performed = artist.performedTracks[0];
   return { kind: "artist", name: artist.artist, anchorTrackId: (performed || artist.tracks[0]).id,
     role: performed ? "artist" : "album_artist" };

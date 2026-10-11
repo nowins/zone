@@ -114,7 +114,7 @@ test("all collection views keep their own playback source and right-click contex
     onPlay: (...args) => played.push(args), onPlayTracks() {}, onContextMenu: (_, payload) => contexts.push(payload),
   };
   const root = await mount(t, null);
-  for (const [view, expected] of [["songs", tracks], ["playlists", [tracks[1], tracks[0]]]]) {
+  for (const [view, expected] of [["songs", [tracks[0], tracks[2], tracks[1]]], ["playlists", [tracks[1], tracks[0]]]]) {
     await act(async () => root.render(h(React.StrictMode, null, h(LibraryView, { ...props, key: view, view }))));
     const before = played.length;
     await click(mainRows()[0]);

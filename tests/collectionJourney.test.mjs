@@ -90,7 +90,7 @@ test("playlist → song → album → artist → another album returns focus and
     await click(back);
   }
   assert.equal(api.view, "playlists");
-  assert.deepEqual([...document.querySelectorAll(".collection-categories button")].map(node => node.textContent), ["艺术家", "专辑", "歌曲", "播放列表"]);
+  assert.deepEqual([...document.querySelectorAll(".collection-categories button")].map(node => node.textContent), ["艺术家", "流派", "专辑", "歌曲", "播放列表"]);
   assert.equal(document.querySelector(".collection-back"), null);
   assert.equal(document.activeElement.getAttribute("aria-label"), "查看歌曲 白日梦蓝");
   assert.equal(document.querySelector('[data-collection-selection]').dataset.collectionSelection, "a");

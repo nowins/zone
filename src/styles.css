@@ -13,4 +13,5 @@
 @import "./styles/motion.css";
 @import "./styles/animations-responsive.css";
 @import "./styles/collection-details.css";
+@import "./styles/collection-browser.css";
 @import "./styles/compact-player.css";

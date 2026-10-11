@@ -1,0 +1,66 @@
+/* Continuous collection browsing keeps each reading surface independently scrollable. */
+.collection-browse {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.65fr) minmax(290px, 1.5fr) minmax(250px, 1.25fr);
+  gap: 22px;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px 4px 0;
+}
+.collection-browse-albums { grid-template-columns: minmax(340px, 1.8fr) minmax(280px, 1fr); }
+.collection-browse-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.collection-browse-pane + .collection-browse-pane { border-left: 1px solid var(--faint); padding-left: 22px; }
+.collection-browse-caption { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 34px; flex: none; margin-bottom: 8px; }
+.collection-browse-caption h2 { margin: 0; min-width: 0; font-size: var(--type-caption); font-weight: var(--weight-emphasis); white-space: nowrap; }
+.collection-browse-caption h2 small { margin-left: 6px; color: var(--muted); font-weight: var(--weight-body); }
+.collection-browse-reset.button { padding: 2px 0; min-height: 28px; font-size: var(--type-caption); color: var(--muted); }
+.collection-browse-reset:disabled { visibility: hidden; }
+.collection-browse-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--faint) transparent; scrollbar-gutter: stable; padding: 2px 8px 24px 0; }
+.collection-browse-index { margin: 0; padding: 0; list-style: none; }
+.collection-browse-index > li { display: flex; align-items: center; min-width: 0; position: relative; }
+.collection-browse-index > li.selected { background: rgba(255, 255, 255, 0.075); box-shadow: inset 2px 0 var(--accent); }
+.collection-browse-choice.button { flex: 1; justify-content: flex-start; padding: 8px 8px; min-width: 0; min-height: 36px; display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--type-body); text-align: left; color: var(--muted); font-weight: var(--weight-body); }
+.collection-browse-choice:hover, .selected > .collection-browse-choice { color: var(--text); }
+.collection-browse-choice:focus-visible { outline-offset: -2px; }
+.collection-browse-info.button { display: grid; place-items: center; flex: none; padding: 0; width: 28px; min-height: 28px; color: var(--muted); }
+.collection-browse-index .collection-browse-info { opacity: 0; }
+.collection-browse-index > li:is(:hover, :focus-within, .selected) .collection-browse-info { opacity: 1; }
+.collection-browse-info:focus-visible { outline-offset: -2px; }
+.collection-browse-records .collection-album-index { grid-template-columns: repeat(auto-fill, minmax(112px, 128px)); gap: 22px 18px; }
+.collection-browse-albums .collection-browse-records .collection-album-index { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 22px 20px; }
+.collection-browse-album-group { margin: 0 0 24px; min-width: 0; }
+.collection-browse-album-group h3 { margin: 0 0 14px; font-size: var(--type-subsection-title); line-height: 1.3; font-weight: var(--weight-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.collection-album-info.button { position: absolute; top: 8px; left: 8px; width: 28px; min-height: 28px; padding: 0; display: grid; place-items: center; color: var(--text); background: rgba(9, 5, 10, 0.75); opacity: 0; }
+.collection-album-tile:is(:hover, :focus-within) .collection-album-info { opacity: 1; }
+.collection-browse-album-label { display: flex; align-items: center; gap: 4px; margin: 0 0 8px; flex: none; min-width: 0; }
+.collection-browse-album-label > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--type-body); }
+.collection-browse-songs .collection-track-list { --track-columns: 20px minmax(0, 1fr) 34px; }
+.collection-browse-songs .collection-track-row { padding: 0 4px; gap: 6px; min-height: 38px; }
+.collection-browse-songs .collection-track-main { grid-template-columns: 20px minmax(0, 1fr); gap: 6px; min-height: 38px; }
+.collection-browse-songs .collection-track-actions > button { width: 26px; }
+.collection-browse-songs .collection-track-list { --favorite-space: 26px; --info-space: 26px; }
+.collection-browse-songs .collection-empty { margin-inline: 4px; }
+
+/* Sorting controls share the body grid; a genre column does not reduce the action targets. */
+.collection-sort.button { display: flex; align-items: center; justify-content: flex-start; gap: 4px; padding: 0; min-width: 0; min-height: 30px; font-size: inherit; color: var(--muted); white-space: nowrap; }
+.collection-sort[aria-pressed="true"] { color: var(--text); }
+.collection-sort svg { flex: none; }
+.collection-sort:focus-visible { outline-offset: -2px; }
+.collection-track-head > .collection-sort:last-of-type { justify-content: flex-end; }
+.collection-track-list.has-genre { --track-columns: 28px minmax(110px, 1.35fr) minmax(80px, 0.9fr) minmax(90px, 1fr) minmax(70px, 0.7fr) 44px; }
+.collection-track-genre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--type-body); }
+.collection-track-list.has-genre .collection-track-head > :nth-child(5) { text-align: left; }
+.collection-index-caption { display: flex; align-items: center; gap: 20px; }
+.collection-genre-toggle.button { min-height: 28px; margin-bottom: 4px; padding: 0; color: var(--muted); font-size: var(--type-caption); }
+.collection-genre-toggle[aria-pressed="true"] { color: var(--text); }
+
+@media (max-width: 1000px) {
+  .collection-browse { grid-template-columns: minmax(140px, 0.65fr) minmax(260px, 1.4fr) minmax(230px, 1.2fr); gap: 16px; }
+  .collection-browse-albums { grid-template-columns: minmax(340px, 1.65fr) minmax(260px, 1fr); }
+  .collection-browse-pane + .collection-browse-pane { padding-left: 16px; }
+  .collection-browse-caption h2 small { margin-left: 3px; }
+  .collection-browse-records .collection-album-index { gap: 20px 14px; }
+  .collection-track-list.has-genre { --track-columns: 28px minmax(90px, 1.35fr) minmax(64px, 0.9fr) minmax(76px, 1fr) minmax(60px, 0.7fr) 36px; }
+  .collection-categories { gap: 20px; }
+}

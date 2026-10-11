@@ -1,5 +1,7 @@
 import { useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Heart, Info, Play } from "lucide-react";
+import { ChevronDown, ChevronUp, Heart, Info, Play } from "lucide-react";
+import { Button } from "./Button";
+import { collectionGenreNames, nextCollectionTrackSort, type CollectionTrackSort, type CollectionTrackSortField } from "../utils/collectionBrowser";
 import { formatTime } from "../utils/music";
 import { albumReference, artistReference } from "../utils/collectionEntities";
 import { CollectionLink, useCollectionContext } from "./CollectionContext";
@@ -10,7 +12,7 @@ import type { Track } from "../types";
 export function CollectionTrackList({
   tracks, activeTrackId, onPlay, onContextMenu, favoriteTrackIds, onToggleFavorite,
   compact = false, label = "歌曲", emptyText = "暂无歌曲", listKey = label, playbackTracks,
-  onReorder, scrollable = true,
+  onReorder, scrollable = true, sort, onSortChange, showGenre = false,
 }: {
   tracks: Track[];
   activeTrackId: string | null;
@@ -25,6 +27,9 @@ export function CollectionTrackList({
   playbackTracks?: Track[];
   onReorder?: (trackId: string, targetId: string) => void;
   scrollable?: boolean;
+  sort?: CollectionTrackSort;
+  onSortChange?: (sort: CollectionTrackSort) => void;
+  showGenre?: boolean;
 }) {
   const context = useCollectionContext();
   const [selectedId, setSelectedId] = useState<string | null>(() => context?.navigation.location.surface.selections[listKey] || null);
@@ -35,6 +40,18 @@ export function CollectionTrackList({
   const suppressClick = useRef(false);
   const touchTap = useRef<{ id: number; trackId: string; x: number; y: number; valid: boolean; released: boolean } | null>(null);
   const lastTouchPlayback = useRef<string | null>(null);
+  function column(label: string, field: CollectionTrackSortField) {
+    if (!sort || !onSortChange) return <span>{label}</span>;
+    const current = sort.field === field;
+    const next = nextCollectionTrackSort(sort, field);
+    const direction = next.direction === "ascending" ? "升序" : "降序";
+    return <Button variant="ghost" size="sm" className="collection-sort" aria-pressed={current}
+      data-collection-focus={"sort:" + listKey + ":" + field}
+      aria-label={current ? label + "，当前" + (sort.direction === "ascending" ? "升序" : "降序") + "，切换为" + direction : "按" + label + direction + "排列"}
+      onClick={() => { onSortChange(next); if (scrollerRef.current) scrollerRef.current.scrollTop = 0; }}>
+      {label}{current && (sort.direction === "ascending" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+    </Button>;
+  }
   const pointerDrag = usePinDrag(scrollerRef, {
     ghostClassName: "collection-track-drag-ghost",
     onStart: id => { draggedId.current = id; suppressClick.current = true; },
@@ -81,11 +98,12 @@ export function CollectionTrackList({
   }
 
   return (
-    <section className={`collection-track-list${compact ? " is-compact" : ""}${hasFavorite ? " has-favorite" : ""}${context ? " has-details" : ""}`} aria-label={label}
+    <section className={`collection-track-list${compact ? " is-compact" : ""}${hasFavorite ? " has-favorite" : ""}${context ? " has-details" : ""}${showGenre && !compact ? " has-genre" : ""}`} aria-label={label}
       data-collection-list={listKey} data-collection-selection={selectedId || undefined}>
       {!compact && (
-        <div className="collection-track-head" aria-hidden="true">
-          <span>#</span><span>歌曲</span><span>艺术家</span><span>专辑</span><span>时长</span><span />
+        <div className="collection-track-head" aria-hidden={onSortChange ? undefined : true}>
+          <span>#</span>{column("歌曲", "title")}{column("艺术家", "artist")}{column("专辑", "album")}
+          {showGenre && column("流派", "genre")}{column("时长", "duration")}<span />
         </div>
       )}
       <div ref={scrollerRef} className="collection-track-scroll" role="list" data-collection-scroll={scrollable ? `tracks:${listKey}` : undefined}
@@ -164,6 +182,9 @@ export function CollectionTrackList({
                   focusKey={`artist:${listKey}:${track.id}`}>{track.artist}</CollectionLink> : track.artist}</span>
                 <span className="collection-track-album" title={track.album}>{album ? <CollectionLink entity={albumReference(album)}
                   focusKey={`album:${listKey}:${track.id}`}>{track.album}</CollectionLink> : track.album}</span>
+                {showGenre && <span className="collection-track-genre" title={collectionGenreNames(track).join(" / ") || "未知流派"}>
+                  {collectionGenreNames(track).join(" / ") || "未知流派"}
+                </span>}
               </>}
               <span className="collection-track-duration">{duration && Number.isFinite(duration) && duration > 0 ? formatTime(duration) : "—"}</span>
               <div className="collection-track-actions">{context && <button type="button" className="collection-track-info" aria-label={`查看歌曲 ${track.title}`}

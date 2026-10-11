@@ -28,7 +28,7 @@
 - `src/app/podcastPlaybackSettings.ts`：播客倍速/活动单集/自动续播偏好（`zone-podcast-playback-v1`）的常量、类型与 read/patch 纯函数，附 `webkitAudioContext` 全局声明。
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
   - `useNavigation.ts`：顶层 page、`requestNavigation` 页面过渡、对象入口及来源返回、搜索／历史快捷键、`openNowPlaying`；内部调用 `useCollectionNavigation`。
-  - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；新 revision 提交前由动效内核保存有限退场画面；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。
+  - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId、连续浏览选择与歌曲列排序），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；新 revision 提交前由动效内核保存有限退场画面；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。索引内选择与排序只 patch 当前条目，不增加返回步骤。
   - `useCollectionPivot.ts`：收藏分类、详情及返回的方向接线；内部入场与 `useCollectionPanelMotion` 均复用 `useBrowseEntrance.ts`。共享浏览控制器 `motion/browseTransition.ts` 用 `BROWSE_MOTION` 管理收藏、播客及 quickplay 内容的入退场、快速反向及输入接管，分类／搜索保持原位，quickplay 的大字与视差层不继承页面位移。`SurfaceTransition` 与内部 hook 共用异步标题暂隐及首批真实数据入场规则。
   - `useWheelScroll.ts`：收藏与首页内部纵向列表的粗步进滚轮接续，底层 `motion/wheelScroll.ts` 共用动画器与 `snappy` 弹簧；细小连续输入、原生定位和 reduced-motion 保留直接响应。
   - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、只读 `collectionIndex`（albums/artists 等关系集中在 `utils/collectionEntities.ts`）、addFolder/rescan 与 `useLibraryWatcher` 接线。
@@ -49,8 +49,9 @@
   - `QuickplayView.tsx`：Zune quickplay 首页，解析固定内容；`components/tiles/QuickplayPinBoard.tsx` 负责 WP 风格磁贴编辑、重排与外观，稳定表面承载选中缩放与角标，外层 FLIP 接续重排和释放落位；`utils/homePinLayout.ts` 模拟混合尺寸网格并解析空位落点，`usePinDrag.ts` 通过指针捕获管理拖动、抓取偏移、跟随预览与取消，释放时回传浮层矩形，不依赖 WebView2 的 HTML 拖放；`useTileActivity.ts` 管理动态可见性，`motion/tileScheduler.ts` 串行调度翻面及封面墙更新。
   - `src/hooks/useQuickplayPanorama.ts`：首页视口滚动、短滚动条显隐与拖拽、背景视差、鼠标拖动、滚轮／键盘归属与返回位置恢复；`src/utils/quickplayPanorama.ts` 提供键盘分组边界和输入意图的纯函数。背景与滚动条位置由 DOM ref 更新，React 仅接收是否存在横向溢出。
   - `CollectionView.tsx` / `CollectionEntityView.tsx`：收藏索引／搜索／详情外壳及歌曲、专辑、艺术家对象详情，关系通过 `CollectionContext` 的统一入口跳转。
-  - `LibraryView.tsx`：歌曲、专辑、艺术家索引与播放列表的展示分派；共享 `CollectionTrackList` 与 `CollectionAlbumTile`。
-  - `ArtistBrowser.tsx`：艺术家的紧凑媒体索引；主动作打开艺术家对象，不自动选中首张专辑。
+  - `LibraryView.tsx`：艺术家、流派、专辑、歌曲索引与播放列表的展示分派；共享 `CollectionTrackList` 与 `CollectionAlbumTile`。歌曲索引提供可切换方向的列排序；详情中的 `AlbumIndex` 保留打开详情的主动作。
+  - `CollectionBrowseView.tsx`：艺术家三栏、专辑两区、流派三栏连续浏览；流派的中栏按专辑艺术家分组。选择只更新内容，独立播放按钮与详情入口各自处理动作；范围解析、流派派生和稳定排序在 `utils/collectionBrowser.ts`。
+  - `ArtistBrowser.tsx`：搜索结果中的紧凑艺术家媒体索引；主动作打开艺术家对象。
   - `PlaylistBrowser.tsx`：当前队列与已存播放列表（含智能播放列表）。
   - `PodcastView.tsx`：正式播客页壳。负责分区 chrome、六屏切换与浮层（菜单/确认框）；业务状态与数据加载在 `usePodcastViewModel`，各屏 JSX 在 `screens/*`。默认“收听”聚合继续收听与关注更新；“发现”承载榜单、搜索与辅助 RSS；“资料库”展示已关注、稍后听和已下载；节目/单集详情支持关注、保存、播放状态、即时播放、待播与离线下载；“播放列表”管理当前单集与持久待播队列。
   - `src/views/podcast/`：播客视图模块。`usePodcastViewModel.ts` 持有 screen 状态机、缓存读写与 invoke 编排；`api.ts` 为全部 `podcast_*` 命令的薄封装（屏组件不得直接 `invoke`）；`screens/`（Listen/Discover/Library/Playlist/Show/Episode）为展示层；另有 `types.ts`/`constants.ts`/`cache.ts`（模块级缓存单例，不可拆散）/`episodeModel.ts`/`preferences.ts`/`format.ts` 与 `components/`（EpisodeRows、QueueEpisodeRow、EpisodeDetail、ContinueCard、ShowCards、Dialogs、primitives）。

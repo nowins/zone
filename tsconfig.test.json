@@ -57,6 +57,7 @@
     "src/utils/librarySearch.ts",
     "src/utils/collectionSearch.ts",
     "src/utils/collectionEntities.ts",
+    "src/utils/collectionBrowser.ts",
     "src/utils/collectionNavigation.ts",
     "src/utils/metadata.ts",
     "src/motion/math.ts",

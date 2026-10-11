@@ -1,8 +1,11 @@
 import type { MouseEvent } from "react";
+import { useMemo, useState } from "react";
 import { CollectionAlbumTile } from "../components/CollectionAlbumTile";
 import { CollectionTrackList } from "../components/CollectionTrackList";
 import { albumReference, type CollectionEntityRef, type CollectionIndex } from "../utils/collectionEntities";
-import { ArtistBrowser } from "./ArtistBrowser";
+import { CollectionBrowseView } from "./CollectionBrowseView";
+import { useCollectionContext } from "../components/CollectionContext";
+import { initialCollectionBrowser, sortCollectionTracks } from "../utils/collectionBrowser";
 import { PlaylistBrowser } from "./PlaylistBrowser";
 import type { AlbumGroup, ContextPayload, Playlist, Track, TrackActivityMap, ViewMode } from "../types";
 
@@ -41,14 +44,23 @@ export function AlbumIndex({ albums, onOpen, onPlayTracks, onContextMenu }: {
 }
 
 export function LibraryView(props: LibraryViewProps) {
-  const { view, index, activeTrackId, onPlay, favoriteTrackIds, onToggleFavorite, onContextMenu } = props;
+  const { view, index } = props;
   if (view === "playlists") return <PlaylistBrowser {...props} tracks={index.tracks} activity={props.trackActivity} />;
-  if (view === "songs") return <CollectionTrackList tracks={index.tracks} activeTrackId={activeTrackId} onPlay={onPlay}
-    listKey="songs" label="所有歌曲" favoriteTrackIds={favoriteTrackIds} onToggleFavorite={onToggleFavorite}
-    onContextMenu={(event, track) => onContextMenu(event, { kind: "track", title: track.title,
-      subtitle: `${track.artist} / ${track.album}`, tracks: [track], playbackTracks: index.tracks })} />;
-  return <div className="collection-index-scroll" data-collection-scroll={`index:${view}`}>
-    {view === "artists" ? <ArtistBrowser artists={index.artists} onOpen={props.onOpen} onContextMenu={onContextMenu} />
-      : <AlbumIndex albums={index.albums} {...props} />}
-  </div>;
+  if (view === "songs") return <SongIndex {...props} />;
+  return <CollectionBrowseView {...props} view={view} />;
+}
+
+function SongIndex(props: LibraryViewProps) {
+  const context = useCollectionContext();
+  const [fallback, setFallback] = useState(initialCollectionBrowser);
+  const browser = context?.navigation.location.browser || fallback;
+  const tracks = useMemo(() => sortCollectionTracks(props.index.tracks, browser.songSort), [props.index.tracks, browser.songSort]);
+  return <CollectionTrackList tracks={tracks} activeTrackId={props.activeTrackId} onPlay={props.onPlay}
+    listKey="songs" label="所有歌曲" favoriteTrackIds={props.favoriteTrackIds} onToggleFavorite={props.onToggleFavorite}
+    sort={browser.songSort} showGenre={browser.showGenre} onSortChange={songSort => {
+      const next = { ...browser, songSort };
+      if (context) context.navigation.patch({ browser: next }, false); else setFallback(next);
+    }}
+    onContextMenu={(event, track) => props.onContextMenu(event, { kind: "track", title: track.title,
+      subtitle: `${track.artist} / ${track.album}`, tracks: [track], playbackTracks: tracks })} />;
 }

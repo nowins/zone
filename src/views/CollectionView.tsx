@@ -5,6 +5,7 @@ import { CollectionArtworkBackdrop } from "../components/CollectionArtworkBackdr
 import { buildCollectionBrowseBackdropScene } from "../utils/collectionBackdrop";
 import { CollectionSearchField } from "../components/CollectionSearchField";
 import { EmptyState } from "../components/EmptyState";
+import { Button } from "../components/Button";
 import { LibraryView, type LibraryViewProps } from "./LibraryView";
 import { CollectionEntityView, type CollectionEntityActions } from "./CollectionEntityView";
 import { SearchResultsView } from "./SearchResultsView";
@@ -12,11 +13,12 @@ import type { CollectionNavigation } from "../hooks/useCollectionNavigation";
 import { useCollectionPivot } from "../hooks/useCollectionPivot";
 import { useWheelScroll } from "../hooks/useWheelScroll";
 import { resolveCollectionEntity, artistReference, albumReference } from "../utils/collectionEntities";
+import { buildCollectionGenres } from "../utils/collectionBrowser";
 import { resolveSearchSurface } from "../utils/collectionSearch";
 import { COLLECTION_CATEGORY_ORDER, type CollectionLocation } from "../utils/collectionNavigation";
 import type { ViewMode } from "../types";
 
-const labels: Record<ViewMode, string> = { artists: "艺术家", albums: "专辑", songs: "歌曲", playlists: "播放列表" };
+const labels: Record<ViewMode, string> = { artists: "艺术家", genres: "流派", albums: "专辑", songs: "歌曲", playlists: "播放列表" };
 type Props = LibraryViewProps & CollectionEntityActions & {
   navigation: CollectionNavigation;
   onTravel: (direction: 1 | -1, animate?: boolean) => void;
@@ -33,6 +35,7 @@ export function CollectionView(props: Props) {
   const pageRevision = useRef(history.revision);
   const searching = resolveSearchSurface(location.query, location.searchMode) === "results";
   const detail = Boolean(location.entity) && !searching;
+  const continuous = !detail && !searching && ["artists", "albums", "genres"].includes(props.view) && index.tracks.length > 0;
   const backdropScene = useMemo(() => buildCollectionBrowseBackdropScene(index, searching ? null : location.entity), [index, location.entity, searching]);
   const previous = history.entries[history.cursor - 1];
   const canBack = history.cursor > 0;
@@ -52,7 +55,7 @@ export function CollectionView(props: Props) {
   useCollectionPivot(contentRef, history);
   useWheelScroll(navigation.rootRef, "[data-collection-scroll]", history.revision);
   const count = props.view === "artists" ? `${index.artists.length} 位艺术家` : props.view === "albums" ? `${index.albums.length} 张专辑`
-    : props.view === "songs" ? `${index.tracks.length} 首歌曲` : `${props.playlists.length + 1} 个列表`;
+    : props.view === "songs" ? `${index.tracks.length} 首歌曲` : props.view === "genres" ? `${buildCollectionGenres(index.tracks).length} 个流派` : `${props.playlists.length + 1} 个列表`;
   return <CollectionContext.Provider value={{ index, navigation, open: props.onOpen, onContextMenu: props.onContextMenu }}>
     <section ref={navigation.rootRef} className="content-band collection-band collection-connected"
       data-collection-motion={history.revision === pageRevision.current ? undefined : "content"}
@@ -86,7 +89,10 @@ export function CollectionView(props: Props) {
       </div>
       {!detail && <div className="collection-index-caption">
         <h1 className="collection-visually-hidden" data-collection-heading tabIndex={-1}>{searching ? "搜索结果" : labels[props.view]}</h1>
-        {!searching && <p>{count}{props.scanNote ? ` · ${props.scanNote}` : ""}</p>}
+        {!searching && (!continuous || props.scanNote) && <p>{continuous ? props.scanNote : count + (props.scanNote ? ` · ${props.scanNote}` : "")}</p>}
+        {!searching && !detail && props.view === "songs" && <Button variant="ghost" size="sm" className="collection-genre-toggle"
+          aria-pressed={location.browser.showGenre} onClick={() => navigation.patch({ browser: { ...location.browser, showGenre: !location.browser.showGenre,
+            songSort: location.browser.showGenre && location.browser.songSort.field === "genre" ? { field: "title", direction: "ascending" } : location.browser.songSort } }, false)}>流派列</Button>}
       </div>}
       <div ref={contentRef} key={history.revision} className="collection-content">
         {searching ? <SearchResultsView query={location.query} tracks={index.tracks} albums={index.albums} artists={index.artists}
