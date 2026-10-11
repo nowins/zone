@@ -1,8 +1,6 @@
-import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 import { ArrowLeft } from "lucide-react";
 import { CollectionContext } from "../components/CollectionContext";
-import { CollectionArtworkBackdrop } from "../components/CollectionArtworkBackdrop";
-import { buildCollectionBrowseBackdropScene } from "../utils/collectionBackdrop";
 import { CollectionSearchField } from "../components/CollectionSearchField";
 import { EmptyState } from "../components/EmptyState";
 import { Button } from "../components/Button";
@@ -36,7 +34,6 @@ export function CollectionView(props: Props) {
   const searching = resolveSearchSurface(location.query, location.searchMode) === "results";
   const detail = Boolean(location.entity) && !searching;
   const continuous = !detail && !searching && ["artists", "albums", "genres"].includes(props.view) && index.tracks.length > 0;
-  const backdropScene = useMemo(() => buildCollectionBrowseBackdropScene(index, searching ? null : location.entity), [index, location.entity, searching]);
   const previous = history.entries[history.cursor - 1];
   const canBack = history.cursor > 0;
   function locationLabel(value: CollectionLocation | undefined) {
@@ -72,7 +69,6 @@ export function CollectionView(props: Props) {
         if (event.button !== 3 && event.button !== 4) return;
         event.preventDefault(); props.onTravel(event.button === 3 ? -1 : 1);
       }}>
-      {backdropScene && <CollectionArtworkBackdrop scene={backdropScene} surfaceKey={backdropScene.sceneKey} />}
       <div className="collection-toolbar">
         {detail || searching ?
           <button type="button" data-collection-focus="back" className="collection-back" disabled={!canBack}

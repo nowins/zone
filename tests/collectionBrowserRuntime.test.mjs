@@ -57,11 +57,13 @@ async function key(node, key) {
 }
 const rows = () => [...document.querySelectorAll(".collection-track-row")].map(node => node.dataset.collectionAnchor);
 const choice = name => [...document.querySelectorAll(".collection-browse-choice")].find(node => node.textContent === name);
-const album = name => [...document.querySelectorAll(".collection-album-select")].find(node => node.title.startsWith(name + " ·"));
+const album = name => [...document.querySelectorAll(".collection-album-select")].find(node => node.getAttribute("aria-label").startsWith(name + " ·"));
 const sort = name => [...document.querySelectorAll(".collection-sort")].find(node => node.textContent === name);
 
 test("artist and album selection keeps three panes, scroll and transport separate, with supplementary detail return", async t => {
-  await mount(t);
+  await mount(t, tracks.map(track => ({ ...track, cover_path: `cover-${track.id}.jpg` })));
+  assert.equal(document.querySelector(".collection-band canvas"), null, "artwork remains in covers rather than a decorative collection layer");
+  assert.ok(document.querySelector(".collection-album-select img"));
   assert.equal(document.querySelectorAll(".collection-browse-pane").length, 3);
   assert.equal(document.querySelectorAll(".collection-browse-choice[aria-pressed=true]").length, 0);
   assert.equal(rows().length, 5);
@@ -78,6 +80,7 @@ test("artist and album selection keeps three panes, scroll and transport separat
   const right = document.querySelector(".collection-track-scroll"); right.scrollTop = 38;
   await click(document.querySelector('[aria-label="查看歌曲 Second"]'));
   assert.equal(document.querySelector(".collection-entity-heading h1").textContent, "Second");
+  assert.equal(document.querySelector(".collection-band canvas"), null);
   await click(document.querySelector(".collection-back"));
   assert.equal(choice("Coldplay").getAttribute("aria-pressed"), "true");
   assert.equal(album("Main").getAttribute("aria-pressed"), "true");
@@ -211,7 +214,7 @@ test("browse captions sort without leaving the selection scope or starting trans
     { ...tracks[2], year: 2020 }, tracks[4],
   ]);
   await click(choice("Coldplay"));
-  assert.deepEqual([...document.querySelectorAll(".collection-album-select")].map(node => node.title.split(" ·")[0]), ["Side", "Main"]);
+  assert.deepEqual([...document.querySelectorAll(".collection-album-select")].map(node => node.getAttribute("aria-label").split(" ·")[0]), ["Side", "Main"]);
   await click(album("Main"));
   assert.deepEqual(rows(), ["b", "a"]);
   assert.deepEqual([...document.querySelectorAll(".collection-track-number")].map(node => node.textContent), ["00", "08"]);

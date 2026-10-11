@@ -25,17 +25,17 @@ export function CollectionAlbumTile({ name, artist, coverPath, index, selected, 
   return (
     <div className={`${className} collection-album-tile${selected ? " selected" : ""}`} data-touch-menu onContextMenu={onContextMenu}>
       <button type="button" className="collection-album-select" aria-pressed={selected} data-collection-focus={focusKey}
-        title={`${name} · ${artist}`} onClick={onSelect} tabIndex={tabIndex} data-browse-choice={choiceKey} onKeyDown={onKeyDown}
+        aria-label={`${name} · ${artist}`} onClick={onSelect} tabIndex={tabIndex} data-browse-choice={choiceKey} onKeyDown={onKeyDown}
         onPointerDown={tiltPressDown} onPointerUp={tiltPressClear}
         onPointerLeave={tiltPressClear} onPointerCancel={tiltPressClear}>
         <Cover artPath={coverPath} label={name} size="large" index={index} />
-        <strong>{name}</strong><span>{subtitle ?? artist}</span>
+        <strong title={name}>{name}</strong><span title={subtitle ?? artist}>{subtitle ?? artist}</span>
       </button>
-      <Button variant="ghost" size="sm" className="album-play" title={`播放 ${name}`} onClick={onPlay} tabIndex={tabIndex}>
+      <Button variant="ghost" size="sm" className="album-play" aria-label={`播放 ${name}`} onClick={onPlay} tabIndex={tabIndex}>
         <Play size={16} fill="currentColor" />
       </Button>
       {onDetails && <Button variant="ghost" size="sm" className="collection-album-info" aria-label={`查看专辑 ${name}`}
-        data-collection-focus={focusKey ? focusKey + ":details" : undefined} tabIndex={tabIndex} onClick={onDetails}><Info size={15} /></Button>}
+        data-collection-focus={focusKey ? focusKey + ":details" : undefined} tabIndex={tabIndex} onClick={onDetails}><Info size={22} /></Button>}
     </div>
   );
 }

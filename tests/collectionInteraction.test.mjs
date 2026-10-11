@@ -91,14 +91,18 @@ test("arrow and boundary keys move focus without starting playback", async t => 
   assert.equal(played, 0);
 });
 
-test("album tiles expose independent keyboard selection and playback buttons", async t => {
-  let selected = 0, played = 0;
+test("album tiles expose independent keyboard selection, details and playback without cover tooltips", async t => {
+  let selected = 0, played = 0, details = 0;
   await mount(t, h(CollectionAlbumTile, { name: "专辑", artist: "艺术家", index: 0, selected: false,
-    onSelect: () => selected++, onPlay: () => played++, onContextMenu() {} }));
+    onSelect: () => selected++, onPlay: () => played++, onDetails: () => details++, onContextMenu() {} }));
+  assert.equal(document.querySelector(".collection-album-select").title, "");
+  assert.equal(document.querySelector(".collection-album-select").getAttribute("aria-label"), "专辑 · 艺术家");
   await click(document.querySelector(".collection-album-select"), 0);
   assert.equal(selected, 1); assert.equal(played, 0);
   await click(document.querySelector(".album-play"), 0);
   assert.equal(played, 1); assert.equal(selected, 1);
+  await click(document.querySelector('[aria-label="查看专辑 专辑"]'), 0);
+  assert.equal(details, 1); assert.equal(selected, 1); assert.equal(played, 1);
   assert.equal(document.querySelector("button button"), null);
 });
 

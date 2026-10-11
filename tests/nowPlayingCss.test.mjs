@@ -15,6 +15,7 @@ const mosaicCanvasSource = readFileSync("src/components/NowPlayingMosaicCanvas.t
 const audioGlowCanvasSource = readFileSync("src/components/AudioGlowCanvas.tsx", "utf8");
 const appSource = readFileSync("src/App.tsx", "utf8");
 const collectionCss = readFileSync("src/styles/collection-details.css", "utf8");
+const collectionSurfaceCss = readFileSync("src/styles/collection.css", "utf8");
 const lyricsSource = readFileSync("src/components/LyricsStage.tsx", "utf8");
 const lyricsPaintLoopSource = readFileSync("src/components/lyricsStage/useLyricsPaintLoop.ts", "utf8");
 const lyricsSourceBrowserSource = readFileSync("src/components/lyricsStage/LyricsSourceBrowser.tsx", "utf8");
@@ -44,7 +45,7 @@ test("now playing visual layers are canvas based", () => {
   assert.ok(!nowPlayingCss.includes(".visualizer-wave-svg"), "old SVG visualizer styles should stay out of now playing CSS");
 });
 
-test("browsing shares a live background with its transparent transport", () => {
+test("browsing keeps its shared transport while collection uses a plain reading surface", () => {
   const playerRule = cssRule(playerCss, ".player");
   const shellGlowRule = cssRule(baseCss, ".shell > .audio-glow-canvas");
   assert.match(appSource, /visualizerVisible: !compactMode\.active/);
@@ -53,7 +54,8 @@ test("browsing shares a live background with its transparent transport", () => {
   assert.ok(playerRule.includes("border: 0"));
   assert.ok(shellGlowRule.includes("z-index: -1"), "glow stays behind page content and controls");
   assert.ok(cssRule(baseCss, ".shell").includes("isolation: isolate"), "negative glow layer remains above the shell background");
-  assert.ok(cssRule(collectionCss, ".collection-connected").includes("background: transparent"));
+  assert.match(cssRule(collectionSurfaceCss, ".collection-band"), /background:\s*var\(--app-bg\)/);
+  assert.doesNotMatch(cssRule(collectionCss, ".collection-connected"), /background\s*:/, "connected collection must retain its plain surface");
 });
 
 test("now playing artwork is full bleed without a recording-frame inset", () => {
