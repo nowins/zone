@@ -6,7 +6,7 @@ import { CollectionTrackList } from "../components/CollectionTrackList";
 import { useCollectionContext } from "../components/CollectionContext";
 import { useCollectionItemWindow } from "../hooks/useCollectionItemWindow";
 import { albumReference, artistReference } from "../utils/collectionEntities";
-import { buildCollectionGenres, initialCollectionBrowser, resolveCollectionBrowser,
+import { buildCollectionGenres, collectionAlbumYear, initialCollectionBrowser, resolveCollectionBrowser,
   type CollectionBrowserState, type CollectionBrowseView } from "../utils/collectionBrowser";
 import type { LibraryViewProps } from "./LibraryView";
 import type { AlbumGroup } from "../types";
@@ -30,7 +30,7 @@ export function CollectionBrowseView(props: LibraryViewProps & { view: Collectio
   const browser = context?.navigation.location.browser || fallback;
   const update = (next: CollectionBrowserState) => context ? context.navigation.patch({ browser: next }, false) : setFallback(next);
   const genres = useMemo(() => buildCollectionGenres(props.index.tracks), [props.index]);
-  const scope = useMemo(() => resolveCollectionBrowser(props.index, props.view, browser, genres), [props.index, props.view, browser, genres]);
+  const scope = useMemo(() => resolveCollectionBrowser(props.index, props.view, browser, genres, props.favoriteTrackIds), [props.index, props.view, browser, genres, props.favoriteTrackIds]);
   const albumScroll = useRef<HTMLDivElement>(null);
   const pickerScroll = useRef<HTMLDivElement>(null);
   const surface = context?.navigation.location.surface;
@@ -49,13 +49,20 @@ export function CollectionBrowseView(props: LibraryViewProps & { view: Collectio
   }, [primaryKey]);
 
   const selectAlbum = (album: AlbumGroup | null) => update({ ...browser,
-    albums: { ...browser.albums, [props.view]: album ? albumReference(album) : null } });
+    albums: { ...browser.albums, [props.view]: album ? albumReference(album) : null },
+    browseSongSort: { ...browser.browseSongSort, [props.view]: "auto" } });
+  const albumSortLabels = { title: "A–Z", year: "按发行年份", added: "按添加日期" };
+  const songSortLabels = { title: "A–Z", album: "按专辑", favorite: "喜欢优先" };
+  const nextAlbumSort = scope.albumSort === "title" ? "year" : scope.albumSort === "year" ? "added" : "title";
+  const nextSongSort = scope.songSort === "title" ? "album" : scope.songSort === "album" ? "favorite" : "title";
   const selectedAlbumKey = scope.album?.key;
   const firstAlbumKey = props.view === "genres" ? scope.albumGroups[0]?.albums[0]?.key : scope.albums[0]?.key;
   function albumTiles(albums: AlbumGroup[]) {
     return <div className="collection-album-index">
       {albums.map((album, index) => <div key={album.key} data-collection-anchor={"album:" + album.key} data-collection-window-item={"album:" + album.key}>
         {albumWindow.has("album:" + album.key, "browse-album:" + props.view + ":" + album.key) || album.key === (selectedAlbumKey || firstAlbumKey) ? <CollectionAlbumTile name={album.album} artist={album.artist} coverPath={album.coverPath} index={index}
+          subtitle={props.view === "genres" || (props.view === "artists" && scope.artist) ? String(collectionAlbumYear(album) || "未知年份")
+            : props.view === "albums" ? album.artist + "，" + (collectionAlbumYear(album) || "未知年份") : album.artist}
           selected={album.key === selectedAlbumKey} onSelect={() => selectAlbum(album)}
           tabIndex={album.key === (selectedAlbumKey || firstAlbumKey) ? 0 : -1}
           choiceKey={album.key} onKeyDown={event => moveChoice(event, albumPositions.get(album.key)!, orderedAlbums.length, next => {
@@ -82,22 +89,24 @@ export function CollectionBrowseView(props: LibraryViewProps & { view: Collectio
         <h2>{picker.length}{props.view === "artists" ? " 位艺术家" : " 个流派"}</h2>
         <Button variant="ghost" size="sm" className="collection-browse-reset" disabled={props.view === "artists" ? !browser.artist : !browser.genre}
           aria-label={props.view === "artists" ? "全部艺术家" : "全部流派"} onClick={() => update({ ...browser,
-            ...(props.view === "artists" ? { artist: null } : { genre: null }), albums: { ...browser.albums, [props.view]: null } })}>全部</Button>
+            ...(props.view === "artists" ? { artist: null } : { genre: null }), albums: { ...browser.albums, [props.view]: null },
+            browseSongSort: { ...browser.browseSongSort, [props.view]: "auto" } })}>全部</Button>
       </div>
       <div ref={pickerScroll} className="collection-browse-scroll" data-collection-scroll={"browse-index:" + props.view}>
         <ul className="collection-browse-index" data-browse-roving>
           {props.view === "artists" ? props.index.artists.map((artist, index) => {
             const selected = scope.artist?.artist === artist.artist;
-            const choose = () => update({ ...browser, artist: artistReference(artist), albums: { ...browser.albums, artists: null } });
+            const chooseArtist = (target: typeof artist) => update({ ...browser, artist: artistReference(target), albums: { ...browser.albums, artists: null },
+              browseSongSort: { ...browser.browseSongSort, artists: "auto" } });
             const tabbable = scope.artist ? selected : index === 0;
             return <li key={artist.artist} data-collection-anchor={"artist:" + artist.artist} data-collection-window-item={"artist:" + artist.artist} className={selected ? "selected" : ""}>
               {pickerWindow.has("artist:" + artist.artist, "browse-artist:" + artist.artist) || tabbable ? <>
               <Button variant="ghost" className="collection-browse-choice" data-touch-menu data-browse-choice={artist.artist}
                 data-collection-focus={"browse-artist:" + artist.artist} title={artist.artist} aria-pressed={selected} tabIndex={tabbable ? 0 : -1}
-                onClick={choose} onKeyDown={event => moveChoice(event, index, props.index.artists.length, next => {
+                onClick={() => chooseArtist(artist)} onKeyDown={event => moveChoice(event, index, props.index.artists.length, next => {
                   const target = props.index.artists[next];
                   pickerWindow.reveal("artist:" + target.artist, "browse-artist:" + target.artist);
-                  update({ ...browser, artist: artistReference(target), albums: { ...browser.albums, artists: null } });
+                  chooseArtist(target);
                 })}
                 onContextMenu={event => props.onContextMenu(event, { kind: "artist", title: artist.artist, subtitle: "艺术家",
                   tracks: artist.tracks, targetId: artist.artist })}>{artist.artist}</Button>
@@ -111,17 +120,24 @@ export function CollectionBrowseView(props: LibraryViewProps & { view: Collectio
             <Button variant="ghost" className="collection-browse-choice" data-browse-choice={genre.key} title={genre.name}
               data-collection-focus={"browse-genre:" + genre.key} aria-pressed={scope.genre?.key === genre.key}
               tabIndex={scope.genre ? scope.genre.key === genre.key ? 0 : -1 : index === 0 ? 0 : -1}
-              onClick={() => update({ ...browser, genre: genre.key, albums: { ...browser.albums, genres: null } })}
+              onClick={() => update({ ...browser, genre: genre.key, albums: { ...browser.albums, genres: null },
+                browseSongSort: { ...browser.browseSongSort, genres: "auto" } })}
               onKeyDown={event => moveChoice(event, index, genres.length, next => {
                 pickerWindow.reveal("genre:" + genres[next].key, "browse-genre:" + genres[next].key);
-                update({ ...browser, genre: genres[next].key, albums: { ...browser.albums, genres: null } });
+                update({ ...browser, genre: genres[next].key, albums: { ...browser.albums, genres: null },
+                  browseSongSort: { ...browser.browseSongSort, genres: "auto" } });
               })}>{genre.name}</Button> : <div className="collection-name-placeholder" aria-hidden="true" />}
           </li>)}
         </ul>
       </div>
     </section>}
     <section className="collection-browse-pane collection-browse-records" aria-label="专辑浏览">
-      <div className="collection-browse-caption"><h2>{scope.albums.length} 张专辑</h2></div>
+      <div className="collection-browse-caption"><h2>{scope.albums.length} 张专辑</h2>
+        <Button variant="ghost" size="sm" className="collection-browse-sort" data-collection-focus={"browse-album-sort:" + props.view}
+          aria-label={"专辑排序，当前" + albumSortLabels[scope.albumSort] + "，切换为" + albumSortLabels[nextAlbumSort]}
+          onClick={() => { update({ ...browser, albumSort: { ...browser.albumSort, [props.view]: nextAlbumSort } }); if (albumScroll.current) albumScroll.current.scrollTop = 0; }}>
+          {props.view === "genres" ? "按艺术家 · " : ""}{albumSortLabels[scope.albumSort]}</Button>
+      </div>
       <div ref={albumScroll} className="collection-browse-scroll" data-browse-roving data-collection-scroll={"browse-albums:" + props.view}>
         {scope.primaryMissing ? <p className="collection-empty">所选内容已不可用</p>
           : props.view === "genres" ? scope.albumGroups.map(group => <section key={group.name} className="collection-browse-album-group">
@@ -131,7 +147,10 @@ export function CollectionBrowseView(props: LibraryViewProps & { view: Collectio
     </section>
     <section className="collection-browse-pane collection-browse-songs" aria-label="歌曲浏览">
       <div className="collection-browse-caption">
-        <h2>{scope.tracks.length} 首歌曲 <small>{scope.album ? "曲目顺序" : "A–Z"}</small></h2>
+        <h2>{scope.tracks.length} 首歌曲</h2>
+        <Button variant="ghost" size="sm" className="collection-browse-sort" data-collection-focus={"browse-song-sort:" + props.view}
+          aria-label={"歌曲排序，当前" + songSortLabels[scope.songSort] + "，切换为" + songSortLabels[nextSongSort]}
+          onClick={() => update({ ...browser, browseSongSort: { ...browser.browseSongSort, [props.view]: nextSongSort } })}>{songSortLabels[scope.songSort]}</Button>
         <Button variant="ghost" size="sm" className="collection-browse-reset" aria-label="全部专辑歌曲" disabled={!browser.albums[props.view]}
           onClick={() => selectAlbum(null)}>全部</Button>
       </div>
@@ -141,6 +160,7 @@ export function CollectionBrowseView(props: LibraryViewProps & { view: Collectio
           data-collection-focus={"browse-selected-album-info:" + props.view} onClick={() => props.onOpen(albumReference(scope.album!))}><Info size={14} /></Button>
       </div>}
       <CollectionTrackList key={tracksKey} tracks={scope.tracks} compact windowed label="歌曲" listKey={tracksKey}
+        orderKey={scope.songSort} numberMode={scope.songSort === "album" ? "album" : "position"}
         activeTrackId={props.activeTrackId} onPlay={props.onPlay} favoriteTrackIds={props.favoriteTrackIds} onToggleFavorite={props.onToggleFavorite}
         emptyText={scope.primaryMissing || scope.albumMissing ? "所选内容已不可用" : "暂无歌曲"}
         onContextMenu={(event, track) => props.onContextMenu(event, { kind: "track", title: track.title,

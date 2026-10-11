@@ -28,7 +28,7 @@
 - `src/app/podcastPlaybackSettings.ts`：播客倍速/活动单集/自动续播偏好（`zone-podcast-playback-v1`）的常量、类型与 read/patch 纯函数，附 `webkitAudioContext` 全局声明。
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
   - `useNavigation.ts`：顶层 page、`requestNavigation` 页面过渡、对象入口及来源返回、搜索／历史快捷键、`openNowPlaying`；内部调用 `useCollectionNavigation`。
-  - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId、连续浏览选择与歌曲列排序），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；新 revision 提交前由动效内核保存有限退场画面；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。索引内选择与排序只 patch 当前条目，不增加返回步骤。
+  - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId、连续浏览选择、专辑／歌曲排序与各播放列表浏览排序），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；新 revision 提交前由动效内核保存有限退场画面；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。索引内选择与排序只 patch 当前条目，不增加返回步骤。
   - `useCollectionRows.ts` / `useCollectionItemWindow.ts`：收藏长索引的可见范围渲染、完整数据的键盘定位及历史焦点恢复。歌曲用固定行高留白，名称和封面保留等高锚点并共用区域内的可见性观察器；不改变排序、队列或普通播放列表改序的数据来源。
   - `useCollectionPivot.ts`：收藏分类、详情及返回的方向接线；内部入场与 `useCollectionPanelMotion` 均复用 `useBrowseEntrance.ts`。共享浏览控制器 `motion/browseTransition.ts` 用 `BROWSE_MOTION` 管理收藏、播客及 quickplay 内容的入退场、快速反向及输入接管，分类／搜索保持原位，quickplay 的大字与视差层不继承页面位移。`SurfaceTransition` 与内部 hook 共用异步标题暂隐及首批真实数据入场规则。
   - `useWheelScroll.ts`：收藏与首页内部纵向列表的粗步进滚轮接续，底层 `motion/wheelScroll.ts` 共用动画器与 `snappy` 弹簧；细小连续输入、原生定位和 reduced-motion 保留直接响应。
@@ -53,7 +53,7 @@
   - `LibraryView.tsx`：艺术家、流派、专辑、歌曲索引与播放列表的展示分派；共享 `CollectionTrackList` 与 `CollectionAlbumTile`。歌曲索引提供可切换方向的列排序；详情中的 `AlbumIndex` 保留打开详情的主动作。
   - `CollectionBrowseView.tsx`：艺术家三栏、专辑两区、流派三栏连续浏览；流派的中栏按专辑艺术家分组。选择只更新内容，独立播放按钮与详情入口各自处理动作；范围解析、流派派生和稳定排序在 `utils/collectionBrowser.ts`。
   - `ArtistBrowser.tsx`：搜索结果中的紧凑艺术家媒体索引；主动作打开艺术家对象。
-  - `PlaylistBrowser.tsx`：当前队列与已存播放列表（含智能播放列表）。
+  - `PlaylistBrowser.tsx`：当前队列与已存播放列表（含智能播放列表）；左侧键盘选择、右侧列排序及来源序号。排序派生显示与显式播放来源，不写回列表；普通列表原始顺序下保留改序。
   - `PodcastView.tsx`：正式播客页壳。负责分区 chrome、六屏切换与浮层（菜单/确认框）；业务状态与数据加载在 `usePodcastViewModel`，各屏 JSX 在 `screens/*`。默认“收听”聚合继续收听与关注更新；“发现”承载榜单、搜索与辅助 RSS；“资料库”展示已关注、稍后听和已下载；节目/单集详情支持关注、保存、播放状态、即时播放、待播与离线下载；“播放列表”管理当前单集与持久待播队列。
   - `src/views/podcast/`：播客视图模块。`usePodcastViewModel.ts` 持有 screen 状态机、缓存读写与 invoke 编排；`api.ts` 为全部 `podcast_*` 命令的薄封装（屏组件不得直接 `invoke`）；`screens/`（Listen/Discover/Library/Playlist/Show/Episode）为展示层；另有 `types.ts`/`constants.ts`/`cache.ts`（模块级缓存单例，不可拆散）/`episodeModel.ts`/`preferences.ts`/`format.ts` 与 `components/`（EpisodeRows、QueueEpisodeRow、EpisodeDetail、ContinueCard、ShowCards、Dialogs、primitives）。
   - `PodcastNowPlayingView.tsx`：播客专属全屏正在播放。提供 15/30 秒跳转、0.5–3× 倍速、睡眠定时、音量、简介、保存、缓冲/错误反馈与待播管理，不复用音乐 `NowPlayingView` 的拼贴和歌词内部状态。

@@ -204,6 +204,35 @@ test("a removed selection shows unavailable content and clearing it reveals the 
   assert.deepEqual(played, []);
 });
 
+test("browse captions sort without leaving the selection scope or starting transport", async t => {
+  await mount(t, [
+    { ...tracks[0], track_number: 8, disc_number: 2, year: 2001 },
+    { ...tracks[1], track_number: 0, disc_number: 1, year: 2001 },
+    { ...tracks[2], year: 2020 }, tracks[4],
+  ]);
+  await click(choice("Coldplay"));
+  assert.deepEqual([...document.querySelectorAll(".collection-album-select")].map(node => node.title.split(" ·")[0]), ["Side", "Main"]);
+  await click(album("Main"));
+  assert.deepEqual(rows(), ["b", "a"]);
+  assert.deepEqual([...document.querySelectorAll(".collection-track-number")].map(node => node.textContent), ["00", "08"]);
+  const songSort = document.querySelector('[data-collection-focus="browse-song-sort:artists"]');
+  await click(songSort); assert.equal(songSort.textContent, "喜欢优先");
+  await click(songSort); assert.equal(songSort.textContent, "A–Z");
+  assert.equal(album("Main").getAttribute("aria-pressed"), "true");
+  assert.deepEqual(rows(), ["b", "a"]);
+  await click(document.querySelector('[data-collection-focus="browse-album-sort:artists"]'));
+  assert.equal(album("Main").getAttribute("aria-pressed"), "true");
+  await click(document.querySelector('[aria-label="查看歌曲 Second"]'));
+  await click(document.querySelector(".collection-back"));
+  assert.equal(document.querySelector('[data-collection-focus="browse-song-sort:artists"]').textContent, "A–Z");
+  assert.equal(album("Main").getAttribute("aria-pressed"), "true");
+  await click(document.querySelector('[aria-label="全部专辑歌曲"]'));
+  assert.equal(rows().length, 3);
+  await click([...document.querySelectorAll(".collection-categories button")].find(node => node.textContent === "专辑"));
+  assert.equal(album("Main").querySelector(":scope > span").textContent, "Coldplay，2001", "another category's artist selection must not hide album credits");
+  assert.deepEqual(played, []);
+});
+
 test("large browsers mount a viewport, navigate the full source and restore offscreen detail focus", async t => {
   const observers = new Set();
   globalThis.IntersectionObserver = class {

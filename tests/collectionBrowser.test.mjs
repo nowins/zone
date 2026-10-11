@@ -62,3 +62,36 @@ test("column sorting is stable, natural, nonmutating and keeps unknown duration 
   assert.deepEqual(nextCollectionTrackSort({ field: "title", direction: "ascending" }, "title"), { field: "title", direction: "descending" });
   assert.deepEqual(nextCollectionTrackSort({ field: "title", direction: "descending" }, "album"), { field: "album", direction: "ascending" });
 });
+
+test("browse sorts retain genre intersections, disc order, real track numbers and stable likes", () => {
+  const library = [
+    { ...tracks[0], id: "zero", track_number: 0, disc_number: 1, year: 2001, added_at: 40 },
+    { ...tracks[0], id: "late", track_number: 8, disc_number: 2, year: 2001, added_at: 40 },
+    { ...tracks[2], id: "new", title: "Bravo", year: 2020, added_at: 10 },
+    { ...tracks[3], id: "unknown" },
+  ];
+  const index = buildCollectionIndex(library), state = initialCollectionBrowser(), favorites = new Set(["late"]);
+  state.artist = artistReference(index.artistsByName.get("Host"));
+  const scope = resolveCollectionBrowser(index, "artists", state, undefined, favorites);
+  assert.equal(scope.albumSort, "year");
+  assert.deepEqual(scope.albums.map(album => album.album), ["Other", "Shared"]);
+  state.albums.artists = albumReference(index.albumByTrackId.get("zero"));
+  assert.equal(resolveCollectionBrowser(index, "artists", state).songSort, "album");
+  assert.deepEqual(ids(resolveCollectionBrowser(index, "artists", state).tracks), ["zero", "late"]);
+  state.browseSongSort.artists = "favorite";
+  assert.deepEqual(ids(resolveCollectionBrowser(index, "artists", state, undefined, favorites).tracks), ["late", "zero"]);
+  state.albumSort.albums = "added";
+  assert.deepEqual(resolveCollectionBrowser(index, "albums", state).albums.map(album => album.album), ["Shared", "Other", "Single"]);
+  const rock = buildCollectionGenres(library).find(genre => genre.name.toLowerCase() === "rock");
+  state.genre = rock.key; state.browseSongSort.genres = "album";
+  assert.deepEqual(new Set(ids(resolveCollectionBrowser(index, "genres", state).tracks)), new Set(["zero", "late", "new"]));
+});
+
+test("playlist sorting restores source positions and favorite ordering never mutates its source", () => {
+  const source = [...tracks], favorites = new Set(["third", "first"]);
+  assert.deepEqual(ids(sortCollectionTracks(source, { field: "favorite", direction: "descending" }, favorites)), ["first", "third", "second", "missing"]);
+  assert.deepEqual(ids(sortCollectionTracks(source, { field: "position", direction: "descending" })), [...ids(source)].reverse());
+  assert.deepEqual(ids(sortCollectionTracks(source, { field: "position", direction: "ascending" })), ids(tracks));
+  assert.deepEqual(nextCollectionTrackSort({ field: "title", direction: "ascending" }, "favorite"), { field: "favorite", direction: "descending" });
+  assert.deepEqual(ids(source), ids(tracks));
+});

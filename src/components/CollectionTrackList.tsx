@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { ChevronDown, ChevronUp, Heart, Info, Play } from "lucide-react";
 import { Button } from "./Button";
 import { collectionGenreNames, nextCollectionTrackSort, type CollectionTrackSort, type CollectionTrackSortField } from "../utils/collectionBrowser";
@@ -14,6 +14,7 @@ export function CollectionTrackList({
   tracks, activeTrackId, onPlay, onContextMenu, favoriteTrackIds, onToggleFavorite,
   compact = false, label = "歌曲", emptyText = "暂无歌曲", listKey = label, playbackTracks,
   onReorder, scrollable = true, sort, onSortChange, showGenre = false, windowed = false,
+  orderKey, numberMode = "position", trackPositions,
 }: {
   tracks: Track[];
   activeTrackId: string | null;
@@ -32,6 +33,9 @@ export function CollectionTrackList({
   onSortChange?: (sort: CollectionTrackSort) => void;
   showGenre?: boolean;
   windowed?: boolean;
+  orderKey?: string;
+  numberMode?: "position" | "album";
+  trackPositions?: ReadonlyMap<string, number>;
 }) {
   const context = useCollectionContext();
   const [selectedId, setSelectedId] = useState<string | null>(() => context?.navigation.location.surface.selections[listKey] || null);
@@ -39,6 +43,11 @@ export function CollectionTrackList({
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const rows = useCollectionRows(scrollerRef, tracks.length, windowed && scrollable && !onReorder, compact ? 39 : 45,
     context?.navigation.location.surface.scrolls[`tracks:${listKey}`]?.top);
+  const previousOrder = useRef(orderKey);
+  useLayoutEffect(() => {
+    if (previousOrder.current !== orderKey) rows.reset();
+    previousOrder.current = orderKey;
+  }, [orderKey]);
   const pendingDrag = useRef<{ id: string; row: HTMLElement; pointerId: number; x: number; y: number } | null>(null);
   const draggedId = useRef<string | null>(null), dropTarget = useRef<string | null>(null);
   const suppressClick = useRef(false);
@@ -49,11 +58,13 @@ export function CollectionTrackList({
     const current = sort.field === field;
     const next = nextCollectionTrackSort(sort, field);
     const direction = next.direction === "ascending" ? "升序" : "降序";
+    const name = field === "position" ? "原始顺序" : label;
     return <Button variant="ghost" size="sm" className="collection-sort" aria-pressed={current}
+      data-sort-field={field}
       data-collection-focus={"sort:" + listKey + ":" + field}
-      aria-label={current ? label + "，当前" + (sort.direction === "ascending" ? "升序" : "降序") + "，切换为" + direction : "按" + label + direction + "排列"}
+      aria-label={current ? name + "，当前" + (sort.direction === "ascending" ? "升序" : "降序") + "，切换为" + direction : "按" + name + direction + "排列"}
       onClick={() => { onSortChange(next); rows.reset(); }}>
-      {label}{current && (sort.direction === "ascending" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+      {field === "favorite" ? <Heart size={13} fill={current ? "currentColor" : "none"} /> : label}{current && (sort.direction === "ascending" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
     </Button>;
   }
   const pointerDrag = usePinDrag(scrollerRef, {
@@ -103,6 +114,8 @@ export function CollectionTrackList({
     const playing = track.id === activeTrackId;
     const favorite = favoriteTrackIds?.has(track.id) ?? false;
     const duration = track.duration_seconds;
+    const number = numberMode === "album" ? Number.isInteger(track.track_number) && (track.track_number ?? -1) >= 0 ? track.track_number : null
+      : (trackPositions?.get(track.id) ?? index) + 1;
     const artist = context?.index.artistsByName.get(track.artist);
     const album = context?.index.albumByTrackId.get(track.id);
     return (
@@ -146,7 +159,7 @@ export function CollectionTrackList({
           onDoubleClick={() => { if (lastTouchPlayback.current !== track.id) onPlay(track, playbackTracks || tracks); }}
           onKeyDown={(event) => navigate(event, index)}>
           <span className="collection-track-number" aria-label={playing ? "当前曲目" : undefined}>
-            {playing ? <Play size={11} fill="currentColor" /> : String(index + 1).padStart(2, "0")}
+            {playing && numberMode !== "album" && !trackPositions ? <Play size={11} fill="currentColor" /> : number === null ? "—" : String(number).padStart(2, "0")}
           </span>
           <strong>{track.title}</strong>
         </button>
@@ -181,8 +194,9 @@ export function CollectionTrackList({
       data-collection-list={listKey} data-collection-selection={selectedId || undefined}>
       {!compact && (
         <div className="collection-track-head" aria-hidden={onSortChange ? undefined : true}>
-          <span>#</span>{column("歌曲", "title")}{column("艺术家", "artist")}{column("专辑", "album")}
-          {showGenre && column("流派", "genre")}{column("时长", "duration")}<span />
+          {trackPositions ? column("#", "position") : <span>#</span>}{column("歌曲", "title")}{column("艺术家", "artist")}{column("专辑", "album")}
+          {showGenre && column("流派", "genre")}{column("时长", "duration")}
+          <div className="collection-track-head-actions">{hasFavorite && sort && onSortChange && column("喜欢", "favorite")}</div>
         </div>
       )}
       <div ref={scrollerRef} className="collection-track-scroll" role="list" data-collection-scroll={scrollable ? `tracks:${listKey}` : undefined}

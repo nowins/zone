@@ -5,9 +5,10 @@ import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
 import type { KeyboardEvent, MouseEvent } from "react";
 
 export function CollectionAlbumTile({ name, artist, coverPath, index, selected, className = "album-tile", onSelect, onPlay, onContextMenu, focusKey,
-  onDetails, tabIndex, choiceKey, onKeyDown }: {
+  onDetails, tabIndex, choiceKey, onKeyDown, subtitle }: {
   name: string;
   artist: string;
+  subtitle?: string;
   coverPath?: string | null;
   index: number;
   selected?: boolean;
@@ -28,7 +29,7 @@ export function CollectionAlbumTile({ name, artist, coverPath, index, selected, 
         onPointerDown={tiltPressDown} onPointerUp={tiltPressClear}
         onPointerLeave={tiltPressClear} onPointerCancel={tiltPressClear}>
         <Cover artPath={coverPath} label={name} size="large" index={index} />
-        <strong>{name}</strong><span>{artist}</span>
+        <strong>{name}</strong><span>{subtitle ?? artist}</span>
       </button>
       <Button variant="ghost" size="sm" className="album-play" title={`播放 ${name}`} onClick={onPlay} tabIndex={tabIndex}>
         <Play size={16} fill="currentColor" />

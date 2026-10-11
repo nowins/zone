@@ -164,6 +164,40 @@ test("manual reorder, removal, create-and-add and queue save keep other playlist
   assert.deepEqual(playlistApi.playlists.find(p => p.name === "队列快照").trackIds, ["b", "a"]);
   assert.equal(api.selectedPlaylistId, "manual"); assert.deepEqual(played, []);
 });
+
+test("playlist keyboard choices and column sorting preserve stored positions, detail history and the queue", async t => {
+  await mount(t);
+  const indexButton = () => document.querySelector('.playlist-list > button[aria-pressed="true"]');
+  await key(indexButton(), "End");
+  assert.equal(api.selectedPlaylistId, "manual");
+  assert.equal(document.activeElement, indexButton());
+  const original = [...playlistApi.playlists.find(p => p.id === "manual").trackIds];
+  const sortField = field => document.querySelector('.collection-sort[data-sort-field="' + field + '"]');
+  await click(document.querySelector('[data-collection-anchor="b"] .collection-track-main'));
+  await click(sortField("duration"));
+  assert.deepEqual([...document.querySelectorAll(".collection-track-row")].map(row => row.dataset.collectionAnchor), ["a", "b", "d"]);
+  assert.deepEqual([...document.querySelectorAll(".collection-track-number")].map(node => node.textContent), ["03", "02", "01"]);
+  assert.equal(document.querySelector('[data-collection-anchor="b"] .collection-track-main').getAttribute("aria-pressed"), "true");
+  await key(document.querySelector('[data-collection-anchor="b"] .collection-track-main'), "ArrowUp", { altKey: true });
+  assert.deepEqual(playlistApi.playlists.find(p => p.id === "manual").trackIds, original, "display sorting cannot reorder the saved playlist");
+  await click(document.querySelector('[aria-label="查看歌曲 生之响往"]'));
+  await click(document.querySelector(".collection-back"));
+  assert.equal(api.collection.location.browser.playlistSort.manual.field, "duration");
+  assert.equal(document.activeElement.getAttribute("aria-label"), "查看歌曲 生之响往");
+  await click(sortField("position"));
+  assert.deepEqual([...document.querySelectorAll(".collection-track-row")].map(row => row.dataset.collectionAnchor), original);
+  await key(indexButton(), "Home");
+  assert.equal(api.selectedPlaylistId, "now");
+  assert.deepEqual([...document.querySelectorAll(".collection-track-row")].map(row => row.dataset.collectionAnchor), ["b", "a"]);
+  await key(indexButton(), "ArrowDown");
+  assert.equal(api.selectedPlaylistId, "favorites");
+  assert.deepEqual(played, []);
+  await key(indexButton(), "End");
+  await click(sortField("duration"));
+  await click(byText(".playlist-header-actions button", "播放全部"));
+  assert.deepEqual(played.map(source => source.map(track => track.id)), [["a", "b", "d"]], "explicit playback receives the displayed order as a snapshot");
+  assert.deepEqual(playlistApi.playlists.find(p => p.id === "manual").trackIds, original);
+});
 test("metadata switches scope immediately and ignores late responses from another object", async t => {
   const pending = [];
   const metadata = { getContext: payload => new Promise(resolve => pending.push({ title: payload.title, resolve })) };
