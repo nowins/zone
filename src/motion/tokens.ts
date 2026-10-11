@@ -113,6 +113,9 @@ export const BROWSE_MOTION = {
 /** Coarse vertical wheel signals only; fine gestures retain native momentum. */
 export const SCROLL_MOTION = { coarseDelta: 50, linePixels: 32 } as const;
 
+/** Let the pointer settle before offering an album's playback action. */
+export const COLLECTION_MOTION = { albumHoverDelay: 700 } as const;
+
 export const SPRING_PRESETS = {
   // High stiffness, near-critical damping: press rebound.
   snappy: { stiffness: 500, damping: 40, mass: 1 },
@@ -167,6 +170,7 @@ export function applyMotionTokens(root: HTMLElement = document.documentElement):
   style.setProperty("--motion-browse", `${BROWSE_MOTION.duration}ms`);
   style.setProperty("--motion-browse-reveal", `${BROWSE_MOTION.reveal}ms`);
   style.setProperty("--motion-browse-gutter", `${BROWSE_MOTION.drift}px`);
+  style.setProperty("--motion-collection-hover-delay", `${COLLECTION_MOTION.albumHoverDelay}ms`);
   style.setProperty("--motion-feather-scale", `${BROWSE_MOTION.scale}`);
   style.setProperty("--panorama-backdrop-travel", `${PANORAMA_MOTION.backdropTravel}px`);
   for (const name of Object.keys(MOTION_DURATIONS) as MotionDurationName[]) {

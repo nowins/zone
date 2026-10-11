@@ -77,7 +77,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 编辑态通过稳定的 `.quick-pin-surface` 在 240ms 内将选中磁贴放大至 1.05，其余磁贴缩至 0.95、透明度降至 0.52，播客更新角标跟随同一表面。重排／尺寸调整使用 400ms FLIP；拖动中只显示浮起的磁贴，浮层从来源表面的当前缩放与透明度接续浮起。松手及取消均捕获浮层的可见表面矩形和透明度，真实磁贴补偿编辑态居中缩放，从该姿态用 500ms 落位；释放位置采用最后一次指针坐标。再次拖动先捕获当前动画矩形，避免从旧终点重启；键盘焦点仍有独立描边。reduced-motion 下取消位移和缩放，直接落位，保留选中与退暗提示。
 
-其他已登记的当前编排：歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、`TILE_MOTION` 中的 Lumia/Metro 校准组（flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。收藏页 `.album-play` 在封面项悬停或键盘聚焦时用 press 档淡入，无额外等待。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
+其他已登记的当前编排：歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、`TILE_MOTION` 中的 Lumia/Metro 校准组（flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。收藏封面播放／详情动作使用 `COLLECTION_MOTION.albumHoverDelay` 的 700ms 停留判断，随后以 press 档淡入，移出立即隐藏并停止命中。CSS 的延后 `visibility` 在等待期间保持按钮不可见、不可点击，移出取消等待、重入重新计时，不引入组件计时器或逐帧更新。`CollectionAlbumTile` 在键盘聚焦或按键时保持动作可见，直到焦点移出当前专辑，避免 Tab 交接时隐藏下一目标；鼠标选择清除键盘显现状态且不跳过等待。reduced-motion 保留停留判断并取消显隐补间。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
 
 ## 内核 API（`src/motion/`）
 

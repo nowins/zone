@@ -1329,7 +1329,7 @@
   font-size: var(--type-body);
 }
 
-/* Album choices remain separate from their immediate playback actions. */
+/* Album choices remain separate from their playback actions. */
 .collection-album-tile { position: relative; }
 .collection-album-select {
   display: block;
@@ -1350,12 +1350,6 @@
 }
 .collection-album-select > span { margin-top: 3px; }
 .collection-album-tile .album-play:active { transform: scale(0.97); }
-.collection-album-tile:hover .album-play,
-.collection-album-tile:focus-within .album-play {
-  opacity: 1;
-  pointer-events: auto;
-  transition-delay: 0ms;
-}
 .collection-album-tile.selected .cover { outline: none; box-shadow: inset 0 -2px var(--accent); }
 .collection-album-tile.selected .collection-album-select > strong { color: var(--accent); }
 .collection-album-select:focus-visible { outline-offset: -2px; }
