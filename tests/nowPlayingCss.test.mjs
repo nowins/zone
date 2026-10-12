@@ -245,13 +245,14 @@ test("lyrics search metadata can be corrected without rewriting local tags", () 
   assert.ok(lyricsCss.includes(".lyrics-search-metadata-form"));
 });
 
-test("mosaic canvas animates a multi-color field instead of a brightness sweep", () => {
+test("mosaic canvas overlays the recovered point-light field at bounded resolution", () => {
   assert.ok(!mosaicCanvasSource.includes("energyRef"));
   assert.ok(!mosaicCanvasSource.includes("createEnergyTint"));
   assert.ok(!/globalAlpha\s*=\s*[^;\n]*(energy|beatPulse)/.test(mosaicCanvasSource));
   assert.ok(!/brightness\([^)]*(energy|beatPulse)/.test(mosaicCanvasSource));
   assert.ok(mosaicCanvasSource.includes("createMosaicColorFieldSampler"));
-  assert.ok(mosaicCanvasSource.includes('globalCompositeOperation = "color"'));
+  assert.ok(mosaicCanvasSource.includes('globalCompositeOperation = "overlay"'));
+  assert.ok(mosaicCanvasSource.includes('createMosaicColorFieldSampler(palette, sceneSeconds, width, height)'));
   assert.ok(!mosaicCanvasSource.includes("createMosaicColorSweep"));
   assert.ok(!mosaicCanvasSource.includes("sepia(0.66)"));
 });

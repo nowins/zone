@@ -5,6 +5,7 @@ import type { AlbumGroup, Track } from "../types";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { buildNowPlayingWall } from "../utils/nowPlayingWall";
 import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
+import { drawProjectedMosaicImage, projectMosaicPoint } from "../utils/mosaicProjection";
 import {
   buildCanvasMosaicTiles,
   advanceMosaicArtwork,
@@ -26,6 +27,7 @@ import {
 
 const imageReadyListeners = new Set<() => void>();
 const imageCache = new Map<string, HTMLCanvasElement>();
+const turnSurfaces = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
 const pendingImageLoads = new Map<string, Promise<HTMLCanvasElement | null>>();
 const MAX_IMAGE_CACHE = 96;
 const MAX_WALL_IMAGE_EDGE = 384;
@@ -419,12 +421,11 @@ function drawMosaicColorField(
   if (!renderer) return;
 
   if (frameTime - renderer.lastUpdateAt >= COLOR_FIELD_FRAME_INTERVAL_MS) {
-    // The field is intentionally low resolution: bilinear upscaling turns the
-    // sampled warp into broad gradients and keeps per-frame work bounded.
+    // Smooth low-resolution point lighting keeps per-frame work bounded.
     const { data } = renderer.imageData;
     const fieldWidth = renderer.canvas.width;
     const fieldHeight = renderer.canvas.height;
-    const sampleColor = createMosaicColorFieldSampler(palette, sceneSeconds);
+    const sampleColor = createMosaicColorFieldSampler(palette, sceneSeconds, width, height);
     for (let row = 0; row < fieldHeight; row += 1) {
       const y = (row + 0.5) / fieldHeight;
       for (let column = 0; column < fieldWidth; column += 1) {
@@ -442,9 +443,8 @@ function drawMosaicColorField(
   }
 
   context.save();
-  // Color blending preserves the cover wall's luminance. Motion therefore
-  // reads as migrating color, not as a spotlight getting brighter and dimmer.
-  context.globalCompositeOperation = "color";
+  // The shipped BlendedLightGraphic overlays the lit field onto its destination.
+  context.globalCompositeOperation = "overlay";
   context.globalAlpha *= 0.92;
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
@@ -483,7 +483,6 @@ function drawTile(
 ) {
   const isFlipping = flip !== null && flip.progress >= 0 && flip.progress <= 1;
   const turn = mosaicFlipFrame(isFlipping ? flip.progress * NOW_PLAYING_MOTION.mosaicTurnFade : 0);
-  const easedFlip = isFlipping ? turn.rotation : 0;
   const album = albums[tile.albumIndex];
   const candidate = album?.coverPath ? imageCache.get(album.coverPath) ?? null : null;
   // A turn owns two decoded surfaces. Pool replacement dissolves belong to
@@ -492,21 +491,29 @@ function drawTile(
     motionEnabled ? NOW_PLAYING_MOTION.mosaicReplace : 0,
     motionEnabled ? tile.seed * NOW_PLAYING_MOTION.mosaicReplaceStagger : 0);
   const image = isFlipping ? (turn.back ? flip.artwork.back : flip.artwork.front) : artwork.image;
-  const flipScale = isFlipping ? turn.scaleX : 1;
-  const flipForeshorten = isFlipping ? 1 - Math.sin(easedFlip * Math.PI) * 0.07 : 1;
-  const flipShade = isFlipping ? Math.sin(easedFlip * Math.PI) * 0.5 : 0;
-  const centerX = tile.x + tile.width / 2;
-  const centerY = tile.y + tile.height / 2;
-  const perspectiveOffset = isFlipping
-    ? flip.direction * Math.sin(easedFlip * Math.PI) * tile.height * 0.028
-    : 0;
-
   context.save();
-  context.translate(centerX + perspectiveOffset, centerY);
-  context.scale(flipScale, flipForeshorten);
-  context.translate(-centerX, -centerY);
   context.beginPath();
   context.rect(tile.x, tile.y, tile.width - 1, tile.height - 1);
+  if (isFlipping && turn.scaleX < 0.999) {
+    const angle = turn.angle * flip.direction;
+    const corners = [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => {
+      const point = projectMosaicPoint(tile.width - 1, tile.height - 1, angle, u, v);
+      return { x: tile.x + point.x, y: tile.y + point.y };
+    });
+    context.beginPath();
+    context.moveTo(corners[0].x, corners[0].y);
+    corners.slice(1).forEach(point => context.lineTo(point.x, point.y));
+    context.closePath();
+    context.clip();
+    context.fillStyle = "#171717";
+    context.fill();
+    if (image) {
+      context.globalAlpha *= turn.alpha;
+      drawProjectedMosaicImage(context, getTurnSurface(image), tile.x, tile.y, tile.width - 1, tile.height - 1, angle);
+    }
+    context.restore();
+    return;
+  }
   context.clip();
   context.fillStyle = "#171717";
   context.fillRect(tile.x, tile.y, tile.width, tile.height);
@@ -523,21 +530,28 @@ function drawTile(
   }
 
   context.globalCompositeOperation = "source-over";
-  context.fillStyle = `rgba(0, 0, 0, ${0.12 + flipShade})`;
+  context.fillStyle = "rgba(0, 0, 0, 0.12)";
   context.fillRect(tile.x, tile.y, tile.width, tile.height);
-  if (isFlipping) {
-    const sweepX = tile.x + tile.width * (0.08 + easedFlip * 0.84);
-    const highlight = context.createLinearGradient(sweepX - tile.width * 0.1, 0, sweepX + tile.width * 0.1, 0);
-    highlight.addColorStop(0, "rgba(255, 255, 255, 0)");
-    highlight.addColorStop(0.5, `rgba(255, 255, 255, ${0.08 + flipShade * 0.3})`);
-    highlight.addColorStop(1, "rgba(255, 255, 255, 0)");
-    context.fillStyle = highlight;
-    context.fillRect(tile.x, tile.y, tile.width, tile.height);
-  }
   context.strokeStyle = "rgba(0, 0, 0, 0.82)";
   context.lineWidth = 1;
   context.strokeRect(tile.x + 0.5, tile.y + 0.5, tile.width - 1, tile.height - 1);
   context.restore();
+}
+
+function getTurnSurface(image: HTMLCanvasElement) {
+  const cached = turnSurfaces.get(image);
+  if (cached) return cached;
+  const surface = document.createElement("canvas");
+  surface.width = surface.height = Math.min(MAX_WALL_IMAGE_EDGE, Math.max(image.width, image.height));
+  const context = surface.getContext("2d");
+  if (!context) return image;
+  context.filter = "grayscale(0.92) saturate(0.38) brightness(0.5) contrast(1.1)";
+  drawImageCover(context, image, 0, 0, surface.width, surface.height);
+  context.filter = "none";
+  context.fillStyle = "rgba(0, 0, 0, 0.12)";
+  context.fillRect(0, 0, surface.width, surface.height);
+  turnSurfaces.set(image, surface);
+  return surface;
 }
 
 function drawImageCover(context: CanvasRenderingContext2D, image: HTMLCanvasElement, x: number, y: number, width: number, height: number) {

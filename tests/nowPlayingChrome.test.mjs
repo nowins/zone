@@ -14,7 +14,8 @@ bootstrap.window.close();
 
 // Isolate media/network leaves while exercising the real view, queue and controls.
 const leaves = {
-  NowPlayingMosaicCanvas: `import React, {useEffect} from 'react'; export function NowPlayingMosaicCanvas({onInitialRevealStart}) { useEffect(onInitialRevealStart, [onInitialRevealStart]); return React.createElement('canvas'); }`,
+  NowPlayingMosaicCanvas: `import React, {useEffect} from 'react'; export function NowPlayingMosaicCanvas({onInitialRevealStart,isPlaying}) { useEffect(onInitialRevealStart, [onInitialRevealStart]); return React.createElement('canvas', {'data-mosaic-playing':String(isPlaying)}); }`,
+  NowPlayingArtistCanvas: `import React,{useEffect} from 'react'; export function NowPlayingArtistCanvas({onOpaqueChange}) { useEffect(()=>{window.artistOpaqueChange=onOpaqueChange;return()=>{delete window.artistOpaqueChange;};},[onOpaqueChange]); return React.createElement('canvas'); }`,
   AudioGlowCanvas: "export function AudioGlowCanvas() { return null; }",
   Cover: `import React from 'react'; export function Cover() { return React.createElement('div', {className:'mini-cover'}); }`,
   LyricsStage: "export function LyricsStage() { return null; }",
@@ -25,7 +26,7 @@ await build({ stdin: { contents: `export { NowPlayingView } from './src/views/No
 export { NOW_PLAYING_MOTION } from './src/motion/tokens';`, loader: "ts", resolveDir: process.cwd() }, outfile: ".tmp/now-chrome-tests/view.js",
   bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent",
   plugins: [{ name: "media-leaves", setup(build) {
-    build.onResolve({ filter: /\/(NowPlayingMosaicCanvas|AudioGlowCanvas|Cover|LyricsStage|useLyrics|useNowPlayingFullscreen)$/ }, args => ({ path: args.path.split("/").at(-1), namespace: "media-leaf" }));
+    build.onResolve({ filter: /\/(NowPlayingMosaicCanvas|NowPlayingArtistCanvas|AudioGlowCanvas|Cover|LyricsStage|useLyrics|useNowPlayingFullscreen)$/ }, args => ({ path: args.path.split("/").at(-1), namespace: "media-leaf" }));
     build.onLoad({ filter: /.*/, namespace: "media-leaf" }, args => ({ contents: leaves[args.path], resolveDir: process.cwd() }));
   } }],
 });
@@ -72,6 +73,19 @@ async function fixture(queue = tracks, { settle = true } = {}) {
     async close() { await act(() => root.unmount()); assert.equal(timers.size, 0, "unmount clears idle and entrance timers"); assert.deepEqual(errors, []); dom.window.close(); },
   };
 }
+
+test("an opaque artist photo sleeps the covered mosaic while preserving music and chrome state", async () => {
+  const env = await fixture();
+  try {
+    assert.equal(document.querySelector('[data-mosaic-playing]').dataset.mosaicPlaying, "true");
+    await act(() => window.artistOpaqueChange(true));
+    assert.equal(document.querySelector('[data-mosaic-playing]').dataset.mosaicPlaying, "false");
+    assert.equal(env.stage().classList.contains("wall-playing"), true);
+    assert.deepEqual(env.played, []);
+    await act(() => window.artistOpaqueChange(false));
+    assert.equal(document.querySelector('[data-mosaic-playing]').dataset.mosaicPlaying, "true");
+  } finally { await env.close(); }
+});
 
 test("the delayed track card completes before the idle countdown starts", async () => {
   const env = await fixture(tracks, { settle: false });

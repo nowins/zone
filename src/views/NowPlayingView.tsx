@@ -8,6 +8,7 @@ import { AudioGlowCanvas } from "../components/AudioGlowCanvas";
 import { Cover } from "../components/Cover";
 import { LyricsStage } from "../components/LyricsStage";
 import { NowPlayingMosaicCanvas } from "../components/NowPlayingMosaicCanvas";
+import { NowPlayingArtistCanvas } from "../components/NowPlayingArtistCanvas";
 import { PlaybackProgress } from "../components/PlaybackProgress";
 import { TransportControls, VolumeControl } from "../components/TransportControls";
 import { useLyrics } from "../hooks/useLyrics";
@@ -80,6 +81,7 @@ export function NowPlayingView({
   const [surfaceMode, setSurfaceMode] = useState<"ambient" | "lyrics">("ambient");
   const [keyboardSurfaceChange, setKeyboardSurfaceChange] = useState(false);
   const [wallRevealStarted, setWallRevealStarted] = useState(false);
+  const [artistOpaque, setArtistOpaque] = useState(false);
   const isEntering = !useEntranceCompletion(wallRevealStarted, STAGE_ENTRANCE_MS);
   const [flipCoverActive, setFlipCoverActive] = useState(false);
   const [queueVisible, setQueueVisible] = useState(true);
@@ -344,9 +346,10 @@ export function NowPlayingView({
         tracks={tracks}
         activeTrack={track}
         queue={queue}
-        isPlaying={isPlaying}
+        isPlaying={isPlaying && !artistOpaque}
         onInitialRevealStart={handleInitialWallRevealStart}
       />
+      <NowPlayingArtistCanvas tracks={tracks} activeTrack={track} isPlaying={isPlaying} onOpaqueChange={setArtistOpaque} />
       <div className="now-canvas-grade" />
       <LyricsStage
         document={lyrics.document}

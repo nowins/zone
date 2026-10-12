@@ -51,6 +51,7 @@ test("rapid track changes wait for the captured back face to land before replaci
     await fixture.render({ active: 2 });
     const landed = fixture.finishTurn(turn, back);
     assert.equal(landed[0].cover, back, "the landing frame retains the cover seen during the turn");
+    await fixture.render({ playing: false });
     const settled = fixture.step(1600).filter(draw => draw.slot === turn.slot);
     fixture.step(1600);
     assert.ok(settled.length > 0, "the replacement pool retains decoded artwork");
@@ -182,7 +183,9 @@ async function createWallFixture({ pending = [] } = {}) {
       globalAlpha: 1,
       save() { stack.push([this.globalAlpha, slot, scaleX]); },
       restore() { [this.globalAlpha, slot, scaleX] = stack.pop(); },
-      setTransform() {}, translate() {}, clearRect() {}, fillRect() {}, beginPath() {}, clip() {}, strokeRect() {},
+      setTransform() {}, translate() {}, clearRect() { canvas.projectedScaleX = 1; }, fillRect() {}, beginPath() {}, clip() {}, strokeRect() {},
+      fill() {}, moveTo() {}, lineTo() {}, closePath() {},
+      transform(a, b, c, d) { scaleX = Math.abs(a / d); },
       scale(x, y) { scaleX = x / y; },
       rect(x, y, width, height) { slot = `${x},${y},${width},${height}`; },
       createLinearGradient() { return gradient; }, createRadialGradient() { return gradient; },
@@ -191,8 +194,12 @@ async function createWallFixture({ pending = [] } = {}) {
       getImageData() { return { data: new Uint8ClampedArray(48 * 48 * 4) }; },
       drawImage(image) {
         if (image instanceof globalThis.Image) canvas.cover = image.src;
+        else if (canvas.className !== "now-mosaic-canvas" && image.cover) {
+          canvas.cover = image.cover;
+          canvas.projectedScaleX = Math.min(canvas.projectedScaleX ?? 1, scaleX);
+        }
         else if (canvas.className === "now-mosaic-canvas" && image.cover) {
-          draws.push({ slot, cover: image.cover, alpha: this.globalAlpha, scaleX });
+          draws.push({ slot, cover: image.cover, alpha: this.globalAlpha, scaleX: image.projectedScaleX ?? scaleX });
         }
       },
     };
@@ -216,7 +223,16 @@ async function createWallFixture({ pending = [] } = {}) {
     const pending = [...frames.values()];
     frames.clear();
     pending.forEach(callback => callback(now));
-    return draws;
+    // A projected face is textured by sixteen triangles. Retain distinct faces
+    // and alpha values so duplicate triangles cannot hide a second cover.
+    const faces = new Map();
+    for (const draw of draws) {
+      const key = `${draw.slot}\0${draw.cover}\0${draw.alpha}`;
+      const face = faces.get(key);
+      if (face) { face.scaleX = Math.min(face.scaleX, draw.scaleX); face.triangles++; }
+      else faces.set(key, { ...draw, triangles: 1 });
+    }
+    return [...faces.values()];
   };
   return {
     step, render, frameCount: () => frames.size,

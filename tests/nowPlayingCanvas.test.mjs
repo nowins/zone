@@ -78,7 +78,7 @@ test("cover sampling produces a restrained multi-color Zune field palette", () =
   assert.ok(palette.every((color) => relativeLuminance(color) < 0.19), "field colors should stay dark enough for Zune");
 });
 
-test("mosaic color field changes its gradient direction and color distribution over time", () => {
+test("mosaic point lights follow the recovered paths and change local colors over time", () => {
   const palette = createMosaicColorPalette(
     { r: 36, g: 110, b: 188 },
     [{ r: 26, g: 92, b: 188 }, { r: 38, g: 170, b: 102 }],
@@ -89,7 +89,9 @@ test("mosaic color field changes its gradient direction and color distribution o
   const firstColors = positions.map(([x, y]) => sampleMosaicColorField(palette, 0, x, y));
   const laterColors = positions.map(([x, y]) => sampleMosaicColorField(palette, 12, x, y));
 
-  assert.ok(Math.abs(firstMotion.angle - laterMotion.angle) > 0.35, "gradient direction should visibly turn");
+  assert.deepEqual(firstMotion.highlight1, [0.5, 0]);
+  assert.deepEqual(firstMotion.highlight2, [0.1, 1]);
+  assert.ok(laterMotion.highlight1[0] > firstMotion.highlight1[0], "the upper light moves toward its next stop");
   assert.notDeepEqual(firstColors, laterColors, "the same screen positions should receive different colors over time");
   assert.ok(colorDistance(firstColors[0], firstColors[2]) > 35, "one frame should contain distinct color regions");
 });

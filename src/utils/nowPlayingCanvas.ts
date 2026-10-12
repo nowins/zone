@@ -1,6 +1,8 @@
 import type { AlbumGroup } from "../types";
 import { clamp, smoothstep } from "../motion/math.js";
 import { NOW_PLAYING_MOTION } from "../motion/tokens.js";
+import { createMosaicLightingSampler } from "./mosaicLighting.js";
+export { createMosaicColorFieldMotion } from "./mosaicLighting.js";
 
 export type RgbColor = {
   r: number;
@@ -14,13 +16,6 @@ export type MosaicColorPalette = [
   RgbColor,
   RgbColor,
 ];
-
-export type MosaicColorFieldMotion = {
-  angle: number;
-  offsetX: number;
-  offsetY: number;
-  bend: number;
-};
 
 export type MosaicTile = {
   id: string;
@@ -136,17 +131,20 @@ export function mosaicTileRevealAmount(seed: number, elapsedMs: number, motionEn
   return 1 - (1 - progress) ** 3;
 }
 
-/** A Y-axis turn with an independently timed back-face alpha tail.
- * Canvas foreshortening approximates the native renderer's perspective. */
+/** Two Y-axis keyframe segments and a separately timed back-face alpha tail.
+ * Cubic ordinate handles (1, 1) reconstruct the shipped BezierSmooth intent. */
 export function mosaicFlipFrame(elapsedMs: number) {
-  const progress = clamp(elapsedMs / NOW_PLAYING_MOTION.mosaicTurn, 0, 1);
-  const eased = progress < 0.5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
-  const back = progress >= 0.5;
+  const half = NOW_PLAYING_MOTION.mosaicTurn / 2;
+  const back = elapsedMs >= half;
+  const amount = easeMosaicBezier(clamp((elapsedMs - (back ? half : 0)) / half, 0, 1));
+  const angle = (back ? amount - 1 : amount) * Math.PI / 2;
   const alpha = back
-    ? smoothstep(NOW_PLAYING_MOTION.mosaicTurn / 2, NOW_PLAYING_MOTION.mosaicTurnFade, elapsedMs)
-    : 1 - smoothstep(0, NOW_PLAYING_MOTION.mosaicTurn / 2, elapsedMs);
-  return { back, alpha, rotation: eased, scaleX: Math.max(0.02, Math.abs(Math.cos(eased * Math.PI))) };
+    ? easeMosaicBezier(clamp((elapsedMs - half) / (NOW_PLAYING_MOTION.mosaicTurnFade - half), 0, 1))
+    : 1 - amount;
+  return { back, alpha, angle, rotation: (back ? 1 + amount : amount) / 2, scaleX: Math.max(0.02, Math.cos(angle)) };
 }
+
+function easeMosaicBezier(progress: number) { return 1 - (1 - progress) ** 3; }
 
 export function extractMosaicColorPalette(data: Uint8ClampedArray): MosaicColorPalette {
   const baseColor = averageImageColor(data);
@@ -218,22 +216,6 @@ export function interpolateMosaicColorPalette(
   return from.map((color, index) => lerpRgb(color, to[index], progress)) as MosaicColorPalette;
 }
 
-export function createMosaicColorFieldMotion(timeSeconds: number): MosaicColorFieldMotion {
-  return {
-    angle:
-      -0.75
-      + timeSeconds * 0.09
-      + Math.sin(timeSeconds * 0.17) * 0.35,
-    offsetX:
-      Math.sin(timeSeconds * 0.11 + 0.2) * 0.22
-      + Math.sin(timeSeconds * 0.031 + 2.1) * 0.07,
-    offsetY:
-      Math.cos(timeSeconds * 0.083 + 1.1) * 0.18
-      + Math.sin(timeSeconds * 0.027 + 0.4) * 0.06,
-    bend: 0.15 + Math.sin(timeSeconds * 0.12 + 2.3) * 0.065,
-  };
-}
-
 export function sampleMosaicColorField(
   palette: MosaicColorPalette,
   timeSeconds: number,
@@ -246,9 +228,10 @@ export function sampleMosaicColorField(
 export function createMosaicColorFieldSampler(
   palette: MosaicColorPalette,
   timeSeconds: number,
+  width = 1180,
+  height = 760,
 ) {
-  const motion = createMosaicColorFieldMotion(timeSeconds);
-  return (x: number, y: number) => sampleMosaicColorFieldRgb(palette, motion, timeSeconds, x, y);
+  return createMosaicLightingSampler(palette, timeSeconds, width, height);
 }
 
 export function createMosaicFlipState(): MosaicFlipState {
@@ -287,7 +270,7 @@ export function updateMosaicFlipState(
     return state;
   }
 
-  if (state.tileIndex >= 0 && time - state.startedAt > state.duration) {
+  if (state.tileIndex >= 0 && time - state.startedAt >= state.duration) {
     const completedTile = tiles[state.tileIndex];
     if (completedTile) completedTile.albumIndex = state.toAlbumIndex;
     state.tileIndex = -1;
@@ -354,38 +337,6 @@ export function averageImageColor(data: Uint8ClampedArray): RgbColor {
   return count > 0
     ? { r: r / count, g: g / count, b: b / count }
     : ZUNE_BASE;
-}
-
-function sampleMosaicColorFieldRgb(
-  palette: MosaicColorPalette,
-  motion: MosaicColorFieldMotion,
-  timeSeconds: number,
-  x: number,
-  y: number,
-) {
-  const centeredX = x - 0.5 + motion.offsetX;
-  const centeredY = y - 0.5 + motion.offsetY;
-  const cosine = Math.cos(motion.angle);
-  const sine = Math.sin(motion.angle);
-  const rotatedX = centeredX * cosine - centeredY * sine;
-  const rotatedY = centeredX * sine + centeredY * cosine;
-  const warpX =
-    rotatedX
-    + Math.sin(rotatedY * 5.2 + timeSeconds * 0.17) * motion.bend
-    + Math.sin((rotatedX + rotatedY) * 3.1 - timeSeconds * 0.11) * 0.045;
-  const warpY =
-    rotatedY
-    + Math.sin(rotatedX * 4.4 - timeSeconds * 0.13) * motion.bend * 0.72
-    + Math.cos((rotatedX - rotatedY) * 2.7 + timeSeconds * 0.09) * 0.04;
-  const horizontal = smoothstep(-0.52, 0.52, warpX);
-  const vertical = smoothstep(-0.48, 0.5, warpY);
-  // Nested shortest-arc hue interpolation changes direction at 180 degrees.
-  // That branch cut produced a moving seam, especially during palette entry.
-  // Cartesian interpolation stays continuous over both space and palette time;
-  // the renderer's color blend still preserves the artwork's luminance.
-  const upper = lerpRgb(palette[0], palette[1], horizontal);
-  const lower = lerpRgb(palette[2], palette[3], 1 - horizontal);
-  return lerpRgb(upper, lower, vertical);
 }
 
 function selectFlipTile(tiles: MosaicTile[], time: number, lastTileIndex: number,
