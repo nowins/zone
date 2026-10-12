@@ -1,41 +1,13 @@
 import type { AlbumGroup, Track } from "../types";
 import { albumKey } from "./music.js";
 
-export type WallTilePattern = {
-  columns: number;
-  rows: number;
-};
+export const NOW_PLAYING_WALL_TILE_COUNT = 20;
 
-export const NOW_PLAYING_WALL_TILE_COUNT = 96;
-
-export const WALL_TILE_PATTERN: WallTilePattern[] = [
-  { columns: 3, rows: 2 },
-  { columns: 2, rows: 1 },
-  { columns: 1, rows: 1 },
-  { columns: 2, rows: 3 },
-  { columns: 1, rows: 2 },
-  { columns: 4, rows: 3 },
-  { columns: 3, rows: 2 },
-  { columns: 1, rows: 1 },
-  { columns: 2, rows: 2 },
-  { columns: 3, rows: 1 },
-  { columns: 2, rows: 3 },
-  { columns: 1, rows: 1 },
-  { columns: 1, rows: 2 },
-  { columns: 2, rows: 1 },
-  { columns: 3, rows: 2 },
-  { columns: 1, rows: 1 },
-  { columns: 4, rows: 2 },
-  { columns: 2, rows: 2 },
-];
-
-export function wallTilePatternForIndex(index: number) {
-  return WALL_TILE_PATTERN[index % WALL_TILE_PATTERN.length];
-}
-
-export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
+export function buildNowPlayingWall(tracks: Track[], active: Track | null, queue: Track[] = []) {
   const albumMap = new Map<string, AlbumGroup>();
-  for (const item of tracks) {
+  const addedTrackIds = new Set<string>();
+  const queueWindow = queue.slice(0, NOW_PLAYING_WALL_TILE_COUNT);
+  for (const item of [...tracks, ...queueWindow, ...(active ? [active] : [])]) {
     const key = albumKey(item.album, item.album_artist ?? item.artist);
     if (!albumMap.has(key)) {
       albumMap.set(key, {
@@ -45,31 +17,31 @@ export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
         tracks: [item],
         coverPath: item.cover_path,
       });
+      addedTrackIds.add(item.id);
       continue;
     }
 
     const album = albumMap.get(key)!;
-    album.tracks.push(item);
+    if (!addedTrackIds.has(item.id)) {
+      album.tracks.push(item);
+      addedTrackIds.add(item.id);
+    }
     if (!album.coverPath && item.cover_path) album.coverPath = item.cover_path;
   }
 
   const activeArtist = (active?.album_artist ?? active?.artist)?.trim().toLocaleLowerCase();
   const albums = Array.from(albumMap.values()).filter((album) => album.coverPath);
-  const artistAlbums = activeArtist
-    ? albums.filter((album) => album.artist.trim().toLocaleLowerCase() === activeArtist)
-    : [];
-  const otherAlbums = activeArtist
-    ? albums.filter((album) => album.artist.trim().toLocaleLowerCase() !== activeArtist)
-    : albums;
-
-  // Enriched artist photos join the collage next to album covers; the active
-  // track's own images lead, then other tracks credited to the same artist.
+  const activeAlbumKey = active ? albumKey(active.album, active.album_artist ?? active.artist) : null;
+  // An album's canonical library order owns photo selection, so changing songs
+  // within that album does not remap the wall's decoded surfaces.
   const artistImagePaths: string[] = [];
   const seenArtistImages = new Set<string>();
   if (activeArtist) {
-    const relatedFirst = active
-      ? [active, ...tracks.filter((track) => track.id !== active.id)]
-      : tracks;
+    const relatedFirst = [
+      ...(activeAlbumKey ? albumMap.get(activeAlbumKey)?.tracks ?? [] : []),
+      ...tracks,
+      ...(active ? [active] : []),
+    ];
     for (const track of relatedFirst) {
       const credited = [track.artist, track.album_artist]
         .some((name) => name?.trim().toLocaleLowerCase() === activeArtist);
@@ -89,46 +61,59 @@ export function buildNowPlayingWall(tracks: Track[], active: Track | null) {
     }
   }
   const artistName = (active?.album_artist ?? active?.artist)?.trim() || "艺术家";
-  const artistEntries: AlbumGroup[] = artistImagePaths.map((path, index) => ({
-    key: `artist-image:${activeArtist ?? "unknown"}:${index}`,
+  const artistEntries: AlbumGroup[] = artistImagePaths.sort().map(path => ({
+    key: `artist-image:${activeArtist ?? "unknown"}:${path}`,
     album: artistName,
     artist: artistName,
     tracks: [],
     coverPath: path,
   }));
 
-  // Prefer active artist covers and photos, then fill with other albums that
-  // actually have art. Photos carry a quadruple weight (double the artist
-  // albums') so they stay visible in large libraries instead of drowning out.
-  const coveredOthers = otherAlbums.filter((album) => Boolean(album.coverPath));
-  const weightedAlbums = [
-    ...artistAlbums,
-    ...artistAlbums,
-    ...artistEntries,
-    ...artistEntries,
-    ...artistEntries,
-    ...artistEntries,
-    ...coveredOthers,
-  ];
+  // Zune fills a bounded pool from the queue before library albums. Reserve
+  // at most four slots for Zone's existing artist-photo enrichment.
+  const selected: AlbumGroup[] = [];
+  const selectedKeys = new Set<string>();
+  const albumLimit = NOW_PLAYING_WALL_TILE_COUNT - artistEntries.length;
+  const addAlbum = (key: string | null) => {
+    if (!key || selected.length >= albumLimit || selectedKeys.has(key)) return;
+    const album = albumMap.get(key);
+    if (!album?.coverPath) return;
+    selectedKeys.add(key);
+    selected.push(album);
+  };
+  addAlbum(activeAlbumKey);
+  for (const item of queueWindow) addAlbum(albumKey(item.album, item.album_artist ?? item.artist));
+  for (const album of albums) addAlbum(album.key);
+  selected.push(...artistEntries);
 
-  if (active?.cover_path) {
-    const activeAlbum = {
-      key: albumKey(active.album, active.album_artist ?? active.artist),
-      album: active.album,
-      artist: active.album_artist ?? active.artist,
-      tracks: [active],
-      coverPath: active.cover_path,
-    };
-    weightedAlbums.unshift(activeAlbum, activeAlbum);
-  }
-
-  const source = weightedAlbums.length > 0
-    ? weightedAlbums
+  const source = selected.length > 0
+    ? selected
     : [{ key: "zone", album: "Zone", artist: "Zone", tracks: [], coverPath: null }];
-  return Array.from(
+  const pool = Array.from(
     { length: NOW_PLAYING_WALL_TILE_COUNT },
-    (_, index) => source[(index * 7 + Math.floor(index / 5)) % source.length],
+    (_, index) => source[index % source.length],
   );
+  return shuffleWallPool(pool);
+}
+
+function shuffleWallPool(pool: AlbumGroup[]) {
+  // A deterministic Fisher-Yates shuffle keeps playback progress and same-album
+  // song changes from rebuilding the wall while avoiding queue-order rows.
+  let seed = 2166136261;
+  for (const entry of pool) {
+    const identity = `${entry.key}\0${entry.coverPath ?? ""}\0`;
+    for (let index = 0; index < identity.length; index += 1) {
+      seed = Math.imul(seed ^ identity.charCodeAt(index), 16777619) >>> 0;
+    }
+  }
+  for (let index = pool.length - 1; index > 0; index -= 1) {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    const target = (seed >>> 0) % (index + 1);
+    [pool[index], pool[target]] = [pool[target], pool[index]];
+  }
+  return pool;
 }
 
 

@@ -25,7 +25,7 @@ const lyricsCss = readFileSync("src/styles/lyrics.css", "utf8");
 test("now playing visual layers are canvas based", () => {
   assert.ok(nowPlayingView.includes("<NowPlayingMosaicCanvas"));
   assert.ok(nowPlayingView.includes("<AudioGlowCanvas"));
-  assert.ok(mosaicCanvasSource.includes("getVisualizerFrame"), "mosaic canvas should pull frames from the visualizer bus");
+  assert.ok(!mosaicCanvasSource.includes("getVisualizerFrame"), "ambient cover turns stay independent of audio frequency input");
   assert.ok(audioGlowCanvasSource.includes("getVisualizerFrame"), "glow canvas should pull frames from the visualizer bus");
   assert.ok(!nowPlayingView.includes("beatPulse={beatPulse}"), "per-frame beat props should not flow through React");
   assert.ok(!nowPlayingView.includes("onsetStrength={onsetStrength}"), "per-frame beat props should not flow through React");

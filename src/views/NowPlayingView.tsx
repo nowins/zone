@@ -343,6 +343,7 @@ export function NowPlayingView({
       <NowPlayingMosaicCanvas
         tracks={tracks}
         activeTrack={track}
+        queue={queue}
         isPlaying={isPlaying}
         onInitialRevealStart={handleInitialWallRevealStart}
       />

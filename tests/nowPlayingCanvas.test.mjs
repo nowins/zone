@@ -10,6 +10,8 @@ import {
   createMosaicMotion,
   interpolateMosaicColorPalette,
   mosaicTileRevealAmount,
+  mosaicFlipFrame,
+  MOSAIC_BLOCK_CELLS,
   relativeLuminance,
   sampleMosaicColorField,
   updateMosaicFlipState,
@@ -158,10 +160,12 @@ test("mosaic wall breathes across useful distances without exposing its edges", 
   }
 });
 
-test("mosaic entry pops tiles in one by one in a brisk non-sequential cascade", () => {
-  assert.ok(mosaicTileRevealAmount(0.05, 150) > 0, "an early random tile should already be visible");
-  assert.equal(mosaicTileRevealAmount(0.95, 150), 0, "a later random tile should still be hidden");
-  assert.equal(mosaicTileRevealAmount(0.95, 900), 1, "the full wall should settle briskly");
+test("mosaic entry uses the recovered 200–1300ms random delay and 400ms reveal", () => {
+  assert.equal(mosaicTileRevealAmount(0, 200), 0);
+  assert.ok(mosaicTileRevealAmount(0.05, 400) > 0, "an early random tile should already be visible");
+  assert.equal(mosaicTileRevealAmount(0.95, 400), 0, "a later random tile should still be hidden");
+  assert.equal(mosaicTileRevealAmount(1, 1699) < 1, true);
+  assert.equal(mosaicTileRevealAmount(1, 1700), 1, "the final delay slice completes after 1700ms");
   assert.equal(mosaicTileRevealAmount(0.95, 0, false), 1, "reduced motion should reveal the wall immediately");
 });
 
@@ -184,7 +188,7 @@ test("mosaic flip scheduler is global, frequent, and commits the live tile back 
   });
 
   assert.equal(state.tileIndex, -1);
-  assert.ok(state.nextAt >= 2_800 && state.nextAt <= 4_800, `initial flip should be scheduled soon, got ${state.nextAt}`);
+  assert.equal(state.nextAt, 4_700, "entry completes before the first ambient interval");
 
   updateMosaicFlipState(state, tiles, {
     isPlaying: true,
@@ -198,9 +202,9 @@ test("mosaic flip scheduler is global, frequent, and commits the live tile back 
   assert.ok(state.tileIndex >= 0, "low beat confidence should still allow a scheduled flip");
   const flippedTileIndex = state.tileIndex;
   assert.ok(tiles[state.tileIndex].width === tiles[state.tileIndex].height, "flipped tile should be square");
-  assert.ok(tiles[state.tileIndex].width >= 104, "scheduler should prefer medium or large tiles");
-  assert.ok(state.duration >= 560 && state.duration <= 720, `flip duration should feel like a live tile turn, got ${state.duration}`);
-  assert.ok(state.nextAt >= state.startedAt + 5_200 && state.nextAt <= state.startedAt + 10_000, "next flip should arrive within a useful rhythm");
+  assert.ok(tiles[state.tileIndex].width >= 70, "all visible square sizes may turn");
+  assert.equal(state.duration, 2800, "a turn owns its back-face fade tail");
+  assert.equal(state.nextAt, state.startedAt + state.duration + 2000, "turns stay serial with a two-second rest");
   assert.notEqual(state.fromAlbumIndex, state.toAlbumIndex, "the back face should use a different album");
   assert.notEqual(albums[state.fromAlbumIndex].coverPath, albums[state.toAlbumIndex].coverPath, "the live tile should visibly change artwork");
 
@@ -218,7 +222,7 @@ test("mosaic flip scheduler is global, frequent, and commits the live tile back 
   assert.equal(tiles[flippedTileIndex].albumIndex, committedAlbumIndex, "the back face must remain as the new front face");
 });
 
-test("mosaic flip waits briefly for a confident beat but never disappears", () => {
+test("ambient cover turns follow their own clock regardless of a confident beat", () => {
   const albums = [makeAlbum("a", "One", "Artist"), makeAlbum("b", "Two", "Artist")];
   const tiles = buildCanvasMosaicTiles(1280, 720, albums);
   const state = createMosaicFlipState();
@@ -233,7 +237,8 @@ test("mosaic flip waits briefly for a confident beat but never disappears", () =
     albums,
     time: 10_200,
   });
-  assert.equal(state.tileIndex, -1, "high-confidence grid should wait briefly for a beat");
+  assert.ok(state.tileIndex >= 0, "frequency analysis must not delay ambient artwork");
+  const tileIndex = state.tileIndex;
 
   updateMosaicFlipState(state, tiles, {
     isPlaying: true,
@@ -243,7 +248,43 @@ test("mosaic flip waits briefly for a confident beat but never disappears", () =
     albums,
     time: 10_660,
   });
-  assert.ok(state.tileIndex >= 0, "flip should fire after the beat wait window");
+  assert.equal(state.tileIndex, tileIndex, "another beat sample cannot restart the captured turn");
+});
+
+test("the repeated 49-square block covers window edges without overlaps and keeps resize identities", () => {
+  assert.equal(MOSAIC_BLOCK_CELLS.length, 49);
+  assert.equal(MOSAIC_BLOCK_CELLS.filter(([, , size]) => size === 3).length, 7);
+  assert.equal(MOSAIC_BLOCK_CELLS.filter(([, , size]) => size === 4).length, 1);
+  const small = buildCanvasMosaicTiles(920, 620, []);
+  const large = new Map(buildCanvasMosaicTiles(1920, 1080, []).map(tile => [tile.id, tile]));
+  for (const tile of small) assert.deepEqual(large.get(tile.id), tile, "existing geometry survives a resize");
+  for (const [width, height] of [[920, 620], [1180, 760], [1920, 1080], [3840, 2160], [7680, 4320]]) {
+    const tiles = buildCanvasMosaicTiles(width, height, []);
+    const sampleStep = width > 3840 ? 70 : 35;
+    assert.ok(tiles.length <= 4096, "extreme windows retain a bounded grid");
+    for (let y = -24; y <= height + 24; y += sampleStep) {
+      for (let x = -24; x <= width + 24; x += sampleStep) {
+        const owners = tiles.filter(tile => x >= tile.x && x < tile.x + tile.width && y >= tile.y && y < tile.y + tile.height);
+        assert.equal(owners.length, 1, `expected one square at ${width}x${height}: ${x},${y}`);
+      }
+    }
+  }
+});
+
+test("a Y-axis turn swaps edge-on and completes rotation before its alpha tail", () => {
+  const front = mosaicFlipFrame(350);
+  const edge = mosaicFlipFrame(700);
+  const back = mosaicFlipFrame(1050);
+  const landed = mosaicFlipFrame(1400);
+  assert.equal(front.back, false);
+  assert.equal(edge.back, true);
+  assert.equal(edge.scaleX, 0.02);
+  assert.equal(edge.alpha, 0);
+  assert.equal(back.back, true);
+  assert.ok(back.alpha > edge.alpha && back.alpha < landed.alpha);
+  assert.equal(landed.scaleX, 1);
+  assert.ok(landed.alpha > 0 && landed.alpha < 1);
+  assert.equal(mosaicFlipFrame(2800).alpha, 1);
 });
 
 test("pausing lets an in-progress live tile finish without snapping back", () => {

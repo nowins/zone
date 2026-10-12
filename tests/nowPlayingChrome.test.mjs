@@ -21,17 +21,18 @@ const leaves = {
   useLyrics: "export function useLyrics() { return {}; }",
   useNowPlayingFullscreen: "export function useNowPlayingFullscreen() { return {active:false, pending:false, toggle(){}}; }",
 };
-await build({ entryPoints: ["src/views/NowPlayingView.tsx"], outfile: ".tmp/now-chrome-tests/view.js",
+await build({ stdin: { contents: `export { NowPlayingView } from './src/views/NowPlayingView';
+export { NOW_PLAYING_MOTION } from './src/motion/tokens';`, loader: "ts", resolveDir: process.cwd() }, outfile: ".tmp/now-chrome-tests/view.js",
   bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent",
   plugins: [{ name: "media-leaves", setup(build) {
     build.onResolve({ filter: /\/(NowPlayingMosaicCanvas|AudioGlowCanvas|Cover|LyricsStage|useLyrics|useNowPlayingFullscreen)$/ }, args => ({ path: args.path.split("/").at(-1), namespace: "media-leaf" }));
     build.onLoad({ filter: /.*/, namespace: "media-leaf" }, args => ({ contents: leaves[args.path], resolveDir: process.cwd() }));
   } }],
 });
-const { NowPlayingView } = await import("../.tmp/now-chrome-tests/view.js");
+const { NowPlayingView, NOW_PLAYING_MOTION } = await import("../.tmp/now-chrome-tests/view.js");
 const tracks = Array.from({ length: 14 }, (_, i) => ({ id: String(i), title: `歌曲 ${i + 1}`, artist: `艺术家 ${i + 1}`, album: "专辑", path: String(i), duration: 300 }));
 
-async function fixture(queue = tracks) {
+async function fixture(queue = tracks, { settle = true } = {}) {
   const dom = new JSDOM('<body><div id="root"></div></body>', { pretendToBeVisual: true });
   for (const key of ["window", "document", "HTMLElement", "Element", "Node"]) globalThis[key] = dom.window[key];
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -65,12 +66,27 @@ async function fixture(queue = tracks) {
   const stage = () => document.querySelector(".now-playing-stage");
   const isIdle = () => stage().classList.contains("chrome-immersive");
   await render({});
-  await advance(1250);
+  if (settle) await advance(NOW_PLAYING_MOTION.nowStage);
   return { render, advance, event, stage, isIdle, played,
     async visibility(value) { hidden = value; await act(() => document.dispatchEvent(new window.Event("visibilitychange"))); },
     async close() { await act(() => root.unmount()); assert.equal(timers.size, 0, "unmount clears idle and entrance timers"); assert.deepEqual(errors, []); dom.window.close(); },
   };
 }
+
+test("the delayed track card completes before the idle countdown starts", async () => {
+  const env = await fixture(tracks, { settle: false });
+  try {
+    await env.advance(1699);
+    assert.equal(env.stage().classList.contains("stage-entering"), true);
+    assert.equal(env.isIdle(), false);
+    await env.advance(1);
+    assert.equal(env.stage().classList.contains("stage-entering"), false);
+    await env.advance(4999);
+    assert.equal(env.isIdle(), false);
+    await env.advance(1);
+    assert.equal(env.isIdle(), true);
+  } finally { await env.close(); }
+});
 
 test("idle chrome becomes inert, wakes from document keys and preserves the mounted queue", async () => {
   const env = await fixture();

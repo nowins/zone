@@ -18,7 +18,8 @@ test("the actual wall renders one back cover at the apex and keeps it after the 
     const front = turn.images[0].cover;
     let back;
     let secondHalf = false;
-    for (let step = 0; step < 24; step++) {
+    let lastAlpha = 0;
+    for (let step = 0; step < 80; step++) {
       const frame = fixture.step(40);
       const tile = frame.filter(draw => draw.slot === turn.slot);
       if (tile.some(draw => draw.cover !== front)) {
@@ -27,10 +28,12 @@ test("the actual wall renders one back cover at the apex and keeps it after the 
       }
       if (secondHalf) {
         assert.deepEqual(tile.map(draw => draw.cover), [back], "a flip must swap faces edge-on, without a second dissolve");
-        assert.equal(tile[0].alpha, 1, "the revealed back face is fully opaque");
+        assert.ok(tile[0].alpha >= lastAlpha && tile[0].alpha <= 1, "the captured back face fades in continuously");
+        lastAlpha = tile[0].alpha;
       }
     }
     assert.ok(back, "a different decoded cover should appear on the back");
+    assert.equal(lastAlpha, 1, "the back face finishes its separate fade tail");
     fixture.resize();
     assert.deepEqual(fixture.step().filter(draw => draw.slot === turn.slot).map(draw => draw.cover), [back],
       "a repeated ResizeObserver notification must not restore the original assignment");
@@ -55,6 +58,22 @@ test("rapid track changes wait for the captured back face to land before replaci
   } finally { await fixture.dispose(); }
 });
 
+test("a pool queued early in a turn still renders and settles after playback pauses", async () => {
+  const fixture = await createWallFixture();
+  try {
+    fixture.findTurn();
+    const tracks = ["paused-a", "paused-b", "paused-c"].map(id => ({id, title:id, album:id, artist:"Replacement", cover_path:`${id}.jpg`}));
+    await fixture.render({tracks, active:0, playing:false});
+    let replacementVisible = false;
+    for (let index = 0; index < 160; index++) {
+      const frame = fixture.step(40);
+      replacementVisible ||= frame.some(draw => draw.cover.startsWith("paused-"));
+    }
+    assert.ok(replacementVisible, "committing the pending pool must schedule its first frame even after the old settle budget");
+    assert.equal(fixture.frameCount(), 0, "the paused replacement finishes and sleeps");
+  } finally { await fixture.dispose(); }
+});
+
 for (const mode of ["pause", "reduce", "resize", "hide"]) {
   test(`the captured back face survives ${mode} during a turn`, async () => {
     const fixture = await createWallFixture();
@@ -75,8 +94,8 @@ for (const mode of ["pause", "reduce", "resize", "hide"]) {
       if (mode === "resize") assert.deepEqual(landed.filter(draw => draw.slot === resizedSlot).map(draw => draw.cover), [back],
         "the same resized tile retains its captured back cover");
       if (mode === "pause" || mode === "reduce") {
-        fixture.step(1600);
-        assert.equal(fixture.frameCount(), 0, "static canvases stop after landing");
+        fixture.step(2000);
+        assert.equal(fixture.frameCount(), 0, "static canvases stop after landing and the fade tail");
       }
     } finally { await fixture.dispose(); }
   });
@@ -87,8 +106,8 @@ test("new pools evicting the image cache cannot replace the captured flip surfac
   try {
     const turn = fixture.findTurn();
     const back = fixture.findBack(turn);
-    // Two disjoint walls load more surfaces than the 96-entry image cache.
-    for (const batch of [1, 2]) {
+    // Six bounded pools load more surfaces than the 96-entry image cache.
+    for (const batch of [1, 2, 3, 4, 5, 6]) {
       const tracks = Array.from({ length: 200 }, (_, index) => ({ id: `${batch}-${index}`, title: "Next", album: `${batch}-${index}`,
         artist: "Next artist", cover_path: `cache-replacement-${batch}-${index}.jpg` }));
       await fixture.render({ tracks });
@@ -101,7 +120,7 @@ test("pending and failed covers never become the target of a wall flip", async (
   const fixture = await createWallFixture({ pending: [1, 2] });
   try {
     for (let index = 0; index < 160; index++) {
-      assert.ok(fixture.step(40).every(draw => draw.scaleY === 1), "only one decoded cover cannot turn to an unavailable back face");
+      assert.ok(fixture.step(40).every(draw => draw.scaleX === 1), "only one decoded cover cannot turn to an unavailable back face");
     }
     await fixture.load(1);
     await fixture.load(2, false);
@@ -155,16 +174,16 @@ async function createWallFixture({ pending = [] } = {}) {
   dom.window.HTMLCanvasElement.prototype.getContext = function () {
     if (contexts.has(this)) return contexts.get(this);
     let slot;
-    let scaleY = 1;
+    let scaleX = 1;
     const stack = [];
     const canvas = this;
     const gradient = { addColorStop() {} };
     const context = {
       globalAlpha: 1,
-      save() { stack.push([this.globalAlpha, slot, scaleY]); },
-      restore() { [this.globalAlpha, slot, scaleY] = stack.pop(); },
+      save() { stack.push([this.globalAlpha, slot, scaleX]); },
+      restore() { [this.globalAlpha, slot, scaleX] = stack.pop(); },
       setTransform() {}, translate() {}, clearRect() {}, fillRect() {}, beginPath() {}, clip() {}, strokeRect() {},
-      scale(x, y) { scaleY = y / x; },
+      scale(x, y) { scaleX = x / y; },
       rect(x, y, width, height) { slot = `${x},${y},${width},${height}`; },
       createLinearGradient() { return gradient; }, createRadialGradient() { return gradient; },
       createImageData(width, height) { return { data: new Uint8ClampedArray(width * height * 4) }; },
@@ -173,7 +192,7 @@ async function createWallFixture({ pending = [] } = {}) {
       drawImage(image) {
         if (image instanceof globalThis.Image) canvas.cover = image.src;
         else if (canvas.className === "now-mosaic-canvas" && image.cover) {
-          draws.push({ slot, cover: image.cover, alpha: this.globalAlpha, scaleY });
+          draws.push({ slot, cover: image.cover, alpha: this.globalAlpha, scaleX });
         }
       },
     };
@@ -202,9 +221,11 @@ async function createWallFixture({ pending = [] } = {}) {
   return {
     step, render, frameCount: () => frames.size,
     resize(nextWidth = width, nextHeight = height, tileIndex) {
+      const oldId = tileIndex === undefined ? null : buildCanvasMosaicTiles(width, height, [])[tileIndex].id;
       width = nextWidth; height = nextHeight; resize();
       if (tileIndex === undefined) return;
-      const tile = buildCanvasMosaicTiles(width, height, [])[tileIndex];
+      const tile = buildCanvasMosaicTiles(width, height, []).find(tile => tile.id === oldId);
+      assert.ok(tile, "the selected square stays in the resized viewport");
       return `${tile.x},${tile.y},${tile.width - 1},${tile.height - 1}`;
     },
     reduce: async () => act(async () => { media.matches = true; mediaListeners.forEach(listener => listener()); }),
@@ -216,23 +237,23 @@ async function createWallFixture({ pending = [] } = {}) {
     findTurn() {
       for (let stepIndex = 0; stepIndex < 140; stepIndex++) {
         const frame = step(40);
-        const turning = frame.find(draw => draw.scaleY < 0.98);
+        const turning = frame.find(draw => draw.scaleX < 0.98);
         if (turning) return { slot: turning.slot, tileIndex: frame.indexOf(turning), images: frame.filter(draw => draw.slot === turning.slot) };
       }
       assert.fail("the playing wall should begin a cover turn");
     },
     findBack(turn) {
-      for (let index = 0; index < 20; index++) {
+      for (let index = 0; index < 50; index++) {
         const tile = step(20).filter(draw => draw.slot === turn.slot);
         if (tile[0]?.cover !== turn.images[0].cover) return tile[0].cover;
       }
       assert.fail("a decoded back face should appear at the apex");
     },
     finishTurn(turn, back) {
-      for (let index = 0; index < 25; index++) {
+      for (let index = 0; index < 80; index++) {
         const tile = step(40).filter(draw => draw.slot === turn.slot);
         assert.deepEqual(tile.map(draw => draw.cover), [back], "a captured back face cannot be overwritten during landing");
-        if (tile[0].scaleY === 1) return tile;
+        if (tile[0].scaleX === 1 && tile[0].alpha === 1) return tile;
       }
       assert.fail("the turn should finish");
     },

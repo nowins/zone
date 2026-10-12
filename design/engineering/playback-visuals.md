@@ -57,14 +57,15 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 
 - 背景：
   - 视觉层为 Canvas 实现（`NowPlayingMosaicCanvas` + `AudioGlowCanvas`，测试 `tests/nowPlayingCss.test.mjs` 断言其为 canvas 而非旧 SVG 分层）。
-  - 用本地专辑/艺术家封面做拼贴，优先当前艺术家的专辑；已补充的艺术家照片（`artist_image_path`/`artist_images`，去重后上限 4 张）以四份权重（当前艺术家专辑的两倍）混入拼贴，大封面与共享封面仍只用专辑封面。
+  - 用本地专辑/艺术家图片做拼贴。`buildNowPlayingWall(tracks, active, queue)` 建立固定 20 项素材池：当前专辑、队列前 20 首的去重专辑优先，再从有图曲库补齐；已补充的当前艺术家照片（`artist_image_path`/`artist_images`，去重后上限 4 张）加入候选并占用对应的专辑名额。素材不足时整个候选池均匀循环填满，按素材身份稳定打乱；同专辑切歌使用曲库规范封面，不重排素材池。大封面与共享封面仍只用专辑封面。
+  - 拼贴几何独立于素材池：`MOSAIC_BLOCK_CELLS` 使用 Zune 4.8 的 49 格重复定义，基本格 70 逻辑像素，块步长 12×10 格，大格为 3×3／4×4；边缘格填入相邻块留白。超大逻辑窗口超过 8×8 块容量时放大基本格，避免露出空白或无界增格。只生成视口及漂移余量内的格子，块坐标和格序构成稳定身份；真实缩放按身份接续已解码图片及正在转动的正反面，不按新数组下标重映射。
   - 从当前封面派生柔和色彩罩染；另有动态色彩场（`createMosaicColorFieldSampler`，`globalCompositeOperation = "color"`）沿多角度慢变轨迹漂移，色相随位置变化。
-  - 只做缓慢的平移/缩放，动效像呼吸而不是幻灯片；磁贴随机翻面稀少且缓慢。
+  - 只做缓慢的平移/缩放，动效像呼吸而不是幻灯片。环境封面转动独立于音频频谱，不等候节拍；各尺寸已就绪格子都可参加，一次只转一格，完成新图淡入尾段后再等待下一间隔。Y 轴转面由 Canvas 横向压缩近似原生透视，旋转先结束，透明度随后收稳。入场、转面和间隔参数均由 `NOW_PLAYING_MOTION` 维护。
   - 换曲保留磁贴几何与已解码图像；新图解码完成后逐片交叉淡化，连续切歌接续当前过渡。同专辑不重建墙；缺失或失败封面保留旧图，首次加载使用其他已就绪封面补位。缓存淘汰不得清空仍被磁贴引用的画布。
   - 翻面固定正反两张已解码画布，在侧面切换，结束后保留反面；不与换曲淡入叠加。仍在淡入的磁贴和未就绪反面不参与翻转。翻转期间的新封面池等本次落稳后接入，重复尺寸通知不重建分配，真实缩放保留已有封面分配；暂停让当前翻转完成，减少动态效果直接收稳。
 - 入场：
   - 页面以 `now-stage-dissolve`（纯透明度溶解）进入，无位移/缩放。
-  - 队列面板先淡入，拼贴墙磁贴非顺序错峰显现，普通曲目卡随后淡入。共享封面飞行使用已解码的真实封面快照，文字在飞行期间出现，落位仅做短暂轮廓交接；返回时封面与页面同时退场，不等底部栏重挂载后起飞。时长与延迟由 `src/motion/tokens.ts` 的 `NOW_PLAYING_MOTION` 及 `src/styles/animations-responsive.css` 编排，不在本文固定毫秒值。
+  - 队列面板先淡入，拼贴墙磁贴按离散随机延迟从 0.8 缩放到 1 并显现，普通曲目卡在拼贴末段到场；入场全部完成才启动闲置隐藏倒计时。共享封面飞行使用已解码的真实封面快照，文字在飞行期间出现，落位仅做短暂轮廓交接；返回时封面与页面同时退场，不等底部栏重挂载后起飞。时长与延迟由 `src/motion/tokens.ts` 的 `NOW_PLAYING_MOTION` 及 `src/styles/animations-responsive.css` 编排，不在本文固定毫秒值。
 - 排版：
   - 允许大号、部分裁切的幽灵文字。
   - 功能性文字保持可读且克制。
@@ -95,6 +96,12 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 保持真实音频响应、色彩连续、控制区可读以及暂停/隐藏后停转是行为约束。FFT、频段数、attack/release、画布高度与入场延迟是当前实现参数；在任务范围内可根据实测调整，并同步代码、相关测试和本文，不能用假波形替代真实信号。DSP 包络不是 UI 转场时长。
 
 通用导航、Presence、FLIP、token 与 reduced-motion 接线遵循 [动效系统](../motion-system.md)；视觉排版遵循 [组件规范](../component-guidelines.md)。
+
+### Zune 4.8 参照边界
+
+本机 4.8.2345.0 的 `ZuneShellResources.dll` 中 `NowPlayingAlbumGridDefs`、`NowPlayingMusicBackground` 与 `Animations` 分别定义拼贴格局、素材池和换面调度、分层关键帧；`ZuneShell.dll` 的 `TransportControls.CreateAlbumListForBackground` 证实队列优先及 20 项填充逻辑。原版底部 `BottomToolbar.SpectrumAnalyzerAnimation` 单独消费真实左右声道频谱，环境配色与封面计时器不代表音频响应。
+
+Zone 借鉴固定格局、素材池分离与转面／淡入时钟。稳定打乱、最多 4 个艺术家照片槽、每次转面及淡入完成后再等待下一间隔、媒体派生色、暂停／隐藏停转与共享封面 FLIP 都是 Zone 的适配。原生 Iris 的曲线求值、完整 shader、透视及历史在线艺术家动画未完整还原，不能宣称逐帧像素等价。探索截图、资源哈希和反编译输出保存在本地 `docs/`，不作为其他 checkout 的验证前提。
 
 ## 验证
 

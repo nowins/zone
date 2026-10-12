@@ -16,19 +16,25 @@ export const MOTION_DURATIONS = {
 
 /** Layered now-playing entrance and the final static Canvas frame. */
 export const NOW_PLAYING_MOTION = {
-  canvasSettle: 1400,
+  canvasSettle: 1800,
+  mosaicReveal: 400,
+  mosaicRevealDelay: 200,
+  mosaicRevealStep: 100,
+  mosaicTurn: 1400,
+  mosaicTurnFade: 2800,
+  mosaicInterval: 2000,
   mosaicReplace: 900,
   mosaicReplaceStagger: 240,
-  nowQueue: 240,
-  nowQueueDelay: 55,
-  nowCard: 220,
-  nowCardDelay: 220,
+  nowQueue: 400,
+  nowQueueDelay: 0,
+  nowCard: 400,
+  nowCardDelay: 1300,
   coverEnter: 280,
   coverExit: 220,
   coverInfo: 180,
   coverInfoDelay: 60,
   coverHandoff: 80,
-  nowStage: 1250,
+  nowStage: 1700,
 } as const;
 
 /** WP tile timing: interaction, readable live updates and staggered arrival. */
