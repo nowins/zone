@@ -1,4 +1,5 @@
 import { recordDiagnostic } from "./utils/diagnostics";
+import { Dialog } from "./components/Dialog";
 import { Button } from "./components/Button";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { MetroLoader } from "./components/MetroLoader";
@@ -107,6 +108,9 @@ export default function App() {
   const [smartPlaylistDialog, setSmartPlaylistDialog] = useState<SmartPlaylist | "create" | null>(null);
   const [persistenceFailed, setPersistenceFailed] = useState(false);
   const [libraryRestoreFailed, setLibraryRestoreFailed] = useState(false);
+  const [libraryDegraded, setLibraryDegraded] = useState(false);
+  const [libraryPersistenceReady, setLibraryPersistenceReady] = useState(false);
+  const [confirmLibraryRecovery, setConfirmLibraryRecovery] = useState(false);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [retryingPersistence, setRetryingPersistence] = useState(false);
   const [clearingLibrary, setClearingLibrary] = useState(false);
@@ -181,11 +185,11 @@ export default function App() {
     artists,
     addFolder,
     rescan,
-  } = useMusicLibrary({ setQueue });
+  } = useMusicLibrary({ setQueue, persistenceReady: libraryPersistenceReady });
   const metadata = useMetadataEnrichment({
     tracks,
     setTracks,
-    restored,
+    restored: restored && libraryPersistenceReady,
   });
   const podcast = usePodcastPlayback({
     audioRef,
@@ -281,6 +285,7 @@ export default function App() {
     peekPendingResumePosition,
     hasEpisodeStartedOnDevice,
   } = usePlaybackControls({
+    persistenceReady: libraryPersistenceReady,
     audioRef,
     showActionNotice,
     audioEngineRef,
@@ -454,7 +459,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!restored || !isPlaying || activePodcastEpisode || !activeTrack) return;
+    if (!restored || !libraryPersistenceReady || !isPlaying || activePodcastEpisode || !activeTrack) return;
     void metadata.enrichArtistForPlayback(activeTrack);
   }, [
     activePodcastEpisode,
@@ -462,6 +467,7 @@ export default function App() {
     isPlaying,
     metadata.enrichArtistForPlayback,
     restored,
+    libraryPersistenceReady,
   ]);
 
   useEffect(() => {
@@ -471,8 +477,10 @@ export default function App() {
       setLibraryRestoreFailed(false);
       setRestored(false);
       libraryPersistenceReadyRef.current = false;
+      setLibraryPersistenceReady(false);
       try {
         let snapshot = await musicGetLibrarySnapshot();
+        if (cancelled) return;
         const saved = !snapshot.hasLibrary ? localStorage.getItem(STORAGE_KEY) : null;
         if (!snapshot.hasLibrary && saved) {
           snapshot = await migrateLegacyState(localStorage, STORAGE_KEY, (legacy) =>
@@ -482,6 +490,9 @@ export default function App() {
 
         if (cancelled) return;
         libraryPersistenceReadyRef.current = true;
+        setLibraryPersistenceReady(true);
+        setLibraryDegraded(false);
+        setPersistenceFailed(false);
 
         setFolders(snapshot.folders ?? []);
         setTracks(snapshot.tracks ?? []);
@@ -499,13 +510,14 @@ export default function App() {
         setNeedsMetadataRefresh(false);
       } catch (error) {
         if (cancelled) return;
-        let recoveredLegacy = false;
+        let recoveredLegacy = libraryDegraded;
         if (import.meta.env.DEV) console.warn("[library] restore failed", error);
         // Fallback to legacy localStorage if DB path is unavailable.
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          try {
+        try {
+          const saved = !libraryDegraded ? localStorage.getItem(STORAGE_KEY) : null;
+          if (saved) {
             const state = JSON.parse(saved);
+            if (!state || !Array.isArray(state.tracks)) throw new Error("Invalid legacy snapshot");
             setFolders(state.folders ?? []);
             setTracks(state.tracks ?? []);
             setActiveTrackId(state.activeTrackId ?? null);
@@ -525,12 +537,12 @@ export default function App() {
             setHomePins(normalizeHomePins(state.homePins));
             setNeedsMetadataRefresh(state.librarySchemaVersion !== LIBRARY_SCHEMA_VERSION);
             recoveredLegacy = Array.isArray(state.tracks);
-          } catch {
-            // Retain even malformed data so recovery never destroys the source.
           }
+        } catch {
+          // Retain even malformed or inaccessible data for manual recovery.
         }
         setLibraryRestoreFailed(!recoveredLegacy);
-        if (recoveredLegacy) showActionNotice("音乐资料库恢复失败，已读取旧数据，自动保存已暂停");
+        setLibraryDegraded(recoveredLegacy);
       } finally {
         if (!cancelled) setRestored(true);
       }
@@ -545,7 +557,7 @@ export default function App() {
   useEffect(() => {
     if (!restored || !libraryPersistenceReadyRef.current) return;
     const savePlayback = () => {
-      if (clearingLibraryRef.current) return;
+      if (clearingLibraryRef.current || !libraryPersistenceReadyRef.current) return;
       void trackMusicWrite(musicSavePlaybackState({
         activeTrackId,
         positionSeconds: getMusicPosition(),
@@ -564,10 +576,10 @@ export default function App() {
     const timer = window.setTimeout(savePlayback, 250);
     const checkpoint = isPlaying && !activePodcastEpisode ? window.setInterval(savePlayback, 5000) : null;
     return () => { window.clearTimeout(timer); if (checkpoint !== null) window.clearInterval(checkpoint); };
-  }, [restored, clearingLibrary, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId, isPlaying, activePodcastEpisode?.episodeId, isPlaying || activePodcastEpisode ? null : progress]);
+  }, [restored, libraryPersistenceReady, clearingLibrary, activeTrackId, queue, playHistory, volume, shuffle, repeat, selectedPlaylistId, isPlaying, activePodcastEpisode?.episodeId, isPlaying || activePodcastEpisode ? null : progress]);
 
   useEffect(() => {
-    if (!startupReady || tracks.length === 0) return;
+    if (!startupReady || !libraryPersistenceReady || tracks.length === 0) return;
     let cancelled = false;
     async function hydrateFeatures() {
       try {
@@ -583,7 +595,7 @@ export default function App() {
       cancelled = true;
       cancelBackgroundTask();
     };
-  }, [startupReady, tracks.length]);
+  }, [startupReady, libraryPersistenceReady, tracks.length]);
 
   useEffect(() => {
     if (!restored || tracks.length === 0) return;
@@ -606,7 +618,7 @@ export default function App() {
   useEffect(() => {
     if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
-      if (clearingLibraryRef.current) return;
+      if (clearingLibraryRef.current || !libraryPersistenceReadyRef.current) return;
       void trackMusicWrite(musicSaveTrackActivity(trackActivity)).catch((error) => {
         setPersistenceFailed(true);
         recordDiagnostic({ domain: "library", event: "save_track_activity", outcome: "error" });
@@ -614,12 +626,12 @@ export default function App() {
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [restored, clearingLibrary, trackActivity]);
+  }, [restored, libraryPersistenceReady, clearingLibrary, trackActivity]);
 
   useEffect(() => {
     if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
-      if (clearingLibraryRef.current) return;
+      if (clearingLibraryRef.current || !libraryPersistenceReadyRef.current) return;
       void trackMusicWrite(musicSavePlaylists(playlists)).catch((error) => {
         setPersistenceFailed(true);
         recordDiagnostic({ domain: "library", event: "save_playlists", outcome: "error" });
@@ -627,12 +639,12 @@ export default function App() {
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [restored, clearingLibrary, playlists]);
+  }, [restored, libraryPersistenceReady, clearingLibrary, playlists]);
 
   useEffect(() => {
     if (!restored || !libraryPersistenceReadyRef.current) return;
     const timer = window.setTimeout(() => {
-      if (clearingLibraryRef.current) return;
+      if (clearingLibraryRef.current || !libraryPersistenceReadyRef.current) return;
       void trackMusicWrite(musicSaveHomePins(homePins)).catch((error) => {
         setPersistenceFailed(true);
         recordDiagnostic({ domain: "library", event: "save_home_pins", outcome: "error" });
@@ -640,7 +652,7 @@ export default function App() {
       });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [restored, clearingLibrary, homePins]);
+  }, [restored, libraryPersistenceReady, clearingLibrary, homePins]);
 
   const [podcastArtworkCoverPath, setPodcastArtworkCoverPath] = useState<string | null>(null);
 
@@ -1019,7 +1031,7 @@ export default function App() {
     />
   ) : null;
   async function retryLibraryPersistence() {
-    if (retryingPersistence || clearingLibraryRef.current) return;
+    if (!libraryPersistenceReadyRef.current || retryingPersistence || clearingLibraryRef.current) return;
     setRetryingPersistence(true);
     const results = await Promise.allSettled([
       trackMusicWrite(musicSavePlaylists(playlists)), trackMusicWrite(musicSaveHomePins(homePins)), trackMusicWrite(musicSaveTrackActivity(trackActivity)),
@@ -1032,7 +1044,12 @@ export default function App() {
     if (!failed) showActionNotice("资料库状态已保存");
   }
 
-  const actionToastElement = persistenceFailed ? (
+  const actionToastElement = libraryDegraded ? (
+    <div className="action-toast library-recovery-notice" role="alert">
+      <span>已读取旧资料库。自动保存已暂停，当前修改未保存，关闭后会丢失。</span>
+      <Button variant="ghost" busy={!restored} onClick={() => setConfirmLibraryRecovery(true)}>重试数据库恢复</Button>
+    </div>
+  ) : persistenceFailed ? (
     <div className="action-toast" role="alert">部分资料库状态未保存
       <Button variant="ghost" busy={retryingPersistence} onClick={() => void retryLibraryPersistence()}>重试</Button>
     </div>
@@ -1312,6 +1329,7 @@ export default function App() {
             onCancelScan={cancelScan}
             scanNote={scanNote}
             onClear={async () => {
+              if (!libraryPersistenceReadyRef.current) throw new Error("资料库尚未恢复，不能清空原始数据");
               if (clearingLibraryRef.current || isScanning) throw new Error("请等待扫描结束后再清空");
               clearingLibraryRef.current = true;
               setClearingLibrary(true);
@@ -1364,6 +1382,20 @@ export default function App() {
       <Presence show={smartPlaylistDialogElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
         {smartPlaylistDialogElement ?? lastSmartPlaylistDialogElement ?? <span style={{ display: "none" }} />}
       </Presence>
+
+      {confirmLibraryRecovery && <Dialog titleId="library-recovery-title" kicker="资料库恢复" title="重新读取资料库？"
+        onCancel={() => setConfirmLibraryRecovery(false)}
+        onSubmit={event => {
+          event.preventDefault();
+          setConfirmLibraryRecovery(false);
+          setIsPlaying(false);
+          audioRef.current?.pause();
+          setRestoreAttempt(value => value + 1);
+        }}
+        actions={<><Button onClick={() => setConfirmLibraryRecovery(false)}>继续临时使用</Button>
+          <Button type="submit" variant="primary">放弃临时修改并重新读取</Button></>}>
+        <p>重试会重新读取数据库，必要时迁移原始旧快照。当前未保存的临时修改不会写入数据库，恢复成功后将被替换。恢复失败时仍保留当前临时状态和原始数据。</p>
+      </Dialog>}
 
       <Presence show={actionToastElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
         {actionToastElement ?? lastActionToastElement ?? <span style={{ display: "none" }} />}

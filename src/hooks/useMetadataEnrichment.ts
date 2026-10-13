@@ -88,6 +88,8 @@ export function useMetadataEnrichment({
   setTracks: SetTracks;
   restored: boolean;
 }): MetadataEnrichmentApi {
+  const writableRef = useRef(restored);
+  writableRef.current = restored;
   const [providerDescriptors, setProviderDescriptors] = useState<MetadataProviderDescriptor[]>([]);
   const [providerPreferences, setProviderPreferences] = useState(readProviderPreferences);
   const [revision, setRevision] = useState(0);
@@ -208,6 +210,7 @@ export function useMetadataEnrichment({
   }, [providers]);
 
   const apply = useCallback(async (payload: ContextPayload, candidate: MetadataCandidate) => {
+    if (!writableRef.current) throw new Error("资料库尚未恢复，补充资料保存已暂停");
     const kind = metadataKind(payload);
     const command = candidate.providerId === "local-sidecar"
       ? "metadata_apply_sidecar"
@@ -232,6 +235,7 @@ export function useMetadataEnrichment({
   }, []);
 
   const edit = useCallback(async (payload: ContextPayload, fields: MetadataManualField[]) => {
+    if (!writableRef.current) throw new Error("资料库尚未恢复，补充资料保存已暂停");
     const kind = metadataKind(payload);
     await invoke("metadata_apply_manual", {
       kind,
@@ -246,6 +250,7 @@ export function useMetadataEnrichment({
   }, []);
 
   const clear = useCallback(async (payload: ContextPayload) => {
+    if (!writableRef.current) throw new Error("资料库尚未恢复，补充资料保存已暂停");
     await invoke("metadata_clear_context", {
       kind: metadataKind(payload),
       trackIds: payload.tracks.map((track) => track.id),

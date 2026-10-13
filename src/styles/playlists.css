@@ -1241,3 +1241,7 @@
   flex: none;
   color: var(--accent);
 }
+
+/* Persistent recovery actions must remain readable and clickable. */
+.action-toast:has(button) { pointer-events: auto; white-space: normal; }
+.library-recovery-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

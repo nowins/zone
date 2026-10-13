@@ -109,6 +109,7 @@ type UsePlaybackControlsParams = {
   playbackSessionRef: React.MutableRefObject<PlaybackSession | null>;
   tracks: Track[];
   restored: boolean;
+  persistenceReady?: boolean;
   setTrackActivity: React.Dispatch<React.SetStateAction<TrackActivityMap>>;
   getSmartDjContext?: () => SmartDjContext;
   activeTrackId: string | null;
@@ -127,6 +128,7 @@ export function usePlaybackControls({
   playbackSessionRef,
   tracks,
   restored,
+  persistenceReady = true,
   setTrackActivity,
   getSmartDjContext,
   activeTrackId,
@@ -137,6 +139,9 @@ export function usePlaybackControls({
   setPlayHistory,
   podcast,
 }: UsePlaybackControlsParams) {
+  const persistedMusicSessionIdsRef = useRef(new Set<string>());
+  const persistenceReadyRef = useRef(persistenceReady);
+  persistenceReadyRef.current = persistenceReady;
   const {
     activePodcastEpisode,
     cancelPendingQueueConsume,
@@ -217,7 +222,8 @@ export function usePlaybackControls({
         countedComplete: false,
         finalized: false,
       };
-      void musicSessionStart({
+      if (persistenceReadyRef.current) persistedMusicSessionIdsRef.current.add(sessionId);
+      if (persistenceReadyRef.current) void musicSessionStart({
         sessionId,
         trackId: activeTrackId,
         startPositionMs: 0,
@@ -611,7 +617,7 @@ export function usePlaybackControls({
   function clearSmartDjSession(options?: { persistStop?: boolean }) {
     const current = smartDjSessionRef.current;
     smartDjSessionRef.current = null;
-    if (options?.persistStop !== false) {
+    if (persistenceReadyRef.current && options?.persistStop !== false) {
       void musicStopRadioSession(current?.id ?? null).catch((error) => {
         if (import.meta.env.DEV) console.warn("[smartdj] stop session failed", error);
       });
@@ -619,7 +625,7 @@ export function usePlaybackControls({
   }
 
   function persistSmartDjSession(session: SmartDjSession | null) {
-    if (!session) return;
+    if (!session || !persistenceReadyRef.current) return;
     void musicUpsertRadioSession(toRadioSessionUpsert(session)).catch((error) => {
       if (import.meta.env.DEV) console.warn("[smartdj] persist session failed", error);
     });
@@ -756,6 +762,8 @@ export function usePlaybackControls({
       session.lastTickAt = null;
     }
     const durationMs = Math.round((session.durationHint ?? duration ?? 0) * 1000);
+    const persisted = persistedMusicSessionIdsRef.current.delete(session.sessionId);
+    if (!persistenceReadyRef.current || !persisted) return;
     void musicSessionEnd({
       sessionId: session.sessionId,
       trackId: session.trackId,
@@ -1110,7 +1118,8 @@ export function usePlaybackControls({
       countedComplete: false,
       finalized: false,
     };
-    void musicSessionStart({
+    if (persistenceReadyRef.current) persistedMusicSessionIdsRef.current.add(sessionId);
+    if (persistenceReadyRef.current) void musicSessionStart({
       sessionId,
       trackId: activeTrack.id,
       startPositionMs: 0,
