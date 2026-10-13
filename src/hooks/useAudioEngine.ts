@@ -14,6 +14,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import type { ActivePlayback } from "./usePlaybackControls";
 import type { Track } from "../types";
 import { createPodcastAudioEnhancement, type PodcastAudioOptions } from "./podcastAudioEnhancement";
+import { createZuneGlowBands, EMPTY_GLOW_BANDS, GLOW_FFT_SIZE } from "../utils/zuneSpectrumGlow";
 
 export type AudioEngineHandle = {
   resumeAudioGraph: () => Promise<void>;
@@ -58,6 +59,8 @@ export function useAudioEngine({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const outputGainRef = useRef<GainNode | null>(null);
+  const stereoSpectrumRef = useRef<{ input: GainNode; splitter: ChannelSplitterNode; left: AnalyserNode; right: AnalyserNode } | null>(null);
+  const stereoUnavailableRef = useRef(false);
   const visualizerFrameRef = useRef<number | null>(null);
   const visualizerUnavailableRef = useRef(false);
   const beatFrameRef = useRef<BeatFrame>(createIdleBeatFrame());
@@ -80,6 +83,13 @@ export function useAudioEngine({
   useEffect(() => () => { enhancementRef.current?.dispose(); enhancementRef.current = null; }, []);
   activeTrackRef.current = activeTrackId;
   useEffect(() => () => cancelBeatAnalysis(), []);
+  useEffect(() => () => {
+    const graph = stereoSpectrumRef.current;
+    if (!graph) return;
+    audioSourceRef.current?.disconnect(graph.input);
+    graph.input.disconnect(); graph.splitter.disconnect(); graph.left.disconnect(); graph.right.disconnect();
+    stereoSpectrumRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -193,6 +203,32 @@ export function useAudioEngine({
     nativeCancellationRef.current = invoke("music_cancel_beat_window").catch(() => undefined);
   }
 
+  function ensureStereoSpectrum() {
+    if (stereoSpectrumRef.current || stereoUnavailableRef.current || !audioContextRef.current || !audioSourceRef.current) return;
+    const context = audioContextRef.current;
+    let input: GainNode | null = null, splitter: ChannelSplitterNode | null = null;
+    let left: AnalyserNode | null = null, right: AnalyserNode | null = null;
+    try {
+      input = context.createGain();
+      // Speaker upmix duplicates mono into both sides; stereo retains separation.
+      input.channelCount = 2; input.channelCountMode = "explicit"; input.channelInterpretation = "speakers";
+      splitter = context.createChannelSplitter(2);
+      left = context.createAnalyser(); right = context.createAnalyser();
+      for (const analyser of [left, right]) {
+        analyser.fftSize = GLOW_FFT_SIZE; analyser.smoothingTimeConstant = 0.35;
+        analyser.minDecibels = -100; analyser.maxDecibels = -12;
+      }
+      input.connect(splitter); splitter.connect(left, 0); splitter.connect(right, 1);
+      // This read-only branch has no destination connection or playback gain.
+      audioSourceRef.current.connect(input);
+      stereoSpectrumRef.current = { input, splitter, left, right };
+    } catch {
+      input?.disconnect?.(); splitter?.disconnect?.(); left?.disconnect?.(); right?.disconnect?.();
+      stereoUnavailableRef.current = true;
+      recordDiagnostic({ domain: "visualizer", event: "stereo_spectrum", outcome: "error" });
+    }
+  }
+
   async function preAnalyzeBeatGrid(track: Track) {
     const requestId = ++beatAnalysisRequestRef.current;
     const started = performance.now();
@@ -235,6 +271,8 @@ export function useAudioEngine({
   // Clear the previous source's energy as well as its beat timing.
   function publishIdleBeatFrame() {
     publishVisualizerFrame({
+      glowBands: EMPTY_GLOW_BANDS,
+      sourceKey: activePlaybackSourceKey,
       ...createSilentVisualizerFrame(VISUALIZER_SAMPLE_COUNT),
       beatPulse: 0,
       beatPhase: 0,
@@ -245,6 +283,8 @@ export function useAudioEngine({
 
   function publishPodcastVisualizerReset() {
     publishVisualizerFrame({
+      glowBands: EMPTY_GLOW_BANDS,
+      sourceKey: activePlaybackSourceKey,
       ...createSilentVisualizerFrame(VISUALIZER_SAMPLE_COUNT),
       beatPulse: 0,
       beatPhase: 0,
@@ -255,8 +295,11 @@ export function useAudioEngine({
 
   function startVisualizer() {
     void resumeAudioGraph();
+    ensureStereoSpectrum();
     const frequencyData = new Uint8Array(analyserRef.current?.frequencyBinCount ?? 512);
     const timeData = new Uint8Array(analyserRef.current?.fftSize ?? 1024);
+    const leftFrequency = new Uint8Array(GLOW_FFT_SIZE / 2), rightFrequency = new Uint8Array(GLOW_FFT_SIZE / 2);
+    const leftPcm = new Uint8Array(GLOW_FFT_SIZE), rightPcm = new Uint8Array(GLOW_FFT_SIZE);
     const visualizer = new AudioVisualizerAnalyzer();
     const sample = () => {
       if (!isDocumentVisible() || !isPlaying) {
@@ -267,10 +310,20 @@ export function useAudioEngine({
       const analyser = analyserRef.current;
       let frame = createSilentVisualizerFrame(VISUALIZER_SAMPLE_COUNT);
       let beat = createIdleBeatFrame();
+      let glowBands: readonly number[] = EMPTY_GLOW_BANDS;
 
       if (analyser && !visualizerUnavailableRef.current) {
         analyser.getByteFrequencyData(frequencyData);
         analyser.getByteTimeDomainData(timeData);
+        const stereo = stereoSpectrumRef.current;
+        if (stereo) {
+          stereo.left.getByteFrequencyData(leftFrequency); stereo.right.getByteFrequencyData(rightFrequency);
+          stereo.left.getByteTimeDomainData(leftPcm); stereo.right.getByteTimeDomainData(rightPcm);
+          glowBands = createZuneGlowBands(leftFrequency, rightFrequency, leftPcm, rightPcm);
+        } else {
+          // Older/failed audio graphs retain a truthful mono visualization.
+          glowBands = createZuneGlowBands(frequencyData, frequencyData, timeData, timeData);
+        }
         const audioFrame = createAudioVisualizerFrame(
           frequencyData,
           timeData,
@@ -293,6 +346,8 @@ export function useAudioEngine({
       }
 
       publishVisualizerFrame({
+        glowBands,
+        sourceKey: activePlaybackSourceKey,
         samples: frame.samples,
         transients: frame.transients,
         energy: frame.energy,

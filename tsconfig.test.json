@@ -27,6 +27,7 @@
     "src/utils/irisGpuRenderer.ts",
     "src/utils/beatAnalysis.ts",
     "src/utils/audioGlow.ts",
+    "src/utils/zuneSpectrumGlow.ts",
     "src/utils/playback.ts",
     "src/utils/playbackTransport.ts",
     "src/utils/podcastPlayback.ts",

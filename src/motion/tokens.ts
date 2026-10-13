@@ -17,6 +17,8 @@ export const MOTION_DURATIONS = {
 /** Layered now-playing entrance and the final static Canvas frame. */
 export const NOW_PLAYING_MOTION = {
   canvasSettle: 1800,
+  glowOrangeCycle: 67,
+  glowPinkCycle: 50,
   mosaicReveal: 400,
   mosaicRevealDelay: 200,
   mosaicRevealStep: 100,
@@ -50,6 +52,8 @@ export const NOW_PLAYING_CURVES = {
   mosaicRevealAlpha: { weight: 5, handle: 0.5 },
   mosaicRevealScale: { weight: 10, handle: 0.5, start: 0.8 },
   mosaicLightWeight: 2.5,
+  glowOrangeWeight: 20,
+  glowPinkWeight: 10,
 } as const;
 
 /** WP tile timing: interaction, readable live updates and staggered arrival. */

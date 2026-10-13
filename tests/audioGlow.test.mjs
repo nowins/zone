@@ -176,20 +176,21 @@ test("AudioGlowCanvas renderer no longer uses a traditional path horizon", () =>
   const source = readFileSync("src/components/AudioGlowCanvas.tsx", "utf8");
 
   assert.ok(!source.includes("drawFlamePath"));
-  assert.ok(source.includes("createZuneMountainFrame"));
-  assert.ok(source.includes("zuneGlowRadiance"));
-  assert.ok(source.includes("putImageData"));
+  assert.ok(source.includes("ZuneGlowAnimator"));
+  assert.ok(source.includes("zuneGlowSprites"));
+  assert.ok(source.includes("drawImage"));
   assert.ok(!source.includes("quadraticCurveTo"), "light must not have a stroked mountain rim");
   assert.ok(!source.includes("drawGlowEllipse"), "large ellipses must not erase local signal variation");
   assert.ok(source.includes("source-over"));
 });
 
-test("AudioGlowCanvas settles into a static dim glow under reduced motion", () => {
+test("AudioGlowCanvas releases real spectrum under reduced motion without an invented idle signal", () => {
   const source = readFileSync("src/components/AudioGlowCanvas.tsx", "utf8");
 
   assert.ok(source.includes("useReducedMotion"), "the glow must honor prefers-reduced-motion");
-  assert.ok(source.includes("REDUCED_GLOW_SAMPLES"), "a frozen idle frame replaces live samples");
-  assert.ok(source.includes("time: reduced ? 0 : time / 1000"), "scene time freezes");
+  assert.ok(source.includes("!reducedRef.current"), "reduced motion disables live animation");
+  assert.ok(source.includes(": EMPTY_GLOW_BANDS"), "inactive states converge to actual zero");
+  assert.ok(!source.includes("createIdleVisualizerFrame"), "silence must not turn into a preset flame");
 });
 
 function createMountainSamples(count, peakAt) {

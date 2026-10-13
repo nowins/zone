@@ -3,6 +3,8 @@ import { createIdleBeatFrame } from "./beatAnalysis.js";
 import { createSilentVisualizerFrame } from "./visualizer.js";
 
 export interface VisualizerFrameData {
+  glowBands: readonly number[];
+  sourceKey?: string | null;
   samples: number[];
   transients: number[];
   bass: number;
@@ -17,6 +19,7 @@ export interface VisualizerFrameData {
 function createIdleVisualizerFrameData(): VisualizerFrameData {
   const beat = createIdleBeatFrame();
   return {
+    glowBands: [],
     ...createSilentVisualizerFrame(VISUALIZER_SAMPLE_COUNT),
     beatPulse: beat.beatPulse,
     beatPhase: beat.beatPhase,

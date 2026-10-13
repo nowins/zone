@@ -27,6 +27,8 @@ test("shared music sampler keeps one loop across browsing and sleeps on mute, hi
   let signal = true;
   let sourceCount = 0;
   let samples = 0;
+  let phaseCancellation = false;
+  const connections = [];
   const media = { matches: false, addEventListener: (_, callback) => listeners.add(callback),
     removeEventListener: (_, callback) => listeners.delete(callback) };
   window.matchMedia = () => media;
@@ -39,13 +41,14 @@ test("shared music sampler keeps one loop across browsing and sleeps on mute, hi
     state = "running";
     sampleRate = 48000;
     createAnalyser() {
-      return { fftSize: 4096, frequencyBinCount: 2048, connect() {},
-        getByteFrequencyData(data) { samples++; data.fill(signal ? 130 : 0); },
-        getByteTimeDomainData(data) { for (let i = 0; i < data.length; i++) data[i] = signal ? 128 + Math.round(50 * Math.sin(i * 0.2)) : 128; },
+      return { fftSize: 4096, get frequencyBinCount() { return this.fftSize / 2; }, channel: "mixed", connect(target) { connections.push([this, target]); }, disconnect() {},
+        getByteFrequencyData(data) { samples++; data.fill(signal ? this.channel === 0 ? 200 : this.channel === 1 ? 90 : 130 : 0); },
+        getByteTimeDomainData(data) { for (let i = 0; i < data.length; i++) data[i] = signal && !(phaseCancellation && this.channel === "mixed") ? 128 + Math.round(50 * Math.sin(i * 0.2)) : 128; },
       };
     }
-    createMediaElementSource() { sourceCount++; return { connect() {} }; }
-    createGain() { return { gain: { value: 1 }, connect() {} }; }
+    createMediaElementSource() { sourceCount++; return { kind: "media", connect(target) { connections.push([this, target]); }, disconnect() {} }; }
+    createGain() { return { gain: { value: 1 }, connect(target) { connections.push([this, target]); }, disconnect() {} }; }
+    createChannelSplitter() { return { connect(target, channel) { target.channel = channel; connections.push([this, target]); }, disconnect() {} }; }
   };
   const audioRef = { current: { currentTime: 1, volume: 0.5 } };
   const initial = { audioRef, volume: 0.5, progress: 1, isPlaying: true, activePlayback: { kind: "music" },
@@ -58,6 +61,7 @@ test("shared music sampler keeps one loop across browsing and sleeps on mute, hi
     assert.equal(getVisualizerFrame().energy, 0);
     assert.ok(getVisualizerFrame().samples.every(value => value === 0));
     assert.ok(getVisualizerFrame().transients.every(value => value === 0));
+    assert.ok(getVisualizerFrame().glowBands.every(value => value === 0));
   };
   try {
     await render();
@@ -65,6 +69,11 @@ test("shared music sampler keeps one loop across browsing and sleeps on mute, hi
     assert.equal(sourceCount, 1, "StrictMode does not reconnect the primary audio element");
     assert.equal(frames.size, 1);
     assert.ok(getVisualizerFrame().energy > 0, "the live signal reaches the bus outside now playing");
+    assert.equal(getVisualizerFrame().glowBands.length, 40);
+    assert.equal(getVisualizerFrame().glowBands[19], 200 / 255);
+    assert.equal(getVisualizerFrame().glowBands[20], 90 / 255, "right spectrum is independent of left");
+    assert.equal(connections.filter(([node]) => node.channelCount === 2).at(-1)[0].channelInterpretation, "speakers", "mono is upmixed before splitting");
+    assert.ok(connections.some(([node, target]) => node.kind === "media" && target.channelCount === 2), "podcast output rewiring cannot disconnect the spectrum branch");
     const sampleCount = samples;
     const scheduledFrame = [...frames.keys()][0];
     await render({ page: "collection", progress: 2, volume: 0.6 });
@@ -108,6 +117,10 @@ test("shared music sampler keeps one loop across browsing and sleeps on mute, hi
     for (let i = 0; i < 10; i++) step();
     assertSilent();
     assert.equal(sourceCount, 1, "source changes reuse the same audio graph");
+    signal = true; phaseCancellation = true;
+    step();
+    assert.equal(getVisualizerFrame().energy, 0, "the legacy downmix may cancel opposite-phase stereo");
+    assert.ok(getVisualizerFrame().glowBands.some(value => value > 0), "real stereo channels still light the new glow");
     assert.ok(!commands.includes("music_decode_beat_window"), "opening a visual surface does not start offline analysis");
   } finally {
     await act(() => root.unmount());
