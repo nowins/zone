@@ -10,11 +10,12 @@ export type MosaicCamera = {
 };
 const projectedSurfaces = new WeakMap<CanvasRenderingContext2D, HTMLCanvasElement>();
 
-/** Default Iris window: Eye.z=-10, Zn=5, units=max(viewport)/2.
- * Canvas compensates the D3D9 half-pixel offset after viewport mapping. */
-export function createMosaicCamera(width: number, height: number, scale = 1, driftX = 0, driftY = 0): MosaicCamera {
+/** Iris uses a physical viewport, while its root DPI layout scales only XY.
+ * Keep physical focal depth and convert the half-pixel offset to CSS units. */
+export function createMosaicCamera(width: number, height: number, scale = 1, driftX = 0, driftY = 0, dpiScale = 1): MosaicCamera {
+  const dpi = Math.max(1, dpiScale);
   return {
-    distance: 5 * Math.max(1, width, height), centerX: width / 2 + 0.5, centerY: height / 2 + 0.5,
+    distance: 5 * dpi * Math.max(1, width, height), centerX: width / 2 + 0.5 / dpi, centerY: height / 2 + 0.5 / dpi,
     scale, offsetX: width / 2 * (1 - scale) + driftX * scale,
     offsetY: height / 2 * (1 - scale) + driftY * scale,
   };

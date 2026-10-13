@@ -71,7 +71,7 @@ export function NowPlayingMosaicCanvas({
   onInitialRevealStart?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
+  const sizeRef = useRef({ width: 0, height: 0, dpr: 1, dpiScale: 1 });
   const tilesRef = useRef<MosaicTile[]>([]);
   const artworkRef = useRef<Array<MosaicArtworkState<HTMLCanvasElement>>>([]);
   const albumsRef = useRef<AlbumGroup[]>([]);
@@ -150,16 +150,26 @@ export function NowPlayingMosaicCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    let resolutionQuery: MediaQueryList | null = null;
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+      const dpiScale = Math.max(1, window.devicePixelRatio || 1);
+      if (!resolutionQuery || sizeRef.current.dpiScale !== dpiScale) {
+        resolutionQuery?.removeEventListener("change", resize);
+        resolutionQuery = window.matchMedia(`(resolution: ${dpiScale}dppx)`);
+        resolutionQuery.addEventListener("change", resize);
+      }
+      const dpr = Math.min(dpiScale, 2);
       const width = Math.max(1, Math.floor(rect.width));
       const height = Math.max(1, Math.floor(rect.height));
-      if (sizeRef.current.width === width && sizeRef.current.height === height && sizeRef.current.dpr === dpr) return;
-      sizeRef.current = { width, height, dpr };
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
+      if (sizeRef.current.width === width && sizeRef.current.height === height && sizeRef.current.dpiScale === dpiScale) return;
+      const geometryChanged = sizeRef.current.width !== width || sizeRef.current.height !== height;
+      sizeRef.current = { width, height, dpr, dpiScale };
+      const pixelWidth = Math.floor(width * dpr), pixelHeight = Math.floor(height * dpr);
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
       invalidateRef.current();
+      if (!geometryChanged) return;
       const previousTiles = tilesRef.current;
       const previousById = new Map(previousTiles.map((tile, index) => [tile.id, { tile, artwork: artworkRef.current[index] }]));
       const turningId = previousTiles[flipRef.current.tileIndex]?.id;
@@ -185,8 +195,13 @@ export function NowPlayingMosaicCanvas({
 
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
+    window.addEventListener("resize", resize);
     resize();
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+      resolutionQuery?.removeEventListener("change", resize);
+    };
   }, []);
 
   useEffect(() => {
@@ -283,7 +298,7 @@ export function NowPlayingMosaicCanvas({
 
 function drawMosaic(
   context: CanvasRenderingContext2D,
-  size: { width: number; height: number; dpr: number },
+  size: { width: number; height: number; dpr: number; dpiScale: number },
   tiles: MosaicTile[],
   albums: AlbumGroup[],
   palette: MosaicColorPalette,
@@ -338,7 +353,7 @@ function drawMosaic(
   context.fillRect(0, 0, width, height);
 
   const motion = createMosaicMotion(motionEnabled ? sceneSeconds : 0);
-  const camera = createMosaicCamera(width, height, motion.scale, motion.driftX, motion.driftY);
+  const camera = createMosaicCamera(width, height, motion.scale, motion.driftX, motion.driftY, size.dpiScale);
   const revealElapsed = time - wallRevealStartedAt;
   const wallReveal = motionEnabled
     ? Math.max(0, Math.min(1, revealElapsed / NOW_PLAYING_MOTION.nowStage))

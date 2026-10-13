@@ -132,8 +132,44 @@ test("pending and failed covers never become the target of a wall flip", async (
   } finally { await fixture.dispose(); }
 });
 
+test("a DPI-only change updates perspective beyond the raster cap without restarting the captured turn", async () => {
+  const fixture = await createWallFixture({ dpi: 2 });
+  try {
+    assert.equal(fixture.resolutionListenerCount(), 1, "StrictMode keeps exactly one DPI subscription");
+    const turn = fixture.findTurn();
+    const back = fixture.findBack(turn);
+    let before;
+    for (let index = 0; index < 20; index++) {
+      before = fixture.step(20).find(draw => draw.slot === turn.slot);
+      if (before?.scaleX > 0.3 && before.scaleX < 0.85) break;
+    }
+    assert.equal(before.cover, back);
+    assert.equal(before.quad.length, 4);
+    const edgeSkew = draw => Math.abs((draw.quad[2].y - draw.quad[1].y) / (draw.quad[3].y - draw.quad[0].y) - 1);
+    const backing = fixture.backingSize();
+    fixture.changeDpi(3);
+    const after = fixture.step(0).find(draw => draw.slot === turn.slot);
+    assert.equal(after.cover, back, "the same back surface remains in flight");
+    assert.equal(after.alpha, before.alpha, "the DPI event does not restart the fade clock");
+    assert.ok(edgeSkew(after) < edgeSkew(before) * 0.8, "physical focal depth reduces the near/far edge imbalance");
+    assert.deepEqual(fixture.backingSize(), backing, "raster memory remains capped at 2x");
+    assert.equal(fixture.resolutionListenerCount(), 1, "the next resolution query replaces the old subscription");
+    fixture.finishTurn(turn, back);
+    await fixture.render({ playing: false });
+    fixture.step(2000);
+    assert.equal(fixture.frameCount(), 0);
+    fixture.changeDpi(1.25);
+    fixture.step(2000);
+    assert.equal(fixture.frameCount(), 0, "a DPI redraw of a paused wall settles and sleeps");
+  } finally {
+    await fixture.dispose();
+    assert.equal(fixture.resolutionListenerCount(), 0);
+    assert.equal(fixture.frameCount(), 0);
+  }
+});
+
 let fixtureId = 0;
-async function createWallFixture({ pending = [] } = {}) {
+async function createWallFixture({ pending = [], dpi = 1 } = {}) {
   const dom = new JSDOM('<body><div id="root"></div></body>', { pretendToBeVisual: true });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -154,10 +190,14 @@ async function createWallFixture({ pending = [] } = {}) {
   const mediaListeners = new Set();
   const media = { matches: false, addEventListener: (_event, listener) => mediaListeners.add(listener),
     removeEventListener: (_event, listener) => mediaListeners.delete(listener) };
+  const resolutionListeners = new Set();
+  const resolution = { addEventListener: (_event, listener) => resolutionListeners.add(listener),
+    removeEventListener: (_event, listener) => resolutionListeners.delete(listener) };
+  window.devicePixelRatio = dpi;
   Object.defineProperty(document, "hidden", { get: () => hidden });
   window.requestAnimationFrame = callback => { frames.set(++nextId, callback); return nextId; };
   window.cancelAnimationFrame = id => frames.delete(id);
-  window.matchMedia = () => media;
+  window.matchMedia = query => query.includes("resolution:") ? resolution : media;
   globalThis.ResizeObserver = class { constructor(callback) { resize = callback; } observe() {} disconnect() {} };
   globalThis.Image = class {
     complete = true;
@@ -176,15 +216,16 @@ async function createWallFixture({ pending = [] } = {}) {
     if (contexts.has(this)) return contexts.get(this);
     let slot;
     let scaleX = 1;
+    let path = [];
     const stack = [];
     const canvas = this;
     const gradient = { addColorStop() {} };
     const context = {
       globalAlpha: 1,
-      save() { stack.push([this.globalAlpha, slot, scaleX]); },
-      restore() { [this.globalAlpha, slot, scaleX] = stack.pop(); },
-      setTransform() {}, translate() {}, clearRect() { canvas.projectedScaleX = 1; }, fillRect() {}, beginPath() {}, clip() {}, strokeRect() {},
-      fill() {}, moveTo() {}, lineTo() {}, closePath() {},
+      save() { stack.push([this.globalAlpha, slot, scaleX, path]); },
+      restore() { [this.globalAlpha, slot, scaleX, path] = stack.pop(); },
+      setTransform() {}, translate() {}, clearRect() { canvas.projectedScaleX = 1; }, fillRect() {}, beginPath() { path = []; }, clip() {}, strokeRect() {},
+      fill() {}, moveTo(x, y) { path.push({ x, y }); }, lineTo(x, y) { path.push({ x, y }); }, closePath() {},
       transform(a, b, c, d) { scaleX = Math.abs(a / d); },
       scale(x, y) { scaleX = x / y; },
       rect(x, y, width, height) { slot = `${x},${y},${width},${height}`; },
@@ -199,7 +240,7 @@ async function createWallFixture({ pending = [] } = {}) {
           canvas.projectedScaleX = Math.min(canvas.projectedScaleX ?? 1, scaleX);
         }
         else if (canvas.className === "now-mosaic-canvas" && image.cover) {
-          draws.push({ slot, cover: image.cover, alpha: this.globalAlpha, scaleX: image.projectedScaleX ?? scaleX });
+          draws.push({ slot, cover: image.cover, alpha: this.globalAlpha, scaleX: image.projectedScaleX ?? scaleX, quad: [...path] });
         }
       },
     };
@@ -236,6 +277,12 @@ async function createWallFixture({ pending = [] } = {}) {
   };
   return {
     step, render, frameCount: () => frames.size,
+    resolutionListenerCount: () => resolutionListeners.size,
+    backingSize: () => { const canvas = document.querySelector(".now-mosaic-canvas"); return [canvas.width, canvas.height]; },
+    changeDpi(value) {
+      window.devicePixelRatio = value;
+      [...resolutionListeners].forEach(listener => listener());
+    },
     resize(nextWidth = width, nextHeight = height, tileIndex) {
       const oldId = tileIndex === undefined ? null : buildCanvasMosaicTiles(width, height, [])[tileIndex].id;
       width = nextWidth; height = nextHeight; resize();

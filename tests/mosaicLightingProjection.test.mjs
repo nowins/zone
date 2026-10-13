@@ -1,7 +1,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { createMosaicLightingSampler, createMosaicColorFieldMotion, mosaicLightFalloff, mosaicOverlay } from "../.tmp/visualizer-tests/utils/mosaicLighting.js";
 import { createMosaicCamera, projectMosaicPoint, drawProjectedMosaicImage } from "../.tmp/visualizer-tests/utils/mosaicProjection.js";
+
+const runtime = JSON.parse(readFileSync(new URL("./fixtures/iris-runtime-matrices.json", import.meta.url), "utf8"));
+
+function multiplyMatrices(left, right) {
+  return Array.from({ length: 16 }, (_, index) => {
+    const row = Math.floor(index / 4), column = index % 4;
+    return [0, 1, 2, 3].reduce((sum, k) => sum + left[row * 4 + k] * right[k * 4 + column], 0);
+  });
+}
+
+function rowVector(vector, matrix) {
+  return [0, 1, 2, 3].map(column => vector.reduce((sum, value, row) => sum + value * matrix[row * 4 + column], 0));
+}
+
+function viewportPoint(clip, viewport, dpi) {
+  return {
+    x: ((clip[0] / clip[3] + 1) * viewport.width / 2 + 0.5) / dpi,
+    y: ((1 - clip[1] / clip[3]) * viewport.height / 2 + 0.5) / dpi,
+  };
+}
+
+function nearPoint(actual, expected, tolerance) {
+  for (const axis of ["x", "y"]) {
+    assert.ok(Math.abs(actual[axis] - expected[axis]) < tolerance,
+      `${axis}: expected ${expected[axis]}, got ${actual[axis]}`);
+  }
+}
 
 test("point light attenuation and overlay agree with the shipped HLSL examples", () => {
   assert.equal(mosaicLightFalloff(0), 5 / 7);
@@ -65,6 +93,82 @@ test("shared viewport projection agrees with the recovered row-vector S × V × 
   assert.notEqual(right.x - left.x, 900, "a shared optical center changes projection with screen position");
   assert.equal(createMosaicCamera(920, 620).distance, 4600);
   assert.equal(createMosaicCamera(760, 1180).distance, 5900);
+});
+
+test("DPI projection agrees with physical window matrices and keeps parent XYZ scale separate", () => {
+  // The first three are fixed arithmetic anchors for native S × V × P, not
+  // camera-derived expectations. DPI 2 uses the actual 3840 × 2064 float matrix.
+  const cases = [
+    { dpi: 1, width: 1180, height: 760, viewport: { width: 1180, height: 760 }, distance: 5900,
+      center: { x: 590.5, y: 380.5 },
+      matrix: [10, 0, 0, 0, 0, -15.526315789473684, 0, 0, 0, 0, 1.5, 1, -5905, 5907.763157894737, 4425, 5900] },
+    { dpi: 1.25, width: 1180, height: 760, viewport: { width: 1475, height: 950 }, distance: 7375,
+      center: { x: 590.4, y: 380.4 },
+      matrix: [10, 0, 0, 0, 0, -15.526315789473684, 0, 0, 0, 0, 1.5, 1, -7380, 7382.763157894737, 5531.25, 7375] },
+    { dpi: 3, width: 1180, height: 760, viewport: { width: 3540, height: 2280 }, distance: 17700,
+      center: { x: 590.1666666666666, y: 380.1666666666667 },
+      matrix: [10, 0, 0, 0, 0, -15.526315789473684, 0, 0, 0, 0, 1.5, 1, -17705, 17707.763157894737, 13275, 17700] },
+    { dpi: runtime.spGetDpi / 96, width: 1920, height: 1032, viewport: runtime.viewport, distance: 19200,
+      center: { x: 960.25, y: 516.25 }, matrix: runtime.projection },
+  ];
+  for (const fixture of cases) {
+    for (const scale of [1, 1.03, 1.6]) {
+      const camera = createMosaicCamera(fixture.width, fixture.height, scale, 12, -8, fixture.dpi);
+      assert.equal(camera.distance, fixture.distance, "physical focal depth must retain the full DPI factor, including DPI > raster cap 2");
+      nearPoint({ x: camera.centerX, y: camera.centerY }, fixture.center, 1e-12);
+      // Compose native row-vector matrices independently of the pinhole formula.
+      const parent = [scale, 0, 0, 0, 0, scale, 0, 0, 0, 0, scale, 0,
+        fixture.width / 2 * (1 - scale) + 12 * scale,
+        fixture.height / 2 * (1 - scale) - 8 * scale, 0, 1];
+      const dpiXY = [fixture.dpi, 0, 0, 0, 0, fixture.dpi, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+      for (const tile of [{ x: 0, y: 70, width: 280, height: 280 },
+        { x: fixture.width - 210, y: fixture.height - 280, width: 70, height: 70 }]) {
+        for (const angle of [-Math.PI / 3, 0, Math.PI / 3]) {
+          const c = Math.cos(angle), s = Math.sin(angle), pivot = tile.x + tile.width / 2;
+          const rotation = [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, pivot * (1 - c), 0, pivot * s, 1];
+          const pipeline = multiplyMatrices(multiplyMatrices(multiplyMatrices(rotation, parent), dpiXY), fixture.matrix);
+          for (const [u, v] of [[0, 0], [0.5, 0.5], [1, 1]]) {
+            const clip = rowVector([tile.x + u * tile.width, tile.y + v * tile.height, 0, 1], pipeline);
+            const expected = viewportPoint(clip, fixture.viewport, fixture.dpi);
+            const point = projectMosaicPoint(tile, camera, angle, u, v);
+            const painted = rowVector([point.x, point.y, 0, 1], parent);
+            nearPoint({ x: painted[0], y: painted[1] }, expected, fixture.dpi === 2 ? 0.0002 : 1e-10);
+          }
+        }
+      }
+    }
+  }
+});
+
+test("captured CPU matrix composition matches vertex constant readback after float storage", () => {
+  for (const frame of [runtime.flat, runtime.rotated]) {
+    const calculated = multiplyMatrices(frame.worldView, runtime.projection);
+    assert.deepEqual(calculated.map(Math.fround), frame.readback,
+      `draw ${frame.drawSeq} stores row-major WorldView × Projection with float rounding`);
+  }
+  const doubleMatrix = multiplyMatrices(runtime.rotated.worldView, runtime.projection);
+  assert.equal(doubleMatrix[14], 12753.214965820312);
+  assert.equal(doubleMatrix[15], 18102.143310546875);
+  assert.notEqual(doubleMatrix[15], runtime.rotated.readback[15], "the captured matrix is not an unrounded JS double fixture");
+  assert.equal(runtime.flat.worldView[0], 2);
+  assert.equal(runtime.flat.worldView[5], 2);
+  assert.equal(runtime.flat.worldView[10], 1, "Frame DPI scale leaves depth unscaled");
+});
+
+test("DPI camera reproduces an observed negative Y turn using the native readback matrix", () => {
+  const dpi = runtime.spGetDpi / 96;
+  const world = runtime.rotated.worldView;
+  const angle = Math.atan2(-world[2], world[0] / dpi);
+  // The observed matrix rotates about x≈1641. These are arbitrary geometry
+  // probe points at that pivot, not a claim that the capture included vertices.
+  assert.ok(Math.abs(world[14] / -world[2] - 1641) < 0.0001);
+  const tile = { x: 1501, y: 200, width: 280, height: 280 };
+  const camera = createMosaicCamera(1920, 1032, 1, 0, 0, dpi);
+  for (const [u, v] of [[0, 0], [0.25, 0.3], [0.5, 0.5], [0.75, 0.7], [1, 1]]) {
+    const clip = rowVector([tile.x + u * tile.width, tile.y + v * tile.height, 0, 1], runtime.rotated.readback);
+    const expected = viewportPoint(clip, runtime.viewport, dpi);
+    nearPoint(projectMosaicPoint(tile, camera, angle, u, v), expected, 0.0005);
+  }
 });
 
 test("projected triangles map the same texture surface with bounded work", () => {
