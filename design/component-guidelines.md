@@ -126,6 +126,7 @@
 
 ### 4.2 播放 chrome
 
+- 正在播放场景最外层使用 `overflow: clip` 裁切背景与幽灵文字，不作为滚动容器，避免聚焦或 `scrollIntoView` 横向移走返回键、曲目卡及播放条；队列与歌词仍在各自内部滚动。
 - `PlayerBar` / `PodcastPlayerBar`：底部 74px 常驻；媒体源二选一，互斥。
 - `TransportControls`、`PlaybackProgress`：极简线性控制；图标切换用 `motion-icon-swap`，收藏确认用 `motion-confirm`。
 - 播客倍速以 `PodcastRateButton` 直接循环常用速度，当前值即入口，底栏、全屏与小屏共用。睡眠独立打开设置；不使用旋钮或倍速按钮阵列。

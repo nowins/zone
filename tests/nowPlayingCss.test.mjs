@@ -63,6 +63,7 @@ test("now playing artwork is full bleed without a recording-frame inset", () => 
 
   assert.ok(stageRule.includes("height: 100%"));
   assert.ok(stageRule.includes("margin: 0"));
+  assert.ok(stageRule.includes("overflow: clip"), "focus and scrollIntoView must not move the entire stage");
   assert.ok(stageRule.includes("border: 0"));
   assert.ok(stageRule.includes("box-shadow: none"));
 });
