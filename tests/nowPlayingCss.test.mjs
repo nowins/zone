@@ -252,7 +252,7 @@ test("mosaic canvas overlays the recovered point-light field at bounded resoluti
   assert.ok(!/brightness\([^)]*(energy|beatPulse)/.test(mosaicCanvasSource));
   assert.ok(mosaicCanvasSource.includes("createMosaicColorFieldSampler"));
   assert.ok(mosaicCanvasSource.includes('globalCompositeOperation = "overlay"'));
-  assert.ok(mosaicCanvasSource.includes('createMosaicColorFieldSampler(palette, sceneSeconds, width, height)'));
+  assert.ok(mosaicCanvasSource.includes('createMosaicColorFieldSampler(palette, sceneSeconds, width, height, dpiScale)'));
   assert.ok(!mosaicCanvasSource.includes("createMosaicColorSweep"));
   assert.ok(!mosaicCanvasSource.includes("sepia(0.66)"));
 });

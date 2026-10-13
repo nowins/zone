@@ -247,8 +247,9 @@ export function createMosaicColorFieldSampler(
   timeSeconds: number,
   width = 1180,
   height = 760,
+  dpiScale = 1,
 ) {
-  return createMosaicLightingSampler(palette, timeSeconds, width, height);
+  return createMosaicLightingSampler(palette, timeSeconds, width, height, dpiScale);
 }
 
 export function createMosaicFlipState(): MosaicFlipState {

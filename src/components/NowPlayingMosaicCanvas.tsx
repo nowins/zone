@@ -48,6 +48,9 @@ type MosaicColorFieldRenderer = {
   imageData: ImageData;
   aspectRatio: number;
   lastUpdateAt: number;
+  sampleWidth: number;
+  sampleHeight: number;
+  dpiScale: number;
 };
 
 type MosaicFlipArtwork = {
@@ -394,6 +397,7 @@ function drawMosaic(
     palette,
     width,
     height,
+    size.dpiScale,
     sceneSeconds,
     time,
   );
@@ -427,6 +431,7 @@ function drawMosaicColorField(
   palette: MosaicColorPalette,
   width: number,
   height: number,
+  dpiScale: number,
   sceneSeconds: number,
   frameTime: number,
 ) {
@@ -437,12 +442,13 @@ function drawMosaicColorField(
   const renderer = rendererRef.current;
   if (!renderer) return;
 
-  if (frameTime - renderer.lastUpdateAt >= COLOR_FIELD_FRAME_INTERVAL_MS) {
+  if (frameTime - renderer.lastUpdateAt >= COLOR_FIELD_FRAME_INTERVAL_MS
+      || renderer.sampleWidth !== width || renderer.sampleHeight !== height || renderer.dpiScale !== dpiScale) {
     // Smooth low-resolution point lighting keeps per-frame work bounded.
     const { data } = renderer.imageData;
     const fieldWidth = renderer.canvas.width;
     const fieldHeight = renderer.canvas.height;
-    const sampleColor = createMosaicColorFieldSampler(palette, sceneSeconds, width, height);
+    const sampleColor = createMosaicColorFieldSampler(palette, sceneSeconds, width, height, dpiScale);
     for (let row = 0; row < fieldHeight; row += 1) {
       const y = (row + 0.5) / fieldHeight;
       for (let column = 0; column < fieldWidth; column += 1) {
@@ -457,12 +463,15 @@ function drawMosaicColorField(
     }
     renderer.context.putImageData(renderer.imageData, 0, 0);
     renderer.lastUpdateAt = frameTime;
+    renderer.sampleWidth = width;
+    renderer.sampleHeight = height;
+    renderer.dpiScale = dpiScale;
   }
 
   context.save();
   // The shipped BlendedLightGraphic overlays the lit field onto its destination.
   context.globalCompositeOperation = "overlay";
-  context.globalAlpha *= 0.92;
+  // Native Fill + light + primary alpha saturates to 1 on the settled wall.
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.drawImage(renderer.canvas, 0, 0, width, height);
@@ -481,6 +490,9 @@ function createColorFieldRenderer(aspectRatio: number): MosaicColorFieldRenderer
     imageData: context.createImageData(canvas.width, canvas.height),
     aspectRatio,
     lastUpdateAt: Number.NEGATIVE_INFINITY,
+    sampleWidth: 0,
+    sampleHeight: 0,
+    dpiScale: 0,
   };
 }
 

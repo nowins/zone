@@ -168,6 +168,32 @@ test("a DPI-only change updates perspective beyond the raster cap without restar
   }
 });
 
+test("a paused wall resamples the physical light field immediately on DPI change and keeps full overlay strength", async () => {
+  const fixture = await createWallFixture({ dpi: 2 });
+  try {
+    fixture.findTurn();
+    await fixture.render({ playing: false });
+    fixture.step(4000);
+    fixture.step(2000);
+    assert.equal(fixture.frameCount(), 0);
+    const before = fixture.colorFieldWrites().at(-1);
+    const count = fixture.colorFieldWrites().length;
+    const backing = fixture.backingSize();
+    fixture.changeDpi(3);
+    fixture.step(1);
+    const after = fixture.colorFieldWrites().at(-1);
+    assert.equal(fixture.colorFieldWrites().length, count + 1, "DPI invalidation bypasses the 42 ms update budget");
+    assert.notDeepEqual(after.data, before.data, "the new physical distances change the light field");
+    assert.deepEqual([after.width, after.height], [before.width, before.height], "the bounded field resolution stays unchanged");
+    assert.deepEqual(fixture.backingSize(), backing, "a DPI above 2 does not allocate a larger wall");
+    const composite = fixture.colorFieldComposites().at(-1);
+    assert.equal(composite.mode, "overlay");
+    assert.equal(composite.alpha, 1, "a settled opaque field has no extra fixed attenuation");
+    fixture.step(2000);
+    assert.equal(fixture.frameCount(), 0);
+  } finally { await fixture.dispose(); }
+});
+
 let fixtureId = 0;
 async function createWallFixture({ pending = [], dpi = 1 } = {}) {
   const dom = new JSDOM('<body><div id="root"></div></body>', { pretendToBeVisual: true });
@@ -182,6 +208,7 @@ async function createWallFixture({ pending = [], dpi = 1 } = {}) {
   globalThis.performance = { now: () => now };
   let resize;
   let draws = [];
+  const colorFieldWrites = [], colorFieldComposites = [];
   let width = 1180, height = 760;
   let hidden = false;
   const imageResolvers = new Map();
@@ -231,9 +258,13 @@ async function createWallFixture({ pending = [], dpi = 1 } = {}) {
       rect(x, y, width, height) { slot = `${x},${y},${width},${height}`; },
       createLinearGradient() { return gradient; }, createRadialGradient() { return gradient; },
       createImageData(width, height) { return { data: new Uint8ClampedArray(width * height * 4) }; },
-      putImageData() {},
+      putImageData(data) {
+        if (canvas.width === 112) colorFieldWrites.push({ width: canvas.width, height: canvas.height, data: [...data.data] });
+      },
       getImageData() { return { data: new Uint8ClampedArray(48 * 48 * 4) }; },
       drawImage(image) {
+        if (canvas.className === "now-mosaic-canvas" && image.width === 112)
+          colorFieldComposites.push({ alpha: this.globalAlpha, mode: this.globalCompositeOperation });
         if (image instanceof globalThis.Image) canvas.cover = image.src;
         else if (canvas.className !== "now-mosaic-canvas" && image.cover) {
           canvas.cover = image.cover;
@@ -277,6 +308,7 @@ async function createWallFixture({ pending = [], dpi = 1 } = {}) {
   };
   return {
     step, render, frameCount: () => frames.size,
+    colorFieldWrites: () => colorFieldWrites, colorFieldComposites: () => colorFieldComposites,
     resolutionListenerCount: () => resolutionListeners.size,
     backingSize: () => { const canvas = document.querySelector(".now-mosaic-canvas"); return [canvas.width, canvas.height]; },
     changeDpi(value) {

@@ -21,7 +21,7 @@ export function createMosaicColorFieldMotion(timeSeconds: number, pathIndex = 0)
   return { highlight1: samplePath(path[0], phase), highlight2: samplePath(path[1], phase) };
 }
 
-/** Exact distance attenuation emitted by Iris Dx9PointLight2DElement. */
+/** Iris attenuation uses distance in physical WorldView pixels. */
 export function mosaicLightFalloff(distance: number) {
   return clamp(500 / (700 + distance * distance * 0.005), 0, 1);
 }
@@ -32,17 +32,19 @@ export function mosaicOverlay(base: number, source: number) {
 }
 
 export function createMosaicLightingSampler(
-  palette: readonly Color[], timeSeconds: number, width: number, height: number,
+  palette: readonly Color[], timeSeconds: number, width: number, height: number, dpiScale = 1,
 ) {
+  const dpi = Math.max(1, dpiScale);
+  const physicalWidth = width * dpi, physicalHeight = height * dpi;
   const motion = createMosaicColorFieldMotion(timeSeconds);
   const primary = lift(palette[0], 2.4);
   const highlight1 = lift(palette[1], 3.5);
   const highlight2 = lift(palette[2], 3.5);
   const fill = 800 / 1050;
-  const x1 = motion.highlight1[0] * width, y1 = motion.highlight1[1] * height;
-  const x2 = motion.highlight2[0] * width, y2 = motion.highlight2[1] * height;
+  const x1 = motion.highlight1[0] * physicalWidth, y1 = motion.highlight1[1] * physicalHeight;
+  const x2 = motion.highlight2[0] * physicalWidth, y2 = motion.highlight2[1] * physicalHeight;
   return (x: number, y: number): Color => {
-    const px = x * width, py = y * height;
+    const px = x * physicalWidth, py = y * physicalHeight;
     const first = mosaicLightFalloff(Math.hypot(px - x1, py - y1));
     const second = mosaicLightFalloff(Math.hypot(px - x2, py - y2));
     const channel = (key: keyof Color) => 255 * clamp(mosaicOverlay(
