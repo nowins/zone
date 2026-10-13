@@ -5,7 +5,7 @@ import type { AlbumGroup, Track } from "../types";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { buildNowPlayingWall } from "../utils/nowPlayingWall";
 import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
-import { drawProjectedMosaicImage, projectMosaicPoint } from "../utils/mosaicProjection";
+import { createMosaicCamera, drawProjectedMosaicImage, projectMosaicPoint, type MosaicCamera } from "../utils/mosaicProjection";
 import {
   buildCanvasMosaicTiles,
   advanceMosaicArtwork,
@@ -16,6 +16,7 @@ import {
   extractMosaicColorPalette,
   interpolateMosaicColorPalette,
   mosaicTileRevealAmount,
+  mosaicTileRevealScale,
   mosaicFlipFrame,
   updateMosaicFlipState,
   type MosaicColorPalette,
@@ -337,6 +338,7 @@ function drawMosaic(
   context.fillRect(0, 0, width, height);
 
   const motion = createMosaicMotion(motionEnabled ? sceneSeconds : 0);
+  const camera = createMosaicCamera(width, height, motion.scale, motion.driftX, motion.driftY);
   const revealElapsed = time - wallRevealStartedAt;
   const wallReveal = motionEnabled
     ? Math.max(0, Math.min(1, revealElapsed / NOW_PLAYING_MOTION.nowStage))
@@ -360,12 +362,12 @@ function drawMosaic(
       : null;
     context.save();
     context.globalAlpha *= tileReveal;
-    const revealScale = 0.8 + tileReveal * 0.2;
+    const revealScale = mosaicTileRevealScale(tile.seed, revealElapsed, motionEnabled);
     context.translate(tile.x + tile.width / 2, tile.y + tile.height / 2);
     context.scale(revealScale, revealScale);
     context.translate(-tile.x - tile.width / 2, -tile.y - tile.height / 2);
     const state = artwork[index] ??= { image: null, previous: null, startedAt: 0 };
-    drawTile(context, tile, albums, flip, state, fallbackImages[index % Math.max(1, fallbackImages.length)] ?? null, time, motionEnabled);
+    drawTile(context, tile, camera, albums, flip, state, fallbackImages[index % Math.max(1, fallbackImages.length)] ?? null, time, motionEnabled);
     context.restore();
   }
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -470,6 +472,7 @@ function createColorFieldRenderer(aspectRatio: number): MosaicColorFieldRenderer
 function drawTile(
   context: CanvasRenderingContext2D,
   tile: MosaicTile,
+  camera: MosaicCamera,
   albums: AlbumGroup[],
   flip: {
     progress: number;
@@ -494,11 +497,11 @@ function drawTile(
   context.save();
   context.beginPath();
   context.rect(tile.x, tile.y, tile.width - 1, tile.height - 1);
-  if (isFlipping && turn.scaleX < 0.999) {
+  if (isFlipping && Math.abs(turn.angle) > 1e-5) {
     const angle = turn.angle * flip.direction;
+    const face = { x: tile.x, y: tile.y, width: tile.width - 1, height: tile.height - 1 };
     const corners = [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => {
-      const point = projectMosaicPoint(tile.width - 1, tile.height - 1, angle, u, v);
-      return { x: tile.x + point.x, y: tile.y + point.y };
+      return projectMosaicPoint(face, camera, angle, u, v);
     });
     context.beginPath();
     context.moveTo(corners[0].x, corners[0].y);
@@ -509,7 +512,7 @@ function drawTile(
     context.fill();
     if (image) {
       context.globalAlpha *= turn.alpha;
-      drawProjectedMosaicImage(context, getTurnSurface(image), tile.x, tile.y, tile.width - 1, tile.height - 1, angle);
+      drawProjectedMosaicImage(context, getTurnSurface(image), face, camera, angle);
     }
     context.restore();
     return;

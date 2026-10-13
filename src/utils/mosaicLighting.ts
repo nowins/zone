@@ -1,5 +1,6 @@
-import { clamp, smoothstep } from "../motion/math.js";
-import { NOW_PLAYING_MOTION } from "../motion/tokens.js";
+import { clamp } from "../motion/math.js";
+import { irisSCurve } from "../motion/irisCurves.js";
+import { NOW_PLAYING_CURVES, NOW_PLAYING_MOTION } from "../motion/tokens.js";
 
 type Color = { r: number; g: number; b: number };
 type Point = readonly [number, number];
@@ -59,8 +60,7 @@ function lift(color: Color, gain: number): Color {
 function samplePath(points: readonly Point[], phase: number): Point {
   const cursor = phase * (points.length - 1);
   const index = Math.min(points.length - 2, Math.floor(cursor));
-  // Native SCurve(2.5) remains unverified; smoothstep keeps each stop continuous.
-  const amount = smoothstep(0, 1, cursor - index);
+  const amount = irisSCurve(cursor - index, NOW_PLAYING_CURVES.mosaicLightWeight);
   const from = points[index], to = points[index + 1];
   return [from[0] + (to[0] - from[0]) * amount, from[1] + (to[1] - from[1]) * amount];
 }

@@ -10,6 +10,7 @@ import {
   createMosaicMotion,
   interpolateMosaicColorPalette,
   mosaicTileRevealAmount,
+  mosaicTileRevealScale,
   mosaicFlipFrame,
   MOSAIC_BLOCK_CELLS,
   relativeLuminance,
@@ -171,6 +172,35 @@ test("mosaic entry uses the recovered 200–1300ms random delay and 400ms reveal
   assert.equal(mosaicTileRevealAmount(0.95, 0, false), 1, "reduced motion should reveal the wall immediately");
 });
 
+test("GridShow alpha and scale use distinct native EaseIn weights on the same reveal clock", () => {
+  assert.equal(mosaicTileRevealScale(0, 200), 0.8);
+  assert.ok(Math.abs(mosaicTileRevealAmount(0, 400) - 0.6661875990895327) < 1e-12);
+  assert.ok(Math.abs(mosaicTileRevealScale(0, 400) - 0.9433298957406785) < 1e-12);
+  assert.ok(Math.abs(mosaicTileRevealAmount(0, 500) - 0.8968462951855624) < 1e-12);
+  assert.ok(Math.abs(mosaicTileRevealScale(0, 500) - 0.9863848332845174) < 1e-12);
+  assert.equal(mosaicTileRevealScale(0.95, 400), 0.8, "late slices retain the native initial scale");
+  assert.equal(mosaicTileRevealScale(1, 1700), 1);
+  assert.equal(mosaicTileRevealScale(0.95, 0, false), 1, "reduced motion immediately reaches full size");
+  for (const seed of [-1, 0, 0.5, 1, 2]) {
+    let lastAlpha = 0, lastScale = 0.8;
+    for (let time = 0; time <= 1700; time += 10) {
+      const alpha = mosaicTileRevealAmount(seed, time), scale = mosaicTileRevealScale(seed, time);
+      assert.ok(alpha >= lastAlpha && alpha <= 1);
+      assert.ok(scale >= lastScale && scale <= 1);
+      lastAlpha = alpha;
+      lastScale = scale;
+    }
+  }
+});
+
+test("light-path quarter segments use native SCurve instead of smoothstep", () => {
+  const quarter = createMosaicColorFieldMotion(4.5);
+  assert.ok(Math.abs(quarter.highlight1[0] - 0.5968564716806983) < 1e-12);
+  assert.equal(quarter.highlight1[1], 0);
+  const threeQuarter = createMosaicColorFieldMotion(13.5);
+  assert.ok(Math.abs(threeQuarter.highlight1[0] - 0.9031435283193017) < 1e-12);
+});
+
 test("mosaic flip scheduler is global, frequent, and commits the live tile back face", () => {
   const albums = [
     makeAlbum("a", "One", "Artist"),
@@ -282,11 +312,22 @@ test("a Y-axis turn swaps edge-on and completes rotation before its alpha tail",
   assert.equal(edge.back, true);
   assert.equal(edge.scaleX, 0.02);
   assert.equal(edge.alpha, 0);
+  assert.equal(mosaicFlipFrame(700.5).angle, edge.angle, "back rotation holds edge-on through the 1ms handoff");
+  assert.equal(mosaicFlipFrame(701).angle, edge.angle);
+  assert.ok(mosaicFlipFrame(702).angle > edge.angle, "rotation resumes after the hold");
+  assert.ok(Math.abs(front.rotation - 0.40625) < 1e-12, "front angle follows the native quintic at halfway");
+  assert.ok(Math.abs(front.alpha - 0.1875) < 1e-12);
   assert.equal(back.back, true);
   assert.ok(back.alpha > edge.alpha && back.alpha < landed.alpha);
   assert.equal(landed.scaleX, 1);
   assert.ok(landed.alpha > 0 && landed.alpha < 1);
   assert.equal(mosaicFlipFrame(2800).alpha, 1);
+  assert.ok(Math.abs(mosaicFlipFrame(1750).alpha - 0.8125) < 1e-12, "alpha has its own quintic midpoint at 1750ms");
+  for (const elapsed of [-100, 0, 700, 701, 1400, 2800, 4000]) {
+    const frame = mosaicFlipFrame(elapsed);
+    assert.ok(frame.alpha >= 0 && frame.alpha <= 1);
+    assert.ok(frame.rotation >= 0 && frame.rotation <= 1);
+  }
 });
 
 test("pausing lets an in-progress live tile finish without snapping back", () => {

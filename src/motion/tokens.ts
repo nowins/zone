@@ -21,6 +21,7 @@ export const NOW_PLAYING_MOTION = {
   mosaicRevealDelay: 200,
   mosaicRevealStep: 100,
   mosaicTurn: 1400,
+  mosaicTurnHold: 1,
   mosaicTurnFade: 2800,
   mosaicInterval: 2000,
   mosaicLightLoop: 90_000,
@@ -40,6 +41,14 @@ export const NOW_PLAYING_MOTION = {
   coverInfoDelay: 60,
   coverHandoff: 80,
   nowStage: 1700,
+} as const;
+
+/** Native Iris curve parameters; weights already include UIX's factor of ten. */
+export const NOW_PLAYING_CURVES = {
+  mosaicFlipHandles: [1, 1],
+  mosaicRevealAlpha: { weight: 5, handle: 0.5 },
+  mosaicRevealScale: { weight: 10, handle: 0.5, start: 0.8 },
+  mosaicLightWeight: 2.5,
 } as const;
 
 /** WP tile timing: interaction, readable live updates and staggered arrival. */

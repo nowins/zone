@@ -1,6 +1,7 @@
 import type { AlbumGroup } from "../types";
 import { clamp, smoothstep } from "../motion/math.js";
-import { NOW_PLAYING_MOTION } from "../motion/tokens.js";
+import { irisBezier, irisEaseIn } from "../motion/irisCurves.js";
+import { NOW_PLAYING_CURVES, NOW_PLAYING_MOTION } from "../motion/tokens.js";
 import { createMosaicLightingSampler } from "./mosaicLighting.js";
 export { createMosaicColorFieldMotion } from "./mosaicLighting.js";
 
@@ -124,19 +125,33 @@ export function createMosaicMotion(timeSeconds: number): MosaicMotion {
 
 export function mosaicTileRevealAmount(seed: number, elapsedMs: number, motionEnabled = true) {
   if (!motionEnabled) return 1;
+  const { weight, handle } = NOW_PLAYING_CURVES.mosaicRevealAlpha;
+  return irisEaseIn(mosaicTileRevealProgress(seed, elapsedMs), weight, handle);
+}
+
+/** GridShow scales independently of alpha, using the stronger native weight. */
+export function mosaicTileRevealScale(seed: number, elapsedMs: number, motionEnabled = true) {
+  if (!motionEnabled) return 1;
+  const { weight, handle, start } = NOW_PLAYING_CURVES.mosaicRevealScale;
+  return start + (1 - start) * irisEaseIn(mosaicTileRevealProgress(seed, elapsedMs), weight, handle);
+}
+
+function mosaicTileRevealProgress(seed: number, elapsedMs: number) {
   const slice = Math.min(MOSAIC_REVEAL_SLICES - 1,
     Math.floor(clamp(seed, 0, 1) * MOSAIC_REVEAL_SLICES));
   const delay = NOW_PLAYING_MOTION.mosaicRevealDelay + slice * NOW_PLAYING_MOTION.mosaicRevealStep;
-  const progress = clamp((elapsedMs - delay) / NOW_PLAYING_MOTION.mosaicReveal, 0, 1);
-  return 1 - (1 - progress) ** 3;
+  return clamp((elapsedMs - delay) / NOW_PLAYING_MOTION.mosaicReveal, 0, 1);
 }
 
 /** Two Y-axis keyframe segments and a separately timed back-face alpha tail.
- * Cubic ordinate handles (1, 1) reconstruct the shipped BezierSmooth intent. */
+ * Iris's quintic Bezier keeps the back face edge-on for the shipped 1ms hold. */
 export function mosaicFlipFrame(elapsedMs: number) {
   const half = NOW_PLAYING_MOTION.mosaicTurn / 2;
   const back = elapsedMs >= half;
-  const amount = easeMosaicBezier(clamp((elapsedMs - (back ? half : 0)) / half, 0, 1));
+  const backStart = half + NOW_PLAYING_MOTION.mosaicTurnHold;
+  const amount = easeMosaicBezier(back
+    ? (elapsedMs - backStart) / (NOW_PLAYING_MOTION.mosaicTurn - backStart)
+    : elapsedMs / half);
   const angle = (back ? amount - 1 : amount) * Math.PI / 2;
   const alpha = back
     ? easeMosaicBezier(clamp((elapsedMs - half) / (NOW_PLAYING_MOTION.mosaicTurnFade - half), 0, 1))
@@ -144,7 +159,9 @@ export function mosaicFlipFrame(elapsedMs: number) {
   return { back, alpha, angle, rotation: (back ? 1 + amount : amount) / 2, scaleX: Math.max(0.02, Math.cos(angle)) };
 }
 
-function easeMosaicBezier(progress: number) { return 1 - (1 - progress) ** 3; }
+function easeMosaicBezier(progress: number) {
+  return irisBezier(progress, ...NOW_PLAYING_CURVES.mosaicFlipHandles);
+}
 
 export function extractMosaicColorPalette(data: Uint8ClampedArray): MosaicColorPalette {
   const baseColor = averageImageColor(data);

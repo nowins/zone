@@ -63,6 +63,7 @@
     "src/utils/collectionNavigation.ts",
     "src/utils/metadata.ts",
     "src/motion/math.ts",
+    "src/motion/irisCurves.ts",
     "src/motion/tokens.ts",
     "src/motion/tileScheduler.ts",
     "src/motion/spring.ts",
