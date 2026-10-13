@@ -5,6 +5,11 @@ export const MOSAIC_COVER_MATERIAL = {
   opacity: 89 / 255,
 };
 
+/** Iris packs the fully inherited animated alpha into D3DCOLOR before draw. */
+export function mosaicCoverVertexAlpha(amount = 1, inheritedAlpha = 1) {
+  return Math.floor(Math.max(0, Math.min(1, 0.35 * amount * inheritedAlpha)) * 255 + 1e-7) / 255;
+}
+
 /** Flatten the captured Iris cover shader over its opaque black cell backing. */
 export function applyMosaicCoverMaterial(pixels: Uint8ClampedArray) {
   const { weights, contrast, opacity } = MOSAIC_COVER_MATERIAL;

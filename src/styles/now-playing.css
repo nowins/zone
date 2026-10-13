@@ -48,6 +48,10 @@
   display: block;
   opacity: 0;
   pointer-events: none;
+  filter: none;
+}
+
+.now-artist-canvas.is-fallback {
   filter: saturate(0.72) brightness(0.46);
 }
 

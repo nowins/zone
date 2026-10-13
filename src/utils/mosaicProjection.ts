@@ -36,6 +36,14 @@ export function projectMosaicPoint(tile: MosaicRect, camera: MosaicCamera, angle
   };
 }
 
+/** Preserve clip W for the GPU's perspective-correct interpolation. */
+export function projectMosaicVertex(tile: MosaicRect, camera: MosaicCamera, angle: number, u: number, v: number) {
+  const point = projectMosaicPoint(tile, camera, angle, u, v);
+  const depth = -(u - 0.5) * tile.width * Math.sin(angle) * camera.scale;
+  return { x: point.x * camera.scale + camera.offsetX, y: point.y * camera.scale + camera.offsetY,
+    w: 1 + depth / camera.distance };
+}
+
 /** Sixteen affine triangles approximate perspective-correct texture mapping. */
 export function drawProjectedMosaicImage(
   context: CanvasRenderingContext2D, image: HTMLCanvasElement,

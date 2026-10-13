@@ -28,6 +28,7 @@ export const NOW_PLAYING_MOTION = {
   artistGridDelay: 3000,
   artistScene: 32_000,
   artistTransition: 2000,
+  paletteSmoothing: 1200,
   artistDecodeTimeout: 1600,
   mosaicReplace: 900,
   mosaicReplaceStagger: 240,

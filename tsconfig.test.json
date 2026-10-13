@@ -24,6 +24,7 @@
     "src/utils/mosaicLighting.ts",
     "src/utils/mosaicCoverMaterial.ts",
     "src/utils/mosaicProjection.ts",
+    "src/utils/irisGpuRenderer.ts",
     "src/utils/beatAnalysis.ts",
     "src/utils/audioGlow.ts",
     "src/utils/playback.ts",
