@@ -16,7 +16,7 @@ import {
   type ArtistPhotoOpacity,
 } from "../utils/nowPlayingArtist";
 import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
-import { createIrisGpuRenderer, type IrisGpuRenderer, type IrisQuad, type IrisProjectedVertex } from "../utils/irisGpuRenderer";
+import { createIrisGpuRenderer, irisMediaImageSize, type IrisMediaImage, type IrisGpuRenderer, type IrisQuad, type IrisProjectedVertex } from "../utils/irisGpuRenderer";
 import { createMosaicColorPalette, extractMosaicColorPalette, interpolateMosaicColorPalette, type MosaicColorPalette } from "../utils/nowPlayingCanvas";
 
 const MAX_DECODED_PHOTO_EDGE = 1600;
@@ -35,7 +35,7 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
   const poolKey = paths.join("\0");
   const artistRef = useRef<string | null>(null);
   const sceneRef = useRef(createArtistPhotoScene());
-  const imagesRef = useRef(new Map<string, HTMLCanvasElement>());
+  const imagesRef = useRef(new Map<string, IrisMediaImage>());
   const decodingRef = useRef(false);
   const retiredRef = useRef<HTMLCanvasElement | null>(null);
   const retiredFallbackRef = useRef(true);
@@ -114,7 +114,7 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
       image: previousImages.get(path) ?? await loadArtistPhoto(path, controller.signal) }))).then(results => {
       if (controller.signal.aborted || artistRef.current !== artist) return;
       decodingRef.current = false;
-      const ready = results.filter((result): result is { path: string; image: HTMLCanvasElement } => Boolean(result.image));
+      const ready = results.filter((result): result is { path: string; image: IrisMediaImage } => Boolean(result.image));
       const nextImages = new Map(ready.map(result => [result.path, result.image]));
       const scene = sceneRef.current;
       if (ready.length < 2 || (scene.current && !nextImages.has(scene.current))) retireScene();
@@ -140,10 +140,10 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
       return () => controller.abort();
     }
     // Decode only one small cover for color selection; photographs stay raw.
-    void loadArtistPhoto(path, controller.signal, 48).then(image => {
+    void loadArtistPhoto(path, controller.signal, 48, true).then(image => {
       if (controller.signal.aborted) return;
       try {
-        const context = image?.getContext("2d", { willReadFrequently: true });
+        const context = image && "getContext" in image ? image.getContext("2d", { willReadFrequently: true }) : null;
         targetPalette(image && context
           ? extractMosaicColorPalette(context.getImageData(0, 0, image.width, image.height).data)
           : FALLBACK_PALETTE);
@@ -199,7 +199,7 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
           catch { rendererRef.current = null; }
         }
         const renderer = rendererRef.current;
-        const gpuPhoto = (image: HTMLCanvasElement, motion: ArtistPhotoMotion, elapsedMs: number, opacity: number) => {
+        const gpuPhoto = (image: IrisMediaImage, motion: ArtistPhotoMotion, elapsedMs: number, opacity: number) => {
           if (!renderer?.available || !renderer.begin({ width, height, rasterScale: dpr, dpiScale, transparent: true })
             || !renderer.photo({ image, vertices: artistPhotoVertices(image, motion, elapsedMs, width, height),
               palette: paletteRef.current, timeSeconds: lightTimeRef.current, opacity: 1 })) return false;
@@ -308,40 +308,44 @@ function artistPalettesSettled(current: MosaicColorPalette, target: MosaicColorP
     .every(channel => Math.abs(color[channel] - target[index][channel]) <= 0.01));
 }
 
-function artistPhotoVertices(image: HTMLCanvasElement, motion: ArtistPhotoMotion, elapsedMs: number,
+function artistPhotoVertices(image: IrisMediaImage, motion: ArtistPhotoMotion, elapsedMs: number,
   width: number, height: number): IrisQuad<IrisProjectedVertex> {
   const transform = artistPhotoTransform(motion, elapsedMs, width);
-  const scale = Math.max(width / image.width, height / image.height) * transform.scale;
-  const drawnWidth = image.width * scale, drawnHeight = image.height * scale;
+  const size = irisMediaImageSize(image);
+  const scale = Math.max(width / size.width, height / size.height) * transform.scale;
+  const drawnWidth = size.width * scale, drawnHeight = size.height * scale;
   const left = (width - drawnWidth) / 2 + transform.offsetX, top = (height - drawnHeight) / 2;
   return [{ x: left, y: top, w: 1 }, { x: left + drawnWidth, y: top, w: 1 },
     { x: left + drawnWidth, y: top + drawnHeight, w: 1 }, { x: left, y: top + drawnHeight, w: 1 }];
 }
 
-function drawArtistPhoto(context: CanvasRenderingContext2D, image: HTMLCanvasElement,
+function drawArtistPhoto(context: CanvasRenderingContext2D, image: IrisMediaImage,
   motion: ArtistPhotoMotion, elapsedMs: number, width: number, height: number) {
   if (width <= 1 || height <= 1) return;
   const transform = artistPhotoTransform(motion, elapsedMs, width);
-  const coverScale = Math.max(width / image.width, height / image.height) * transform.scale;
-  const drawnWidth = image.width * coverScale;
-  const drawnHeight = image.height * coverScale;
+  const size = irisMediaImageSize(image);
+  const coverScale = Math.max(width / size.width, height / size.height) * transform.scale;
+  const drawnWidth = size.width * coverScale;
+  const drawnHeight = size.height * coverScale;
   context.drawImage(image, (width - drawnWidth) / 2 + transform.offsetX, (height - drawnHeight) / 2, drawnWidth, drawnHeight);
 }
 
-function loadArtistPhoto(path: string, signal: AbortSignal, maximumEdge = MAX_DECODED_PHOTO_EDGE): Promise<HTMLCanvasElement | null> {
+function loadArtistPhoto(path: string, signal: AbortSignal, maximumEdge = MAX_DECODED_PHOTO_EDGE, forceCanvas = false): Promise<IrisMediaImage | null> {
   return new Promise(resolve => {
     if (signal.aborted) { resolve(null); return; }
     const image = new Image();
     let settled = false;
     let timeout: number | undefined;
-    const finish = (surface: HTMLCanvasElement | null) => {
+    const finish = (surface: IrisMediaImage | null) => {
       if (settled) return;
       settled = true;
       if (timeout !== undefined) window.clearTimeout(timeout);
       image.removeEventListener("load", loaded);
       image.removeEventListener("error", failed);
       signal.removeEventListener("abort", failed);
-      image.src = "";
+      // A retained decoded image is the straight RGBA source for GPU sampling.
+      // Clearing it here would also invalidate a scene still using that object.
+      if (surface !== image) image.src = "";
       resolve(surface);
     };
     const failed = () => finish(null);
@@ -349,6 +353,7 @@ function loadArtistPhoto(path: string, signal: AbortSignal, maximumEdge = MAX_DE
       if (settled) return;
       if (signal.aborted || image.naturalWidth <= 0 || image.naturalHeight <= 0) { finish(null); return; }
       try {
+        if (!forceCanvas && Math.max(image.naturalWidth, image.naturalHeight) <= maximumEdge) { finish(image); return; }
         const scale = Math.min(1, maximumEdge / Math.max(image.naturalWidth, image.naturalHeight));
         const surface = document.createElement("canvas");
         surface.width = Math.max(1, Math.round(image.naturalWidth * scale));

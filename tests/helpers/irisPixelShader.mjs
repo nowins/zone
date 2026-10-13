@@ -52,6 +52,7 @@ export function executeIrisPixelShader(shader, {
         case "mul":
         case "mul_sat": value = input[0].map((x, i) => x * input[1][i]); break;
         case "mad": value = input[0].map((x, i) => x * input[1][i] + input[2][i]); break;
+        case "lrp": value = input[0].map((x, i) => x * input[1][i] + (1 - x) * input[2][i]); break;
         case "mov": value = input[0]; break;
         case "frc": value = input[0].map(x => x - Math.floor(x)); break;
         case "rcp": value = input[0].map(x => 1 / x); break;

@@ -9,8 +9,10 @@ import { createMosaicColorPalette, extractMosaicColorPalette } from "../.tmp/vis
 await build({ entryPoints: ["src/components/NowPlayingArtistCanvas.tsx"], outfile: ".tmp/artist-canvas-tests/runtime.js",
   bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent",
   plugins: [{ name: "controlled-artist-gpu", setup(build) {
+    build.onResolve({ filter: /\.ts$/, namespace: "controlled-artist-gpu" }, args => ({ path: args.path, namespace: "file" }));
     build.onResolve({ filter: /\/irisGpuRenderer$/ }, () => ({ path: "artist-gpu", namespace: "controlled-artist-gpu" }));
     build.onLoad({ filter: /.*/, namespace: "controlled-artist-gpu" }, () => ({ contents: `
+      export { irisMediaImageSize } from ${JSON.stringify(`${process.cwd().replaceAll("\\", "/")}/src/utils/irisGpuRenderer.ts`)};
       export function createIrisGpuRenderer(document) {
         const fixture = window.__irisFixture;
         fixture.attempts++;
@@ -23,9 +25,10 @@ await build({ entryPoints: ["src/components/NowPlayingArtistCanvas.tsx"], outfil
           get available() { return !instance.disposed && !fixture.lost; },
           begin(frame) { instance.frame = {...frame}; return !fixture.failBegin; },
           photo(photo) {
-            fixture.photos.push({ ...photo, image:photo.image.path, frame:instance.frame });
-            if (fixture.failPath === photo.image.path) return false;
-            canvas.path = 'gpu:' + photo.image.path;
+            const path = photo.image.path ?? photo.image.src;
+            fixture.photos.push({ ...photo, source:photo.image, image:path, frame:instance.frame });
+            if (fixture.failPath === path) return false;
+            canvas.path = 'gpu:' + path;
             return true;
           },
           finishPhoto() { return fixture.failFinish ? null : canvas; },
@@ -468,6 +471,55 @@ test("a failed cover smoothly returns a paused photo to the fallback palette and
   } finally { await env.close(); }
 });
 
+test("bounded photographs retain the actual decoded image while oversized photographs use a released-source Canvas", async () => {
+  for (const [dimensions, direct] of [[[1600, 900], true], [[3200, 1800], false]]) {
+    const env = await fixture({ gpu: true, imageSizes: { "photo-a": dimensions, "photo-b": dimensions } });
+    try {
+      env.advance(5200);
+      const source = env.gpuPhotos().at(-1).source;
+      const original = env.decodedImages().filter(image => image.originalPath === "photo-a").at(-1);
+      assert.ok(original);
+      if (direct) {
+        assert.equal(source, original, "GPU receives the decoded DOM image, with no alpha-changing raster in between");
+        assert.equal(source.src, "photo-a");
+        assert.equal(source.naturalWidth, 1600);
+        assert.equal(env.imageRasters().filter(raster => raster.path.startsWith("photo-")).length, 0);
+      } else {
+        assert.ok(source instanceof window.HTMLCanvasElement);
+        assert.equal(source.width, 1600);
+        assert.equal(source.height, 900);
+        assert.equal(original.src, "", "a completed downsample no longer holds the original decoded source");
+      }
+      assert.equal(original.listeners.size, 0, "decode completion releases its handlers under StrictMode");
+      const crop = env.gpuPhotos().at(-1).vertices;
+      assert.ok(crop[1].x - crop[0].x > 1180 && crop[2].y - crop[0].y >= 760,
+        "the crop uses decoded dimensions, independently of an image's CSS width=1");
+      await env.render({ tracks: makeTracks("Artist", ["photo-a", "photo-b", "photo-c"]) });
+      env.step(40);
+      assert.equal(env.gpuPhotos().at(-1).source, source, "metadata changes reuse the current decoded source");
+      if (direct) assert.equal(source.src, "photo-a", "aborting the completed old load cannot clear a retained image");
+    } finally { await env.close(); }
+  }
+});
+
+test("aborted, failed and un-rasterizable photographs release their decoders and cannot return to a new artist", async () => {
+  for (const options of [{ pending: ["photo-b"] }, { failed: ["photo-b"] },
+    { imageSizes: { "photo-a": [3200, 1800], "photo-b": [3200, 1800] }, rasterFailure: true }]) {
+    const env = await fixture({ gpu: true, ...options });
+    try {
+      await env.render({ tracks: makeTracks("Other", ["single"]) });
+      await env.finishImage("photo-b");
+      env.advance(5200);
+      assert.equal(env.opacity(), 0);
+      assert.equal(env.frameCount(), 0);
+      assert.equal(env.gpuPhotos().length, 0);
+      const abandoned = env.decodedImages().filter(image => image.originalPath === "photo-b");
+      assert.ok(abandoned.length > 0);
+      assert.ok(abandoned.every(image => image.src === "" && image.listeners.size === 0));
+    } finally { await env.close(); }
+  }
+});
+
 function solidCoverPalette(color) {
   // The fixture's 1200x900 source becomes the component's 48x36 color raster.
   const data = new Uint8ClampedArray(48 * 36 * 4);
@@ -480,7 +532,8 @@ function makeTracks(artist, paths) {
     artist_image_path: paths[0], artist_images: paths.slice(1).map(path => ({ path })) }));
 }
 
-async function fixture({ paths = ["photo-a", "photo-b"], pending = [], failed = [], gpu = false, cover = null, coverColors = {} } = {}) {
+async function fixture({ paths = ["photo-a", "photo-b"], pending = [], failed = [], gpu = false, cover = null, coverColors = {},
+  imageSizes = {}, rasterFailure = false } = {}) {
   const dom = new JSDOM('<body><div id="root"></div></body>');
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -489,7 +542,7 @@ async function fixture({ paths = ["photo-a", "photo-b"], pending = [], failed = 
   const frames = new Map();
   let nextId = 0, now = 0, hidden = false, width = 1180, height = 760, resize;
   let draws = [], lastDraws = [];
-  const imageRasters = [], imageSources = [];
+  const imageRasters = [], imageSources = [], decodedImages = [];
   const gpuFixture = { enabled: gpu, attempts: 0, instances: [], photos: [], lost: false, failBegin: false, failFinish: false, failPath: null };
   window.__irisFixture = gpuFixture;
   const unresolved = new Set(pending);
@@ -513,28 +566,33 @@ async function fixture({ paths = ["photo-a", "photo-b"], pending = [], failed = 
   Object.defineProperty(document, "visibilityState", { get: () => hidden ? "hidden" : "visible" });
   globalThis.ResizeObserver = class { constructor(callback) { resize = callback; } observe() {} disconnect() {} };
   globalThis.Image = class {
+    constructor() { decodedImages.push(this); }
     complete = true;
-    naturalWidth = 1200;
-    naturalHeight = 900;
-    set src(value) { this.source = value; imageSources.push(value); }
+    listeners = new Map();
+    get naturalWidth() { return imageSizes[this.src]?.[0] ?? 1200; }
+    get naturalHeight() { return imageSizes[this.src]?.[1] ?? 900; }
+    width = 1;
+    height = 1;
+    set src(value) { this.source = value; if (value) this.originalPath = value; imageSources.push(value); }
     get src() { return this.source; }
     decode() {
       if (failures.has(this.src)) return Promise.reject(new Error("bad image"));
       if (unresolved.has(this.src)) return new Promise(resolve => resolvers.set(this.src, resolve));
       return Promise.resolve();
     }
-    addEventListener() {}
-    removeEventListener() {}
+    addEventListener(type, listener) { this.listeners.set(type, listener); }
+    removeEventListener(type, listener) { if (this.listeners.get(type) === listener) this.listeners.delete(type); }
   };
   dom.window.HTMLCanvasElement.prototype.getBoundingClientRect = () => ({ width, height });
   const contexts = new WeakMap();
   dom.window.HTMLCanvasElement.prototype.getContext = function () {
+    if (rasterFailure && !this.classList.contains("now-artist-canvas")) return null;
     if (contexts.has(this)) return contexts.get(this);
     const canvas = this;
     const context = { globalAlpha: 1, setTransform() {}, clearRect() { if (canvas.classList.contains("now-artist-canvas")) draws = []; },
       drawImage(image, ...dimensions) {
-        if (image instanceof globalThis.Image) { canvas.path = image.src; imageRasters.push({ path: image.src, width: canvas.width, height: canvas.height }); }
-        else if (canvas.classList.contains("now-artist-canvas")) draws.push({ path: image.path ?? "snapshot", alpha: this.globalAlpha, dimensions });
+        if (canvas.classList.contains("now-artist-canvas")) draws.push({ path: image.path ?? image.src ?? "snapshot", alpha: this.globalAlpha, dimensions });
+        else if (image instanceof globalThis.Image) { canvas.path = image.src; imageRasters.push({ path: image.src, width: canvas.width, height: canvas.height }); }
         else canvas.path = "snapshot";
       },
       getImageData() {
@@ -577,6 +635,7 @@ async function fixture({ paths = ["photo-a", "photo-b"], pending = [], failed = 
     failGpuStage: stage => { gpuFixture[stage] = true; },
     fallback: () => document.querySelector(".now-artist-canvas").classList.contains("is-fallback"),
     imageRasters: () => imageRasters, imageSources: () => imageSources,
+    decodedImages: () => decodedImages,
     canvasSize: () => { const canvas = document.querySelector(".now-artist-canvas"); return { width: canvas.width, height: canvas.height }; },
     resolutionListeners: () => resolutionQueries.reduce((total, query) => total + query.listeners.size, 0),
     dpi(value) { window.devicePixelRatio = value; [...resolutionQueries].forEach(query => [...query.listeners].forEach(listener => listener())); },

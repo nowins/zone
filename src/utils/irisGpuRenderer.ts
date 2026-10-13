@@ -5,14 +5,21 @@ export type IrisProjectedVertex = { x: number; y: number; w: number };
 export type IrisTextureCoordinate = { u: number; v: number };
 /** Clockwise order: top-left, top-right, bottom-right, bottom-left. */
 export type IrisQuad<T> = readonly [T, T, T, T];
+export type IrisMediaImage = HTMLImageElement | HTMLCanvasElement;
+/** Decoded dimensions must not depend on an image's optional CSS size. */
+export function irisMediaImageSize(image: IrisMediaImage) {
+  return "naturalWidth" in image
+    ? { width: image.naturalWidth, height: image.naturalHeight }
+    : { width: image.width, height: image.height };
+}
 export type IrisPalette = readonly [RgbColor, RgbColor, RgbColor, ...RgbColor[]];
 export type IrisRasterSize = { width: number; height: number; rasterScale: number };
 export type IrisFrame = {
   width: number; height: number; rasterScale: number; dpiScale: number; transparent?: boolean;
 };
 export type IrisCover = {
-  image: HTMLCanvasElement;
-  previous?: HTMLCanvasElement | null;
+  image: IrisMediaImage;
+  previous?: IrisMediaImage | null;
   mix?: number;
   vertices: IrisQuad<IrisProjectedVertex>;
   uv?: IrisQuad<IrisTextureCoordinate>;
@@ -22,7 +29,7 @@ export type IrisCover = {
   backingOpacity?: number;
 };
 export type IrisPhoto = {
-  image: HTMLCanvasElement;
+  image: IrisMediaImage;
   vertices: IrisQuad<IrisProjectedVertex>;
   uv?: IrisQuad<IrisTextureCoordinate>;
   palette: IrisPalette;
@@ -226,8 +233,8 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
   let targetAllocated = false;
   const maximumEdge = Math.min(context.getParameter(context.MAX_TEXTURE_SIZE) as number,
     context.getParameter(context.MAX_RENDERBUFFER_SIZE) as number);
-  const textures = new Map<HTMLCanvasElement, WebGLTexture>();
-  const failedTextures = new WeakSet<HTMLCanvasElement>();
+  const textures = new Map<IrisMediaImage, WebGLTexture>();
+  const failedTextures = new WeakSet<IrisMediaImage>();
   const programs: Program[] = [];
   const vertexBuffer = context.createBuffer(), indexBuffer = context.createBuffer();
   const targetTexture = context.createTexture(), framebuffer = context.createFramebuffer();
@@ -317,10 +324,11 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
     context.blendEquationSeparate(context.FUNC_ADD, context.FUNC_ADD);
     context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE);
   }
-  function sourceTexture(source: HTMLCanvasElement): WebGLTexture | null {
+  function sourceTexture(source: IrisMediaImage): WebGLTexture | null {
     const cached = textures.get(source);
     if (cached) { textures.delete(source); textures.set(source, cached); return cached; }
-    if (failedTextures.has(source) || source.width < 1 || source.height < 1 || Math.max(source.width, source.height) > maximumEdge) return null;
+    const { width, height } = irisMediaImageSize(source);
+    if (failedTextures.has(source) || width < 1 || height < 1 || Math.max(width, height) > maximumEdge) return null;
     const texture = context.createTexture();
     if (!texture) return null;
     try {
@@ -398,10 +406,18 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
       const image = sourceTexture(options.image), previous = sourceTexture(options.previous ?? options.image);
       if (!image || !previous) return false;
       try {
+        let uv = options.uv, previousUv = options.previousUv;
+        if (!uv) {
+          const size = irisMediaImageSize(options.image);
+          uv = irisCoverCropUv(size.width, size.height);
+        }
+        if (!previousUv) {
+          const size = irisMediaImageSize(options.previous ?? options.image);
+          previousUv = irisCoverCropUv(size.width, size.height);
+        }
         context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
         geometry(coverProgram, irisQuadClipVertices(options.vertices, frame.width, frame.height,
-          options.uv ?? irisCoverCropUv(options.image.width, options.image.height),
-          options.previousUv ?? irisCoverCropUv((options.previous ?? options.image).width, (options.previous ?? options.image).height)));
+          uv, previousUv));
         bindTexture(coverProgram, "uImage", image, 0); bindTexture(coverProgram, "uPrevious", previous, 1);
         blend();
         const backingOpacity = unit(options.backingOpacity ?? 1);

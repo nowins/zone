@@ -7,7 +7,7 @@ import { buildNowPlayingWall } from "../utils/nowPlayingWall";
 import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
 import { createMosaicCamera, drawProjectedMosaicImage, projectMosaicPoint, projectMosaicVertex, type MosaicCamera } from "../utils/mosaicProjection";
 import { applyMosaicCoverMaterial, mosaicCoverVertexAlpha, MOSAIC_COVER_MATERIAL } from "../utils/mosaicCoverMaterial";
-import { createIrisGpuRenderer, irisCoverCropUv, type IrisGpuRenderer, type IrisQuad, type IrisProjectedVertex } from "../utils/irisGpuRenderer";
+import { createIrisGpuRenderer, irisCoverCropUv, irisMediaImageSize, type IrisMediaImage, type IrisGpuRenderer, type IrisQuad, type IrisProjectedVertex } from "../utils/irisGpuRenderer";
 import {
   buildCanvasMosaicTiles,
   advanceMosaicArtwork,
@@ -29,10 +29,10 @@ import {
 } from "../utils/nowPlayingCanvas";
 
 const imageReadyListeners = new Set<() => void>();
-const imageCache = new Map<string, HTMLCanvasElement>();
-const turnSurfaces = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
-const coverMaterials = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
-const pendingImageLoads = new Map<string, Promise<HTMLCanvasElement | null>>();
+const imageCache = new Map<string, IrisMediaImage>();
+const turnSurfaces = new WeakMap<IrisMediaImage, HTMLCanvasElement>();
+const coverMaterials = new WeakMap<IrisMediaImage, HTMLCanvasElement>();
+const pendingImageLoads = new Map<string, Promise<IrisMediaImage | null>>();
 const MAX_IMAGE_CACHE = 96;
 const MAX_WALL_IMAGE_EDGE = 384;
 const WALL_IMAGE_LOAD_CONCURRENCY = 4;
@@ -59,11 +59,11 @@ type MosaicColorFieldRenderer = {
 type MosaicFlipArtwork = {
   tileIndex: number;
   startedAt: number;
-  front: HTMLCanvasElement;
-  back: HTMLCanvasElement;
+  front: IrisMediaImage;
+  back: IrisMediaImage;
 };
 
-type MosaicTileArtwork = { image: HTMLCanvasElement | null; previous: HTMLCanvasElement | null; mix: number };
+type MosaicTileArtwork = { image: IrisMediaImage | null; previous: IrisMediaImage | null; mix: number };
 
 export function NowPlayingMosaicCanvas({
   tracks,
@@ -81,7 +81,7 @@ export function NowPlayingMosaicCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1, dpiScale: 1 });
   const tilesRef = useRef<MosaicTile[]>([]);
-  const artworkRef = useRef<Array<MosaicArtworkState<HTMLCanvasElement>>>([]);
+  const artworkRef = useRef<Array<MosaicArtworkState<IrisMediaImage>>>([]);
   const albumsRef = useRef<AlbumGroup[]>([]);
   const pendingAlbumsRef = useRef<AlbumGroup[] | null>(null);
   const isPlayingRef = useRef(isPlaying);
@@ -322,7 +322,7 @@ function drawMosaic(
   wallRevealStartedAt: number,
   motionEnabled: boolean,
   colorFieldRendererRef: { current: MosaicColorFieldRenderer | null },
-  artwork: Array<MosaicArtworkState<HTMLCanvasElement>>,
+  artwork: Array<MosaicArtworkState<IrisMediaImage>>,
   flipArtworkRef: { current: MosaicFlipArtwork | null },
   gpu: IrisGpuRenderer | null,
 ) {
@@ -568,10 +568,14 @@ function drawTile(
     const vertices: IrisQuad<IrisProjectedVertex> = [projectMosaicVertex(face, camera, angle, 0, 0),
       projectMosaicVertex(face, camera, angle, 1, 0), projectMosaicVertex(face, camera, angle, 1, 1),
       projectMosaicVertex(face, camera, angle, 0, 1)];
-    if (image) return gpu.cover({ image, previous: !isFlipping ? artwork.previous : null, mix,
-      vertices, uv: irisCoverCropUv(image.width, image.height, width, height),
-      previousUv: artwork.previous ? irisCoverCropUv(artwork.previous.width, artwork.previous.height, width, height) : undefined,
-      opacity: mosaicCoverVertexAlpha(isFlipping ? turn.alpha : 1, tileReveal), backingOpacity: tileReveal });
+    if (image) {
+      const size = irisMediaImageSize(image);
+      const previousSize = artwork.previous ? irisMediaImageSize(artwork.previous) : null;
+      return gpu.cover({ image, previous: !isFlipping ? artwork.previous : null, mix,
+        vertices, uv: irisCoverCropUv(size.width, size.height, width, height),
+        previousUv: previousSize ? irisCoverCropUv(previousSize.width, previousSize.height, width, height) : undefined,
+        opacity: mosaicCoverVertexAlpha(isFlipping ? turn.alpha : 1, tileReveal), backingOpacity: tileReveal });
+    }
     return true;
   }
   context.save();
@@ -592,7 +596,9 @@ function drawTile(
     context.fill();
     if (image) {
       context.globalAlpha = mosaicCoverVertexAlpha(turn.alpha, context.globalAlpha) / MOSAIC_COVER_MATERIAL.opacity;
-      drawProjectedMosaicImage(context, getTurnSurface(image), face, camera, angle);
+      const surface = getTurnSurface(image);
+      if (surface) drawProjectedMosaicImage(context, surface, face, camera, angle);
+      else drawImageCover(context, getCoverMaterial(image), face.x, face.y, face.width, face.height);
     }
     context.restore();
     return true;
@@ -621,24 +627,26 @@ function drawTile(
   return true;
 }
 
-function getTurnSurface(image: HTMLCanvasElement) {
+function getTurnSurface(image: IrisMediaImage) {
   const cached = turnSurfaces.get(image);
   if (cached) return cached;
   const surface = document.createElement("canvas");
-  surface.width = surface.height = Math.min(MAX_WALL_IMAGE_EDGE, Math.max(image.width, image.height));
+  const size = irisMediaImageSize(image);
+  surface.width = surface.height = Math.min(MAX_WALL_IMAGE_EDGE, Math.max(size.width, size.height));
   const context = surface.getContext("2d");
-  if (!context) return image;
+  if (!context) return null;
   drawImageCover(context, getCoverMaterial(image), 0, 0, surface.width, surface.height);
   turnSurfaces.set(image, surface);
   return surface;
 }
 
-function getCoverMaterial(image: HTMLCanvasElement) {
+function getCoverMaterial(image: IrisMediaImage) {
   const cached = coverMaterials.get(image);
   if (cached) return cached;
   const surface = document.createElement("canvas");
-  surface.width = image.width;
-  surface.height = image.height;
+  const size = irisMediaImageSize(image);
+  surface.width = size.width;
+  surface.height = size.height;
   const context = surface.getContext("2d", { willReadFrequently: true });
   if (!context) return image;
   context.drawImage(image, 0, 0);
@@ -660,20 +668,21 @@ function getCoverMaterial(image: HTMLCanvasElement) {
   return surface;
 }
 
-function drawImageCover(context: CanvasRenderingContext2D, image: HTMLCanvasElement, x: number, y: number, width: number, height: number) {
-  const sourceRatio = image.width / image.height;
+function drawImageCover(context: CanvasRenderingContext2D, image: IrisMediaImage, x: number, y: number, width: number, height: number) {
+  const size = irisMediaImageSize(image);
+  const sourceRatio = size.width / size.height;
   const targetRatio = width / height;
-  let sourceWidth = image.width;
-  let sourceHeight = image.height;
+  let sourceWidth = size.width;
+  let sourceHeight = size.height;
   let sourceX = 0;
   let sourceY = 0;
 
   if (sourceRatio > targetRatio) {
-    sourceWidth = image.height * targetRatio;
-    sourceX = (image.width - sourceWidth) / 2;
+    sourceWidth = size.height * targetRatio;
+    sourceX = (size.width - sourceWidth) / 2;
   } else {
-    sourceHeight = image.width / targetRatio;
-    sourceY = (image.height - sourceHeight) / 2;
+    sourceHeight = size.width / targetRatio;
+    sourceY = (size.height - sourceHeight) / 2;
   }
 
   context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
@@ -789,12 +798,15 @@ async function loadAndResizeWallImage(path: string) {
   }
 
   try {
+    // A Canvas round trip loses hidden RGB and rounds partial-alpha colors.
+    // Keep bounded decoded originals for direct, straight RGBA GPU upload.
+    if (Math.max(image.naturalWidth, image.naturalHeight) <= MAX_WALL_IMAGE_EDGE) return image;
     const scale = Math.min(1, MAX_WALL_IMAGE_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
     const context = canvas.getContext("2d");
-    if (!context) return null;
+    if (!context) { image.src = ""; return null; }
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
     context.drawImage(image, 0, 0, canvas.width, canvas.height);

@@ -4,7 +4,7 @@ import { build } from "esbuild";
 
 await build({ entryPoints: ["src/utils/irisGpuRenderer.ts"], outfile: ".tmp/iris-gpu-tests/runtime.js",
   bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent" });
-const { irisCoverCropUv, irisQuadClipVertices, irisBoundedRasterSize, createIrisGpuRenderer } = await import("../.tmp/iris-gpu-tests/runtime.js");
+const { irisCoverCropUv, irisQuadClipVertices, irisBoundedRasterSize, irisMediaImageSize, createIrisGpuRenderer } = await import("../.tmp/iris-gpu-tests/runtime.js");
 
 function near(actual, expected, tolerance = 1e-6) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} differs from ${expected}`);
@@ -103,3 +103,82 @@ test("an unavailable or rejected browser context returns null for the existing C
   assert.deepEqual(requests, ["webgl2", "webgl"]);
   assert.equal(createIrisGpuRenderer({ createElement() { return { getContext() { throw new Error("GPU policy disabled"); } }; } }), null);
 });
+
+test("decoded image dimensions are independent of its display size and Canvas keeps its raster size", () => {
+  assert.deepEqual(irisMediaImageSize({ naturalWidth: 384, naturalHeight: 192, width: 1, height: 1 }), { width: 384, height: 192 });
+  assert.deepEqual(irisMediaImageSize({ width: 1600, height: 900 }), { width: 1600, height: 900 });
+});
+
+test("both GL versions upload the exact decoded image or Canvas once with straight alpha flags", () => {
+  for (const webgl2 of [true, false]) {
+    const env = recordingGpu(webgl2);
+    const renderer = createIrisGpuRenderer(env.document);
+    assert.ok(renderer);
+    const image = { naturalWidth: 8, naturalHeight: 2, width: 1, height: 1, src: "local-controlled.png" };
+    const canvas = { width: 8, height: 2 };
+    const vertices = [{x:0,y:0,w:1},{x:64,y:0,w:1},{x:64,y:64,w:1},{x:0,y:64,w:1}];
+    const palette = [{r:50,g:40,b:30},{r:30,g:60,b:40},{r:60,g:40,b:30}];
+    try {
+      for (let frame = 0; frame < 3; frame++) {
+        assert.equal(renderer.begin({width:64,height:64,rasterScale:1,dpiScale:2}), true);
+        assert.equal(renderer.cover({image,previous:canvas,mix:.5,vertices,opacity:89/255}), true);
+        const vertexData = env.calls.findLast(call => call.name === "bufferData"
+          && call.args[1] instanceof Float32Array && call.args[1].length === 28).args[1];
+        for (const [index, [u, v]] of [[.375,0],[.625,0],[.625,1],[.375,1]].entries()) {
+          assert.deepEqual([...vertexData.subarray(index * 7 + 3, index * 7 + 7)], [u, v, u, v],
+            "default image and previous Canvas UVs use their decoded 8x2 dimensions");
+        }
+        assert.equal(renderer.finishWall({palette,timeSeconds:frame,opacity:1}), renderer.canvas);
+        assert.equal(renderer.begin({width:64,height:64,rasterScale:1,dpiScale:2,transparent:true}), true);
+        assert.equal(renderer.photo({image,vertices,palette,timeSeconds:frame,opacity:1}), true);
+        assert.equal(renderer.finishPhoto(), renderer.canvas);
+      }
+      const uploads = env.calls.filter(call => call.name === "texImage2D" && call.args.length === 6);
+      assert.equal(uploads.length, 2, "source textures are immutable and cached across frames and material paths");
+      assert.deepEqual(uploads.map(call => call.args[5]), [image, canvas]);
+      for (const upload of uploads) {
+        const before = env.calls.slice(0, env.calls.indexOf(upload));
+        const premul = before.findLast(call => call.name === "pixelStorei" && call.args[0] === env.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL);
+        const colorSpace = before.findLast(call => call.name === "pixelStorei" && call.args[0] === env.gl.UNPACK_COLORSPACE_CONVERSION_WEBGL);
+        assert.equal(premul.args[1], false);
+        assert.equal(colorSpace.args[1], env.gl.NONE);
+      }
+      const oversized = { naturalWidth: 5000, naturalHeight: 2, width: 1, height: 1, src: "too-large" };
+      renderer.begin({width:64,height:64,rasterScale:1,dpiScale:1});
+      assert.equal(renderer.photo({image:oversized,vertices,palette,timeSeconds:0,opacity:1}), false,
+        "device bounds use decoded dimensions even when CSS width is small");
+      assert.equal(env.calls.filter(call => call.name === "texImage2D" && call.args.length === 6).length, 2);
+      assert.equal(image.src, "local-controlled.png", "renderer ownership never clears a source retained by a scene");
+    } finally { renderer.dispose(); }
+    assert.equal(renderer.available, false);
+    assert.equal(env.listeners.size, 0);
+  }
+});
+
+function recordingGpu(webgl2) {
+  const calls = [], listeners = new Map();
+  let nextConstant = 1, nextHandle = 0;
+  const functions = {
+    NO_ERROR: 0,
+    getShaderPrecisionFormat() { return {precision:23}; },
+    getParameter() { return 4096; },
+    getShaderParameter() { return true; },
+    getProgramParameter() { return true; },
+    getAttribLocation(_program,name) { return {aPosition:0,aUv:1,aPreviousUv:2}[name]; },
+    getUniformLocation(_program,name) { return {name}; },
+    isContextLost() { return false; },
+    getError() { return 0; },
+    checkFramebufferStatus() { return gl.FRAMEBUFFER_COMPLETE; },
+  };
+  const gl = new Proxy(functions, { get(target,name) {
+    if (name in target) return target[name];
+    if (/^[A-Z_0-9]+$/.test(name)) return target[name] = nextConstant++;
+    return target[name] = (...args) => {
+      calls.push({name,args});
+      if (String(name).startsWith("create")) return {handle:++nextHandle};
+    };
+  } });
+  const canvas = { width:0,height:0, getContext(type) { return type === "webgl2" && !webgl2 ? null : gl; },
+    addEventListener(type,listener) { listeners.set(type,listener); }, removeEventListener(type) { listeners.delete(type); } };
+  return {gl,calls,listeners,document:{createElement() { return canvas; }}};
+}

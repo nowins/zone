@@ -27,7 +27,7 @@ export { buildCanvasMosaicTiles } from './src/utils/nowPlayingCanvas';`, resolve
       }
     ` }));
     build.onLoad({ filter: /wall-gpu/, namespace: "observed-wall-renderer" }, () => ({ contents: `
-      export { irisCoverCropUv } from ${JSON.stringify(`${process.cwd().replaceAll("\\", "/")}/src/utils/irisGpuRenderer.ts`)};
+      export { irisCoverCropUv, irisMediaImageSize } from ${JSON.stringify(`${process.cwd().replaceAll("\\", "/")}/src/utils/irisGpuRenderer.ts`)};
       export function createIrisGpuRenderer(document) {
         const fixture = window.__mosaicGpuFixture;
         fixture.attempts++;
@@ -158,6 +158,9 @@ test("new pools evicting the image cache cannot replace the captured flip surfac
   try {
     const turn = fixture.findTurn();
     const back = fixture.findBack(turn);
+    const retainedFront = fixture.decodedImages().find(image => image.src === turn.images[0].cover);
+    const retainedBack = fixture.decodedImages().find(image => image.src === back);
+    assert.ok(retainedFront && retainedBack, "both flip faces retain the decoded DOM image");
     // Six bounded pools load more surfaces than the 96-entry image cache.
     for (const batch of [1, 2, 3, 4, 5, 6]) {
       const tracks = Array.from({ length: 200 }, (_, index) => ({ id: `${batch}-${index}`, title: "Next", album: `${batch}-${index}`,
@@ -165,6 +168,8 @@ test("new pools evicting the image cache cannot replace the captured flip surfac
       await fixture.render({ tracks });
     }
     fixture.finishTurn(turn, back);
+    assert.equal(retainedFront.src, turn.images[0].cover);
+    assert.equal(retainedBack.src, back, "cache eviction cannot clear a still-referenced flip source");
   } finally { await fixture.dispose(); }
 });
 
@@ -388,7 +393,50 @@ test("GPU rejection during a back-face fade retains its decoded face and animati
   } finally { await fixture.dispose(); }
 });
 
-async function createWallFixture({ pending = [], dpi = 1, gpu = false } = {}) {
+test("the GPU wall keeps bounded decoded images and extracts palette colors through a separate small Canvas", async () => {
+  const fixture = await createWallFixture({ gpu: true, imageSize: [384, 192] });
+  try {
+    fixture.step(2500);
+    const covers = fixture.gpu.frames.at(-1).covers;
+    assert.ok(covers.length > 0);
+    assert.ok(covers.every(cover => fixture.decodedImages().includes(cover.image)));
+    assert.ok(covers.every(cover => cover.image.src && cover.image.naturalWidth === 384 && cover.image.naturalHeight === 192));
+    assert.deepEqual(covers[0].uv, [{u:.25,v:0},{u:.75,v:0},{u:.75,v:1},{u:.25,v:1}],
+      "center crop is computed from decoded source size, not the CSS width=1");
+    assert.ok(fixture.imageRasters().every(raster => raster.width <= 48 && raster.height <= 48),
+      "a direct GPU cover is never rasterized at full size for upload");
+    const first = covers[0].image;
+    fixture.step(80);
+    assert.equal(fixture.gpu.frames.at(-1).covers[0].image, first);
+    assert.equal(first.src, first.originalPath);
+  } finally { await fixture.dispose(); }
+});
+
+test("oversized wall covers downsample within 384 pixels, release the original and retain Canvas fallback rendering", async () => {
+  const fixture = await createWallFixture({ gpu: true, imageSize: [768, 192] });
+  try {
+    fixture.step(2500);
+    const covers = fixture.gpu.frames.at(-1).covers;
+    assert.ok(covers.length > 0);
+    assert.ok(covers.every(cover => cover.image instanceof window.HTMLCanvasElement && cover.image.width === 384 && cover.image.height === 96));
+    assert.ok(fixture.decodedImages().every(image => image.src === ""));
+    fixture.gpu.failFinish = true;
+    const fallback = fixture.step(40);
+    assert.ok(fallback.length > 0 && fallback.every(draw => draw.material));
+    assert.ok(fixture.materialWrites().every(write => write.width <= 384 && write.height <= 384));
+  } finally { await fixture.dispose(); }
+});
+
+test("a failed oversized wall raster releases its source and leaves the grid without invalid GPU covers", async () => {
+  const fixture = await createWallFixture({ gpu: true, imageSize: [768, 192], rasterFailure: true });
+  try {
+    fixture.step(2500);
+    assert.ok(fixture.decodedImages().every(image => image.src === ""));
+    assert.equal(fixture.gpu.frames.at(-1).covers.length, 0);
+  } finally { await fixture.dispose(); }
+});
+
+async function createWallFixture({ pending = [], dpi = 1, gpu = false, imageSize = [256, 256], rasterFailure = false } = {}) {
   const dom = new JSDOM('<body><div id="root"></div></body>', { pretendToBeVisual: true });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -410,6 +458,7 @@ async function createWallFixture({ pending = [], dpi = 1, gpu = false } = {}) {
   let width = 1180, height = 760;
   let hidden = false;
   const imageResolvers = new Map();
+  const decodedImages = [], imageRasters = [];
   let tracks = ["A", "B", "C"].map(id => ({ id, title: id, album: id, artist: "Artist", cover_path: `${id}-${++fixtureId}.jpg` }));
   const pendingPaths = new Set(pending.map(index => tracks[index].cover_path));
   const mediaListeners = new Set();
@@ -425,9 +474,15 @@ async function createWallFixture({ pending = [], dpi = 1, gpu = false } = {}) {
   window.matchMedia = query => query.includes("resolution:") ? resolution : media;
   globalThis.ResizeObserver = class { constructor(callback) { resize = callback; } observe() {} disconnect() {} };
   globalThis.Image = class {
+    constructor() { decodedImages.push(this); }
     complete = true;
-    naturalWidth = 256;
-    naturalHeight = 256;
+    naturalWidth = imageSize[0];
+    naturalHeight = imageSize[1];
+    width = 1;
+    height = 1;
+    set src(value) { this.source = value; if (value) this.originalPath = value; }
+    get src() { return this.source; }
+    get cover() { return this.src; }
     decode() {
       if (!pendingPaths.has(this.src)) return Promise.resolve();
       return new Promise((resolve, reject) => imageResolvers.set(this.src, ready => ready ? resolve() : reject()));
@@ -438,6 +493,7 @@ async function createWallFixture({ pending = [], dpi = 1, gpu = false } = {}) {
   dom.window.HTMLCanvasElement.prototype.getBoundingClientRect = () => ({ width, height });
   const contexts = new WeakMap();
   dom.window.HTMLCanvasElement.prototype.getContext = function () {
+    if (rasterFailure && this.className !== "now-mosaic-canvas") return null;
     if (contexts.has(this)) return contexts.get(this);
     let slot;
     let scaleX = 1;
@@ -468,7 +524,7 @@ async function createWallFixture({ pending = [], dpi = 1, gpu = false } = {}) {
         if (canvas.className === "now-mosaic-canvas" && image.gpuWall) gpuFixture.composites.push(image.frame);
         if (canvas.className === "now-mosaic-canvas" && image.width === 112)
           colorFieldComposites.push({ alpha: this.globalAlpha, mode: this.globalCompositeOperation });
-        if (image instanceof globalThis.Image) canvas.cover = image.src;
+        if (image instanceof globalThis.Image) { canvas.cover = image.src; imageRasters.push({source:image,width:canvas.width,height:canvas.height}); }
         else if (canvas.className !== "now-mosaic-canvas" && image.cover) {
           canvas.cover = image.cover;
           canvas.material = image.material;
@@ -514,6 +570,7 @@ async function createWallFixture({ pending = [], dpi = 1, gpu = false } = {}) {
     step, render, frameCount: () => frames.size,
     colorFieldWrites: () => colorFieldWrites, colorFieldComposites: () => colorFieldComposites,
     materialWrites: () => materialWrites,
+    decodedImages: () => decodedImages, imageRasters: () => imageRasters,
     gpu: gpuFixture,
     advanceCount: () => window.__mosaicAdvanceCalls,
     observedFlip: () => ({ ...window.__mosaicObservedFlip }),
