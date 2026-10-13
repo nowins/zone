@@ -195,6 +195,24 @@ test("a paused wall resamples the physical light field immediately on DPI change
 });
 
 let fixtureId = 0;
+test("stationary, dissolving and turning covers reuse one native material without touching the color source", async () => {
+  const fixture = await createWallFixture();
+  try {
+    fixture.findTurn();
+    const writes = fixture.materialWrites();
+    assert.ok(writes.length > 0);
+    assert.ok(writes.every(write => write.alpha === 255 && write.gray && write.width <= 384 && write.height <= 384));
+    assert.equal(new Set(writes.map(write => write.cover)).size, writes.length, "one material per decoded cover");
+    assert.ok(fixture.step().every(draw => draw.material && draw.filter === "none"), "projected and stationary faces use the same flattened material");
+    const before = fixture.materialWrites().length;
+    for (let index = 0; index < 120; index++) fixture.step(40);
+    assert.equal(fixture.materialWrites().length, before, "material pixel work is cached rather than repeated each frame");
+    await fixture.render({ active: 1 });
+    for (let index = 0; index < 120; index++) fixture.step(40);
+    assert.ok(fixture.step().every(draw => draw.material && draw.filter === "none"));
+  } finally { await fixture.dispose(); }
+});
+
 async function createWallFixture({ pending = [], dpi = 1 } = {}) {
   const dom = new JSDOM('<body><div id="root"></div></body>', { pretendToBeVisual: true });
   globalThis.window = dom.window;
@@ -209,6 +227,7 @@ async function createWallFixture({ pending = [], dpi = 1 } = {}) {
   let resize;
   let draws = [];
   const colorFieldWrites = [], colorFieldComposites = [];
+  const materialWrites = [];
   let width = 1180, height = 760;
   let hidden = false;
   const imageResolvers = new Map();
@@ -260,6 +279,10 @@ async function createWallFixture({ pending = [], dpi = 1 } = {}) {
       createImageData(width, height) { return { data: new Uint8ClampedArray(width * height * 4) }; },
       putImageData(data) {
         if (canvas.width === 112) colorFieldWrites.push({ width: canvas.width, height: canvas.height, data: [...data.data] });
+        else if (canvas.cover) {
+          canvas.material = true;
+          materialWrites.push({cover:canvas.cover, width:canvas.width,height:canvas.height,alpha:data.data[3],gray:data.data[0]===data.data[1]&&data.data[1]===data.data[2]});
+        }
       },
       getImageData() { return { data: new Uint8ClampedArray(48 * 48 * 4) }; },
       drawImage(image) {
@@ -268,10 +291,11 @@ async function createWallFixture({ pending = [], dpi = 1 } = {}) {
         if (image instanceof globalThis.Image) canvas.cover = image.src;
         else if (canvas.className !== "now-mosaic-canvas" && image.cover) {
           canvas.cover = image.cover;
+          canvas.material = image.material;
           canvas.projectedScaleX = Math.min(canvas.projectedScaleX ?? 1, scaleX);
         }
         else if (canvas.className === "now-mosaic-canvas" && image.cover) {
-          draws.push({ slot, cover: image.cover, alpha: this.globalAlpha, scaleX: image.projectedScaleX ?? scaleX, quad: [...path] });
+          draws.push({ slot, cover: image.cover, alpha: this.globalAlpha, scaleX: image.projectedScaleX ?? scaleX, quad: [...path], material:image.material, filter:this.filter ?? "none" });
         }
       },
     };
@@ -309,6 +333,7 @@ async function createWallFixture({ pending = [], dpi = 1 } = {}) {
   return {
     step, render, frameCount: () => frames.size,
     colorFieldWrites: () => colorFieldWrites, colorFieldComposites: () => colorFieldComposites,
+    materialWrites: () => materialWrites,
     resolutionListenerCount: () => resolutionListeners.size,
     backingSize: () => { const canvas = document.querySelector(".now-mosaic-canvas"); return [canvas.width, canvas.height]; },
     changeDpi(value) {

@@ -63,6 +63,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
   - 只做缓慢的平移/缩放，动效像呼吸而不是幻灯片。环境封面转动独立于音频频谱，不等候节拍；各尺寸已就绪格子都可参加，一次只转一格，完成新图淡入尾段后再等待下一间隔。`mosaicProjection.ts` 使用 Iris 默认窗口的共享视口相机（Eye.z=-10、Zn=5、单位为视口最长边的一半），焦距为物理视口最长边的 5 倍。原版 Frame 的 DPI 根布局只缩放 XY，Z 保持逻辑单位，因此 CSS 坐标中的相机距离为 `5×max(width,height)×max(1,devicePixelRatio)`；绕 Y 轴转动时右边向负 z 靠近相机，普通父级墙缩放仍作用于 xyz，平移也计入投影。Canvas 补偿 D3D9 的半像素偏移（逻辑单位 `0.5/DPI`），平面保持原位。相机使用未封顶 DPI，主画布光栅倍率仍最多 2；通过 resize／resolution media query 更新，无需持续轮询。仅 DPI 变化保留磁贴、已捕获正反面和翻面时钟。单格最多 16 个纹理三角形，按投影后的四角边界在最长边不超过 1024 的复用离屏表面合成，再统一应用透明度；三角片裁切边缘覆盖一个光栅像素，避免抗锯齿细缝和透明度重复叠加。同一已解码表面预制一次转面材质，正反面仍在侧面交接。旋转先结束，透明度随后收稳。翻面使用原生五次 Bezier 标量柄值 (1,1)，背面保留原版 1ms 的姿态保持。入场透明度与缩放分别使用原生 EaseIn(5,0.5)／EaseIn(10,0.5)，不能从同一个 alpha 推算 scale。时长和曲线参数分别由 `NOW_PLAYING_MOTION`／`NOW_PLAYING_CURVES` 维护，求值在 `src/motion/irisCurves.ts`。
   - `NowPlayingArtistCanvas` 是艺术家照片背景层。仅使用已获准加载的真实本地补充资料，不另发网络请求；同一艺术家规范资料池至少 2 张图片解码成功才切入。先显示拼贴，再以慢速照片平移／缩放片段轮换；同艺术家切歌接续场景，换艺术家或有效图片不足时从当前合成画面退回拼贴。照片池最多 4 张，解码边长与超时有界；完全覆盖时停止背后的拼贴连续绘制，退出时恢复。场景与交接时长使用 `NOW_PLAYING_MOTION` 的 artist token，具体加载、暂停、隐藏与 reduced-motion 行为由组件和 `nowPlayingArtist.ts` 维护。
   - 换曲保留磁贴几何与已解码图像；新图解码完成后逐片交叉淡化，连续切歌接续当前过渡。同专辑不重建墙；缺失或失败封面保留旧图，首次加载使用其他已就绪封面补位。缓存淘汰不得清空仍被磁贴引用的画布。
+  - 拼贴封面材质以 `mosaicCoverMaterial.ts` 为事实源：灰度权重 `(0.15,0.55,0.30)`、对比度 `0.85`，不额外压暗 brightness；Graphic 的 `0.35` 在原版 D3DCOLOR 中量化为 `89/255`。每张有界解码封面只预制一次独立材质表面，按源 alpha 和此透明度合成到黑格底，输出不透明表面。旧图、新图和转面共用该材质，交叉淡入只混合不透明表面，避免两份半透明图片叠加造成中途变亮。入场和转面仍外乘已有 UI 透明度。原始彩色封面保留给配色提取，前景 `Cover` 与艺术家照片不套此材质；像素读取失败时使用灰度/对比度滤镜近似回退，不扩大资源访问范围。
   - 翻面固定正反两张已解码画布，在侧面切换，结束后保留反面；不与换曲淡入叠加。仍在淡入的磁贴和未就绪反面不参与翻转。翻转期间的新封面池等本次落稳后接入，重复尺寸通知不重建分配，真实缩放保留已有封面分配；暂停让当前翻转完成，减少动态效果直接收稳。
 - 入场：
   - 页面以 `now-stage-dissolve`（纯透明度溶解）进入，无位移/缩放。
@@ -107,6 +108,7 @@ Zone 借鉴固定格局、素材池分离与转面／淡入时钟。`UIX.rendera
 ## 验证
 
 - `tests/mosaicPixelLighting.test.mjs` 使用已提交的原版 PS 指令、设备常量、混合状态与 CPU 顶点快照夹具，经独立解释器对照生产点光场及 Destination Overlay。夹具保留原始常量，测试的受控路径位置和封面派生色增益映射另行标明；不要求其他 checkout 具有本地探索文件。原版稳定墙的两束灯和 Primary alpha 为 1、COLOR0 为白色，设备 RGB 使用 SRCALPHA／INVSRCALPHA，独立 alpha 使用 ONE／ONE，纹理及写出 sRGB 转换关闭。Canvas 完整强度 Overlay 只近似这组不透明墙语义，不推广到任意透明纹理或照片 shader。
+- `tests/mosaicCoverMaterial.test.mjs` 对照封面 PS 的本地 DEF、5 条指令、原应用索引缓冲写入与实际被引用顶点的 COLOR0。设备常量回读可能保留其他 shader 的值，不能替代本地 DEF；共享 VB 中未被当前 draw 引用的顶点也不能证明其透明度。测试以受控图片 RGBA 验证黑底合成，不把生成的样本当作原版纹理像素。拼贴组件运行时测试还验证材质缓存、静止/转面一致及新图交接。
 - `npm run build`、`npm test`；音频轮廓、静音、seek 与生命周期行为重点看 `tests/visualizer.test.mjs`、`tests/audioGlow.test.mjs`、`tests/beatAnalysis.test.mjs`、`tests/visualizerBus.test.mjs`、`tests/audioEngineLifecycle.test.mjs`、`tests/canvasLifecycle.test.mjs`、`tests/nowPlayingCanvas.test.mjs`；`tests/irisCurves.test.mjs` 检查原生数值锚点与连续性，`tests/mosaicLightingProjection.test.mjs` 对照独立 S×V×P、保存的原版运行时矩阵锚点、不同 DPI 与有界纹理工作，`tests/mosaicFlipRendering.test.mjs` 检查实际拼贴组件画出的正反面、落稳、换曲、加载、缩放与 DPI-only 交接。投影调整还需真实 WebView2 检查屏幕两侧及各磁贴尺寸的接缝和裁切，验证实际高 DPI、未封顶相机 DPI 与 2 倍光栅上限的分离。
 - 协议或原生解码变化运行 `cargo check` 与相应 Rust 测试；协议/发布路径变化还需 `npx tauri build --no-bundle`。
 - 播放协议和可视化行为必须在真实 Tauri 音乐播放中验证：进入/退出、换曲、seek、静音、暂停/恢复、文档隐藏及 reduced-motion。纯浏览器 Vite 不能证明自定义协议或 CORS 链路正常。

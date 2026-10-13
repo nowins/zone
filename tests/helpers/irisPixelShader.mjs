@@ -56,6 +56,11 @@ export function executeIrisPixelShader(shader, {
         case "frc": value = input[0].map(x => x - Math.floor(x)); break;
         case "rcp": value = input[0].map(x => 1 / x); break;
         case "rsq": value = input[0].map(x => 1 / Math.sqrt(Math.abs(x))); break;
+        case "dp3": {
+          const dot = input[0].slice(0, 3).reduce((sum, x, i) => sum + x * input[1][i], 0);
+          value = Array(4).fill(dot);
+          break;
+        }
         case "dp2add": {
           const dot = input[0][0] * input[1][0] + input[0][1] * input[1][1] + input[2][0];
           value = Array(4).fill(dot);

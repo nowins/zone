@@ -6,6 +6,7 @@ import { useReducedMotion } from "../motion/useReducedMotion";
 import { buildNowPlayingWall } from "../utils/nowPlayingWall";
 import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
 import { createMosaicCamera, drawProjectedMosaicImage, projectMosaicPoint, type MosaicCamera } from "../utils/mosaicProjection";
+import { applyMosaicCoverMaterial, MOSAIC_COVER_MATERIAL } from "../utils/mosaicCoverMaterial";
 import {
   buildCanvasMosaicTiles,
   advanceMosaicArtwork,
@@ -29,6 +30,7 @@ import {
 const imageReadyListeners = new Set<() => void>();
 const imageCache = new Map<string, HTMLCanvasElement>();
 const turnSurfaces = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+const coverMaterials = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
 const pendingImageLoads = new Map<string, Promise<HTMLCanvasElement | null>>();
 const MAX_IMAGE_CACHE = 96;
 const MAX_WALL_IMAGE_EDGE = 384;
@@ -535,7 +537,7 @@ function drawTile(
     corners.slice(1).forEach(point => context.lineTo(point.x, point.y));
     context.closePath();
     context.clip();
-    context.fillStyle = "#171717";
+    context.fillStyle = "#000";
     context.fill();
     if (image) {
       context.globalAlpha *= turn.alpha;
@@ -545,23 +547,20 @@ function drawTile(
     return;
   }
   context.clip();
-  context.fillStyle = "#171717";
+  context.fillStyle = "#000";
   context.fillRect(tile.x, tile.y, tile.width, tile.height);
 
   if (image) {
     const inheritedAlpha = context.globalAlpha;
-    context.filter = "grayscale(0.92) saturate(0.38) brightness(0.5) contrast(1.1)";
-    // Keep the old cover opaque underneath, avoiding a dark gap halfway.
-    if (!isFlipping && artwork.previous) drawImageCover(context, artwork.previous, tile.x, tile.y, tile.width, tile.height);
+    // Both surfaces already contain the same native opacity on black. Mixing
+    // opaque materials avoids adding two .35 alphas during a replacement.
+    if (!isFlipping && artwork.previous) drawImageCover(context, getCoverMaterial(artwork.previous), tile.x, tile.y, tile.width, tile.height);
     context.globalAlpha *= isFlipping ? turn.alpha : mix;
-    drawImageCover(context, image, tile.x, tile.y, tile.width, tile.height);
-    context.filter = "none";
+    drawImageCover(context, getCoverMaterial(image), tile.x, tile.y, tile.width, tile.height);
     context.globalAlpha = inheritedAlpha;
   }
 
   context.globalCompositeOperation = "source-over";
-  context.fillStyle = "rgba(0, 0, 0, 0.12)";
-  context.fillRect(tile.x, tile.y, tile.width, tile.height);
   context.strokeStyle = "rgba(0, 0, 0, 0.82)";
   context.lineWidth = 1;
   context.strokeRect(tile.x + 0.5, tile.y + 0.5, tile.width - 1, tile.height - 1);
@@ -575,12 +574,35 @@ function getTurnSurface(image: HTMLCanvasElement) {
   surface.width = surface.height = Math.min(MAX_WALL_IMAGE_EDGE, Math.max(image.width, image.height));
   const context = surface.getContext("2d");
   if (!context) return image;
-  context.filter = "grayscale(0.92) saturate(0.38) brightness(0.5) contrast(1.1)";
-  drawImageCover(context, image, 0, 0, surface.width, surface.height);
-  context.filter = "none";
-  context.fillStyle = "rgba(0, 0, 0, 0.12)";
-  context.fillRect(0, 0, surface.width, surface.height);
+  drawImageCover(context, getCoverMaterial(image), 0, 0, surface.width, surface.height);
   turnSurfaces.set(image, surface);
+  return surface;
+}
+
+function getCoverMaterial(image: HTMLCanvasElement) {
+  const cached = coverMaterials.get(image);
+  if (cached) return cached;
+  const surface = document.createElement("canvas");
+  surface.width = image.width;
+  surface.height = image.height;
+  const context = surface.getContext("2d", { willReadFrequently: true });
+  if (!context) return image;
+  context.drawImage(image, 0, 0);
+  try {
+    const pixels = context.getImageData(0, 0, surface.width, surface.height);
+    applyMosaicCoverMaterial(pixels.data);
+    context.putImageData(pixels, 0, 0);
+  } catch {
+    // Keep restricted/unreadable image sources usable without widening access.
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, surface.width, surface.height);
+    context.filter = "grayscale(1) contrast(0.85)";
+    context.globalAlpha = MOSAIC_COVER_MATERIAL.opacity;
+    context.drawImage(image, 0, 0);
+    context.filter = "none";
+    context.globalAlpha = 1;
+  }
+  coverMaterials.set(image, surface);
   return surface;
 }
 
