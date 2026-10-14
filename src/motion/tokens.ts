@@ -32,6 +32,7 @@ export const NOW_PLAYING_MOTION = {
   artistGridDelay: 3000,
   artistScene: 32_000,
   artistTransition: 2000,
+  artistTextRetarget: 400,
   artistDecodeTimeout: 1600,
   mosaicReplace: 900,
   mosaicReplaceStagger: 240,
@@ -55,6 +56,7 @@ export const NOW_PLAYING_CURVES = {
   mosaicLightWeight: 2.5,
   glowOrangeWeight: 20,
   glowPinkWeight: 10,
+  artistText: { fadeWeight: 10, handle: 0.5, slideWeight: 100, staticProgress: 0.4 },
 } as const;
 
 /** WP tile timing: interaction, readable live updates and staggered arrival. */

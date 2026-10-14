@@ -21,6 +21,8 @@
     "src/utils/nowPlayingWall.ts",
     "src/utils/nowPlayingCanvas.ts",
     "src/utils/nowPlayingArtist.ts",
+    "src/utils/artistTypography.ts",
+    "src/utils/artistTypographyAtlas.ts",
     "src/utils/mosaicLighting.ts",
     "src/utils/mosaicPalette.ts",
     "src/utils/mosaicCoverMaterial.ts",

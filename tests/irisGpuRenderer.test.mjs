@@ -173,6 +173,33 @@ test("GPU receives native RGBA without gain and the selected clip path", () => {
   } finally { renderer.dispose(); }
 });
 
+test("text Overlay reads the completed photo without FBO feedback, uploads once and bounds its separate cache", () => {
+  for (const version2 of [true, false]) {
+    const env = recordingGpu(version2), renderer = createIrisGpuRenderer(env.document);
+    const vertices = [{x:0,y:0,w:1},{x:64,y:0,w:1},{x:64,y:64,w:1},{x:0,y:64,w:1}];
+    const uv = [{u:0,v:0},{u:1,v:0},{u:1,v:1},{u:0,v:1}];
+    const image = {width:16,height:16}, atlas = {width:128,height:128};
+    const palette = [{r:255,g:255,b:255},{r:0,g:0,b:0},{r:0,g:0,b:0}];
+    const render = source => {
+      renderer.begin({width:64,height:64,rasterScale:2,dpiScale:1,transparent:true});
+      renderer.photo({image,vertices,palette,timeSeconds:10,opacity:1});
+      const start = env.calls.length;
+      renderer.finishPhoto([{atlas:source,glyphs:[{vertices,uv,opacity:.4}]}]);
+      const calls = env.calls.slice(start);
+      assert.ok(calls.find(call => call.name === "uniform1i" && call.args[0].name === "uBackground"));
+      assert.equal(calls.findLast(call => call.name === "bindFramebuffer").args[1], null);
+      assert.deepEqual(calls.findLast(call => call.name === "uniform2f").args.slice(1), [128,128]);
+      assert.equal(calls.findLast(call => call.name === "uniform1f").args[1], .4);
+    };
+    try {
+      render(atlas); render(atlas);
+      assert.equal(env.calls.filter(call => call.name === "texImage2D" && call.args[5] === atlas).length, 1);
+      for (let i = 0; i < 8; i++) render({width:128,height:128});
+      assert.equal(env.calls.filter(call => call.name === "deleteTexture").length, 5, "only four text textures remain");
+    } finally { renderer.dispose(); }
+  }
+});
+
 function recordingGpu(webgl2) {
   const calls = [], listeners = new Map();
   let nextConstant = 1, nextHandle = 0;

@@ -30,7 +30,7 @@ await build({ entryPoints: ["src/components/NowPlayingArtistCanvas.tsx"], outfil
             canvas.path = 'gpu:' + path;
             return true;
           },
-          finishPhoto() { return fixture.failFinish ? null : canvas; },
+          finishPhoto(text) { fixture.typographies.push({image:canvas.path, text}); return fixture.failFinish ? null : canvas; },
           dispose() { instance.disposed = true; }
         };
       }
@@ -504,13 +504,55 @@ test("aborted, failed and un-rasterizable photographs release their decoders and
 });
 
 
+test("artist typography retains its photo/light clocks during paused rapid metadata changes and stops", async () => {
+  const env = await fixture({ gpu: true, typography: true });
+  try {
+    env.advance(15000);
+    const old = env.gpuTypography().at(-1).text;
+    assert.ok(old.some(layer => layer.glyphs.length));
+    await env.render({ playing: false }); env.step();
+    const lighting = env.gpuPhotos().at(-1);
+    await env.render({ active: 1 }); env.step();
+    assert.equal(env.gpuTypography().at(-1).text.length, 2, "old and new local names have separate atlases");
+    env.advance(500);
+    assert.equal(env.gpuTypography().at(-1).text.length, 1);
+    assert.ok(env.gpuTypography().at(-1).text[0].glyphs.length, "paused retarget remains visible");
+    assert.equal(env.frameCount(), 0);
+    assert.equal(env.gpuPhotos().at(-1).timeSeconds, lighting.timeSeconds);
+    assert.deepEqual(env.gpuPhotos().at(-1).vertices, lighting.vertices);
+    await env.render({ active: 0 }); env.step();
+    await env.render({ active: 1 }); env.step();
+    env.hide(true); env.advance(5000);
+    assert.equal(env.frameCount(), 0);
+    env.hide(false); env.advance(1000);
+    assert.equal(env.frameCount(), 0, "pending rapid skip converges after restoration");
+    await env.reduce(true); await env.render({ active: 0 }); env.step();
+    assert.equal(env.frameCount(), 0);
+    assert.equal(env.gpuTypography().at(-1).text.length, 1);
+  } finally { await env.close(); }
+});
+
+test("outgoing photo text retains its atlas when the next photograph chooses another clip", async () => {
+  const env = await fixture({ gpu: true, typography: true });
+  try {
+    env.advance(34000);
+    const oldAtlas = env.gpuTypography().at(-1).text[0].atlas;
+    env.advance(1400);
+    const draws = env.gpuTypography().slice(-2);
+    assert.equal(draws[0].image, "gpu:photo-a");
+    assert.equal(draws[0].text[0].atlas, oldAtlas);
+    assert.equal(draws[1].image, "gpu:photo-b");
+    assert.notEqual(draws[1].text[0].atlas, oldAtlas);
+  } finally { await env.close(); }
+});
+
 function makeTracks(artist, paths) {
   return [0, 1].map(index => ({ id: `${artist}-${index}`, title: `Song ${index}`, album: `Album ${index}`, artist,
     artist_image_path: paths[0], artist_images: paths.slice(1).map(path => ({ path })) }));
 }
 
 async function fixture({ paths = ["photo-a", "photo-b"], pending = [], failed = [], gpu = false, cover = null, coverColors = {},
-  imageSizes = {}, rasterFailure = false } = {}) {
+  imageSizes = {}, rasterFailure = false, typography = false } = {}) {
   const dom = new JSDOM('<body><div id="root"></div></body>');
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
@@ -520,7 +562,7 @@ async function fixture({ paths = ["photo-a", "photo-b"], pending = [], failed = 
   let nextId = 0, now = 0, hidden = false, width = 1180, height = 760, resize;
   let draws = [], lastDraws = [];
   const imageRasters = [], imageSources = [], decodedImages = [];
-  const gpuFixture = { enabled: gpu, attempts: 0, instances: [], photos: [], lost: false, failBegin: false, failFinish: false, failPath: null };
+  const gpuFixture = { enabled: gpu, attempts: 0, instances: [], photos: [], typographies: [], lost: false, failBegin: false, failFinish: false, failPath: null };
   window.__irisFixture = gpuFixture;
   const unresolved = new Set(pending);
   const failures = new Set(failed);
@@ -579,6 +621,10 @@ async function fixture({ paths = ["photo-a", "photo-b"], pending = [], failed = 
         return { data };
       } };
     contexts.set(this, context);
+    if (typography) {
+      context.measureText = text => ({ width: text.length * 30 });
+      context.fillText = () => {};
+    }
     return context;
   };
   const root = createRoot(document.getElementById("root"));
@@ -607,6 +653,7 @@ async function fixture({ paths = ["photo-a", "photo-b"], pending = [], failed = 
   };
   return { render, step, opaqueChanges, lastDraws: () => lastDraws,
     gpuPhotos: () => gpuFixture.photos, gpuAttempts: () => gpuFixture.attempts, gpuInstances: () => gpuFixture.instances.length,
+    gpuTypography: () => gpuFixture.typographies,
     disposedGpuCount: () => gpuFixture.instances.filter(instance => instance.disposed).length,
     failGpu: path => { gpuFixture.failPath = path; },
     failGpuStage: stage => { gpuFixture[stage] = true; },

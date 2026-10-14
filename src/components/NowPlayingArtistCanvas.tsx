@@ -18,6 +18,10 @@ import {
 import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
 import { createIrisGpuRenderer, irisMediaImageSize, type IrisMediaImage, type IrisGpuRenderer, type IrisQuad, type IrisProjectedVertex } from "../utils/irisGpuRenderer";
 import { advanceMosaicLightClips, advanceMosaicPalette, createMosaicPaletteClock, type MosaicPaletteClock, type MosaicLightClips, type MosaicLightClip } from "../utils/mosaicPalette";
+import { advanceArtistTypography, artistTypographyLayers, artistTypographyModel, createArtistTypographyClock,
+  type ArtistTypographyClock, type ArtistTypographyKind } from "../utils/artistTypography";
+import { artistTypographyQuads, createArtistTypographyAtlas, drawArtistTypography, type ArtistTypographyAtlas } from "../utils/artistTypographyAtlas";
+import type { IrisTypography } from "../utils/irisGpuRenderer";
 
 const MAX_DECODED_PHOTO_EDGE = 1600;
 
@@ -37,16 +41,21 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
   const imagesRef = useRef(new Map<string, IrisMediaImage>());
   const decodingRef = useRef(false);
   const retiredRef = useRef<HTMLCanvasElement | null>(null);
+  const fallbackSurfaceRef = useRef<HTMLCanvasElement | null>(null);
   const retiredFallbackRef = useRef(true);
   const rendererRef = useRef<IrisGpuRenderer | null>(null);
   const rendererAttemptedRef = useRef(false);
   const paletteClockRef = useRef<MosaicPaletteClock | null>(null);
   const lightClipsRef = useRef<MosaicLightClips>({ current: null, previous: null });
+  const typographyRef = useRef(new WeakMap<MosaicLightClip, ArtistTypographyClock>());
+  const atlasRef = useRef(new Map<string, ArtistTypographyAtlas | null>());
+  const lastTextKindRef = useRef<ArtistTypographyKind>();
+  const textModel = useMemo(() => artistTypographyModel(activeTrack), [activeTrack]);
   if (!paletteClockRef.current) paletteClockRef.current = createMosaicPaletteClock();
   const opacityRef = useRef<ArtistPhotoOpacity>({ value: 0, from: 0, target: 0, elapsedMs: 0 });
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1, dpiScale: 1 });
-  const latestRef = useRef({ isPlaying, reduced });
-  latestRef.current = { isPlaying, reduced };
+  const latestRef = useRef({ isPlaying, reduced, textModel });
+  latestRef.current = { isPlaying, reduced, textModel };
   const invalidateRef = useRef<() => void>(() => {});
   const resetClockRef = useRef<() => void>(() => {});
   const opaqueRef = useRef(false);
@@ -80,6 +89,8 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
     }
     sceneRef.current = createArtistPhotoScene();
     lightClipsRef.current = { current: null, previous: null };
+    typographyRef.current = new WeakMap();
+    atlasRef.current.clear();
     paletteClockRef.current = createMosaicPaletteClock();
     setArtistPhotoOpacityTarget(opacityRef.current, 0);
     imagesRef.current.clear();
@@ -130,6 +141,8 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
     invalidateRef.current();
   }, [isPlaying, reduced]);
 
+  useEffect(() => { invalidateRef.current(); }, [textModel.key]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
@@ -143,7 +156,7 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
       if (!isDocumentVisible()) { lastTime = null; return; }
       const delta = lastTime === null ? 0 : Math.min(80, Math.max(0, time - lastTime));
       lastTime = time;
-      const { isPlaying: playing, reduced: motionReduced } = latestRef.current;
+      const { isPlaying: playing, reduced: motionReduced, textModel: model } = latestRef.current;
       const scene = sceneRef.current;
       advanceMosaicPalette(paletteClockRef.current!, delta, playing, motionReduced);
       advanceArtistPhotoScene(scene, delta, playing, motionReduced);
@@ -158,19 +171,44 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
       context.imageSmoothingQuality = "high";
       context.globalAlpha = 1;
       const current = scene.current ? imagesRef.current.get(scene.current) : null;
+      let textRunning = false;
+      const typography = (lighting: MosaicLightClip | null, outgoing = false): IrisTypography[] => {
+        if (!lighting) return [];
+        let clock = typographyRef.current.get(lighting);
+        if (!clock) {
+          clock = createArtistTypographyClock(model, 0, lastTextKindRef.current);
+          lastTextKindRef.current = clock.current.kind;
+          typographyRef.current.set(lighting, clock);
+        }
+        if (!outgoing) advanceArtistTypography(clock, model, lighting.elapsedMs, delta, motionReduced, playing);
+        if (!outgoing && (clock.previous || clock.current.model.key !== model.key)) textRunning = true;
+        return artistTypographyLayers(clock).flatMap(layer => {
+          const key = JSON.stringify([layer.clip.kind, layer.clip.model.key]);
+          let atlas = atlasRef.current.get(key);
+          if (atlas !== undefined) { atlasRef.current.delete(key); atlasRef.current.set(key, atlas); }
+          if (atlas === undefined) {
+            atlas = createArtistTypographyAtlas(canvas.ownerDocument, layer.clip.kind, layer.clip.model);
+            atlasRef.current.set(key, atlas);
+            if (atlasRef.current.size > 6) atlasRef.current.delete(atlasRef.current.keys().next().value!);
+          }
+          return atlas ? [artistTypographyQuads(atlas, layer.clip, lighting.elapsedMs, width, height, motionReduced, layer.opacity)] : [];
+        });
+      };
       if (current) {
         const previous = scene.previous ? imagesRef.current.get(scene.previous) : null;
+        const previousText = previous ? typography(lightClipsRef.current.previous, true) : [];
+        const currentText = typography(lightClipsRef.current.current);
         if (!rendererAttemptedRef.current) {
           rendererAttemptedRef.current = true;
           try { rendererRef.current = createIrisGpuRenderer(canvas.ownerDocument); }
           catch { rendererRef.current = null; }
         }
         const renderer = rendererRef.current;
-        const gpuPhoto = (image: IrisMediaImage, motion: ArtistPhotoMotion, elapsedMs: number, opacity: number, lighting: MosaicLightClip | null) => {
+        const gpuPhoto = (image: IrisMediaImage, motion: ArtistPhotoMotion, elapsedMs: number, opacity: number, lighting: MosaicLightClip | null, text: IrisTypography[]) => {
           if (!lighting || !renderer?.available || !renderer.begin({ width, height, rasterScale: dpr, dpiScale, transparent: true })
             || !renderer.photo({ image, vertices: artistPhotoVertices(image, motion, elapsedMs, width, height),
               palette: lighting.palette, timeSeconds: lighting.elapsedMs / 1000, pathIndex: lighting.pathIndex, opacity: 1 })) return false;
-          const output = renderer.finishPhoto();
+          const output = renderer.finishPhoto(text);
           if (!output) return false;
           // Native COLOR0 scales the shader's accumulated alpha. Scene mixing
           // belongs after material rendering so the existing dissolve is linear.
@@ -180,17 +218,30 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
         };
         let gpu = false;
         try {
-          gpu = (!previous || gpuPhoto(previous, scene.previousMotion, scene.previousElapsedMs, 1, lightClipsRef.current.previous))
-            && gpuPhoto(current, scene.motion, scene.elapsedMs, previous ? artistPhotoSceneBlend(scene) : 1, lightClipsRef.current.current);
+          gpu = (!previous || gpuPhoto(previous, scene.previousMotion, scene.previousElapsedMs, 1, lightClipsRef.current.previous, previousText))
+            && gpuPhoto(current, scene.motion, scene.elapsedMs, previous ? artistPhotoSceneBlend(scene) : 1, lightClipsRef.current.current, currentText);
         } catch { gpu = false; }
         if (!gpu) {
           renderer?.dispose();
           rendererRef.current = null;
           context.clearRect(0, 0, width, height);
           context.globalAlpha = 1;
-          if (previous) drawArtistPhoto(context, previous, scene.previousMotion, scene.previousElapsedMs, width, height);
-          context.globalAlpha = previous ? artistPhotoSceneBlend(scene) : 1;
-          drawArtistPhoto(context, current, scene.motion, scene.elapsedMs, width, height);
+          // Composite each fallback photo independently before its scene dissolve.
+          const fallbackPhoto = (image: IrisMediaImage, motion: ArtistPhotoMotion, elapsedMs: number, opacity: number, text: IrisTypography[]) => {
+            const surface = fallbackSurfaceRef.current ?? (fallbackSurfaceRef.current = document.createElement("canvas"));
+            if (surface.width !== canvas.width) surface.width = canvas.width;
+            if (surface.height !== canvas.height) surface.height = canvas.height;
+            const target = surface.getContext("2d");
+            if (target && typeof target.save === "function") {
+              target.setTransform(dpr, 0, 0, dpr, 0, 0); target.clearRect(0, 0, width, height);
+              drawArtistPhoto(target, image, motion, elapsedMs, width, height); drawArtistTypography(target, text);
+              context.globalAlpha = opacity; context.drawImage(surface, 0, 0, width, height);
+            } else {
+              context.globalAlpha = opacity; drawArtistPhoto(context, image, motion, elapsedMs, width, height);
+            }
+          };
+          if (previous) fallbackPhoto(previous, scene.previousMotion, scene.previousElapsedMs, 1, previousText);
+          fallbackPhoto(current, scene.motion, scene.elapsedMs, previous ? artistPhotoSceneBlend(scene) : 1, currentText);
         }
         canvas.classList.toggle("is-fallback", !gpu);
       } else if (retiredRef.current && opacityRef.current.value > 0) {
@@ -208,7 +259,7 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
       }
       const sceneRunning = playing && !motionReduced && (Boolean(scene.current)
         || ((decodingRef.current || scene.paths.length >= 2) && scene.waitMs < NOW_PLAYING_MOTION.artistGridDelay));
-      if (sceneRunning || scene.previous || opacityRef.current.value !== opacityRef.current.target) {
+      if (sceneRunning || scene.previous || textRunning || opacityRef.current.value !== opacityRef.current.target) {
         request = window.requestAnimationFrame(draw);
       } else lastTime = null;
     };
@@ -262,6 +313,9 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
       document.removeEventListener(WINDOW_VISIBILITY_EVENT, visibility);
       if (request !== null) window.cancelAnimationFrame(request);
       resetRenderer();
+      atlasRef.current.clear();
+      typographyRef.current = new WeakMap();
+      fallbackSurfaceRef.current = null;
       notifyOpaque(false);
     };
   }, []);

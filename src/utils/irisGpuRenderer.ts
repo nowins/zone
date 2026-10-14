@@ -37,6 +37,8 @@ export type IrisPhoto = {
   pathIndex?: number;
   opacity: number;
 };
+export type IrisTextGlyph = { vertices: IrisQuad<IrisProjectedVertex>; uv: IrisQuad<IrisTextureCoordinate>; opacity: number };
+export type IrisTypography = { atlas: HTMLCanvasElement; glyphs: readonly IrisTextGlyph[] };
 export type IrisGpuRenderer = {
   readonly available: boolean;
   readonly canvas: HTMLCanvasElement;
@@ -45,7 +47,7 @@ export type IrisGpuRenderer = {
   cover(cover: IrisCover): boolean;
   finishWall(options: { palette: IrisPalette; timeSeconds: number; pathIndex?: number; opacity: number }): HTMLCanvasElement | null;
   photo(photo: IrisPhoto): boolean;
-  finishPhoto(): HTMLCanvasElement | null;
+  finishPhoto(typography?: readonly IrisTypography[]): HTMLCanvasElement | null;
   dispose(): void;
 };
 
@@ -210,6 +212,23 @@ uniform sampler2D uImage;
 void main() { gl_FragColor = texture2D(uImage, vUv); }
 `;
 
+const TEXT_SHADER = `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D uImage;
+uniform sampler2D uBackground;
+uniform vec2 uRasterSize;
+uniform float uOpacity;
+void main() {
+  vec4 glyph = texture2D(uImage, vUv);
+  vec3 base = texture2D(uBackground, gl_FragCoord.xy / uRasterSize).rgb;
+  // The immutable atlas is a white mask; transparent padding must not tint
+  // antialiased edges when a straight-alpha texture is linearly sampled.
+  vec3 color = min(2.0 * base, vec3(1.0));
+  // BlendedLabel uses Overlay color and Source2 (glyph) alpha.
+  gl_FragColor = vec4(color, glyph.a * uOpacity);
+}`;
+
 /** A bounded media renderer; it has no clock and performs no GPU readback. */
 export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer | null {
   const canvas = ownerDocument.createElement("canvas");
@@ -235,6 +254,7 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
   const maximumEdge = Math.min(context.getParameter(context.MAX_TEXTURE_SIZE) as number,
     context.getParameter(context.MAX_RENDERBUFFER_SIZE) as number);
   const textures = new Map<IrisMediaImage, WebGLTexture>();
+  const textTextures = new Map<IrisMediaImage, WebGLTexture>();
   const failedTextures = new WeakSet<IrisMediaImage>();
   const programs: Program[] = [];
   const vertexBuffer = context.createBuffer(), indexBuffer = context.createBuffer();
@@ -280,7 +300,8 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
 
   const coverProgram = compileProgram(COVER_SHADER), wallProgram = compileProgram(WALL_SHADER);
   const photoProgram = compileProgram(PHOTO_SHADER), copyProgram = compileProgram(COPY_SHADER);
-  if (!coverProgram || !wallProgram || !photoProgram || !copyProgram) {
+  const textProgram = compileProgram(TEXT_SHADER);
+  if (!coverProgram || !wallProgram || !photoProgram || !copyProgram || !textProgram) {
     programs.forEach(value => context.deleteProgram(value.program));
     context.deleteBuffer(vertexBuffer); context.deleteBuffer(indexBuffer);
     context.deleteTexture(targetTexture); context.deleteFramebuffer(framebuffer);
@@ -325,9 +346,9 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
     context.blendEquationSeparate(context.FUNC_ADD, context.FUNC_ADD);
     context.blendFuncSeparate(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA, context.ONE, context.ONE);
   }
-  function sourceTexture(source: IrisMediaImage): WebGLTexture | null {
-    const cached = textures.get(source);
-    if (cached) { textures.delete(source); textures.set(source, cached); return cached; }
+  function sourceTexture(source: IrisMediaImage, cache = textures, maximum = MAX_TEXTURES): WebGLTexture | null {
+    const cached = cache.get(source);
+    if (cached) { cache.delete(source); cache.set(source, cached); return cached; }
     const { width, height } = irisMediaImageSize(source);
     if (failedTextures.has(source) || width < 1 || height < 1 || Math.max(width, height) > maximumEdge) return null;
     const texture = context.createTexture();
@@ -343,10 +364,10 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
       context.texImage2D(context.TEXTURE_2D, 0, context.RGBA, context.RGBA, context.UNSIGNED_BYTE, source);
       if (context.getError() !== context.NO_ERROR) throw new Error("Iris texture upload failed");
     } catch { context.deleteTexture(texture); failedTextures.add(source); return null; }
-    textures.set(source, texture);
-    if (textures.size > MAX_TEXTURES) {
-      const oldest = textures.keys().next().value;
-      if (oldest) { context.deleteTexture(textures.get(oldest)!); textures.delete(oldest); }
+    cache.set(source, texture);
+    if (cache.size > maximum) {
+      const oldest = cache.keys().next().value;
+      if (oldest) { context.deleteTexture(cache.get(oldest)!); cache.delete(oldest); }
     }
     return texture;
   }
@@ -448,9 +469,22 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
         return available();
       } catch { return false; }
     },
-    finishPhoto() {
+    finishPhoto(typography = []) {
       if (!started || !available()) return null;
       outputGeometry(copyProgram); drawQuad();
+      for (const layer of typography) {
+        if (!layer.glyphs.length) continue;
+        const texture = sourceTexture(layer.atlas, textTextures, 4);
+        if (!texture) continue;
+        for (const glyph of layer.glyphs) {
+          geometry(textProgram, irisQuadClipVertices(glyph.vertices, frame.width, frame.height, glyph.uv));
+          bindTexture(textProgram, "uImage", texture, 0);
+          // Read the completed photo FBO while writing to the default buffer.
+          bindTexture(textProgram, "uBackground", targetTexture!, 1);
+          two(textProgram, "uRasterSize", raster.width, raster.height);
+          one(textProgram, "uOpacity", unit(glyph.opacity)); blend(); drawQuad();
+        }
+      }
       return available() ? canvas : null;
     },
     dispose() {
@@ -458,6 +492,7 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
       disposed = true; started = false;
       canvas.removeEventListener("webglcontextlost", contextLost);
       textures.forEach(texture => context.deleteTexture(texture)); textures.clear();
+      textTextures.forEach(texture => context.deleteTexture(texture)); textTextures.clear();
       programs.forEach(program => context.deleteProgram(program.program));
       context.deleteBuffer(vertexBuffer); context.deleteBuffer(indexBuffer);
       context.deleteTexture(targetTexture); context.deleteFramebuffer(framebuffer);
