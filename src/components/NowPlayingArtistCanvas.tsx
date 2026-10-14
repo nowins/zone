@@ -17,10 +17,9 @@ import {
 } from "../utils/nowPlayingArtist";
 import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
 import { createIrisGpuRenderer, irisMediaImageSize, type IrisMediaImage, type IrisGpuRenderer, type IrisQuad, type IrisProjectedVertex } from "../utils/irisGpuRenderer";
-import { createMosaicColorPalette, extractMosaicColorPalette, interpolateMosaicColorPalette, type MosaicColorPalette } from "../utils/nowPlayingCanvas";
+import { advanceMosaicLightClips, advanceMosaicPalette, createMosaicPaletteClock, type MosaicPaletteClock, type MosaicLightClips, type MosaicLightClip } from "../utils/mosaicPalette";
 
 const MAX_DECODED_PHOTO_EDGE = 1600;
-const FALLBACK_PALETTE = createMosaicColorPalette({ r: 62, g: 50, b: 44 });
 
 export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqueChange }: {
   tracks: Track[];
@@ -41,9 +40,9 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
   const retiredFallbackRef = useRef(true);
   const rendererRef = useRef<IrisGpuRenderer | null>(null);
   const rendererAttemptedRef = useRef(false);
-  const paletteRef = useRef<MosaicColorPalette>(FALLBACK_PALETTE);
-  const targetPaletteRef = useRef<MosaicColorPalette>(FALLBACK_PALETTE);
-  const lightTimeRef = useRef(0);
+  const paletteClockRef = useRef<MosaicPaletteClock | null>(null);
+  const lightClipsRef = useRef<MosaicLightClips>({ current: null, previous: null });
+  if (!paletteClockRef.current) paletteClockRef.current = createMosaicPaletteClock();
   const opacityRef = useRef<ArtistPhotoOpacity>({ value: 0, from: 0, target: 0, elapsedMs: 0 });
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1, dpiScale: 1 });
   const latestRef = useRef({ isPlaying, reduced });
@@ -66,14 +65,6 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
     rendererAttemptedRef.current = false;
   }
 
-  function targetPalette(palette: MosaicColorPalette) {
-    targetPaletteRef.current = palette;
-    // The first visible photograph should start with its resolved cover colors.
-    // An existing photograph instead keeps its current RGB values for retargeting.
-    if (!sceneRef.current.current) paletteRef.current = palette;
-    invalidateRef.current();
-  }
-
   function retireScene() {
     notifyOpaque(false);
     const canvas = canvasRef.current;
@@ -88,6 +79,8 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
       retiredFallbackRef.current = canvas.classList.contains("is-fallback");
     }
     sceneRef.current = createArtistPhotoScene();
+    lightClipsRef.current = { current: null, previous: null };
+    paletteClockRef.current = createMosaicPaletteClock();
     setArtistPhotoOpacityTarget(opacityRef.current, 0);
     imagesRef.current.clear();
     resetRenderer();
@@ -133,26 +126,6 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
   }, [artist, poolKey]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const path = activeTrack?.cover_path;
-    if (!path) {
-      targetPalette(FALLBACK_PALETTE);
-      return () => controller.abort();
-    }
-    // Decode only one small cover for color selection; photographs stay raw.
-    void loadArtistPhoto(path, controller.signal, 48, true).then(image => {
-      if (controller.signal.aborted) return;
-      try {
-        const context = image && "getContext" in image ? image.getContext("2d", { willReadFrequently: true }) : null;
-        targetPalette(image && context
-          ? extractMosaicColorPalette(context.getImageData(0, 0, image.width, image.height).data)
-          : FALLBACK_PALETTE);
-      } catch { targetPalette(FALLBACK_PALETTE); }
-    });
-    return () => controller.abort();
-  }, [activeTrack?.cover_path]);
-
-  useEffect(() => {
     resetClockRef.current();
     invalidateRef.current();
   }, [isPlaying, reduced]);
@@ -171,17 +144,11 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
       const delta = lastTime === null ? 0 : Math.min(80, Math.max(0, time - lastTime));
       lastTime = time;
       const { isPlaying: playing, reduced: motionReduced } = latestRef.current;
-      if (playing && !motionReduced) lightTimeRef.current += delta / 1000;
       const scene = sceneRef.current;
-      if (!scene.current) paletteRef.current = targetPaletteRef.current;
-      let paletteSettling = !artistPalettesSettled(paletteRef.current, targetPaletteRef.current);
-      if (paletteSettling) {
-        paletteRef.current = interpolateMosaicColorPalette(paletteRef.current, targetPaletteRef.current,
-          1 - Math.exp(-delta / NOW_PLAYING_MOTION.paletteSmoothing));
-        paletteSettling = !artistPalettesSettled(paletteRef.current, targetPaletteRef.current);
-      }
-      if (!paletteSettling) paletteRef.current = targetPaletteRef.current;
+      advanceMosaicPalette(paletteClockRef.current!, delta, playing, motionReduced);
       advanceArtistPhotoScene(scene, delta, playing, motionReduced);
+      advanceMosaicLightClips(lightClipsRef.current, scene.current, scene.previous,
+        paletteClockRef.current!.target, delta, playing, motionReduced);
       setArtistPhotoOpacityTarget(opacityRef.current, scene.current ? 1 : 0);
       advanceArtistPhotoOpacity(opacityRef.current, delta, motionReduced);
       const { width, height, dpr, dpiScale } = sizeRef.current;
@@ -199,10 +166,10 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
           catch { rendererRef.current = null; }
         }
         const renderer = rendererRef.current;
-        const gpuPhoto = (image: IrisMediaImage, motion: ArtistPhotoMotion, elapsedMs: number, opacity: number) => {
-          if (!renderer?.available || !renderer.begin({ width, height, rasterScale: dpr, dpiScale, transparent: true })
+        const gpuPhoto = (image: IrisMediaImage, motion: ArtistPhotoMotion, elapsedMs: number, opacity: number, lighting: MosaicLightClip | null) => {
+          if (!lighting || !renderer?.available || !renderer.begin({ width, height, rasterScale: dpr, dpiScale, transparent: true })
             || !renderer.photo({ image, vertices: artistPhotoVertices(image, motion, elapsedMs, width, height),
-              palette: paletteRef.current, timeSeconds: lightTimeRef.current, opacity: 1 })) return false;
+              palette: lighting.palette, timeSeconds: lighting.elapsedMs / 1000, pathIndex: lighting.pathIndex, opacity: 1 })) return false;
           const output = renderer.finishPhoto();
           if (!output) return false;
           // Native COLOR0 scales the shader's accumulated alpha. Scene mixing
@@ -213,8 +180,8 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
         };
         let gpu = false;
         try {
-          gpu = (!previous || gpuPhoto(previous, scene.previousMotion, scene.previousElapsedMs, 1))
-            && gpuPhoto(current, scene.motion, scene.elapsedMs, previous ? artistPhotoSceneBlend(scene) : 1);
+          gpu = (!previous || gpuPhoto(previous, scene.previousMotion, scene.previousElapsedMs, 1, lightClipsRef.current.previous))
+            && gpuPhoto(current, scene.motion, scene.elapsedMs, previous ? artistPhotoSceneBlend(scene) : 1, lightClipsRef.current.current);
         } catch { gpu = false; }
         if (!gpu) {
           renderer?.dispose();
@@ -241,8 +208,7 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
       }
       const sceneRunning = playing && !motionReduced && (Boolean(scene.current)
         || ((decodingRef.current || scene.paths.length >= 2) && scene.waitMs < NOW_PLAYING_MOTION.artistGridDelay));
-      const paletteVisible = Boolean(current) || (Boolean(retiredRef.current) && opacityRef.current.value > 0);
-      if (sceneRunning || scene.previous || opacityRef.current.value !== opacityRef.current.target || (paletteSettling && paletteVisible)) {
+      if (sceneRunning || scene.previous || opacityRef.current.value !== opacityRef.current.target) {
         request = window.requestAnimationFrame(draw);
       } else lastTime = null;
     };
@@ -301,11 +267,6 @@ export function NowPlayingArtistCanvas({ tracks, activeTrack, isPlaying, onOpaqu
   }, []);
 
   return <canvas ref={canvasRef} className="now-artist-canvas is-fallback" aria-hidden="true" />;
-}
-
-function artistPalettesSettled(current: MosaicColorPalette, target: MosaicColorPalette) {
-  return current.every((color, index) => (Object.keys(color) as Array<keyof typeof color>)
-    .every(channel => Math.abs(color[channel] - target[index][channel]) <= 0.01));
 }
 
 function artistPhotoVertices(image: IrisMediaImage, motion: ArtistPhotoMotion, elapsedMs: number,

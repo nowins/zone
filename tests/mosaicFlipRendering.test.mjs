@@ -280,20 +280,17 @@ test("the GPU wall receives raw covers and matches the settled Canvas tile bound
     const tiles = buildCanvasMosaicTiles(1180, 760, []);
     assert.equal(frame.covers.length, tiles.length);
     assert.equal(fixture.materialWrites().length, 0, "the GPU samples original color surfaces rather than flattened material");
-    const scale = 1.025 + Math.sin(.4) * .006;
-    const offsetX = 590 * (1 - scale) + Math.sin(1.3) * 7 * scale;
-    const offsetY = 380 * (1 - scale) + Math.cos(.6) * 10 * scale;
     for (let index = 0; index < tiles.length; index++) {
       const tile = tiles[index], cover = frame.covers[index];
       assert.ok(!cover.image.material);
       assert.equal(cover.opacity, 89 / 255);
       assert.equal(cover.backingOpacity, 1);
-      const expected = [[tile.x, tile.y], [tile.x + tile.width - 1, tile.y],
-        [tile.x + tile.width - 1, tile.y + tile.height - 1], [tile.x, tile.y + tile.height - 1]];
+      const expected = [[tile.x + 1, tile.y + 1], [tile.x + tile.width - 1, tile.y + 1],
+        [tile.x + tile.width - 1, tile.y + tile.height - 1], [tile.x + 1, tile.y + tile.height - 1]];
       cover.vertices.forEach((vertex, corner) => {
-        assert.ok(Math.abs(vertex.x - (expected[corner][0] * scale + offsetX)) < 1e-8,
-          "the width-1 clip begins at tile.x, without another half CSS pixel");
-        assert.ok(Math.abs(vertex.y - (expected[corner][1] * scale + offsetY)) < 1e-8);
+        assert.ok(Math.abs(vertex.x - expected[corner][0]) < 1e-8,
+          "native one-pixel padding preserves a centered, fixed cover face");
+        assert.ok(Math.abs(vertex.y - expected[corner][1]) < 1e-8);
         assert.equal(vertex.w, 1);
       });
     }
@@ -373,7 +370,7 @@ test("GPU rejection during a back-face fade retains its decoded face and animati
     }
     assert.ok(turning, "real playback reaches the partially faded back face");
     const tile = buildCanvasMosaicTiles(1180, 760, [])[turning.tileIndex];
-    const slot = `${tile.x},${tile.y},${tile.width - 1},${tile.height - 1}`;
+    const slot = `${tile.x + 1},${tile.y + 1},${tile.width - 2},${tile.height - 2}`;
     const back = fixture.gpu.frames.at(-1).covers[turning.tileIndex].image;
     fixture.gpu.failFinish = true;
     const before = fixture.advanceCount();
@@ -587,7 +584,7 @@ async function createWallFixture({ pending = [], dpi = 1, gpu = false, imageSize
       if (tileIndex === undefined) return;
       const tile = buildCanvasMosaicTiles(width, height, []).find(tile => tile.id === oldId);
       assert.ok(tile, "the selected square stays in the resized viewport");
-      return `${tile.x},${tile.y},${tile.width - 1},${tile.height - 1}`;
+      return `${tile.x + 1},${tile.y + 1},${tile.width - 2},${tile.height - 2}`;
     },
     reduce: async () => act(async () => { media.matches = true; mediaListeners.forEach(listener => listener()); }),
     hide(value) { hidden = value; document.dispatchEvent(new window.Event("visibilitychange")); },

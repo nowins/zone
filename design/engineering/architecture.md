@@ -74,7 +74,7 @@
   - `playback.ts`：队列移动/随机顺序/边界解析。
   - `smartPlaylist.ts`：智能播放列表规则求值与归一化。
   - `homePins.ts`：quickplay 固定项的归一化、移动、外观设置与对账。
-  - `visualizer.ts` / `beatAnalysis.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格与封面拼贴的纯计算部分。`zuneSpectrumGlow.ts`维护左右频谱分组、40位置空间排列及橙／粉独立循环，供`AudioGlowCanvas`绘制80张缓存软光贴片；旧`audioGlow.ts`轮廓计算仅保留分析回归夹具兼容，不再驱动Canvas。`mosaicLighting.ts` / `mosaicProjection.ts` 分别维护环境点光与共享视口相机下的转面纹理投影，原生曲线求值复用 `motion/irisCurves.ts`；`nowPlayingArtist.ts` 维护本地照片池与场景时钟。
+  - `visualizer.ts` / `beatAnalysis.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格与封面拼贴的纯计算部分。`zuneSpectrumGlow.ts`维护左右频谱分组、40位置空间排列及橙／粉独立循环，供`AudioGlowCanvas`绘制80张缓存软光贴片；旧`audioGlow.ts`轮廓计算仅保留分析回归夹具兼容，不再驱动Canvas。`mosaicPalette.ts` 维护原版色板、宿主选色时钟与每片照片的独立光路生命周期；`mosaicLighting.ts` / `mosaicProjection.ts` 分别维护环境点光与共享视口相机下的转面纹理投影，原生曲线求值复用 `motion/irisCurves.ts`；`nowPlayingArtist.ts` 维护本地照片池与场景时钟。
   - `visualizerBus.ts`：可视化帧的单槽 latest-frame 总线（`publishVisualizerFrame` / `getVisualizerFrame`）。`useAudioEngine` 采样循环发布，App 普通页面或正在播放页的 `AudioGlowCanvas` 在活动的 rAF 中拉取；`NowPlayingMosaicCanvas` 的封面／色场按独立环境时钟绘制，共用文档和原生窗口可见性信号。暂停/减少动态效果后收敛停转，静音时光焰停转，不经 React state/props。页面浏览不重启采样，小屏与播客播放停用音乐可视化。
   - `lyrics.ts` / `amllTtml.ts` / `qrc.ts`：plain、LRC、增强 LRC、TTML、AMLL 元数据和 QQ QRC 的解析与归一化。
   - `lyricsProviders.ts` / `lyricsProviderSearch.ts` / `lyricsSearch.ts`：候选打分与多样性裁剪、多来源搜索策略、按曲目保存的搜索信息修正。

@@ -155,6 +155,24 @@ test("both GL versions upload the exact decoded image or Canvas once with straig
   }
 });
 
+test("GPU receives native RGBA without gain and the selected clip path", () => {
+  const env = recordingGpu(true);
+  const renderer = createIrisGpuRenderer(env.document);
+  try {
+    const palette = [{r:112,g:163,b:200,a:.25},{r:248,g:237,b:68,a:.5},{r:204,g:255,b:204,a:.75}];
+    const vertices = [{x:0,y:0,w:1},{x:1180,y:0,w:1},{x:1180,y:760,w:1},{x:0,y:760,w:1}];
+    renderer.begin({width:1180,height:760,rasterScale:2,dpiScale:3,transparent:true});
+    assert.equal(renderer.photo({image:{width:8,height:8},vertices,palette,timeSeconds:0,pathIndex:2,opacity:1}), true);
+    for (const [index,name] of ["uPrimary","uHighlight1","uHighlight2"].entries()) {
+      const call = env.calls.findLast(call => call.name === "uniform4f" && call.args[0].name === name);
+      const color = palette[index];
+      assert.deepEqual(call.args.slice(1), [color.r/255,color.g/255,color.b/255,color.a]);
+    }
+    assert.deepEqual(env.calls.findLast(call => call.name === "uniform2f" && call.args[0].name === "uLight1").args.slice(1), [3540,456]);
+    assert.deepEqual(env.calls.findLast(call => call.name === "uniform2f" && call.args[0].name === "uLight2").args.slice(1), [0,1140]);
+  } finally { renderer.dispose(); }
+});
+
 function recordingGpu(webgl2) {
   const calls = [], listeners = new Map();
   let nextConstant = 1, nextHandle = 0;

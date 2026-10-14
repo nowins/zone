@@ -34,9 +34,8 @@
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.22), transparent 18%, transparent 80%, rgba(0, 0, 0, 0.3)),
-    linear-gradient(0deg, rgba(0, 0, 0, 0.44), transparent 25%, rgba(0, 0, 0, 0.08));
+  /* Lyrics add their own veil; the native media light field needs no grade. */
+
 }
 
 .now-artist-canvas {

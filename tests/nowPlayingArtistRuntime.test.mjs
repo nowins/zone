@@ -4,7 +4,6 @@ import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { createMosaicColorPalette, extractMosaicColorPalette } from "../.tmp/visualizer-tests/utils/nowPlayingCanvas.js";
 
 await build({ entryPoints: ["src/components/NowPlayingArtistCanvas.tsx"], outfile: ".tmp/artist-canvas-tests/runtime.js",
   bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent",
@@ -350,66 +349,57 @@ test("retired GPU pixels retain their grading and pool changes release old GPU t
   } finally { await env.close(); }
 });
 
-test("cover colors use a bounded decode and canceled old covers cannot replace the current photo palette", async () => {
-  const env = await fixture({ gpu: true, cover: "cover-red", pending: ["cover-red"],
-    coverColors: { "cover-red": [220, 30, 20, 255], "cover-blue": [20, 40, 220, 255] } });
+test("same-artist cover changes keep the native palette, light path and photo scene", async () => {
+  const env = await fixture({ gpu: true, cover: "cover-red", pending: ["cover-red"] });
   try {
-    env.advance(5200);
-    const initial = env.gpuPhotos().at(-1).palette;
+    env.advance(7200);
+    const before = env.gpuPhotos().at(-1);
     await env.render({ cover: "cover-blue", active: 1 });
-    env.step(40);
-    assert.notDeepEqual(env.gpuPhotos().at(-1).palette, initial);
-    assert.equal(env.gpuPhotos().at(-1).image, "photo-a");
+    env.step(0);
+    const after = env.gpuPhotos().at(-1);
+    assert.deepEqual(after.palette, before.palette);
+    assert.equal(after.timeSeconds, before.timeSeconds);
+    assert.equal(after.pathIndex, before.pathIndex);
+    assert.equal(after.image, "photo-a");
     assert.equal(env.opacity(), 1);
-    const decoded = env.imageRasters().find(raster => raster.path === "cover-blue");
-    assert.ok(decoded.width <= 48 && decoded.height <= 48);
-    env.advance(16_000);
-    const blue = env.gpuPhotos().at(-1).palette;
+    assert.equal(env.imageRasters().filter(raster => raster.path.startsWith("cover-")).length, 0,
+      "photographs no longer decode album covers for boosted colors");
     await env.finishImage("cover-red");
-    env.step(40);
-    assert.deepEqual(env.gpuPhotos().at(-1).palette, blue);
-    assert.ok(env.imageSources().includes(""), "completed and canceled decodes release their source handles");
+    env.step(0);
+    assert.deepEqual(env.gpuPhotos().at(-1).palette, before.palette);
   } finally { await env.close(); }
 });
 
-test("same-artist cover retargeting keeps every RGB channel continuous and reaches the latest target", async () => {
-  const colors = { "cover-red": [220, 30, 20, 255], "cover-blue": [20, 40, 220, 255], "cover-green": [30, 210, 50, 255] };
-  const env = await fixture({ gpu: true, cover: "cover-red", coverColors: colors });
+test("each photo enters through four seconds of linear native RGBA", async () => {
+  const env = await fixture({ gpu: true });
   try {
-    env.advance(5200);
-    const red = solidCoverPalette(colors["cover-red"]);
-    const blue = solidCoverPalette(colors["cover-blue"]);
-    const green = solidCoverPalette(colors["cover-green"]);
-    assert.deepEqual(env.gpuPhotos()[0].palette, red, "a resolved cover initializes before the first photo is rendered");
-    await env.render({ cover: "cover-blue", active: 1 });
-    env.step(0);
-    assert.deepEqual(env.gpuPhotos().at(-1).palette, red, "the async result changes the target, not the visible RGB values");
-    let previous = red;
-    for (let frame = 0; frame < 12; frame++) {
-      env.step(40);
-      const current = env.gpuPhotos().at(-1).palette;
-      for (let index = 0; index < current.length; index++) {
-        for (const channel of ["r", "g", "b"]) {
-          assert.ok(Math.abs(current[index][channel] - previous[index][channel]) <= Math.abs(blue[index][channel] - previous[index][channel]) * 0.04 + 1e-9);
-          assert.ok(Math.abs(current[index][channel] - blue[index][channel]) <= Math.abs(previous[index][channel] - blue[index][channel]) + 1e-9);
+    env.advance(7200);
+    const photos = env.gpuPhotos();
+    const first = photos[0];
+    assert.equal(first.timeSeconds, 0);
+    assert.ok(first.palette.every(color => color.a === 0 && color.r === 0 && color.g === 0 && color.b === 0));
+    const settled = photos.at(-1);
+    assert.ok(settled.palette.every(color => color.a === 1));
+    for (const photo of photos.filter(photo => photo.timeSeconds > 0 && photo.timeSeconds < 4)) {
+      const amount = photo.timeSeconds / 4;
+      photo.palette.forEach((color,index) => {
+        for (const channel of ["r","g","b","a"]) {
+          assert.ok(Math.abs(color[channel] - settled.palette[index][channel] * amount) < 1e-8);
         }
-      }
-      previous = current;
+      });
     }
-    await env.render({ cover: "cover-green" });
-    env.step(0);
-    assert.deepEqual(env.gpuPhotos().at(-1).palette, previous, "a second retarget starts at the in-flight color");
-    env.advance(16_000);
-    assert.deepEqual(env.gpuPhotos().at(-1).palette, green);
-    assert.equal(env.gpuPhotos().at(-1).image, "photo-a");
-    assert.deepEqual(env.opaqueChanges, [true]);
+    env.advance(28_000);
+    const pair = env.gpuPhotos().slice(-2);
+    assert.deepEqual(pair.map(photo => photo.image), ["photo-a","photo-b"]);
+    assert.ok(pair[0].timeSeconds >= 32);
+    assert.ok(pair[1].timeSeconds < 4, "incoming light animation starts at clip time zero");
+    assert.ok(pair[1].palette.every(color => color.a < 1));
   } finally { await env.close(); }
 });
 
-test("paused and reduced photos finish necessary palette convergence without advancing lights or crops", async () => {
+test("paused and reduced photo lights sleep and cover changes cannot wake a color timer", async () => {
   for (const mode of ["paused", "reduced"]) {
-    const colors = { "cover-red": [220, 30, 20, 255], "cover-blue": [20, 40, 220, 255] };
-    const env = await fixture({ gpu: true, cover: "cover-red", coverColors: colors });
+    const env = await fixture({ gpu: true, cover: "cover-red" });
     try {
       env.advance(5200);
       if (mode === "paused") await env.render({ playing: false });
@@ -419,14 +409,11 @@ test("paused and reduced photos finish necessary palette convergence without adv
       assert.equal(env.frameCount(), 0);
       await env.render({ cover: "cover-blue" });
       env.step(40);
-      assert.deepEqual(env.gpuPhotos().at(-1).palette, frozen.palette, "a sleeping clock resumes from delta zero");
-      assert.equal(env.frameCount(), 1, "visible pending colors wake a bounded settle loop");
-      env.advance(16_000);
-      const final = env.gpuPhotos().at(-1);
-      assert.deepEqual(final.palette, solidCoverPalette(colors["cover-blue"]));
-      assert.equal(final.timeSeconds, frozen.timeSeconds, "color settling must not move the light field");
-      assert.deepEqual(final.vertices, frozen.vertices, "color settling must not move the photo crop");
-      assert.equal(env.frameCount(), 0, "the channel threshold snaps exactly to the target and sleeps");
+      const after = env.gpuPhotos().at(-1);
+      assert.deepEqual(after.palette, frozen.palette);
+      assert.equal(after.timeSeconds, frozen.timeSeconds);
+      assert.deepEqual(after.vertices, frozen.vertices);
+      assert.equal(env.frameCount(), 0);
     } finally { await env.close(); }
   }
 });
@@ -452,20 +439,16 @@ test("hidden palette transitions preserve visible progress and a discarded artis
   } finally { await env.close(); }
 });
 
-test("a failed cover smoothly returns a paused photo to the fallback palette and then sleeps", async () => {
-  const env = await fixture({ gpu: true, cover: "cover-red", failed: ["cover-bad"],
-    coverColors: { "cover-red": [220, 30, 20, 255] } });
-  const fallback = createMosaicColorPalette({ r: 62, g: 50, b: 44 });
+test("a failed album cover leaves native photo lighting unchanged", async () => {
+  const env = await fixture({ gpu: true, cover: "cover-red", failed: ["cover-bad"] });
   try {
-    env.advance(5200);
+    env.advance(7200);
     await env.render({ playing: false });
     env.step(40);
     const before = env.gpuPhotos().at(-1);
     await env.render({ cover: "cover-bad" });
     env.step(40);
     assert.deepEqual(env.gpuPhotos().at(-1).palette, before.palette);
-    env.advance(16_000);
-    assert.deepEqual(env.gpuPhotos().at(-1).palette, fallback);
     assert.equal(env.gpuPhotos().at(-1).timeSeconds, before.timeSeconds);
     assert.equal(env.frameCount(), 0);
   } finally { await env.close(); }
@@ -520,12 +503,6 @@ test("aborted, failed and un-rasterizable photographs release their decoders and
   }
 });
 
-function solidCoverPalette(color) {
-  // The fixture's 1200x900 source becomes the component's 48x36 color raster.
-  const data = new Uint8ClampedArray(48 * 36 * 4);
-  for (let index = 0; index < data.length; index += 4) data.set(color, index);
-  return extractMosaicColorPalette(data);
-}
 
 function makeTracks(artist, paths) {
   return [0, 1].map(index => ({ id: `${artist}-${index}`, title: `Song ${index}`, album: `Album ${index}`, artist,

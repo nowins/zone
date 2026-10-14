@@ -40,13 +40,8 @@ test("point light attenuation and overlay agree with the shipped HLSL examples",
 });
 
 test("moving lights close without a loop seam and scale positions in logical pixels", () => {
-  for (let path = 0; path < 3; path++) {
-    assert.deepEqual(createMosaicColorFieldMotion(0, path), createMosaicColorFieldMotion(90, path));
-    const before = createMosaicColorFieldMotion(89.999, path), after = createMosaicColorFieldMotion(90.001, path);
-    for (const light of ["highlight1", "highlight2"]) for (let axis = 0; axis < 2; axis++) {
-      assert.ok(Math.abs(before[light][axis] - after[light][axis]) < 0.00001);
-    }
-  }
+  // Loop boundaries are independently covered by mosaicAmbientLighting.
+  assert.notDeepEqual(createMosaicColorFieldMotion(0), createMosaicColorFieldMotion(90));
   const palette = [{ r: 60, g: 50, b: 40 }, { r: 70, g: 40, b: 25 }, { r: 25, g: 65, b: 70 }];
   const normal = createMosaicLightingSampler(palette, 0, 1180, 760), large = createMosaicLightingSampler(palette, 0, 2360, 1520);
   assert.notDeepEqual(normal(0.5, 0.5), large(0.5, 0.5), "light radius stays in logical pixels rather than stretching with the window");

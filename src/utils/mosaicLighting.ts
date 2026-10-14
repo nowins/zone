@@ -2,7 +2,7 @@ import { clamp } from "../motion/math.js";
 import { irisSCurve } from "../motion/irisCurves.js";
 import { NOW_PLAYING_CURVES, NOW_PLAYING_MOTION } from "../motion/tokens.js";
 
-type Color = { r: number; g: number; b: number };
+type Color = { r: number; g: number; b: number; a?: number };
 type Point = readonly [number, number];
 
 // Shipped NowPlayingEffects paths, normalized to the client area.
@@ -17,8 +17,7 @@ const LIGHT_PATHS: readonly (readonly [readonly Point[], readonly Point[]])[] = 
 
 export function createMosaicColorFieldMotion(timeSeconds: number, pathIndex = 0) {
   const path = LIGHT_PATHS[Math.abs(Math.floor(pathIndex)) % LIGHT_PATHS.length];
-  const phase = ((timeSeconds * 1000 / NOW_PLAYING_MOTION.mosaicLightLoop) % 1 + 1) % 1;
-  return { highlight1: samplePath(path[0], phase), highlight2: samplePath(path[1], phase) };
+  return { highlight1: samplePath(path[0], timeSeconds), highlight2: samplePath(path[1], timeSeconds) };
 }
 
 /** Iris attenuation uses distance in physical WorldView pixels. */
@@ -32,14 +31,14 @@ export function mosaicOverlay(base: number, source: number) {
 }
 
 export function createMosaicLightingSampler(
-  palette: readonly Color[], timeSeconds: number, width: number, height: number, dpiScale = 1,
+  palette: readonly Color[], timeSeconds: number, width: number, height: number, dpiScale = 1, pathIndex = 0,
 ) {
   const dpi = Math.max(1, dpiScale);
   const physicalWidth = width * dpi, physicalHeight = height * dpi;
-  const motion = createMosaicColorFieldMotion(timeSeconds);
-  const primary = lift(palette[0], 2.4);
-  const highlight1 = lift(palette[1], 3.5);
-  const highlight2 = lift(palette[2], 3.5);
+  const motion = createMosaicColorFieldMotion(timeSeconds, pathIndex);
+  const primary = normalize(palette[0]);
+  const highlight1 = normalize(palette[1]);
+  const highlight2 = normalize(palette[2]);
   const fill = 800 / 1050;
   const x1 = motion.highlight1[0] * physicalWidth, y1 = motion.highlight1[1] * physicalHeight;
   const x2 = motion.highlight2[0] * physicalWidth, y2 = motion.highlight2[1] * physicalHeight;
@@ -47,22 +46,28 @@ export function createMosaicLightingSampler(
     const px = x * physicalWidth, py = y * physicalHeight;
     const first = mosaicLightFalloff(Math.hypot(px - x1, py - y1));
     const second = mosaicLightFalloff(Math.hypot(px - x2, py - y2));
-    const channel = (key: keyof Color) => 255 * clamp(mosaicOverlay(
+    const channel = (key: "r" | "g" | "b") => 255 * clamp(mosaicOverlay(
       mosaicOverlay(mosaicOverlay(fill, highlight1[key] * first), highlight2[key] * second),
       primary[key]), 0, 1);
-    return { r: channel("r"), g: channel("g"), b: channel("b") };
+    return { r: channel("r"), g: channel("g"), b: channel("b"),
+      a: clamp(fill + (palette[1].a ?? 1) * first + (palette[2].a ?? 1) * second + (palette[0].a ?? 1), 0, 1) };
   };
 }
 
-function lift(color: Color, gain: number): Color {
-  // Zone keeps its cover-derived palette; the native palette uses lighter inputs.
-  return { r: clamp(color.r * gain / 255, 0, 1), g: clamp(color.g * gain / 255, 0, 1), b: clamp(color.b * gain / 255, 0, 1) };
+function normalize(color: Color) {
+  return { r: clamp(color.r / 255, 0, 1), g: clamp(color.g / 255, 0, 1), b: clamp(color.b / 255, 0, 1) };
 }
 
-function samplePath(points: readonly Point[], phase: number): Point {
-  const cursor = phase * (points.length - 1);
-  const index = Math.min(points.length - 2, Math.floor(cursor));
-  const amount = irisSCurve(cursor - index, NOW_PLAYING_CURVES.mosaicLightWeight);
+function samplePath(points: readonly Point[], timeSeconds: number): Point {
+  // UIX stores float32(i / N * 90) seconds, then rounds milliseconds. Each
+  // animation loops at its last keyframe, including the repeated endpoint.
+  const times = points.map((_, i) => Math.floor(Math.fround(Math.fround(i / points.length)
+    * (NOW_PLAYING_MOTION.mosaicLightPeriod / 1000)) * 1000 + 0.5));
+  const duration = times[times.length - 1];
+  const time = ((timeSeconds * 1000 % duration) + duration) % duration;
+  let index = 0;
+  while (index < points.length - 2 && time >= times[index + 1]) index++;
+  const amount = irisSCurve((time - times[index]) / (times[index + 1] - times[index]), NOW_PLAYING_CURVES.mosaicLightWeight);
   const from = points[index], to = points[index + 1];
   return [from[0] + (to[0] - from[0]) * amount, from[1] + (to[1] - from[1]) * amount];
 }

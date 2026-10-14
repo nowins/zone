@@ -7,10 +7,9 @@ import { executeIrisPixelShader, irisInstructionSlots, unpackIrisArgb } from "./
 const runtime = JSON.parse(readFileSync(new URL("./fixtures/iris-runtime-pixel-shader.json", import.meta.url), "utf8"));
 const { shader, sample } = runtime;
 const CHANNELS = ["r", "g", "b"];
-// These gains intentionally preserve Zone's cover-derived palette adaptation.
-const PALETTE_GAINS = [2.4, 3.5, 3.5];
+// Production uses the captured byte-space palette without cover gains.
 const capturedPalette = ["c8", "c2", "c6"].map((name, index) => Object.fromEntries(
-  CHANNELS.map((key, channel) => [key, sample.constantRegisters[name][channel] * 255 / PALETTE_GAINS[index]]),
+  CHANNELS.map((key, channel) => [key, sample.constantRegisters[name][channel] * 255]),
 ));
 const capturedVertexColor = unpackIrisArgb(sample.cpuVertices.packedArgb[0]);
 

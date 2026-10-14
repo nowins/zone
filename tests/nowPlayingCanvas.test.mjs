@@ -80,10 +80,7 @@ test("cover sampling produces a restrained multi-color Zune field palette", () =
 });
 
 test("mosaic point lights follow the recovered paths and change local colors over time", () => {
-  const palette = createMosaicColorPalette(
-    { r: 36, g: 110, b: 188 },
-    [{ r: 26, g: 92, b: 188 }, { r: 38, g: 170, b: 102 }],
-  );
+  const palette = [{r:189,g:164,b:214},{r:250,g:160,b:24},{r:249,g:47,b:232}];
   const firstMotion = createMosaicColorFieldMotion(0);
   const laterMotion = createMosaicColorFieldMotion(12);
   const positions = [[0.02, 0.02], [0.5, 0.5], [0.02, 0.98]];
@@ -151,15 +148,9 @@ test("neighboring palette transition frames cannot flip the field's hue route", 
   }
 });
 
-test("mosaic wall breathes across useful distances without exposing its edges", () => {
-  const first = createMosaicMotion(0);
-  const later = createMosaicMotion(16);
-
-  assert.notDeepEqual(first, later, "the wall should visibly migrate during ordinary playback");
-  for (const motion of [first, later, createMosaicMotion(90)]) {
-    assert.ok(Math.abs(motion.driftX) <= 24, `horizontal drift should stay restrained, got ${motion.driftX}`);
-    assert.ok(Math.abs(motion.driftY) <= 16, `vertical drift should stay restrained, got ${motion.driftY}`);
-    assert.ok(motion.scale >= 1.016 && motion.scale <= 1.034, `breathing scale should stay subtle, got ${motion.scale}`);
+test("album wall placement stays fixed across playback and reduced-motion clocks", () => {
+  for (const time of [0, 1, 16, 90, 3600]) {
+    assert.deepEqual(createMosaicMotion(time), { driftX: 0, driftY: 0, scale: 1 });
   }
 });
 
@@ -194,10 +185,10 @@ test("GridShow alpha and scale use distinct native EaseIn weights on the same re
 });
 
 test("light-path quarter segments use native SCurve instead of smoothstep", () => {
-  const quarter = createMosaicColorFieldMotion(4.5);
+  const quarter = createMosaicColorFieldMotion(3.75);
   assert.ok(Math.abs(quarter.highlight1[0] - 0.5968564716806983) < 1e-12);
   assert.equal(quarter.highlight1[1], 0);
-  const threeQuarter = createMosaicColorFieldMotion(13.5);
+  const threeQuarter = createMosaicColorFieldMotion(11.25);
   assert.ok(Math.abs(threeQuarter.highlight1[0] - 0.9031435283193017) < 1e-12);
 });
 

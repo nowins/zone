@@ -8,24 +8,20 @@ import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerB
 import { createMosaicCamera, drawProjectedMosaicImage, projectMosaicPoint, projectMosaicVertex, type MosaicCamera } from "../utils/mosaicProjection";
 import { applyMosaicCoverMaterial, mosaicCoverVertexAlpha, MOSAIC_COVER_MATERIAL } from "../utils/mosaicCoverMaterial";
 import { createIrisGpuRenderer, irisCoverCropUv, irisMediaImageSize, type IrisMediaImage, type IrisGpuRenderer, type IrisQuad, type IrisProjectedVertex } from "../utils/irisGpuRenderer";
+import { createMosaicLightingSampler } from "../utils/mosaicLighting";
+import { advanceMosaicPalette, createMosaicPaletteClock, randomMosaicLightPath, type LightingPalette, type MosaicPaletteClock } from "../utils/mosaicPalette";
 import {
   buildCanvasMosaicTiles,
   advanceMosaicArtwork,
-  createMosaicColorPalette,
-  createMosaicColorFieldSampler,
   createMosaicFlipState,
   createMosaicMotion,
-  extractMosaicColorPalette,
-  interpolateMosaicColorPalette,
   mosaicTileRevealAmount,
   mosaicTileRevealScale,
   mosaicFlipFrame,
   updateMosaicFlipState,
-  type MosaicColorPalette,
   type MosaicFlipState,
   type MosaicTile,
   type MosaicArtworkState,
-  type RgbColor,
 } from "../utils/nowPlayingCanvas";
 
 const imageReadyListeners = new Set<() => void>();
@@ -39,8 +35,6 @@ const WALL_IMAGE_LOAD_CONCURRENCY = 4;
 const EMPTY_QUEUE: Track[] = [];
 const imageLoadWaiters: Array<() => void> = [];
 let activeImageLoadCount = 0;
-const FALLBACK_TINT: RgbColor = { r: 62, g: 50, b: 44 };
-const FALLBACK_PALETTE = createMosaicColorPalette(FALLBACK_TINT);
 const WALL_PRELOAD_TIMEOUT_MS = 1_600;
 const COLOR_FIELD_WIDTH = 112;
 const COLOR_FIELD_FRAME_INTERVAL_MS = 42;
@@ -85,8 +79,10 @@ export function NowPlayingMosaicCanvas({
   const albumsRef = useRef<AlbumGroup[]>([]);
   const pendingAlbumsRef = useRef<AlbumGroup[] | null>(null);
   const isPlayingRef = useRef(isPlaying);
-  const paletteRef = useRef<MosaicColorPalette>(clonePalette(FALLBACK_PALETTE));
-  const targetPaletteRef = useRef<MosaicColorPalette>(clonePalette(FALLBACK_PALETTE));
+  const paletteClockRef = useRef<MosaicPaletteClock | null>(null);
+  const lightPathRef = useRef<number | null>(null);
+  if (!paletteClockRef.current) paletteClockRef.current = createMosaicPaletteClock();
+  if (lightPathRef.current === null) lightPathRef.current = randomMosaicLightPath();
   const colorFieldRendererRef = useRef<MosaicColorFieldRenderer | null>(null);
   const flipRef = useRef<MosaicFlipState>(createMosaicFlipState());
   const flipArtworkRef = useRef<MosaicFlipArtwork | null>(null);
@@ -130,29 +126,6 @@ export function NowPlayingMosaicCanvas({
     motionEnabledRef.current = !reducedMotion;
     invalidateRef.current();
   }, [reducedMotion]);
-
-  useEffect(() => {
-    if (!activeTrack?.cover_path) {
-      targetPaletteRef.current = clonePalette(FALLBACK_PALETTE);
-      invalidateRef.current();
-      return;
-    }
-
-    let cancelled = false;
-    const extract = (image: CanvasImageSource | null) => {
-      if (cancelled) return;
-      const palette = extractColorPalette(image);
-      targetPaletteRef.current = palette ?? clonePalette(FALLBACK_PALETTE);
-      invalidateRef.current();
-    };
-
-    const cached = imageCache.get(activeTrack.cover_path);
-    if (cached) extract(cached);
-    else void loadWallImage(activeTrack.cover_path).then(extract);
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTrack?.cover_path]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -222,25 +195,22 @@ export function NowPlayingMosaicCanvas({
     const draw = (time: number) => {
       try {
         const previousTime = lastTimeRef.current ?? time;
-        const deltaSeconds = Math.min(0.08, Math.max(0.001, (time - previousTime) / 1000));
+        const deltaSeconds = Math.min(0.08, Math.max(0, (time - previousTime) / 1000));
         lastTimeRef.current = time;
         const motionEnabled = motionEnabledRef.current;
         sceneTimeRef.current += deltaSeconds * (motionEnabled ? (isPlayingRef.current ? 1 : 0) : 0);
-        paletteRef.current = interpolateMosaicColorPalette(
-          paletteRef.current,
-          targetPaletteRef.current,
-          1 - Math.exp(-deltaSeconds * 1000 / NOW_PLAYING_MOTION.paletteSmoothing),
-        );
+        const palette = advanceMosaicPalette(paletteClockRef.current!, deltaSeconds * 1000, isPlayingRef.current, !motionEnabled);
         const gpuFailed = drawMosaic(
           context,
           sizeRef.current,
           tilesRef.current,
           albumsRef.current,
-          paletteRef.current,
+          palette,
           isPlayingRef.current && pendingAlbumsRef.current === null,
           flipRef.current,
           time,
           sceneTimeRef.current,
+          lightPathRef.current!,
           wallRevealStartedAtRef.current,
           motionEnabled,
           colorFieldRendererRef,
@@ -260,6 +230,7 @@ export function NowPlayingMosaicCanvas({
       } catch (error) {
         if (import.meta.env.DEV) console.error("[now-playing:mosaic] draw failed", error);
         frameRef.current = null;
+        lastTimeRef.current = null;
         return;
       }
       if (isDocumentVisible() && ((isPlayingRef.current && motionEnabledRef.current) || flipRef.current.tileIndex >= 0
@@ -267,6 +238,7 @@ export function NowPlayingMosaicCanvas({
         frameRef.current = window.requestAnimationFrame(draw);
       } else {
         frameRef.current = null;
+        lastTimeRef.current = null;
       }
     };
 
@@ -274,6 +246,7 @@ export function NowPlayingMosaicCanvas({
       if (!isDocumentVisible()) {
         if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
+        lastTimeRef.current = null;
         return;
       }
       if (!frameRef.current) {
@@ -314,11 +287,12 @@ function drawMosaic(
   size: { width: number; height: number; dpr: number; dpiScale: number },
   tiles: MosaicTile[],
   albums: AlbumGroup[],
-  palette: MosaicColorPalette,
+  palette: LightingPalette,
   isPlaying: boolean,
   flipState: MosaicFlipState,
   time: number,
   sceneSeconds: number,
+  lightPath: number,
   wallRevealStartedAt: number,
   motionEnabled: boolean,
   colorFieldRendererRef: { current: MosaicColorFieldRenderer | null },
@@ -424,7 +398,7 @@ function drawMosaic(
   let gpuWall: HTMLCanvasElement | null = null;
   if (gpuFrame) {
     try {
-      if (drawTiles(gpuFrame)) gpuWall = gpuFrame.finishWall({ palette, timeSeconds: sceneSeconds, opacity: wallReveal });
+      if (drawTiles(gpuFrame)) gpuWall = gpuFrame.finishWall({ palette, timeSeconds: sceneSeconds, pathIndex: lightPath, opacity: wallReveal });
     } catch { gpuWall = null; }
     gpuFailed = gpuWall === null;
   }
@@ -444,41 +418,22 @@ function drawMosaic(
     height,
     size.dpiScale,
     sceneSeconds,
+    lightPath,
     time,
   );
-  const edgeGrade = context.createLinearGradient(0, 0, width, height);
-  edgeGrade.addColorStop(0, "rgba(0, 0, 0, 0.06)");
-  edgeGrade.addColorStop(0.5, "rgba(0, 0, 0, 0)");
-  edgeGrade.addColorStop(1, "rgba(0, 0, 0, 0.18)");
-  context.globalCompositeOperation = "source-over";
-  context.fillStyle = edgeGrade;
-  context.fillRect(0, 0, width, height);
   context.restore();
-
-  const vignette = context.createRadialGradient(width * 0.5, height * 0.47, width * 0.12, width * 0.5, height * 0.5, width * 0.72);
-  vignette.addColorStop(0, "rgba(0, 0, 0, 0.02)");
-  vignette.addColorStop(0.52, "rgba(0, 0, 0, 0.16)");
-  vignette.addColorStop(1, "rgba(0, 0, 0, 0.56)");
-  context.fillStyle = vignette;
-  context.fillRect(0, 0, width, height);
-
-  const bottom = context.createLinearGradient(0, height * 0.58, 0, height);
-  bottom.addColorStop(0, "rgba(0, 0, 0, 0)");
-  bottom.addColorStop(0.72, "rgba(0, 0, 0, 0.3)");
-  bottom.addColorStop(1, "rgba(0, 0, 0, 0.58)");
-  context.fillStyle = bottom;
-  context.fillRect(0, height * 0.52, width, height * 0.48);
   return gpuFailed;
 }
 
 function drawMosaicColorField(
   context: CanvasRenderingContext2D,
   rendererRef: { current: MosaicColorFieldRenderer | null },
-  palette: MosaicColorPalette,
+  palette: LightingPalette,
   width: number,
   height: number,
   dpiScale: number,
   sceneSeconds: number,
+  lightPath: number,
   frameTime: number,
 ) {
   const aspectRatio = width / Math.max(1, height);
@@ -494,7 +449,7 @@ function drawMosaicColorField(
     const { data } = renderer.imageData;
     const fieldWidth = renderer.canvas.width;
     const fieldHeight = renderer.canvas.height;
-    const sampleColor = createMosaicColorFieldSampler(palette, sceneSeconds, width, height, dpiScale);
+    const sampleColor = createMosaicLightingSampler(palette, sceneSeconds, width, height, dpiScale, lightPath);
     for (let row = 0; row < fieldHeight; row += 1) {
       const y = (row + 0.5) / fieldHeight;
       for (let column = 0; column < fieldWidth; column += 1) {
@@ -504,7 +459,7 @@ function drawMosaicColorField(
         data[index] = color.r;
         data[index + 1] = color.g;
         data[index + 2] = color.b;
-        data[index + 3] = 255;
+        data[index + 3] = (color.a ?? 1) * 255;
       }
     }
     renderer.context.putImageData(renderer.imageData, 0, 0);
@@ -560,9 +515,9 @@ function drawTile(
   const turn = mosaicFlipFrame(isFlipping ? flip.progress * NOW_PLAYING_MOTION.mosaicTurnFade : 0);
   const { image, mix } = artwork;
   if (gpu) {
-    const width = tile.width - 1, height = tile.height - 1;
-    const face = { x: tile.x + tile.width / 2 * (1 - revealScale),
-      y: tile.y + tile.height / 2 * (1 - revealScale),
+    const width = tile.width - 2, height = tile.height - 2;
+    const face = { x: tile.x + tile.width / 2 * (1 - revealScale) + revealScale,
+      y: tile.y + tile.height / 2 * (1 - revealScale) + revealScale,
       width: width * revealScale, height: height * revealScale };
     const angle = isFlipping ? turn.angle * flip.direction : 0;
     const vertices: IrisQuad<IrisProjectedVertex> = [projectMosaicVertex(face, camera, angle, 0, 0),
@@ -580,10 +535,10 @@ function drawTile(
   }
   context.save();
   context.beginPath();
-  context.rect(tile.x, tile.y, tile.width - 1, tile.height - 1);
+  context.rect(tile.x + 1, tile.y + 1, tile.width - 2, tile.height - 2);
   if (isFlipping && Math.abs(turn.angle) > 1e-5) {
     const angle = turn.angle * flip.direction;
-    const face = { x: tile.x, y: tile.y, width: tile.width - 1, height: tile.height - 1 };
+    const face = { x: tile.x + 1, y: tile.y + 1, width: tile.width - 2, height: tile.height - 2 };
     const corners = [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => {
       return projectMosaicPoint(face, camera, angle, u, v);
     });
@@ -611,18 +566,14 @@ function drawTile(
     const inheritedAlpha = context.globalAlpha;
     // Both surfaces already contain the same native opacity on black. Mixing
     // opaque materials avoids adding two .35 alphas during a replacement.
-    if (!isFlipping && artwork.previous) drawImageCover(context, getCoverMaterial(artwork.previous), tile.x, tile.y, tile.width, tile.height);
+    if (!isFlipping && artwork.previous) drawImageCover(context, getCoverMaterial(artwork.previous), tile.x + 1, tile.y + 1, tile.width - 2, tile.height - 2);
     context.globalAlpha = isFlipping
       ? mosaicCoverVertexAlpha(turn.alpha, context.globalAlpha) / MOSAIC_COVER_MATERIAL.opacity
       : context.globalAlpha * mix;
-    drawImageCover(context, getCoverMaterial(image), tile.x, tile.y, tile.width, tile.height);
+    drawImageCover(context, getCoverMaterial(image), tile.x + 1, tile.y + 1, tile.width - 2, tile.height - 2);
     context.globalAlpha = inheritedAlpha;
   }
 
-  context.globalCompositeOperation = "source-over";
-  context.strokeStyle = "rgba(0, 0, 0, 0.82)";
-  context.lineWidth = 1;
-  context.strokeRect(tile.x + 0.5, tile.y + 0.5, tile.width - 1, tile.height - 1);
   context.restore();
   return true;
 }
@@ -816,23 +767,4 @@ async function loadAndResizeWallImage(path: string) {
     image.src = "";
     return null;
   }
-}
-
-function extractColorPalette(image: CanvasImageSource | null) {
-  if (!image) return null;
-  try {
-    const canvas = document.createElement("canvas");
-    canvas.width = 48;
-    canvas.height = 48;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return null;
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return extractMosaicColorPalette(context.getImageData(0, 0, canvas.width, canvas.height).data);
-  } catch {
-    return null;
-  }
-}
-
-function clonePalette(palette: MosaicColorPalette): MosaicColorPalette {
-  return palette.map((color) => ({ ...color })) as MosaicColorPalette;
 }

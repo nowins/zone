@@ -115,12 +115,9 @@ export function buildCanvasMosaicTiles(width: number, height: number, albums: Al
   return tiles;
 }
 
-export function createMosaicMotion(timeSeconds: number): MosaicMotion {
-  return {
-    driftX: Math.sin(timeSeconds * 0.055) * 16 + Math.sin(timeSeconds * 0.021 + 1.3) * 7,
-    driftY: Math.cos(timeSeconds * 0.047 + 0.6) * 10 + Math.sin(timeSeconds * 0.018) * 5,
-    scale: 1.025 + Math.sin(timeSeconds * 0.039 + 0.4) * 0.006 + Math.sin(timeSeconds * 0.017) * 0.003,
-  };
+export function createMosaicMotion(_timeSeconds: number): MosaicMotion {
+  // Native AlbumGridArt has fixed placement; only individual cells animate.
+  return { driftX: 0, driftY: 0, scale: 1 };
 }
 
 export function mosaicTileRevealAmount(seed: number, elapsedMs: number, motionEnabled = true) {

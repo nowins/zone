@@ -12,7 +12,7 @@ export function irisMediaImageSize(image: IrisMediaImage) {
     ? { width: image.naturalWidth, height: image.naturalHeight }
     : { width: image.width, height: image.height };
 }
-export type IrisPalette = readonly [RgbColor, RgbColor, RgbColor, ...RgbColor[]];
+export type IrisPalette = readonly [RgbColor & { a?: number }, RgbColor & { a?: number }, RgbColor & { a?: number }, ...RgbColor[]];
 export type IrisRasterSize = { width: number; height: number; rasterScale: number };
 export type IrisFrame = {
   width: number; height: number; rasterScale: number; dpiScale: number; transparent?: boolean;
@@ -34,6 +34,7 @@ export type IrisPhoto = {
   uv?: IrisQuad<IrisTextureCoordinate>;
   palette: IrisPalette;
   timeSeconds: number;
+  pathIndex?: number;
   opacity: number;
 };
 export type IrisGpuRenderer = {
@@ -42,7 +43,7 @@ export type IrisGpuRenderer = {
   readonly rasterSize: IrisRasterSize;
   begin(frame: IrisFrame): boolean;
   cover(cover: IrisCover): boolean;
-  finishWall(options: { palette: IrisPalette; timeSeconds: number; opacity: number }): HTMLCanvasElement | null;
+  finishWall(options: { palette: IrisPalette; timeSeconds: number; pathIndex?: number; opacity: number }): HTMLCanvasElement | null;
   photo(photo: IrisPhoto): boolean;
   finishPhoto(): HTMLCanvasElement | null;
   dispose(): void;
@@ -153,9 +154,9 @@ const LIGHTING_FUNCTIONS = `
 uniform vec2 uLogicalSize;
 uniform vec2 uRasterSize;
 uniform float uDpi;
-uniform vec3 uPrimary;
-uniform vec3 uHighlight1;
-uniform vec3 uHighlight2;
+uniform vec4 uPrimary;
+uniform vec4 uHighlight1;
+uniform vec4 uHighlight2;
 uniform vec2 uLight1;
 uniform vec2 uLight2;
 vec3 overlayColor(vec3 base, vec3 source) {
@@ -167,10 +168,10 @@ vec4 lightField(vec4 image) {
   vec2 d2 = pixel - uLight2;
   float first = clamp(500.0 / (700.0 + dot(d1, d1) * 0.005), 0.0, 1.0);
   float second = clamp(500.0 / (700.0 + dot(d2, d2) * 0.005), 0.0, 1.0);
-  vec3 field = overlayColor(vec3(800.0 / 1050.0), uHighlight1 * first);
-  field = overlayColor(field, uHighlight2 * second);
-  field = overlayColor(field, image.rgb * uPrimary);
-  return vec4(field, 800.0 / 1050.0 + first + second + image.a);
+  vec3 field = overlayColor(vec3(800.0 / 1050.0), uHighlight1.rgb * first);
+  field = overlayColor(field, uHighlight2.rgb * second);
+  field = overlayColor(field, image.rgb * uPrimary.rgb);
+  return vec4(field, 800.0 / 1050.0 + uHighlight1.a * first + uHighlight2.a * second + uPrimary.a);
 }`;
 
 const WALL_SHADER = `
@@ -181,9 +182,9 @@ uniform float uOpacity;
 ${LIGHTING_FUNCTIONS}
 void main() {
   vec4 destination = texture2D(uImage, vUv);
-  vec3 field = lightField(vec4(1.0)).rgb;
-  vec3 lit = overlayColor(destination.rgb, field);
-  gl_FragColor = vec4(mix(destination.rgb, lit, uOpacity), destination.a);
+  vec4 field = lightField(vec4(1.0));
+  vec3 lit = overlayColor(destination.rgb, field.rgb);
+  gl_FragColor = vec4(mix(destination.rgb, lit, clamp(field.a * uOpacity, 0.0, 1.0)), destination.a);
 }`;
 
 const PHOTO_SHADER = `
@@ -197,7 +198,7 @@ void main() {
   float gray = dot(image.rgb, vec3(0.15, 0.55, 0.30));
   image.rgb = (mix(image.rgb, vec3(gray), 0.9) - 0.5) * 0.95 + 0.5;
   // BackgroundLighting's Multiply selects Primary alpha, independent of Image.
-  image.a = 1.0;
+  image.a = uPrimary.a;
   vec4 field = lightField(image);
   gl_FragColor = vec4(field.rgb, clamp(field.a * uOpacity, 0.0, 1.0));
 }`;
@@ -349,13 +350,13 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
     }
     return texture;
   }
-  function lighting(program: Program, palette: IrisPalette, timeSeconds: number) {
-    const positions = createMosaicColorFieldMotion(timeSeconds);
+  function lighting(program: Program, palette: IrisPalette, timeSeconds: number, pathIndex = 0) {
+    const positions = createMosaicColorFieldMotion(timeSeconds, pathIndex);
     const dpi = Math.max(1, frame.dpiScale);
     two(program, "uLogicalSize", frame.width, frame.height); two(program, "uRasterSize", raster.width, raster.height);
     one(program, "uDpi", dpi);
-    for (const [name, color, gain] of [["uPrimary", palette[0], 2.4], ["uHighlight1", palette[1], 3.5], ["uHighlight2", palette[2], 3.5]] as const) {
-      context.uniform3f(location(program, name), unit(color.r * gain / 255), unit(color.g * gain / 255), unit(color.b * gain / 255));
+    for (const [name, color] of [["uPrimary", palette[0]], ["uHighlight1", palette[1]], ["uHighlight2", palette[2]]] as const) {
+      context.uniform4f(location(program, name), unit(color.r / 255), unit(color.g / 255), unit(color.b / 255), unit(color.a ?? 1));
     }
     two(program, "uLight1", positions.highlight1[0] * frame.width * dpi, positions.highlight1[1] * frame.height * dpi);
     two(program, "uLight2", positions.highlight2[0] * frame.width * dpi, positions.highlight2[1] * frame.height * dpi);
@@ -431,7 +432,7 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
     },
     finishWall(options) {
       if (!started || !available()) return null;
-      outputGeometry(wallProgram); lighting(wallProgram, options.palette, options.timeSeconds);
+      outputGeometry(wallProgram); lighting(wallProgram, options.palette, options.timeSeconds, options.pathIndex);
       one(wallProgram, "uOpacity", unit(options.opacity)); drawQuad();
       return available() ? canvas : null;
     },
@@ -442,7 +443,7 @@ export function createIrisGpuRenderer(ownerDocument: Document): IrisGpuRenderer 
       try {
         context.bindFramebuffer(context.FRAMEBUFFER, framebuffer);
         geometry(photoProgram, irisQuadClipVertices(options.vertices, frame.width, frame.height, options.uv));
-        bindTexture(photoProgram, "uImage", texture, 0); lighting(photoProgram, options.palette, options.timeSeconds);
+        bindTexture(photoProgram, "uImage", texture, 0); lighting(photoProgram, options.palette, options.timeSeconds, options.pathIndex);
         one(photoProgram, "uOpacity", unit(options.opacity)); blend(); drawQuad();
         return available();
       } catch { return false; }
