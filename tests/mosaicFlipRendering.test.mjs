@@ -51,6 +51,7 @@ export { buildCanvasMosaicTiles } from './src/utils/nowPlayingCanvas';`, resolve
           },
           finishWall(options) {
             fixture.finishes++;
+            instance.frame.lighting = options;
             if (fixture.failFinish) return null;
             canvas.frame = instance.frame;
             return canvas;
@@ -247,6 +248,64 @@ test("a paused wall resamples the physical light field immediately on DPI change
     assert.equal(composite.alpha, 1, "a settled opaque field has no extra fixed attenuation");
     fixture.step(2000);
     assert.equal(fixture.frameCount(), 0);
+  } finally { await fixture.dispose(); }
+});
+
+test("wall entry prepares its first palette and follows the separate native light curve", async () => {
+  const fixture = await createWallFixture({ gpu: true });
+  try {
+    for (const [delta, expected] of [[500,.35832473935169573],[500,.7166494787033915],
+      [500,.9319241664225865],[500,1]]) {
+      fixture.step(delta);
+      const light = fixture.gpu.frames.at(-1).lighting;
+      assert.ok(Math.abs(light.opacity - expected) < 1e-10);
+      assert.ok(light.palette.every(color => color.a === 1), "first visible covers use a ready color field");
+    }
+    const first = fixture.gpu.frames[0].lighting.palette;
+    for (let i = 0; i < 100; i++) fixture.step(40);
+    assert.deepEqual(fixture.gpu.frames.at(-1).lighting.palette, first,
+      "settling tiles cannot trigger a second zero-to-color entrance");
+    await fixture.render({ active: 1, playing: false });
+    for (let i = 0; i < 16 && fixture.frameCount(); i++) fixture.step(500);
+    assert.equal(fixture.frameCount(), 0);
+  } finally { await fixture.dispose(); }
+});
+
+test("Canvas wall entry uses the same light curve and reduced motion settles it", async () => {
+  const fixture = await createWallFixture();
+  try {
+    fixture.step(500);
+    assert.ok(Math.abs(fixture.colorFieldComposites().at(-1).alpha - .35832473935169573) < 1e-10);
+    fixture.step(500);
+    assert.ok(Math.abs(fixture.colorFieldComposites().at(-1).alpha - .7166494787033915) < 1e-10);
+    await fixture.reduce(); fixture.step(40);
+    assert.equal(fixture.colorFieldComposites().at(-1).alpha, 1);
+    fixture.step(2000);
+    assert.equal(fixture.frameCount(), 0);
+  } finally { await fixture.dispose(); }
+});
+
+test("a paused first entrance completes the full light fade before sleeping", async () => {
+  const fixture = await createWallFixture({ gpu: true });
+  try {
+    await fixture.render({ playing: false });
+    for (let i = 0; i < 50; i++) fixture.step(40);
+    assert.equal(fixture.gpu.frames.at(-1).lighting.opacity, 1);
+    assert.equal(fixture.frameCount(), 0);
+  } finally { await fixture.dispose(); }
+});
+
+test("changing artwork during entry preserves the in-flight light animation", async () => {
+  const fixture = await createWallFixture({ gpu: true });
+  try {
+    fixture.step(500);
+    const palette = fixture.gpu.frames.at(-1).lighting.palette;
+    await fixture.render({ active: 1 });
+    fixture.step(500);
+    const light = fixture.gpu.frames.at(-1).lighting;
+    assert.ok(Math.abs(light.opacity - .7166494787033915) < 1e-10);
+    assert.deepEqual(light.palette, palette);
+    assert.ok(light.opacity < 1, "new artwork cannot prematurely finish the page entrance");
   } finally { await fixture.dispose(); }
 });
 
@@ -595,6 +654,7 @@ async function createWallFixture({ pending = [], dpi = 1, gpu = false, imageSize
     findTurn() {
       for (let stepIndex = 0; stepIndex < 140; stepIndex++) {
         const frame = step(40);
+        if (window.__mosaicObservedFlip.tileIndex < 0) continue;
         const turning = frame.find(draw => draw.scaleX < 0.98);
         if (turning) return { slot: turning.slot, tileIndex: frame.indexOf(turning), images: frame.filter(draw => draw.slot === turning.slot) };
       }

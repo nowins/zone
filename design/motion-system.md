@@ -163,6 +163,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - 不要引入与内容无关的无限装饰动画；加载反馈与正在播放媒体背景有明确用途，分别遵守加载组件规范与 [播放视觉规范](engineering/playback-visuals.md) 的停转规则。
 - 启动加载反馈只做透明度显现，等待与显现时长分别消费 page／micro token；使用文档时钟接续入口分块和资料库恢复两个阶段，减少动态效果时直接显示静态 Metro 五点。不增加启动动画的最低停留时间。
 - 每帧音频数据走 `visualizerBus.ts` 单槽总线，不走 React state/props；正在播放的封面转面与色场使用独立环境时钟，暂停、隐藏及减少动态效果仍按播放视觉规范收敛停转。
+- 专辑墙逐格入场与灯 Graphic 入场分开求值；后者使用 `NOW_PLAYING_MOTION.mosaicLightReveal` 与 `NOW_PLAYING_CURVES.mosaicLightReveal`。墙面先准备首套颜色，再随网格进入；后续选色保留原版过渡，照片各自的零 RGBA 入场另行推进。组件的首轮入场不因 StrictMode 效果重放或素材刷新提前结束。
 - 正在播放的艺术家照片片段使用同一 `NOW_PLAYING_MOTION` 中的 artist token；场景仅推进可见的播放时间，暂停冻结平移／缩放并完成现有交接，隐藏冻结时钟，减少动态效果立即落稳。全屏照片完全覆盖后通过离散状态停用背后拼贴，逐帧位置、透明度与图像交接仍由 ref／Canvas 驱动。
 - 照片艺术字复用照片／光场片段的可见播放时间，四类装饰排版使用缓存字形与 GPU 背景 Overlay。换同艺术家歌曲只交接文字，暂停允许当前文字反馈完成后停帧；隐藏不消耗交接时间，减少动态效果静态显现首阶段。`artistTextRetarget` 是 Zone 反馈时长，`NOW_PLAYING_CURVES.artistText` 保存无单位曲线权重／静态相位；原版片段时序比例及视口适配分别在 `artistTypography.ts`、`artistTypographyAtlas.ts`。具体加载及降级规则见播放专题。
 - 正在播放的原生 Iris 标量曲线由 `irisCurves.ts` 求值，参数消费 `NOW_PLAYING_CURVES`：五次 Bezier 的六个纵坐标为 `[0,0,h1,h2,1,1]`，SCurve 使用归一化指数的镜像半段，EaseIn 拼接线性起段与倒数指数尾段。它们与 CSS 四柄三次 Bezier 不同；入场 alpha 与 scale 分别求值。时长仍在 `NOW_PLAYING_MOTION`，不能将权重或相机参数塞进自动注入 `ms` 的时长表。

@@ -15,6 +15,7 @@ import {
   advanceMosaicArtwork,
   createMosaicFlipState,
   createMosaicMotion,
+  mosaicLightRevealAmount,
   mosaicTileRevealAmount,
   mosaicTileRevealScale,
   mosaicFlipFrame,
@@ -81,7 +82,15 @@ export function NowPlayingMosaicCanvas({
   const isPlayingRef = useRef(isPlaying);
   const paletteClockRef = useRef<MosaicPaletteClock | null>(null);
   const lightPathRef = useRef<number | null>(null);
-  if (!paletteClockRef.current) paletteClockRef.current = createMosaicPaletteClock();
+  if (!paletteClockRef.current) {
+    const clock = createMosaicPaletteClock();
+    // Prepare the wall's first light colors before covers reveal. Replaying a
+    // zero-RGBA entrance here exposes gray covers, then a black field, then color.
+    // Subsequent palette changes and individual photo entrances keep their clocks.
+    clock.from = clock.target;
+    clock.palette = clock.target;
+    paletteClockRef.current = clock;
+  }
   if (lightPathRef.current === null) lightPathRef.current = randomMosaicLightPath();
   const colorFieldRendererRef = useRef<MosaicColorFieldRenderer | null>(null);
   const flipRef = useRef<MosaicFlipState>(createMosaicFlipState());
@@ -92,6 +101,7 @@ export function NowPlayingMosaicCanvas({
   const settleUntilRef = useRef(0);
   const sceneTimeRef = useRef(0);
   const wallRevealStartedAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const wallEntranceStartedRef = useRef(false);
   const motionEnabledRef = useRef(true);
   const reducedMotion = useReducedMotion();
   const wallAlbums = useMemo(() => buildNowPlayingWall(tracks, activeTrack, queue), [tracks, activeTrack, queue]);
@@ -103,7 +113,6 @@ export function NowPlayingMosaicCanvas({
   }, [isPlaying]);
 
   useEffect(() => {
-    const isFirstWall = albumsRef.current.length === 0;
     // Keep the pool's index identities stable until the visible turn lands.
     if (flipRef.current.tileIndex >= 0) pendingAlbumsRef.current = wallAlbums;
     else {
@@ -115,8 +124,13 @@ export function NowPlayingMosaicCanvas({
     if (tilesRef.current.length === 0 && width > 0 && height > 0) {
       tilesRef.current = buildCanvasMosaicTiles(width, height, wallAlbums);
     }
-    wallRevealStartedAtRef.current = isFirstWall ? performance.now() : Number.NEGATIVE_INFINITY;
-    if (isFirstWall) onInitialRevealStart?.();
+    // StrictMode and metadata updates must not skip or restart an entrance
+    // already in flight. Artwork has its own progressive loading/dissolves.
+    if (!wallEntranceStartedRef.current) {
+      wallEntranceStartedRef.current = true;
+      wallRevealStartedAtRef.current = performance.now();
+      onInitialRevealStart?.();
+    }
     invalidateRef.current();
 
     return preloadWallImagesProgressively(wallAlbums);
@@ -234,7 +248,8 @@ export function NowPlayingMosaicCanvas({
         return;
       }
       if (isDocumentVisible() && ((isPlayingRef.current && motionEnabledRef.current) || flipRef.current.tileIndex >= 0
-        || time < settleUntilRef.current || artworkRef.current.some(state => state.previous))) {
+        || time < settleUntilRef.current || artworkRef.current.some(state => state.previous)
+        || (motionEnabledRef.current && time < wallRevealStartedAtRef.current + NOW_PLAYING_MOTION.mosaicLightReveal))) {
         frameRef.current = window.requestAnimationFrame(draw);
       } else {
         frameRef.current = null;
@@ -343,9 +358,7 @@ function drawMosaic(
   const motion = createMosaicMotion(motionEnabled ? sceneSeconds : 0);
   const camera = createMosaicCamera(width, height, motion.scale, motion.driftX, motion.driftY, size.dpiScale);
   const revealElapsed = time - wallRevealStartedAt;
-  const wallReveal = motionEnabled
-    ? Math.max(0, Math.min(1, revealElapsed / NOW_PLAYING_MOTION.nowStage))
-    : 1;
+  const wallReveal = mosaicLightRevealAmount(revealElapsed, motionEnabled);
 
   let gpuFrame: IrisGpuRenderer | null = null;
   let gpuFailed = false;

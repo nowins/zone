@@ -19,7 +19,9 @@ test("actual Canvas effects survive StrictMode, sleep when static and wake for c
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const frames = new Map();
   let nextId = 0;
-  let now = performance.now();
+  const actualPerformance = globalThis.performance;
+  let now = actualPerformance.now();
+  globalThis.performance = { now: () => now };
   let hidden = false;
   let resize;
   const mediaListeners = new Set();
@@ -77,6 +79,7 @@ test("actual Canvas effects survive StrictMode, sleep when static and wake for c
     assert.equal(frames.size, 0);
   } finally {
     await act(async () => root.unmount());
+    globalThis.performance = actualPerformance;
     assert.equal(frames.size, 0);
     assert.equal(mediaListeners.size, 0);
     dom.window.close();

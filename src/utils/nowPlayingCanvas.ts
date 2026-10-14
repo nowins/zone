@@ -120,6 +120,13 @@ export function createMosaicMotion(_timeSeconds: number): MosaicMotion {
   return { driftX: 0, driftY: 0, scale: 1 };
 }
 
+/** The light Graphic has its own native 2s EaseIn, independent of tile entry. */
+export function mosaicLightRevealAmount(elapsedMs: number, motionEnabled = true) {
+  if (!motionEnabled) return 1;
+  const { weight, handle } = NOW_PLAYING_CURVES.mosaicLightReveal;
+  return irisEaseIn(elapsedMs / NOW_PLAYING_MOTION.mosaicLightReveal, weight, handle);
+}
+
 export function mosaicTileRevealAmount(seed: number, elapsedMs: number, motionEnabled = true) {
   if (!motionEnabled) return 1;
   const { weight, handle } = NOW_PLAYING_CURVES.mosaicRevealAlpha;

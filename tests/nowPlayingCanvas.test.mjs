@@ -10,6 +10,7 @@ import {
   createMosaicMotion,
   interpolateMosaicColorPalette,
   mosaicTileRevealAmount,
+  mosaicLightRevealAmount,
   mosaicTileRevealScale,
   mosaicFlipFrame,
   MOSAIC_BLOCK_CELLS,
@@ -17,6 +18,16 @@ import {
   sampleMosaicColorField,
   updateMosaicFlipState,
 } from "../.tmp/visualizer-tests/utils/nowPlayingCanvas.js";
+
+test("native light entrance is a distinct two-second Iris curve with bounded endpoints", () => {
+  assert.equal(mosaicLightRevealAmount(-1), 0);
+  assert.equal(mosaicLightRevealAmount(0), 0);
+  assert.ok(Math.abs(mosaicLightRevealAmount(1000) - .7166494787033915) < 1e-10);
+  assert.ok(mosaicLightRevealAmount(1700) < 1, "tile entry completion does not finish the light Graphic");
+  assert.equal(mosaicLightRevealAmount(2000), 1);
+  assert.equal(mosaicLightRevealAmount(Infinity), 1);
+  assert.equal(mosaicLightRevealAmount(0, false), 1);
+});
 
 test("wall keeps decoded covers through failed loads and rapid retargeting", () => {
   const a = {}, b = {}, c = {};
