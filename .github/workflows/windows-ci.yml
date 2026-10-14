@@ -1,0 +1,81 @@
+name: Windows CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-checks:
+    name: Windows build and tests
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+      RUSTUP_TOOLCHAIN: stable-x86_64-pc-windows-msvc
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "^24.15.0"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install npm dependencies
+        timeout-minutes: 10
+        run: npm ci --engine-strict --no-audit --no-fund
+
+      - name: Build frontend
+        timeout-minutes: 10
+        run: npm run build
+
+      - name: Run Node.js regression tests
+        timeout-minutes: 10
+        run: npm test
+
+      - name: Install stable Rust MSVC toolchain
+        timeout-minutes: 10
+        run: rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
+
+      # Cargo.lock is intentionally untracked; resolve before computing the cache key.
+      - name: Resolve Rust dependencies
+        timeout-minutes: 5
+        working-directory: src-tauri
+        run: cargo generate-lockfile
+
+      - name: Cache Cargo dependencies and build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check Rust compilation
+        timeout-minutes: 25
+        working-directory: src-tauri
+        run: cargo check --locked
+
+      # Live-network and external audio-fixture tests remain ignored by default.
+      - name: Run Rust unit tests
+        timeout-minutes: 25
+        working-directory: src-tauri
+        run: cargo test --locked --lib
