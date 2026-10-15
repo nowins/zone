@@ -38,7 +38,7 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
   for (const key of ["window", "document", "Node", "Element", "HTMLElement"]) globalThis[key] = dom.window[key];
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const observers = new Set(), frames = [], mediaListeners = new Set(), timers = new Map();
-  const layout = { width: 400, scrollWidth: 1100 };
+  const layout = { width: 400, scrollWidth: 1100, entrance: 12 };
   let now = 0, hidden = false, current, timerId = 0;
   window.setTimeout = (fn, delay) => { const id = ++timerId; timers.set(id, { fn, at: now + delay }); return id; };
   window.clearTimeout = id => timers.delete(id);
@@ -53,8 +53,11 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
   _setAnimationClockForTesting(() => now, fn => frames.push(fn));
   const rect = (left, width) => ({ left, right: left + width, top: 0, bottom: 500, width, height: 500 });
   HTMLElement.prototype.getBoundingClientRect = function () {
-    return this.dataset.panoramaSection ? rect(Number(this.dataset.left) - (document.querySelector(".quickplay-viewport")?.scrollLeft ?? 0), 260) : rect(0, layout.width);
+    return this.dataset.panoramaSection ? rect(Number(this.dataset.left) - (document.querySelector(".quickplay-viewport")?.scrollLeft ?? 0)
+      + (this.dataset.panoramaSection === "continue" ? layout.entrance : 0), 260) : rect(0, layout.width);
   };
+  Object.defineProperty(HTMLElement.prototype, "offsetLeft", { configurable: true, get() { return Number(this.dataset.left ?? 0); } });
+  Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get() { return this.dataset.panoramaSection ? 260 : layout.width; } });
   Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => layout.width });
   Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => layout.scrollWidth });
   HTMLElement.prototype.setPointerCapture = function (id) { this.captured = id; };
@@ -69,6 +72,9 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
       enabled && React.createElement("div", { className: "quickplay-viewport", ref: current.viewportRef, tabIndex: 0, ...current.viewportProps },
         React.createElement("div", null, sections.map((section, index) => React.createElement("article", { key: section.id, "data-panorama-section": section.id, "data-left": 16 + index * 320 },
           React.createElement("button", null, section.label), React.createElement("div", { className: "quick-section-scroll" }))))),
+      React.createElement("div", { ref: current.navigationRef }, [-1, 1].map(direction => React.createElement("button", {
+        key: direction, "data-panorama-step": direction, onClick: event => current.step(direction, event.detail > 0),
+      }, direction < 0 ? "上一组" : "下一组"))),
       enabled && React.createElement("input", { className: "quick-panorama-scrollbar", ref: current.scrollbarRef,
         type: "range", min: 0, step: "any", defaultValue: 0, disabled: !current.overflow, ...current.scrollbarProps }));
   }
@@ -90,6 +96,13 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
     let viewport = document.querySelector(".quickplay-viewport");
     let scrollbar = document.querySelector(".quick-panorama-scrollbar");
     assert.equal(scrollbar.classList.contains("is-scrolling"), false, "mount does not flash a scrollbar");
+    const previous = document.querySelector('[data-panorama-step="-1"]'), next = document.querySelector('[data-panorama-step="1"]');
+    assert.equal(previous.disabled, true); assert.equal(next.disabled, false);
+    await act(async () => next.click());
+    assert.equal(viewport.scrollLeft, 320, "keyboard activation uses the group layout and ignores its transient entrance offset");
+    assert.equal(previous.disabled, false);
+    await act(async () => previous.click());
+    assert.equal(viewport.scrollLeft, 0); assert.equal(previous.disabled, true);
     await key(viewport, "Home");
     assert.equal(await wheel(viewport, {}), true);
     await advance(80);
@@ -153,6 +166,8 @@ test("panorama coordinates input, restoration, resize, reduced motion and cleanu
     assert.equal(scrollbar.classList.contains("is-scrolling"), false);
     await act(async () => { layout.width = 1200; observers.forEach(o => o.fn()); });
     assert.equal(scrollbar.disabled, true, "all content fits, so the scrollbar has no focus stop");
+    assert.equal(document.querySelector('[data-panorama-step="-1"]').disabled, true);
+    assert.equal(document.querySelector('[data-panorama-step="1"]').disabled, true);
     await act(async () => { layout.width = 1000; observers.forEach(o => o.fn()); });
     await act(async () => { media.matches = false; mediaListeners.forEach(fn => fn()); });
     await key(viewport, "Home"); await wheel(viewport, {});

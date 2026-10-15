@@ -1149,6 +1149,8 @@ export default function App() {
             playlists={playlists}
             activeTrack={activeTrack}
             historyIds={playHistory}
+            progress={progress}
+            duration={duration}
             activity={trackActivity}
             favoriteTrackIds={favoriteTrackIds}
             homePins={homePins}

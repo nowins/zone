@@ -73,7 +73,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 每段翻面／滑动捕获真实内容，动画完成不按最新数组下标重新取图。`MosaicFrames` 预加载候选封面，边缘处交接后保持同一内容至落位；图片池长度变化在本段完成后调整布局。`CycleFrames` 同样按内容身份保留淡入与淡出两面，并接入磁贴串行调度、可见性、互动及 reduced-motion 守卫。父组件刷新只供应后续内容，不覆盖正在显示的面板。运行时回归见 `tests/tileInteraction.test.mjs`。
 
-`PANORAMA_MOTION` 维护首页视差、拖动惯性和滚动条停留：背景大字和底色当前分别跟随横向滚动的 22% / 8%，最大行程 480 / 240px；底色平面按 token 扩展，平移时不露出边缘。`useQuickplayPanorama` 直接写 DOM transform 与滚动条位置，不用逐帧 React state；返回页面时在同一 layout effect 内恢复位置，不闪现滚动条。粗步进滚轮与拖动释放使用可打断的 `snappy` 弹簧；触控板横向输入、细小或带小数的连续输入、滑块拖动和键盘定位不叠加惯性。拖动释放将实际速度传入弹簧，不从零速度重启。短滚动条在最后一次位移后停留 700ms，再按 micro 档淡出；拖住滑块时不隐藏，键盘焦点由 `:focus-visible` 保持可见。页面隐藏或卸载时取消动画与显隐计时器，reduced-motion 下停止视差、即时定位并收缩淡出；没有持续空闲动画。
+`PANORAMA_MOTION` 维护首页视差、拖动惯性和滚动条停留：背景大字和底色当前分别跟随横向滚动的 22% / 8%，最大行程 480 / 240px；底色平面按 token 扩展，平移时不露出边缘。`useQuickplayPanorama` 直接写 DOM transform、滚动条位置及分组按钮的边界禁用状态，不用逐帧 React state；返回页面时在同一 layout effect 内恢复位置，不闪现高亮滚动条。粗步进滚轮、鼠标分组按钮与拖动释放使用可打断的 `snappy` 弹簧；触控板横向输入、细小或带小数的连续输入、滑块拖动和键盘定位不叠加惯性。拖动释放将实际速度传入弹簧，不从零速度重启。短滚动条在最后一次位移后停留 700ms，再按 micro 档回到低透明度；拖住滑块时保持高亮，键盘焦点由 `:focus-visible` 保持清晰可见。页面隐藏或卸载时取消动画与显隐计时器，reduced-motion 下停止视差、即时定位并收缩淡出；没有持续空闲动画。
 
 收藏的纵向滚动区与首页内部纵向列表通过 `useWheelScroll` 接入同一弹簧。`wheelScroll.ts` 使用信号启发式：行／页单位或纯纵向、整数且至少 `SCROLL_MOTION.coarseDelta` 的像素步进接续到累积目标，当前阈值 50px；这不是硬件识别。细小、带小数、斜向、Shift 与缩放输入保留原有归属。滚动边界保持列表归属，不启动空转；原生滚动定位、拖滚动条、键盘、指针按下、窗口调整、隐藏和卸载立即停止接续，reduced-motion 下保留原生滚动。滚动位置逐帧写 DOM，不用 React state。
 
@@ -182,7 +182,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - `tests/lyricsSettingsUi.test.mjs` / `tests/lyricsDisplay.test.mjs`：歌词设置面板的 Presence 接线、显示偏好持久化和字号归一化。
 - CSS/结构守卫（`nowPlayingCss.test.mjs` 等）会因类名/编排变化失败，按新结构同步，不放宽语义。
 - `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、两块 peek 面板的连续位移、悬停／聚焦保留展示面与剩余停留、揭示及翻回期间互动不跳帧、多磁贴与封面墙串行更新、隐藏／编辑／reduced-motion 停转与恢复，以及长按、混合尺寸空位拖动、释放后接续落位、键盘和外观设置行为；`tests/tileScheduler.test.mjs` 验证同刻就绪、完整周期互斥、静置间隔及取消清理。
-- `tests/panoramaBehavior.test.mjs`：首页分组与视差边界、滚轮归属，以及真实 hook 在 StrictMode 下的滚轮接力、键盘打断、滚动条显隐／拖拽、滚动恢复、窗口变化、reduced-motion 与隐藏／卸载清理。
+- `tests/panoramaBehavior.test.mjs`：首页分组与视差边界、滚轮归属，以及真实 hook 在 StrictMode 下的分组按钮、入场位移不影响停靠坐标、滚轮接力、键盘打断、滚动条显隐／拖拽、滚动恢复、窗口变化、reduced-motion 与隐藏／卸载清理。
 - `tests/collectionPivot.test.mjs`：分类／详情／返回方向、可见区域分组与数量上限、有界条目测量、输入从当前帧收稳与恢复滚动事件的区分，以及真实导航／面板动效 hook 的 StrictMode、快速连切和 reduced-motion 清理。
 - `tests/browseTransition.test.mjs`：收藏、播客和 quickplay 共用控制器、静止导航与背景、标题及封面的独立显现、播客根滚动恢复和稳定媒体身份、有界样式读取、面板接管及隐藏／reduced-motion 清理。
 - `tests/contentEntrance.test.mjs`：长列表与网格的滚动恢复、首屏选择、常数布局读取、错峰封顶、总量上限和条目当前帧反向。

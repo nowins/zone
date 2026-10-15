@@ -59,8 +59,8 @@
   box-shadow: none;
   appearance: none;
   cursor: ew-resize;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 0.3;
+  pointer-events: auto;
   transition: opacity var(--motion-micro) var(--motion-ease-exit);
 }
 .quick-panorama-scrollbar.is-scrolling,
@@ -69,6 +69,19 @@
   pointer-events: auto;
 }
 .quick-panorama-scrollbar:disabled { opacity: 0; pointer-events: none; }
+
+.quick-panorama-edges {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 4px;
+}
+.quick-panorama-edges[hidden] { display: none; }
+.quick-panorama-edges .button { width: 36px; min-height: 28px; justify-content: center; color: var(--muted); }
+.quick-panorama-edges .button:hover:not(:disabled) { color: var(--accent); }
+.quick-panorama-edges .button:focus-visible { outline-offset: -2px; }
 .quick-panorama-scrollbar::-webkit-slider-runnable-track {
   height: 3px;
   border-radius: 2px;
@@ -147,6 +160,7 @@
   width: max-content;
   min-width: 240px;
 }
+.quick-pins > .quick-section-scroll { padding-top: 0; }
 
 .quick-pins h2 {
   color: var(--text);
@@ -262,6 +276,12 @@
   outline: 0;
   -webkit-user-drag: none;
 }
+
+.quick-pin-art.is-wide-single { background: #141014; }
+.quick-pin-wide-backdrop { position: absolute; inset: 0; opacity: 0.28; overflow: hidden; }
+.quick-pin-wide-backdrop img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.quick-pin-art.is-wide-single > .cover:not(.quick-pin-wide-backdrop) { position: relative; margin-left: auto; width: 50%; height: 100%; }
+.quick-pin-art.is-wide-single > .cover:not(.quick-pin-wide-backdrop) img { object-fit: contain; }
 
 .quick-pin-smart {
   position: absolute;
@@ -499,7 +519,7 @@
 
 .quick-feature {
   /* Reserve caption space inside the actual section height, including short windows. */
-  width: min(100%, var(--quick-feature-size), max(160px, calc(100cqh - 62px)));
+  width: min(100%, var(--quick-feature-size), max(160px, calc(100cqh - 94px)));
 }
 
 .quick-feature .cover {
@@ -579,7 +599,7 @@
 
 .quick-caption strong {
   color: var(--text);
-  font-size: var(--type-item-title);
+  font-size: var(--type-subsection-title);
   font-weight: var(--weight-body);
 }
 
@@ -588,6 +608,12 @@
   color: var(--muted);
   font-size: var(--type-body);
 }
+
+.quick-resume-progress { margin-top: 14px; }
+.quick-resume-track { display: block; height: 2px; background: var(--faint); }
+.quick-resume-track > span { display: block; height: 100%; background: var(--accent); }
+.quick-resume-time { display: block; margin-top: 6px; color: var(--muted); font-size: var(--type-caption); font-variant-numeric: tabular-nums; }
+.quick-resume-time > span { color: var(--quiet); }
 
 .quick-recent {
   width: clamp(360px, 31vw, 430px);
@@ -626,7 +652,7 @@
 
 .quick-album strong {
   margin-top: 6px;
-  font-size: var(--type-caption);
+  font-size: var(--type-body);
   font-weight: var(--weight-body);
 }
 

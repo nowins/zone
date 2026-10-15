@@ -360,10 +360,13 @@ export function QuickplayPinBoard({ items, animateEntrance = true, onOpenCollect
 function PinFront({ item, index, paused }: { item: ResolvedPin; index: number; paused: boolean }) {
   const Icon = item.isSmart ? Sparkles : KIND_ICONS[item.pin.kind];
   const toned = item.pin.tone && item.pin.tone !== "cover";
+  const singleCover = Boolean(item.podcastFeed) || item.artPaths.length <= 1 || item.size === "small";
+  const wideCover = item.size === "wide" && singleCover && Boolean(item.podcastArtwork || item.artPaths[0]);
   return <>
     <span className="tile-face-art">
       {toned ? <span className="quick-pin-symbol"><Icon aria-hidden="true" /></span>
-        : <div className="quick-pin-art">
+        : <div className={wideCover ? "quick-pin-art is-wide-single" : "quick-pin-art"}>
+          {wideCover && <Cover className="quick-pin-wide-backdrop" artPath={item.artPaths[0]} src={item.podcastArtwork} label={item.title} index={index} />}
           {item.podcastFeed ? <Cover src={item.podcastArtwork} label={item.title} size="large" index={index} />
             : item.artPaths.length <= 1 || item.size === "small" ? <Cover artPath={item.artPaths[0]} label={item.title} size="large" index={index} />
               : <MosaicFrames paused={paused} pool={item.artPaths.map((artPath, artIndex) =>

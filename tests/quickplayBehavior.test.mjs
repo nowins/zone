@@ -10,6 +10,31 @@ await build({ entryPoints: ["src/views/QuickplayView.tsx"], outfile: ".tmp/quick
   define: { "import.meta.env.DEV": "false" } });
 const { QuickplayView } = await import("../.tmp/quickplay-tests/view.js");
 
+test("continue displays the real music clock and keeps cover and caption activation consistent", async () => {
+  const dom = new JSDOM('<body><div id="root"></div></body>');
+  for (const name of ["window", "document", "Node", "Element", "HTMLElement"]) globalThis[name] = dom.window[name];
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  globalThis.ResizeObserver = class { observe() {} disconnect() {} };
+  window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
+  const root = createRoot(document.getElementById("root")), calls = [];
+  const track = { id: "music", title: "当前歌曲", artist: "艺术家", album: "专辑", duration_seconds: 180, path: "/a.mp3" };
+  const props = { tracks: [track], albums: [], artists: [], playlists: [], activeTrack: track, historyIds: [], activity: {}, favoriteTrackIds: new Set(), homePins: [],
+    onResumePlayback: () => calls.push("resume"), onOpenNowPlaying: () => calls.push("open"), onPlay: () => calls.push("restart") };
+  const render = async patch => act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(QuickplayView, { ...props, ...patch }))));
+  try {
+    await render({ progress: 72, duration: 240 });
+    const clock = () => document.querySelector('[role="progressbar"]');
+    assert.equal(clock().getAttribute("aria-valuenow"), "72");
+    assert.equal(clock().getAttribute("aria-valuetext"), "1:12 / 4:00");
+    assert.equal(document.querySelector('.quick-resume-track > span').style.width, "30%");
+    for (const selector of [".quick-cover-button", ".quick-caption"]) await act(async () => document.querySelector(selector).click());
+    assert.deepEqual(calls, ["resume", "open", "resume", "open"]);
+    await render({ progress: 999, duration: 240 }); assert.equal(clock().getAttribute("aria-valuenow"), "240");
+    await render({ progress: NaN, duration: 0 }); assert.equal(clock().getAttribute("aria-valuetext"), "0:00 / 3:00");
+    await render({ podcastActive: true, progress: 55, duration: 300 }); assert.equal(clock(), null);
+  } finally { await act(async () => root.unmount()); dom.window.close(); }
+});
+
 test("podcast-only quickplay survives StrictMode and opens its show after hydration", async () => {
   const dom = new JSDOM('<body><div id="root"></div></body>');
   for (const name of ["window", "document", "Node", "Element", "HTMLElement"]) globalThis[name] = dom.window[name];

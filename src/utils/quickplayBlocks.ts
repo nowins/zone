@@ -51,6 +51,42 @@ export type QuickplayBlocksInput = {
 
 const DAY_MS = 86_400_000;
 
+function trackAlbumIdentity(track: Track) {
+  return track.album.trim() ? albumKey(track.album, track.album_artist ?? track.artist) : `track:${track.id}`;
+}
+
+/** A pin samples albums, rather than multiple embedded copies of one cover. */
+export function pickQuickplayCoverPaths(tracks: Track[], limit = 4, preferredArtist?: string) {
+  const preferred = preferredArtist?.trim().toLocaleLowerCase();
+  const ordered = preferred ? [
+    ...tracks.filter(track => (track.album_artist ?? track.artist).trim().toLocaleLowerCase() === preferred),
+    ...tracks.filter(track => (track.album_artist ?? track.artist).trim().toLocaleLowerCase() !== preferred),
+  ] : tracks;
+  const albums = new Set<string>(), paths = new Set<string>(), result: string[] = [];
+  for (const track of ordered) {
+    if (!track.cover_path || paths.has(track.cover_path)) continue;
+    const album = trackAlbumIdentity(track);
+    if (albums.has(album)) continue;
+    albums.add(album); paths.add(track.cover_path); result.push(track.cover_path);
+    if (result.length >= Math.min(4, limit)) break;
+  }
+  return limit > 0 ? result : [];
+}
+
+function distinctRecommendationAlbums(block: QuickplayBlock, excluded: Set<string>) {
+  const items: QuickplayBlockItem[] = [];
+  for (const item of block.items) {
+    const track = item.tracks[0];
+    if (!track) continue;
+    const album = trackAlbumIdentity(track);
+    if (excluded.has(album)) continue;
+    excluded.add(album);
+    items.push(item);
+    if (items.length === 6) break;
+  }
+  return { ...block, items };
+}
+
 function albumAddedAt(album: AlbumGroup, activity: TrackActivityMap) {
   return album.tracks.reduce(
     (latest, track) => Math.max(latest, activity[track.id]?.addedAt ?? track.added_at ?? 0),
@@ -232,17 +268,17 @@ export function buildQuickplayBlocks(input: QuickplayBlocksInput): QuickplayBloc
   const continueBlock = buildContinueBlock(input);
   if (continueBlock) blocks.push(continueBlock);
 
-  const mostPlayed = buildMostPlayedBlock(input);
-  if (mostPlayed.items.length > 0) blocks.push(mostPlayed);
-
-  const forgotten = buildForgottenFavoritesBlock(input);
-  if (forgotten.items.length > 0) blocks.push(forgotten);
-
   const recent = buildRecentAddedBlock(input);
   if (recent.items.length > 0) blocks.push(recent);
 
   const history = buildHistoryBlock(input);
   if (history.items.length > 0) blocks.push(history);
+
+  const recommendationAlbums = new Set<string>();
+  const mostPlayed = distinctRecommendationAlbums(buildMostPlayedBlock(input, input.tracks.length), recommendationAlbums);
+  if (mostPlayed.items.length > 0) blocks.push(mostPlayed);
+  const forgotten = distinctRecommendationAlbums(buildForgottenFavoritesBlock(input, { limit: input.tracks.length }), recommendationAlbums);
+  if (forgotten.items.length > 0) blocks.push(forgotten);
 
   return blocks;
 }

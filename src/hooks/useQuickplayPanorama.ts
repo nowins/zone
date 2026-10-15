@@ -12,6 +12,7 @@ export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
   const titleRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const scrollbarRef = useRef<HTMLInputElement>(null);
+  const navigationRef = useRef<HTMLDivElement>(null);
   const metrics = useRef<PanoramaMetric[]>([]);
   const motion = useRef<{ handle: AnimationHandle | null; target: number }>({ handle: null, target: 0 });
   const restored = useRef(false);
@@ -69,6 +70,9 @@ export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
     }
     const scrollbar = scrollbarRef.current;
     if (scrollbar) scrollbar.value = String(clampPanorama(left, max));
+    navigationRef.current?.querySelectorAll<HTMLButtonElement>("[data-panorama-step]").forEach(button => {
+      button.disabled = !canScroll || (button.dataset.panoramaStep === "-1" ? left <= 1 : left >= max - 1);
+    });
     if (!canScroll) hideScrollbar();
     else if (reveal && Math.abs(left - lastLeft.current) > 0.01) revealScrollbar();
     lastLeft.current = left;
@@ -76,10 +80,10 @@ export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
   function measure() {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const bounds = viewport.getBoundingClientRect();
+    // Groups share the stable track as their offset parent. Ignore the
+    // content entrance transform when measuring navigation stops.
     metrics.current = Array.from(viewport.querySelectorAll<HTMLElement>("[data-panorama-section]")).map(element => {
-      const rect = element.getBoundingClientRect();
-      return { id: element.dataset.panoramaSection!, left: rect.left - bounds.left + viewport.scrollLeft, width: rect.width };
+      return { id: element.dataset.panoramaSection!, left: element.offsetLeft, width: element.offsetWidth };
     });
     const max = viewport.scrollWidth - viewport.clientWidth;
     const scrollbar = scrollbarRef.current;
@@ -231,7 +235,7 @@ export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
     revealScrollbar();
   }
 
-  return { viewportRef, titleRef, backdropRef, scrollbarRef, overflow,
+  return { viewportRef, titleRef, backdropRef, scrollbarRef, navigationRef, overflow, step,
     scrollbarProps: { onInput: onScrollbarInput, onFocus: stop,
       onPointerDown: onScrollbarPointerDown, onPointerUp: onScrollbarPointerUp,
       onPointerCancel: hideScrollbar, onLostPointerCapture: onScrollbarPointerUp },
