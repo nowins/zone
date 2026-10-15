@@ -1066,6 +1066,7 @@ export default function App() {
     <div
       ref={shellRef} className={`shell ${compactMode.active ? "shell-compact" : page === "nowPlaying" ? "shell-now-playing" : ""}`}
       data-page-motion="managed"
+      data-surface-theme={startupReady && !compactMode.active && page === "collection" ? "light" : "dark"}
       style={
         {
           "--motion-dir": navDir,

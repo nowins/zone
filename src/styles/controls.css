@@ -49,20 +49,20 @@
 
 /* Bordered default (dialog actions, secondary confirmations). */
 .button-outline {
-  color: rgba(255, 255, 255, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: rgba(var(--surface-bright), 0.76);
+  border: 1px solid rgba(var(--surface-bright), 0.22);
 }
 
 .button-outline:hover:not(:disabled),
 .button-outline:focus-visible {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.48);
+  color: var(--text);
+  background: rgba(var(--surface-bright), 0.08);
+  border-color: rgba(var(--surface-bright), 0.48);
 }
 
 /* Accent commitment. */
 .button-primary {
-  color: rgba(255, 255, 255, 0.76);
+  color: rgba(var(--surface-bright), 0.76);
   border: 1px solid var(--accent);
 }
 
@@ -88,8 +88,8 @@
 
 /* Borderless filled call-to-action (empty-state hero). */
 .button-solid {
-  color: rgba(255, 255, 255, 0.86);
-  background: rgba(255, 255, 255, 0.07);
+  color: rgba(var(--surface-bright), 0.86);
+  background: rgba(var(--surface-bright), 0.07);
 }
 
 .button-solid:hover:not(:disabled),
@@ -100,9 +100,9 @@
 
 /* Page-level primary action with the accent bar (settings headings). */
 .button-page {
-  color: rgba(255, 255, 255, 0.92);
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(var(--surface-bright), 0.92);
+  background: rgba(var(--surface-bright), 0.055);
+  border: 1px solid rgba(var(--surface-bright), 0.2);
   border-left: 3px solid var(--accent);
 }
 
@@ -120,7 +120,7 @@
   min-height: 0;
   padding: 0;
   justify-content: flex-start;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(var(--surface-bright), 0.7);
 }
 
 .button-ghost:hover:not(:disabled),
@@ -134,16 +134,16 @@
 
 
 .select-control { display: inline-block; min-width: 0; vertical-align: middle; }
-.select-trigger { width: 100%; min-height: 36px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid rgba(255,255,255,.22); background: transparent; color: var(--text); font-size: var(--type-control); text-align: left; font-weight: var(--weight-body); }
+.select-trigger { width: 100%; min-height: 36px; padding: 6px 10px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid rgba(var(--surface-bright), .22); background: transparent; color: var(--text); font-size: var(--type-control); text-align: left; font-weight: var(--weight-body); }
 .select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-trigger > svg { flex: none; color: var(--muted); }
 .select-trigger:hover:not(:disabled), .select-trigger[aria-expanded="true"] { border-color: var(--accent); }
 .select-trigger:disabled { opacity: .4; cursor: default; }
-.select-menu { position: fixed; inset: auto; margin: 0; box-sizing: border-box; padding: 4px; border: 1px solid rgba(255,255,255,.2); color: var(--text); background: var(--app-bg-raised); box-shadow: 0 12px 32px rgba(0,0,0,.45); overflow-y: auto; scrollbar-width: thin; transition: opacity var(--motion-micro) var(--motion-ease-entrance), transform var(--motion-micro) var(--motion-ease-entrance); }
+.select-menu { position: fixed; inset: auto; margin: 0; box-sizing: border-box; padding: 4px; border: 1px solid rgba(var(--surface-bright), .2); color: var(--text); background: var(--app-bg-raised); box-shadow: 0 12px 32px rgba(0,0,0,.45); overflow-y: auto; scrollbar-width: thin; transition: opacity var(--motion-micro) var(--motion-ease-entrance), transform var(--motion-micro) var(--motion-ease-entrance); }
 .select-option { min-height: 34px; padding: 7px 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: var(--type-control); line-height: 1.4; cursor: pointer; font-weight: var(--weight-body); }
 .select-option > span { min-width: 0; overflow-wrap: anywhere; }
 .select-option > svg { flex: none; color: var(--accent); }
-.select-option:hover:not([aria-disabled="true"]), .select-option[data-active="true"] { background: rgba(255,255,255,.07); }
+.select-option:hover:not([aria-disabled="true"]), .select-option[data-active="true"] { background: rgba(var(--surface-bright), .07); }
 .select-option[aria-selected="true"] { color: var(--accent); }
 .select-option[aria-disabled="true"] { opacity: .4; cursor: default; }
 @starting-style { .select-menu { opacity: 0; transform: translateY(-4px); } }

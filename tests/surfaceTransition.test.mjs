@@ -34,6 +34,21 @@ function setup(t) {
   return { document, host, motion, animations, mount };
 }
 
+test("departing surfaces retain their own palette across light and dark navigation", t => {
+  const { document, mount } = setup(t);
+  const shell = document.querySelector(".shell");
+  for (const theme of ["light", "dark"]) {
+    shell.dataset.surfaceTheme = theme;
+    const page = mount("collection-connected");
+    const copy = snapshotSurface(page);
+    shell.dataset.surfaceTheme = theme === "light" ? "dark" : "light";
+    assert.equal(copy.layer.dataset.surfaceTheme, theme);
+    assert.equal(copy.layer.getAttribute("aria-hidden"), "true");
+    assert.ok(copy.layer.inert);
+    copy.layer.remove();
+  }
+});
+
 test("podcast and now-playing snapshots retain variable-height slots and restore their actual scrollers", t => {
   const { document, mount } = setup(t);
   for (const kind of ["podcasts", "now"]) {

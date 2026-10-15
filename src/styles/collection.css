@@ -17,7 +17,7 @@
 }
 
 .segmented .selected {
-  color: #fff;
+  color: var(--text);
   box-shadow: inset 0 -3px 0 var(--accent);
 }
 
@@ -36,7 +36,7 @@
 }
 
 .empty-mark {
-  color: rgba(255, 255, 255, 0.07);
+  color: rgba(var(--surface-bright), 0.07);
   font-size: var(--type-ghost);
   line-height: 0.8;
   font-weight: var(--weight-ghost);
@@ -73,7 +73,7 @@
 .album-rail::-webkit-scrollbar-thumb,
 .search-results-scroll::-webkit-scrollbar-thumb {
   min-height: 34px;
-  background: rgba(247, 242, 246, 0.18);
+  background: rgba(var(--surface-ink), 0.18);
   background-clip: content-box;
   border: 2px solid transparent;
   border-radius: 999px;
@@ -81,7 +81,7 @@
 
 .album-rail::-webkit-scrollbar-thumb:hover,
 .search-results-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(247, 242, 246, 0.34);
+  background: rgba(var(--surface-ink), 0.34);
   background-clip: content-box;
 }
 
@@ -101,7 +101,7 @@
 }
 
 .album-tile.selected .cover {
-  outline: 3px solid rgba(255, 255, 255, 0.82);
+  outline: 3px solid rgba(var(--surface-bright), 0.82);
   outline-offset: 4px;
 }
 
@@ -113,18 +113,18 @@
   height: 38px;
   display: grid;
   place-items: center;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(var(--surface-bright), 0.92);
   background: rgba(9, 5, 10, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(var(--surface-bright), 0.8);
   border-radius: 50%;
   opacity: 0;
   transition: opacity var(--motion-press) var(--motion-ease-standard), transform var(--motion-press) var(--motion-ease-standard), background var(--motion-press) var(--motion-ease-standard), border-color var(--motion-press) var(--motion-ease-standard), color var(--motion-press) var(--motion-ease-standard);
 }
 
 .album-play:hover {
-  color: #fff;
+  color: var(--text);
   background: var(--accent);
-  border-color: #fff;
+  border-color: var(--text);
 }
 
 .album-play svg {
@@ -201,7 +201,7 @@
 
 .album-detail {
   min-height: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: 1px solid rgba(var(--surface-bright), 0.14);
   padding-left: 28px;
   overflow: hidden;
 }
@@ -278,7 +278,7 @@
   height: 100%;
   margin: 0;
   aspect-ratio: auto;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(var(--surface-bright), 0.04);
 }
 
 .artist-identity-art .cover img {
@@ -292,7 +292,7 @@
 .artist-identity-copy strong {
   display: block;
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.94);
+  color: rgba(var(--surface-bright), 0.94);
   font-size: var(--type-section-title);
   line-height: 1.08;
   font-weight: var(--weight-heading);
@@ -305,7 +305,7 @@
   display: -webkit-box;
   margin: 9px 0 0;
   overflow: hidden;
-  color: rgba(247, 242, 246, 0.48);
+  color: rgba(var(--surface-ink), 0.48);
   font-size: var(--type-caption);
   line-height: 1.55;
   -webkit-box-orient: vertical;
@@ -338,18 +338,18 @@
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(var(--surface-bright), 0.82);
   font-size: var(--type-item-title);
 }
 
 .artist-picker button:hover,
 .artist-picker .selected {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: rgba(var(--surface-bright), 0.12);
+  color: var(--text);
 }
 
 .artist-albums {
-  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: 1px solid rgba(var(--surface-bright), 0.14);
   padding-left: 22px;
 }
 
@@ -389,7 +389,7 @@
 }
 
 .artist-album-tile.selected .cover {
-  outline: 2px solid rgba(255, 255, 255, 0.82);
+  outline: 2px solid rgba(var(--surface-bright), 0.82);
   outline-offset: 3px;
 }
 
@@ -413,7 +413,7 @@
 }
 
 .artist-songs {
-  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: 1px solid rgba(var(--surface-bright), 0.14);
   padding-left: 22px;
 }
 
@@ -456,9 +456,9 @@
   border-left: 2px solid transparent;
 }
 
-.playlist-list > button:hover { background: rgba(255, 255, 255, 0.035); }
+.playlist-list > button:hover { background: rgba(var(--surface-bright), 0.035); }
 .playlist-list > button.selected {
-  background: rgba(255, 255, 255, 0.065);
+  background: rgba(var(--surface-bright), 0.065);
   border-left-color: var(--accent);
 }
 
@@ -479,7 +479,7 @@
   display: flex;
   flex-direction: column;
   padding-left: 26px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid rgba(var(--surface-bright), 0.08);
 }
 
 .playlist-heading {
@@ -572,14 +572,14 @@
   overflow: hidden;
   color: var(--muted);
   font-size: var(--type-caption);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(var(--surface-bright), 0.1);
 }
 .collection-track-head > :nth-child(5) { text-align: right; }
 .collection-track-head,
 .collection-track-scroll {
   scrollbar-width: thin;
   scrollbar-gutter: stable;
-  scrollbar-color: rgba(247, 242, 246, 0.23) transparent;
+  scrollbar-color: rgba(var(--surface-ink), 0.23) transparent;
 }
 .collection-track-scroll {
   flex: 1;
@@ -590,17 +590,17 @@
 .collection-track-head::-webkit-scrollbar,
 .collection-track-scroll::-webkit-scrollbar { width: 8px; }
 .collection-track-scroll::-webkit-scrollbar-track { background: transparent; }
-.collection-track-scroll::-webkit-scrollbar-thumb { background: rgba(247, 242, 246, 0.23); border: 2px solid transparent; background-clip: content-box; border-radius: 8px; }
+.collection-track-scroll::-webkit-scrollbar-thumb { background: rgba(var(--surface-ink), 0.23); border: 2px solid transparent; background-clip: content-box; border-radius: 8px; }
 .collection-track-scroll::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 .collection-track-row {
   position: relative;
   display: grid;
   padding: 0 12px;
-  min-height: 44px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+  min-height: 36px;
+  border-bottom: 0;
 }
-.collection-track-row:hover { background: rgba(255, 255, 255, 0.035); }
-.collection-track-row.selected { background: rgba(255, 255, 255, 0.075); }
+.collection-track-row:hover { background: rgba(var(--surface-bright), 0.035); }
+.collection-track-row.selected { background: rgba(var(--surface-bright), 0.075); }
 .collection-track-row.playing::before {
   content: "";
   position: absolute;
@@ -619,7 +619,7 @@
   align-items: center;
   text-align: left;
   min-width: 0;
-  min-height: 44px;
+  min-height: 36px;
   padding: 0;
   font-size: var(--type-body);
   line-height: 1.4;
@@ -639,7 +639,14 @@
 .collection-track-list.is-compact .collection-track-main { grid-template-columns: 24px minmax(0, 1fr); }
 .collection-track-artist, .collection-track-album { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--type-body); }
 .collection-track-actions { display: flex; align-items: center; }
-.collection-track-info { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--muted); }
+.collection-track-info { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--muted); opacity: 0; }
+.collection-track-row:is(:hover, :focus-within) .collection-track-info { opacity: 1; }
+@media (hover: none), (pointer: coarse) {
+  .collection-track-info { opacity: 1; }
+  .collection-track-row, .collection-track-main,
+  .collection-browse .collection-browse-songs .collection-track-row,
+  .collection-browse .collection-browse-songs .collection-track-main { min-height: 44px; }
+}
 .collection-track-info:hover { color: var(--text); }
 .collection-track-info:focus-visible { outline-offset: -2px; }
 .collection-track-main em,
@@ -726,7 +733,7 @@
 .collection-chrome-label {
   flex: 0 0 auto;
   padding: 0 0 6px;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(var(--surface-bright), 0.9);
   font-size: var(--type-item-title);
   line-height: 1;
   font-weight: var(--weight-body);
@@ -744,14 +751,14 @@
 
 .collection-search-return {
   flex: 0 0 auto;
-  color: rgba(247, 242, 246, 0.62);
+  color: rgba(var(--surface-ink), 0.62);
   font-size: var(--type-caption);
   white-space: nowrap;
   transition: color var(--motion-micro) var(--motion-ease-standard);
 }
 
 .collection-search-return:hover {
-  color: #fff;
+  color: var(--text);
 }
 
 .collection-search-field {
@@ -761,8 +768,8 @@
   align-items: center;
   gap: 8px;
   padding: 0 2px 6px;
-  color: rgba(247, 242, 246, 0.58);
-  border-bottom: 1px solid rgba(247, 242, 246, 0.24);
+  color: rgba(var(--surface-ink), 0.58);
+  border-bottom: 1px solid rgba(var(--surface-ink), 0.24);
   transition:
     color var(--motion-micro) var(--motion-ease-standard),
     border-color var(--motion-micro) var(--motion-ease-standard);
@@ -770,7 +777,7 @@
 
 .collection-search.has-query .collection-search-field,
 .collection-search-field:focus-within {
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(var(--surface-bright), 0.92);
   border-bottom-color: var(--accent);
 }
 
@@ -778,7 +785,7 @@
   min-width: 0;
   flex: 1 1 auto;
   padding: 0;
-  color: rgba(255, 255, 255, 0.94);
+  color: rgba(var(--surface-bright), 0.94);
   background: transparent;
   border: 0;
   outline: 0;
@@ -787,7 +794,7 @@
 }
 
 .collection-search-field input::placeholder {
-  color: rgba(247, 242, 246, 0.44);
+  color: rgba(var(--surface-ink), 0.44);
   font-weight: var(--weight-body);
 }
 
@@ -797,12 +804,12 @@
   height: 22px;
   display: grid;
   place-items: center;
-  color: rgba(247, 242, 246, 0.5);
+  color: rgba(var(--surface-ink), 0.5);
   transition: color var(--motion-micro) var(--motion-ease-standard);
 }
 
 .collection-search-clear:hover {
-  color: #fff;
+  color: var(--text);
 }
 
 .collection-header-main {
@@ -821,7 +828,7 @@
 
 .collection-title p {
   margin: 0;
-  color: rgba(247, 242, 246, 0.72);
+  color: rgba(var(--surface-ink), 0.72);
   font-size: var(--type-body);
 }
 
@@ -849,11 +856,11 @@
 }
 
 .segmented button:hover {
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(var(--surface-bright), 0.82);
 }
 
 .segmented button.selected {
-  color: #fff;
+  color: var(--text);
   box-shadow: none;
 }
 
@@ -878,7 +885,7 @@
 }
 
 .empty-mark {
-  color: rgba(247, 242, 246, 0.08);
+  color: rgba(var(--surface-ink), 0.08);
   font-size: var(--type-ghost);
   line-height: 0.8;
   font-weight: var(--weight-ghost);
@@ -905,7 +912,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(247, 242, 246, 0.23) transparent;
+  scrollbar-color: rgba(var(--surface-ink), 0.23) transparent;
 }
 
 .album-tile {
@@ -924,7 +931,7 @@
 }
 
 .album-tile strong {
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(var(--surface-bright), 0.92);
   font-size: var(--type-body);
   line-height: 1.25;
   font-weight: var(--weight-body);
@@ -940,7 +947,7 @@
   min-height: 0;
   padding: 0 4px 24px 36px;
   overflow: hidden;
-  border-left: 1px solid rgba(247, 242, 246, 0.19);
+  border-left: 1px solid rgba(var(--surface-ink), 0.19);
 }
 
 .album-detail-head {
@@ -962,7 +969,7 @@
 }
 
 .album-detail-head strong {
-  color: rgba(255, 255, 255, 0.95);
+  color: rgba(var(--surface-bright), 0.95);
   font-size: var(--type-section-title);
   line-height: 1.2;
   font-weight: var(--weight-heading);
@@ -979,17 +986,17 @@
   height: 40px;
   display: grid;
   place-items: center;
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(var(--surface-bright), 0.82);
   background: rgba(9, 5, 10, 0.36);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(var(--surface-bright), 0.5);
   border-radius: 50%;
   transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-standard);
 }
 
 .album-detail-head > button:hover {
-  color: #fff;
+  color: var(--text);
   background: var(--accent);
-  border-color: #fff;
+  border-color: var(--text);
 }
 
 .album-detail-head > button:active {
@@ -1016,7 +1023,7 @@
 .search-results-view > .search-results-summary {
   flex: 0 0 auto;
   margin: 0 0 14px;
-  color: rgba(247, 242, 246, 0.44);
+  color: rgba(var(--surface-ink), 0.44);
   font-size: var(--type-control);
 }
 
@@ -1032,12 +1039,12 @@
 .search-filter {
   min-height: 0;
   padding: 8px 26px 0 0;
-  border-right: 1px solid rgba(247, 242, 246, 0.1);
+  border-right: 1px solid rgba(var(--surface-ink), 0.1);
 }
 
 .search-filter h2 {
   margin: 0 0 12px 12px;
-  color: rgba(247, 242, 246, 0.68);
+  color: rgba(var(--surface-ink), 0.68);
   font-size: var(--type-subsection-title);
   font-weight: var(--weight-body);
 }
@@ -1051,7 +1058,7 @@
   justify-content: space-between;
   gap: 14px;
   padding: 0 10px 0 12px;
-  color: rgba(247, 242, 246, 0.54);
+  color: rgba(var(--surface-ink), 0.54);
   text-align: left;
   background: transparent;
 }
@@ -1065,12 +1072,12 @@
 }
 
 .search-filter button:hover {
-  color: rgba(255, 255, 255, 0.84);
-  background: rgba(247, 242, 246, 0.035);
+  color: rgba(var(--surface-bright), 0.84);
+  background: rgba(var(--surface-ink), 0.035);
 }
 
 .search-filter button.selected {
-  color: #fff;
+  color: var(--text);
 }
 
 .search-filter button.selected::before {
@@ -1078,12 +1085,12 @@
 }
 
 .search-filter small {
-  color: rgba(247, 242, 246, 0.32);
+  color: rgba(var(--surface-ink), 0.32);
   font-size: var(--type-caption);
 }
 
 .search-filter button.selected small {
-  color: rgba(247, 242, 246, 0.6);
+  color: rgba(var(--surface-ink), 0.6);
 }
 
 .search-results-scroll {
@@ -1093,7 +1100,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(247, 242, 246, 0.18) transparent;
+  scrollbar-color: rgba(var(--surface-ink), 0.18) transparent;
   scrollbar-gutter: stable;
 }
 
@@ -1112,14 +1119,14 @@
 
 .search-section-heading h2 {
   margin: 0;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(var(--surface-bright), 0.9);
   font-size: var(--type-section-title);
   line-height: 1;
   font-weight: var(--weight-heading);
 }
 
 .search-section-heading h2 span {
-  color: rgba(247, 242, 246, 0.42);
+  color: rgba(var(--surface-ink), 0.42);
   font-size: var(--type-body);
   font-weight: var(--weight-body);
 }
@@ -1129,12 +1136,12 @@
   align-items: center;
   gap: 2px;
   padding: 4px 0 4px 8px;
-  color: rgba(247, 242, 246, 0.45);
+  color: rgba(var(--surface-ink), 0.45);
   font-size: var(--type-caption);
 }
 
 .search-section-heading > button:hover {
-  color: #fff;
+  color: var(--text);
 }
 
 .search-artist-list,
@@ -1153,9 +1160,9 @@
   justify-content: space-between;
   gap: 16px;
   padding: 6px 10px;
-  color: rgba(255, 255, 255, 0.88);
+  color: rgba(var(--surface-bright), 0.88);
   text-align: left;
-  border-bottom: 1px solid rgba(247, 242, 246, 0.065);
+  border-bottom: 1px solid rgba(var(--surface-ink), 0.065);
 }
 
 .search-artist-result:hover,
@@ -1174,7 +1181,7 @@
 .search-artist-result > small,
 .search-playlist-result > em {
   flex: 0 0 auto;
-  color: rgba(247, 242, 246, 0.4);
+  color: rgba(var(--surface-ink), 0.4);
   font-size: var(--type-caption);
   font-style: normal;
 }
@@ -1216,14 +1223,14 @@
 
 .search-album-result > strong {
   margin-top: 8px;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(var(--surface-bright), 0.9);
   font-size: var(--type-body);
   font-weight: var(--weight-body);
 }
 
 .search-album-result > span {
   margin-top: 3px;
-  color: rgba(247, 242, 246, 0.42);
+  color: rgba(var(--surface-ink), 0.42);
   font-size: var(--type-caption);
 }
 
@@ -1244,18 +1251,18 @@
 .search-song-head {
   min-height: 28px;
   padding: 0 10px;
-  color: rgba(247, 242, 246, 0.32);
+  color: rgba(var(--surface-ink), 0.32);
   font-size: var(--type-caption);
-  border-bottom: 1px solid rgba(247, 242, 246, 0.08);
+  border-bottom: 1px solid rgba(var(--surface-ink), 0.08);
 }
 
 .search-song-result {
   position: relative;
   width: 100%;
-  min-height: 44px;
+  min-height: 36px;
   padding: 0 10px;
-  color: rgba(247, 242, 246, 0.5);
-  border-bottom: 1px solid rgba(247, 242, 246, 0.055);
+  color: rgba(var(--surface-ink), 0.5);
+  border-bottom: 1px solid rgba(var(--surface-ink), 0.055);
 }
 
 .search-song-result:hover,
@@ -1280,7 +1287,7 @@
 }
 
 .search-song-result strong {
-  color: rgba(255, 255, 255, 0.88);
+  color: rgba(var(--surface-bright), 0.88);
   font-size: var(--type-body);
   font-weight: var(--weight-body);
 }
@@ -1300,13 +1307,13 @@
 }
 
 .search-playlist-result strong {
-  color: rgba(255, 255, 255, 0.88);
+  color: rgba(var(--surface-bright), 0.88);
   font-size: var(--type-item-title);
   font-weight: var(--weight-body);
 }
 
 .search-playlist-result small {
-  color: rgba(247, 242, 246, 0.38);
+  color: rgba(var(--surface-ink), 0.38);
   font-size: var(--type-caption);
 }
 
@@ -1316,11 +1323,11 @@
   flex-direction: column;
   justify-content: center;
   gap: 8px;
-  color: rgba(247, 242, 246, 0.38);
+  color: rgba(var(--surface-ink), 0.38);
 }
 
 .search-empty strong {
-  color: rgba(247, 242, 246, 0.72);
+  color: rgba(var(--surface-ink), 0.72);
   font-size: var(--type-section-title);
   font-weight: var(--weight-heading);
 }
@@ -1355,7 +1362,7 @@
 .collection-album-select:focus-visible { outline-offset: -2px; }
 .album-detail,
 .artist-songs { display: flex; flex-direction: column; }
-.album-detail { padding-left: 24px; border-left-color: rgba(255, 255, 255, 0.08); }
+.album-detail { padding-left: 24px; border-left-color: rgba(var(--surface-bright), 0.08); }
 .album-detail-head {
   flex: none;
   display: flex;
@@ -1370,7 +1377,7 @@
   min-height: 0;
   flex-direction: column;
   padding-left: 24px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid rgba(var(--surface-bright), 0.08);
 }
 .artist-content-title { flex: none; margin-bottom: 20px; }
 .artist-records {
@@ -1383,7 +1390,7 @@
 .artist-records[data-sparse] { grid-template-columns: 190px minmax(0, 1fr); }
 .artist-albums { display: flex; flex-direction: column; border: 0; padding: 0; }
 .artist-album-grid { min-height: 0; max-height: none; scrollbar-width: thin; }
-.artist-songs { padding-left: 20px; border-left-color: rgba(255, 255, 255, 0.08); }
+.artist-songs { padding-left: 20px; border-left-color: rgba(var(--surface-bright), 0.08); }
 .artist-songs .album-detail-head strong { font-size: var(--type-item-title); }
 .artist-picker button { font-size: var(--type-item-title); }
 .artist-picker button:focus-visible { outline-offset: -2px; }

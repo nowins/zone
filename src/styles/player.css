@@ -23,11 +23,11 @@
   height: 30px;
   display: grid;
   place-items: center;
-  color: rgba(247, 242, 246, 0.5);
+  color: rgba(var(--surface-ink), 0.5);
 }
 
 .player-shortcuts button:hover {
-  color: #fff;
+  color: var(--text);
 }
 
 .player-shortcuts button::after {
@@ -78,7 +78,7 @@
   width: 44px;
   height: 44px;
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(var(--surface-bright), 0.82);
   font-size: var(--type-body);
   font-weight: var(--weight-ghost);
 }
@@ -112,7 +112,7 @@
   width: 100%;
   padding: 0;
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.66);
+  color: rgba(var(--surface-bright), 0.66);
   font-size: var(--type-caption);
   font-weight: var(--weight-body);
   line-height: 1;
@@ -123,7 +123,7 @@
 }
 
 .zune-progress-heading > button:first-child:hover {
-  color: #fff;
+  color: var(--text);
 }
 
 .zune-progress-favorite {
@@ -134,7 +134,7 @@
   height: 20px;
   display: grid;
   place-items: center;
-  color: rgba(247, 242, 246, 0.38);
+  color: rgba(var(--surface-ink), 0.38);
 }
 
 .zune-progress-favorite:hover,
@@ -144,7 +144,7 @@
 
 .zune-progress-time {
   grid-row: 3;
-  color: rgba(247, 242, 246, 0.56);
+  color: rgba(var(--surface-ink), 0.56);
   font-size: var(--type-caption);
   font-weight: var(--weight-body);
   font-variant-numeric: tabular-nums;
@@ -181,8 +181,8 @@
   height: 2px;
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.92) 0 var(--range-progress, 0%),
-    rgba(247, 242, 246, 0.24) var(--range-progress, 0%) 100%
+    rgba(var(--surface-bright), 0.92) 0 var(--range-progress, 0%),
+    rgba(var(--surface-ink), 0.24) var(--range-progress, 0%) 100%
   );
 }
 
@@ -192,7 +192,7 @@
   height: 5px;
   margin-top: -1.5px;
   appearance: none;
-  background: #fff;
+  background: var(--text);
   border: 0;
   border-radius: 0;
   opacity: 0;
@@ -227,12 +227,12 @@
   height: 30px;
   display: grid;
   place-items: center;
-  color: rgba(247, 242, 246, 0.56);
+  color: rgba(var(--surface-ink), 0.56);
   transition: color var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-entrance);
 }
 
 .zune-controls button:hover:not(:disabled) {
-  color: #fff;
+  color: var(--text);
 }
 
 .zune-controls button.active {
@@ -243,14 +243,14 @@
   width: 40px;
   height: 40px;
   margin: 0 2px;
-  color: #fff;
-  border: 1.5px solid rgba(255, 255, 255, 0.8);
+  color: var(--text);
+  border: 1.5px solid rgba(var(--surface-bright), 0.8);
   border-radius: 50%;
 }
 
 .zune-controls .zune-play:hover:not(:disabled) {
   color: var(--accent);
-  border-color: #fff;
+  border-color: var(--text);
   transform: scale(1.035);
 }
 
@@ -261,7 +261,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-  color: rgba(247, 242, 246, 0.48);
+  color: rgba(var(--surface-ink), 0.48);
   font-size: var(--type-caption);
   font-weight: var(--weight-body);
   line-height: 1;
@@ -293,7 +293,7 @@
 .zune-volume:hover,
 .zune-volume:focus-within {
   width: 190px;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(var(--surface-bright), 0.7);
 }
 
 .zune-volume:hover .zune-volume-icon,

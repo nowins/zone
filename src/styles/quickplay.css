@@ -1,6 +1,6 @@
 .quickplay {
-  --quick-pin-art: clamp(108px, 15vh, 138px);
-  --quick-feature-size: clamp(278px, 29vw, 410px);
+  --quick-pin-art: clamp(100px, 14vh, 124px);
+  --quick-feature-size: clamp(216px, 22vw, 280px);
   position: relative;
   width: 100%;
   height: calc(100% - var(--app-header-height));
@@ -92,8 +92,8 @@
   min-height: 0;
   display: flex;
   align-items: stretch;
-  gap: clamp(52px, 5vw, 78px);
-  padding: clamp(42px, 5.5vh, 64px) max(14vw, 180px) 28px 16px;
+  gap: clamp(64px, 6vw, 92px);
+  padding: clamp(42px, 5.5vh, 64px) max(14vw, 180px) 28px 4px;
 }
 
 .quickplay-ghost {
@@ -102,7 +102,7 @@
   z-index: 0;
   top: clamp(6px, 1vh, 14px);
   left: 70px;
-  color: rgba(128, 35, 76, 0.36);
+  color: rgba(128, 35, 76, 0.09);
   font-size: var(--type-ghost);
   line-height: 0.8;
   font-weight: var(--weight-ghost);
@@ -124,8 +124,8 @@
 }
 
 .quick-group h2 {
-  margin: 0 0 15px;
-  color: rgba(247, 242, 246, 0.72);
+  margin: 0;
+  color: rgba(247, 242, 246, 0.56);
   font-size: var(--type-feature-title);
   line-height: 0.92;
   font-weight: var(--weight-display);
@@ -133,8 +133,11 @@
   white-space: nowrap;
 }
 
-.quick-section-title {
+.quick-section-title,
+.quick-group > .quick-heading,
+.quick-group > h2 {
   min-height: 58px;
+  flex: none;
   display: flex;
   align-items: baseline;
   gap: 18px;
@@ -146,7 +149,7 @@
 }
 
 .quick-pins h2 {
-  color: #fff;
+  color: rgba(247, 242, 246, 0.68);
   font-size: var(--type-feature-title);
   line-height: 0.9;
   letter-spacing: -0.04em;
@@ -420,7 +423,7 @@
 .quick-history,
 .quick-most,
 .quick-forgotten {
-  padding-top: 18px;
+  padding-top: 0;
 }
 
 .quick-continue {
@@ -428,7 +431,7 @@
 }
 
 .quick-continue h2 {
-  color: var(--accent);
+  color: rgba(247, 242, 246, 0.56);
 }
 
 .quick-continue > .quick-section-scroll {
@@ -453,7 +456,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 4px;
+  padding: 7px 4px 0 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }

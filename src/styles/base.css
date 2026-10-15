@@ -6,17 +6,8 @@
   font-weight: var(--weight-body);
   font-synthesis: none;
   text-rendering: geometricPrecision;
-  --app-bg: #0b070c;
-  --app-bg-raised: #140d15;
-  --text: #f7f2f6;
-  --muted: rgba(247, 242, 246, 0.58);
-  --quiet: rgba(247, 242, 246, 0.34);
-  --faint: rgba(247, 242, 246, 0.13);
-  --accent: #f12486;
-  --accent-pink: #f12486;
-  --accent-orange: #ff5b19;
   --font-body: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
-  --font-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-display: "Zone Chinese Display", "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   --app-header-height: 56px;
   --type-nav-primary: 25px;
   --type-nav-secondary: 18px;
@@ -50,6 +41,58 @@
   --weight-body: 400;
   --weight-emphasis: 600;
 }
+
+/* Match the light Latin display strokes with a local Chinese light face.
+   The unicode range leaves Latin and functional body text on their own fonts. */
+@font-face {
+  font-family: "Zone Chinese Display";
+  src: local("Microsoft YaHei UI Light"), local("Microsoft YaHei Light");
+  font-style: normal;
+  font-weight: 300;
+  unicode-range: U+2E80-9FFF, U+F900-FAFF, U+FF00-FFEF;
+  font-display: swap;
+}
+
+:root,
+[data-surface-theme="dark"],
+.context-menu,
+.info-panel,
+.playlist-dialog-overlay,
+.smart-playlist-overlay,
+.action-toast,
+.select-menu {
+  --app-bg: #0b070c;
+  --app-bg-raised: #140d15;
+  --surface-ink: 247, 242, 246;
+  --surface-bright: 255, 255, 255;
+  --text: #f7f2f6;
+  --muted: rgba(247, 242, 246, 0.64);
+  --quiet: rgba(247, 242, 246, 0.4);
+  --faint: rgba(247, 242, 246, 0.13);
+  --accent: #f12486;
+  --accent-pink: #f12486;
+  --accent-orange: #ff5b19;
+  color: var(--text);
+  color-scheme: dark;
+}
+
+[data-surface-theme="light"] {
+  --app-bg: #fff;
+  --app-bg-raised: #f3f3f3;
+  --surface-ink: 32, 32, 32;
+  --surface-bright: 0, 0, 0;
+  --text: #242424;
+  --muted: #626262;
+  --quiet: #858585;
+  --faint: rgba(0, 0, 0, 0.12);
+  --accent: #c9006b;
+  color: var(--text);
+  color-scheme: light;
+}
+
+.shell[data-surface-theme="light"] { background: var(--app-bg); }
+.shell[data-surface-theme="light"] > .audio-glow-canvas { opacity: 0.2; mix-blend-mode: multiply; }
+.motion-departure[data-surface-theme] { background: var(--app-bg); }
 
 @media (max-width: 1000px) {
   :root {
@@ -235,17 +278,18 @@ input:focus-visible {
   width: 42px;
   display: grid;
   place-items: center;
-  color: rgba(247, 242, 246, 0.58);
+  color: rgba(var(--surface-ink), 0.58);
   transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-standard);
 }
 
 .window-controls button:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  background: rgba(var(--surface-bright), 0.07);
 }
 
 .window-controls button:last-child:hover {
   background: #b72b49;
+  color: #fff;
 }
 
 .window-controls button:active {
@@ -259,7 +303,7 @@ input:focus-visible {
   justify-content: center;
   gap: 5px;
   font-size: var(--type-caption);
-  border-right: 1px solid rgba(247, 242, 246, 0.09);
+  border-right: 1px solid rgba(var(--surface-ink), 0.09);
 }
 
 .window-controls .titlebar-settings svg {
@@ -267,7 +311,7 @@ input:focus-visible {
 }
 
 .window-controls .titlebar-settings.active {
-  color: #fff;
+  color: var(--text);
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
@@ -294,7 +338,7 @@ input:focus-visible {
 
 .brand {
   margin: 0;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(var(--surface-bright), 0.92);
   font-size: var(--type-subsection-title);
   line-height: 1;
   font-weight: var(--weight-emphasis);
@@ -310,7 +354,7 @@ input:focus-visible {
 .primary-pivot button {
   position: relative;
   padding: 0 0 8px;
-  color: rgba(247, 242, 246, 0.45);
+  color: rgba(var(--surface-ink), 0.45);
   font-family: var(--font-display);
   font-size: var(--type-nav-primary);
   line-height: 1.1;
@@ -319,24 +363,13 @@ input:focus-visible {
 }
 
 .primary-pivot button:hover {
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(var(--surface-bright), 0.78);
 }
 
 .primary-pivot button.active {
-  color: #fff;
+  color: var(--text);
 }
 
-.primary-pivot button.active::after {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 2px;
-  content: "";
-  background: var(--accent);
-  transform-origin: left center;
-  animation: pivot-in var(--motion-content) var(--motion-ease-entrance) both;
-}
 
 .header-icon {
   width: 34px;
@@ -347,8 +380,8 @@ input:focus-visible {
 }
 
 .header-icon:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  background: rgba(var(--surface-bright), 0.07);
 }
 
 .content-band {

@@ -52,7 +52,7 @@ test("pin fronts carry a persistent title and the panorama keeps its pink wash",
   assert.ok(quickplaySource.includes("quick-pin-front-title"));
   const quickplayRule = cssRule(quickplayCss, ".quickplay");
   assert.ok(cssRule(quickplayCss, ".quickplay-backdrop").includes("radial-gradient"));
-  assert.ok(quickplayCss.includes("rgba(128, 35, 76, 0.36)"));
+  assert.ok(quickplayCss.includes("rgba(128, 35, 76, 0.09)"), "background lettering stays subordinate to media and headings");
   // The old hover play badge and caption band are gone from the DOM and CSS.
   assert.ok(!quickplaySource.includes("quick-pin-play"));
   assert.ok(!quickplayCss.includes(".quick-pin-play"));

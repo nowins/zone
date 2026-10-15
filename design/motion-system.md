@@ -140,7 +140,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 全应用的 hover 反馈按内容类型对号入座，不要自创新数值：
 
-1. **行 hover**（列表行、设置行）：`background: rgba(255,255,255,0.06)` + 主文案提亮，过渡 `var(--motion-micro) var(--motion-ease-standard)`，**无位移**——hover 缩进（padding-left 动画）动的是布局属性，禁止。
+1. **行 hover**（列表行、设置行）：使用当前表面墨色的低透明度背景并加强主文案，深色为白色、浅色收藏为黑色，过渡 `var(--motion-micro) var(--motion-ease-standard)`，**无位移**——hover 缩进（padding-left 动画）动的是布局属性，禁止。收藏歌曲行使用更轻的背景，非交互时不画行分隔线。
 2. **封面 hover**：`transform: scale(1.02)` + `filter: brightness(1.08)`；transform 走 `var(--motion-content) var(--motion-ease-standard)`，filter 走 `var(--motion-micro) var(--motion-ease-standard)`。刻意例外：`.album-cover-wrap` 悬停压暗到 `brightness(0.72)`，是为配合播放按钮浮现的设计，保留。
 3. **按钮/图标 hover**：只变色/变背景，`var(--motion-micro) var(--motion-ease-standard)`。
 4. **播客封面卡 hover**（已登记）：作用于 `.podcast-artwork` 本身，卡整体不动——发现页节目卡封面 `opacity: 0.8` + `translateY(-2px)`，资料库节目列表只降 `opacity: 0.78`；过渡在封面元素上（opacity/transform 各走 micro 档 standard）。不使用音乐封面的 scale+brightness：播客卡是「节目」，封面压暗轻抬即可，不要放大。
@@ -198,6 +198,8 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 长歌曲列表按可见行窗口渲染，滚动位置变化只有跨行窗口时才更新 React。原生滚动与 `wheelScroll.ts` 的弹簧写入在绘制前同步窗口，使用真实小数行高，避免快速反向滚动、缩放或恢复位置时露出占位空白。名称与封面保留完整布局锚点，窗口限制不改变完整播放来源、排序、焦点或历史。
 
 `surfaceSnapshot.ts` 对收藏规则网格／列表按可见范围复制；quickplay、播客及正在播放的可变尺寸条目保留屏幕外布局占位，不复制内部封面和控制子树。快照恢复实际滚动容器的位置；横向全景离屏分组不读取每个磁贴的几何，入场条目共享区域裁切测量。原 React 子树按正常生命周期卸载。
+
+页面快照在创建时记录来源的 `data-surface-theme`，收藏浅色与其他页面深色切换后仍保持原配色；不能让旧白底内容继承目标页的白色文字，或让旧深色内容继承目标页的黑色文字。只保留配色身份，不复制或继续运行旧 React 状态。
 
 快速切换不排队等待；先捕获当前画面再交接，不先加速旧动画。退场窗口内反向返回时接续旧画面的可见位置与透明度；已显现的封面不重新错峰。每次最多一层内容退场，旧 React 子树照常卸载。历史返回先恢复滚动锚点、选择和焦点；恢复产生的同位置滚动事件不会打断动画。移动区域内的滚动、指针和键盘输入从当前 transform/opacity 用短过渡收稳，不吞掉输入或反复启动；静止导航上的输入不影响动画。窗口调整、隐藏、卸载及 reduced-motion 开启清理动画与退场层。首次挂载由顶层入场负责，普通数据更新不重播。
 

@@ -41,7 +41,7 @@ export function CollectionTrackList({
   const [selectedId, setSelectedId] = useState<string | null>(() => context?.navigation.location.surface.selections[listKey] || null);
   const hasFavorite = Boolean(onToggleFavorite);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const rows = useCollectionRows(scrollerRef, tracks.length, windowed && scrollable && !onReorder, compact ? 39 : 45,
+  const rows = useCollectionRows(scrollerRef, tracks.length, windowed && scrollable && !onReorder, compact ? 34 : 36,
     context?.navigation.location.surface.scrolls[`tracks:${listKey}`]?.top);
   const previousOrder = useRef(orderKey);
   useLayoutEffect(() => {

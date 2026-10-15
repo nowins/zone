@@ -67,11 +67,11 @@ test("Ctrl/Cmd+F and Esc are owned by App collection search", () => {
   assert.ok(!titlebarSource.includes("handleSearchShortcut"));
 });
 
-test("search results use a dark compact scrollbar without native arrow buttons", () => {
+test("search results use a palette-aware compact scrollbar without native arrow buttons", () => {
   const scrollRule = cssRule(collectionCss, ".search-results-scroll");
 
   assert.ok(scrollRule.includes("scrollbar-width: thin"));
-  assert.ok(scrollRule.includes("scrollbar-color: rgba(247, 242, 246, 0.18) transparent"));
+  assert.ok(scrollRule.includes("scrollbar-color: rgba(var(--surface-ink), 0.18) transparent"));
   assert.ok(collectionCss.includes(".search-results-scroll::-webkit-scrollbar-track"));
   assert.ok(collectionCss.includes(".search-results-scroll::-webkit-scrollbar-thumb"));
   assert.ok(collectionCss.includes(".search-results-scroll::-webkit-scrollbar-button"));

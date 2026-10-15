@@ -118,6 +118,9 @@ export function snapshotSurface(node: HTMLElement): { layer: HTMLElement; node: 
   copy.style.margin = "0";
   const layer = document.createElement("div");
   layer.className = "motion-departure";
+  // Departing content keeps its palette when navigation changes the shell.
+  const theme = node.closest<HTMLElement>("[data-surface-theme]")?.dataset.surfaceTheme;
+  if (theme) layer.dataset.surfaceTheme = theme;
   const collection = node.closest<HTMLElement>(".collection-connected");
   if (collection && collection !== node) {
     layer.classList.add("collection-connected");

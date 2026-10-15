@@ -11,19 +11,6 @@
   pointer-events: none;
 }
 
-.podcast-ghost {
-  position: absolute;
-  z-index: -1;
-  top: -24px;
-  right: -20px;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.025);
-  font-size: var(--type-ghost-podcast);
-  font-weight: var(--weight-ghost);
-  line-height: 0.85;
-  letter-spacing: -0.07em;
-  pointer-events: none;
-}
 
 .podcast-header {
   flex: 0 0 98px;
@@ -328,7 +315,7 @@
   align-items: center;
   gap: 14px;
   padding: 8px 10px 8px 8px;
-  background: rgba(255, 255, 255, 0.025);
+  background: transparent;
   border-left: 2px solid transparent;
 }
 
@@ -380,7 +367,7 @@
 
 .podcast-continue-open > span:first-child {
   overflow: hidden;
-  color: var(--accent);
+  color: var(--muted);
   font-size: var(--type-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -650,7 +637,7 @@
 
 .podcast-episode-copy > .podcast-episode-feed,
 .podcast-episode-meta .podcast-episode-feed {
-  color: var(--accent);
+  color: var(--muted);
   font-size: var(--type-caption);
 }
 
@@ -698,7 +685,7 @@
   font-size: var(--type-caption);
   line-height: 1.45;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
 }
 
 .podcast-episode-copy small {
@@ -736,6 +723,13 @@
 
 .podcast-download-action:disabled {
   color: rgba(247, 242, 246, 0.26);
+}
+
+/* Keep progress and offline state visible; offer idle downloads on interaction. */
+.podcast-episode .podcast-download-action:not([data-download-state]) { opacity: 0; pointer-events: none; }
+.podcast-episode:is(:hover, :focus-within) .podcast-download-action { opacity: 1; pointer-events: auto; }
+@media (hover: none), (pointer: coarse) {
+  .podcast-episode .podcast-download-action:not([data-download-state]) { opacity: 1; pointer-events: auto; }
 }
 
 .podcast-download-progress {
