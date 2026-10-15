@@ -250,20 +250,6 @@
   pointer-events: none;
 }
 
-/* Chrome exits: the header and player bar start fading the moment a
-   navigation toward now playing begins, sharing the old page's exit window
-   and unmounting exactly as the stage flips in. They stay in flow so the
-   outgoing page never reflows underneath them. */
-.motion-exit .player {
-  animation: motion-exit var(--motion-micro) var(--motion-ease-exit) both;
-  pointer-events: none;
-}
-
-.motion-exit .app-header {
-  animation: motion-exit-fade var(--motion-micro) var(--motion-ease-exit) both;
-  pointer-events: none;
-}
-
 /* Transient surfaces: Swivel from the trigger or owning edge. */
 .context-menu,
 .podcast-search-history {

@@ -49,6 +49,75 @@ test("departing surfaces retain their own palette across light and dark navigati
   }
 });
 
+test("entering immersive playback freezes the complete light shell without duplicating audio or moving chrome", t => {
+  const { document, host, motion, animations, mount } = setup(t);
+  const shell = document.querySelector('.shell');
+  shell.dataset.surfaceTheme = 'light'; shell.style.backgroundColor = '#fff'; shell.style.color = '#242424';
+  const header = document.createElement('header'); header.className = 'app-header'; header.textContent = '首页 收藏 播客';
+  const player = document.createElement('footer'); player.className = 'player'; player.innerHTML = '<button>暂停</button>';
+  shell.append(player);
+  for (const kind of ['quickplay', 'collection', 'podcasts', 'settings']) {
+    const page = mount(kind === 'quickplay' ? 'quickplay' : kind === 'collection' ? 'content-band collection-connected'
+      : kind === 'podcasts' ? 'content-band podcast-page' : 'content-band settings-page');
+    host.prepend(header);
+    if (kind === 'quickplay') page.innerHTML = '<div class="quickplay-ghost">quickplay</div><div class="quickplay-viewport"><div class="quick-group">固定</div></div>';
+    if (kind === 'collection') page.innerHTML = '<div class="collection-content"><aside class="playlist-list">播放列表索引</aside><section class="playlist-content">歌曲</section></div>';
+    motion.prepare(kind, 'nowPlaying', resolvePageTransition(kind, 'nowPlaying'), true);
+    const departure = document.querySelector('.motion-departure'), copy = departure.firstElementChild;
+    assert.equal(departure.parentElement, document.body, 'new immersive CSS cannot restyle the old shell');
+    assert.ok(copy.matches('.shell:not(.shell-now-playing)'));
+    assert.equal(copy.dataset.surfaceTheme, 'light'); assert.equal(copy.querySelector('.app-header').textContent, header.textContent);
+    assert.equal(copy.querySelector('.player button').textContent, '暂停');
+    if (kind === 'collection') assert.notEqual(copy.querySelector('.playlist-list').style.visibility, 'hidden', 'the complete old screen retains the playlist index');
+    assert.equal(copy.querySelectorAll('audio,video,.motion-departure').length, 0);
+    assert.equal(document.querySelectorAll('audio').length, 1);
+    const exit = animations.findLast(a => a.node === copy);
+    assert.equal(exit.options.duration, NAVIGATION_MOTION.exit);
+    assert.equal(exit.frames[0].transform, exit.frames[1].transform, 'the whole old frame fades at its original coordinates');
+    assert.equal(exit.frames[1].opacity, 0);
+    assert.equal(copy.style.backgroundColor, 'rgb(255, 255, 255)', 'the white background belongs to the fading image');
+    assert.equal(departure.style.backgroundColor, '');
+    mount('now-playing-stage'); shell.classList.add('shell-now-playing'); shell.dataset.surfaceTheme = 'dark';
+    assert.equal(motion.enter(), true);assert.equal(copy.dataset.surfaceTheme, 'light');
+    motion.stop(); assert.equal(document.querySelector('.motion-departure'), null);
+    shell.classList.remove('shell-now-playing'); shell.dataset.surfaceTheme = 'light';
+  }
+});
+
+test("snapshot backgrounds fade on the copy while the clipping layer stays transparent", t => {
+  const { document, mount } = setup(t);
+  document.querySelector('.shell').dataset.surfaceTheme = 'light';
+  for (const background of ['transparent', '#030303']) {
+    const page = mount('now-playing-stage'); page.style.backgroundColor = background;
+    const snapshot = snapshotSurface(page);
+    assert.equal(snapshot.node.style.backgroundColor, background === 'transparent' ? 'var(--app-bg)' : 'rgb(3, 3, 3)');
+    assert.equal(snapshot.layer.style.backgroundColor, ''); snapshot.layer.remove();
+  }
+});
+
+test("a quick reversal from the immersive handoff keeps the visible browse alpha and only one finite copy", t => {
+  const { document, motion, animations, mount } = setup(t);
+  document.querySelector('.shell').dataset.surfaceTheme = 'light';
+  motion.prepare('quickplay', 'collection', resolvePageTransition('quickplay', 'collection'), true);
+  mount('content-band collection-connected').innerHTML = '<div class="collection-content">曲库</div>';
+  motion.prepare('collection', 'nowPlaying', resolvePageTransition('collection', 'nowPlaying'), true);
+  assert.equal(document.querySelectorAll('.motion-departure').length, 1, 'the complete shell excludes an older departure');
+  motion.stop();
+  const page = mount('quickplay');page.innerHTML = '<div class="quickplay-viewport"><div class="quick-group">固定</div></div>';
+  motion.prepare('quickplay', 'nowPlaying', resolvePageTransition('quickplay', 'nowPlaying'), true);
+  const old = document.querySelector('.motion-departure > .shell');old.style.opacity = '.65';
+  old.querySelector('.quick-group').style.opacity = '.9';
+  mount('now-playing-stage');motion.enter();
+  motion.prepare('nowPlaying', 'quickplay', resolvePageTransition('nowPlaying', 'quickplay'), true);
+  const returned = mount('quickplay');returned.innerHTML = '<div class="quickplay-viewport"><div class="quick-group">固定</div></div>';
+  motion.enter();
+  const group = returned.querySelector('.quick-group');
+  const reveal = animations.findLast(a => a.node === group && a.options.duration === BROWSE_MOTION.reveal);
+  assert.ok(Math.abs(Number(reveal.frames[0].opacity) - .585) < 1e-6);
+  assert.equal(document.querySelectorAll('.motion-departure').length, 1);assert.equal(document.querySelectorAll('audio').length, 1);
+  motion.stop();assert.equal(document.querySelector('.motion-departure'), null);
+});
+
 test("podcast and now-playing snapshots retain variable-height slots and restore their actual scrollers", t => {
   const { document, mount } = setup(t);
   for (const kind of ["podcasts", "now"]) {

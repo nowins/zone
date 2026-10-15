@@ -93,7 +93,12 @@ export function snapshotSurface(node: HTMLElement): { layer: HTMLElement; node: 
       }
       if (firstRect.height === 0) return clone;
     }
-    for (const child of source.childNodes) clone.append(child.nodeType === 1 ? duplicate(child as HTMLElement) : child.cloneNode(true));
+    for (const child of source.childNodes) {
+      // A shell handoff freezes pixels, never a second media session or an
+      // older departure that is still being removed by the controller.
+      if (child.nodeType === 1 && (child as Element).matches("audio,video,.motion-departure")) continue;
+      clone.append(child.nodeType === 1 ? duplicate(child as HTMLElement) : child.cloneNode(true));
+    }
     return clone;
   };
   const copy = duplicate(node);
@@ -116,6 +121,10 @@ export function snapshotSurface(node: HTMLElement): { layer: HTMLElement; node: 
   copy.style.width = `${rect.width}px`;
   copy.style.height = `${rect.height}px`;
   copy.style.margin = "0";
+  const surfaceStyle = window.getComputedStyle(node);
+  // The background must fade with the animated copy, not its stationary clip.
+  copy.style.backgroundColor = surfaceStyle.backgroundColor === "rgba(0, 0, 0, 0)" ? "var(--app-bg)" : surfaceStyle.backgroundColor;
+  if (node.matches(".shell")) copy.style.color = surfaceStyle.color;
   const layer = document.createElement("div");
   layer.className = "motion-departure";
   // Departing content keeps its palette when navigation changes the shell.
@@ -132,7 +141,8 @@ export function snapshotSurface(node: HTMLElement): { layer: HTMLElement; node: 
   layer.inert = true;
   Object.assign(layer.style, { left: `${rect.left - offset.x}px`, top: `${rect.top - offset.y}px`, width: `${rect.width}px`, height: `${rect.height}px` });
   layer.append(copy);
-  (node.closest(".shell") ?? node.ownerDocument.body).append(layer);
+  // A complete shell copy keeps the old layout outside the new shell's CSS.
+  (node.matches(".shell") ? document.body : node.closest(".shell") ?? document.body).append(layer);
   const scrollSelector = `${clipSelector},.settings-main,.podcast-content,.now-queue-list`;
   for (const source of node.querySelectorAll<HTMLElement>(scrollSelector)) {
     const clone = lookup.get(source);

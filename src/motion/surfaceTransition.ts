@@ -35,8 +35,11 @@ export class SurfaceTransition {
   }
 
   prepare(from: string, to: string, plan: PageTransition, enabled: boolean): void {
-    const page = this.current(), content = page && browseSurface(page);
-    const source = content ?? page;
+    const page = this.current(), immersive = to === "nowPlaying";
+    const content = !immersive && page ? browseSurface(page) : null;
+    // Immersive layout removes browsing chrome immediately. Its frozen
+    // shell departs as one image, preserving the header and transport slots.
+    const source = immersive ? page?.closest<HTMLElement>(".shell") ?? page : content ?? page;
     enabled = enabled && typeof this.host.animate === "function";
     const returning = this.outgoing?.key === to
       ? [this.outgoing.node, ...this.groups(this.outgoing.node)].map(frame) : null;
@@ -50,12 +53,12 @@ export class SurfaceTransition {
     this.source = source;
     this.plan = enabled ? plan : null;
     if (!snapshot) return;
-    // Only data departs; never create a moving copy of persistent navigation.
-    snapshot.node.querySelectorAll<HTMLElement>(".playlist-list").forEach(node => { node.style.visibility = "hidden"; });
+    // Peer navigation only captures data; the immersive handoff stays in place.
+    if (!immersive) snapshot.node.querySelectorAll<HTMLElement>(".playlist-list").forEach(node => { node.style.visibility = "hidden"; });
     const start = frame(snapshot.node), offset = surfaceOffset(snapshot.node);
     const animation = snapshot.node.animate([
       start,
-      { transform: content ? start.transform : `translate3d(${offset.x - plan.direction * plan.exitDriftPx}px,${offset.y}px,0)`, opacity: 0 },
+      { transform: content || immersive ? start.transform : `translate3d(${offset.x - plan.direction * plan.exitDriftPx}px,${offset.y}px,0)`, opacity: 0 },
     ], { duration: content ? BROWSE_MOTION.exit : plan.exitMs, easing: content ? `cubic-bezier(${MOTION_EASINGS.browse.join(",")})` : easing, fill: "forwards" });
     this.outgoing = { ...snapshot, key: from, animation };
     animation.onfinish = () => {

@@ -97,7 +97,6 @@
 .shell[data-surface-theme="light"] { background-image: none; }
 .shell[data-surface-theme="light"] .quickplay-backdrop { background: none; }
 .shell[data-surface-theme="light"] > .audio-glow-canvas { opacity: 0.2; mix-blend-mode: multiply; }
-.motion-departure[data-surface-theme] { background: var(--app-bg); }
 
 @media (max-width: 1000px) {
   :root {
