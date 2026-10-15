@@ -1,4 +1,4 @@
-import { NAVIGATION_MOTION, BROWSE_MOTION, MOTION_EASINGS, MOTION_DURATIONS } from "./tokens.js";
+import { NAVIGATION_MOTION, BROWSE_MOTION, NOW_PLAYING_MOTION, MOTION_EASINGS, MOTION_DURATIONS } from "./tokens.js";
 import type { PageTransition } from "./pageTransition.js";
 import { readSurfaceFrame as frame, snapshotSurface, surfaceOffset, type Frame } from "./surfaceSnapshot.js";
 import { browseSurface, browseContentPending, concealPendingBrowseTitles, captureBrowseFrames, playBrowseTransition, type BrowseControl, type BrowseFrames } from "./browseTransition.js";
@@ -20,6 +20,7 @@ export class SurfaceTransition {
   private source: HTMLElement | null = null;
   private plan: PageTransition | null = null;
   private revealPending: (() => void) | null = null;
+  private handoffShell: HTMLElement | null = null;
 
   constructor(private host: HTMLElement) {}
 
@@ -35,7 +36,8 @@ export class SurfaceTransition {
   }
 
   prepare(from: string, to: string, plan: PageTransition, enabled: boolean): void {
-    const page = this.current(), immersive = to === "nowPlaying";
+    const page = this.current(), immersive = to === "nowPlaying" || from === "nowPlaying";
+    const returningFromStage = from === "nowPlaying";
     const content = !immersive && page ? browseSurface(page) : null;
     // Immersive layout removes browsing chrome immediately. Its frozen
     // shell departs as one image, preserving the header and transport slots.
@@ -53,17 +55,22 @@ export class SurfaceTransition {
     this.source = source;
     this.plan = enabled ? plan : null;
     if (!snapshot) return;
+    if (returningFromStage) {
+      this.handoffShell = this.host.closest<HTMLElement>(".shell");
+      this.handoffShell?.setAttribute("data-surface-handoff", "return");
+    }
     // Peer navigation only captures data; the immersive handoff stays in place.
     if (!immersive) snapshot.node.querySelectorAll<HTMLElement>(".playlist-list").forEach(node => { node.style.visibility = "hidden"; });
     const start = frame(snapshot.node), offset = surfaceOffset(snapshot.node);
     const animation = snapshot.node.animate([
       start,
       { transform: content || immersive ? start.transform : `translate3d(${offset.x - plan.direction * plan.exitDriftPx}px,${offset.y}px,0)`, opacity: 0 },
-    ], { duration: content ? BROWSE_MOTION.exit : plan.exitMs, easing: content ? `cubic-bezier(${MOTION_EASINGS.browse.join(",")})` : easing, fill: "forwards" });
+    ], { duration: returningFromStage ? NOW_PLAYING_MOTION.coverExit : content ? BROWSE_MOTION.exit : plan.exitMs,
+      easing: returningFromStage ? `cubic-bezier(${MOTION_EASINGS.standard.join(",")})` : content ? `cubic-bezier(${MOTION_EASINGS.browse.join(",")})` : easing, fill: "forwards" });
     this.outgoing = { ...snapshot, key: from, animation };
     animation.onfinish = () => {
       if (this.outgoing?.animation !== animation) return;
-      snapshot.layer.remove(); this.outgoing = null; animation.cancel();
+      this.clearOutgoing();
     };
   }
 
@@ -81,6 +88,12 @@ export class SurfaceTransition {
     this.plan = null;
     const source = this.source;
     this.source = null;
+    // A settled home page is already familiar. The stage and cover reveal
+    // its restored frame together, without replaying the browsing stagger.
+    if (plan?.kind === "pop" && root.matches(".quickplay") && !this.returningBrowse) {
+      this.returning = null; this.sourceBrowse = null;
+      return true;
+    }
     if (plan && content) {
       this.browsing = playBrowseTransition(content, plan.direction, content === source ? this.sourceBrowse : this.returningBrowse, () => this.clearOutgoing());
       this.returning = null; this.returningBrowse = null; this.sourceBrowse = null;
@@ -141,6 +154,7 @@ export class SurfaceTransition {
   }
 
   private clearOutgoing(): void {
+    this.handoffShell?.removeAttribute("data-surface-handoff"); this.handoffShell = null;
     if (!this.outgoing) return;
     this.outgoing.animation.onfinish = null; this.outgoing.animation.cancel();
     this.outgoing.layer.remove(); this.outgoing = null;

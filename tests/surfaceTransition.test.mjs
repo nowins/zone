@@ -3,7 +3,7 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import { SurfaceTransition, snapshotSurface } from "../.tmp/visualizer-tests/motion/surfaceTransition.js";
 import { resolvePageTransition } from "../.tmp/visualizer-tests/motion/pageTransition.js";
-import { NAVIGATION_MOTION, BROWSE_MOTION } from "../.tmp/visualizer-tests/motion/tokens.js";
+import { NAVIGATION_MOTION, BROWSE_MOTION, NOW_PLAYING_MOTION, MOTION_EASINGS } from "../.tmp/visualizer-tests/motion/tokens.js";
 import { playBrowseTransition, prepareBrowseTransition } from "../.tmp/visualizer-tests/motion/browseTransition.js";
 
 function setup(t) {
@@ -93,6 +93,35 @@ test("snapshot backgrounds fade on the copy while the clipping layer stays trans
     assert.equal(snapshot.node.style.backgroundColor, background === 'transparent' ? 'var(--app-bg)' : 'rgb(3, 3, 3)');
     assert.equal(snapshot.layer.style.backgroundColor, ''); snapshot.layer.remove();
   }
+});
+
+test("returning home reveals a restored light surface in the same phase as the cover return", t => {
+  const { document, motion, animations, mount } = setup(t);
+  const shell = document.querySelector('.shell');shell.classList.add('shell-now-playing');shell.dataset.surfaceTheme = 'dark';shell.style.backgroundColor = '#0b070c';
+  mount('now-playing-stage').innerHTML = '<div class="mini-cover" style="visibility:hidden">封面</div><nav>播放控制</nav>';
+  motion.prepare('nowPlaying', 'quickplay', resolvePageTransition('nowPlaying', 'quickplay'), true);
+  const layer = document.querySelector('.motion-departure'), copy = layer.firstElementChild;
+  assert.equal(layer.parentElement, document.body);assert.ok(copy.matches('.shell-now-playing'));
+  assert.equal(copy.dataset.surfaceTheme, 'dark');assert.equal(copy.querySelector('.mini-cover').style.visibility, 'hidden', 'the flying cover is not duplicated in the departing picture');
+  assert.equal(shell.dataset.surfaceHandoff, 'return');assert.equal(copy.hasAttribute('data-surface-handoff'), false);
+  const exit = animations.findLast(a => a.node === copy);
+  assert.equal(exit.options.duration, NOW_PLAYING_MOTION.coverExit);
+  assert.equal(exit.options.easing, `cubic-bezier(${MOTION_EASINGS.standard.join(',')})`);
+  assert.equal(exit.frames[0].transform, exit.frames[1].transform, 'backgrounds crossfade in place without sliding the stage');
+  shell.classList.remove('shell-now-playing');shell.dataset.surfaceTheme = 'light';
+  const home = mount('quickplay');home.innerHTML = '<div class="quickplay-ghost" style="transform:translate3d(-44px,0,0)">quickplay</div><div class="quickplay-viewport"><div class="quick-group"><div class="quick-feature">继续播放</div></div></div>';
+  assert.equal(motion.enter(), true);
+  assert.equal(animations.filter(a => home.contains(a.node)).length, 0, 'a settled home never replays the browsing reveal or stagger');
+  assert.equal(home.firstElementChild.style.transform, 'translate3d(-44px,0,0)');assert.equal(document.querySelectorAll('audio').length, 1);
+  exit.finish();assert.equal(document.querySelector('.motion-departure'), null);assert.equal(shell.hasAttribute('data-surface-handoff'), false);
+});
+
+test("interruption and reduced motion release the return palette override", t => {
+  const { document, motion, mount } = setup(t);const shell = document.querySelector('.shell');
+  mount('now-playing-stage');motion.prepare('nowPlaying', 'quickplay', resolvePageTransition('nowPlaying', 'quickplay'), true);
+  assert.equal(shell.dataset.surfaceHandoff, 'return');motion.stop();assert.equal(shell.hasAttribute('data-surface-handoff'), false);
+  motion.prepare('nowPlaying', 'quickplay', resolvePageTransition('nowPlaying', 'quickplay'), false);
+  assert.equal(shell.hasAttribute('data-surface-handoff'), false);assert.equal(document.querySelector('.motion-departure'), null);
 });
 
 test("a quick reversal from the immersive handoff keeps the visible browse alpha and only one finite copy", t => {
