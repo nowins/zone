@@ -119,11 +119,10 @@ export function SettingsView({
             <section className="settings-library" aria-labelledby="music-folders-heading">
               <header className="settings-section-heading">
                 <div>
-                  <span className="settings-kicker">音乐</span>
                   <h2 id="music-folders-heading">音乐文件夹</h2>
                   <p>Zone 会读取这些位置中的音乐，并在重新扫描后更新收藏。</p>
                 </div>
-                <Button variant="page" size="lg" className="settings-heading-action" onClick={onAddFolder} disabled={isScanning} icon={<FolderPlus size={18} aria-hidden="true" />}>
+                <Button variant="outline" className="settings-heading-action" onClick={onAddFolder} disabled={isScanning} icon={<FolderPlus size={16} aria-hidden="true" />}>
                   <span>添加文件夹</span>
                 </Button>
               </header>
@@ -145,7 +144,6 @@ export function SettingsView({
                         <strong>{folder.name}</strong>
                         <span title={folder.path}>{folder.path}</span>
                       </div>
-                      <span className="folder-row-state">已包含</span>
                     </div>
                   ))
                 )}
@@ -156,9 +154,7 @@ export function SettingsView({
             <section className="settings-playback" aria-labelledby="playback-behavior-heading">
               <header className="settings-section-heading">
                 <div>
-                  <span className="settings-kicker">播放</span>
                   <h2 id="playback-behavior-heading">播放行为</h2>
-                  <p>调整加入队列的默认位置，以及“上一首”在进度靠后时是否重播当前曲目。</p>
                 </div>
               </header>
 
@@ -166,7 +162,7 @@ export function SettingsView({
                 <div className="settings-behavior-row">
                   <div>
                     <strong>加入队列</strong>
-                    <span>默认把歌曲放到“下一首”或“队列末尾”。右键菜单仍可临时选择另一种方式。</span>
+                    <span>右键菜单可临时选择另一种加入方式。</span>
                   </div>
                   <div className="settings-segmented" role="group" aria-label="加入队列方式">
                     <button
@@ -211,13 +207,11 @@ export function SettingsView({
             <section className="settings-smartdj" aria-labelledby="smartdj-features-heading">
               <header className="settings-section-heading">
                 <div>
-                  <span className="settings-kicker">SmartDJ</span>
-                  <h2 id="smartdj-features-heading">听感分析</h2>
-                  <p>后台会为曲库建立特征，用于更接近“听感相似”的电台推荐。</p>
+                  <h2 id="smartdj-features-heading">SmartDJ 听感分析</h2>
+                  <p>分析本地音乐特征，用于推荐听感相似的歌曲。</p>
                 </div>
                 <Button
-                  variant="page"
-                  size="lg"
+                  variant="outline"
                   className="settings-heading-action"
                   busy={featureBusy}
                   onClick={() => {
@@ -249,8 +243,7 @@ export function SettingsView({
             <section className="settings-metadata-providers" aria-labelledby="metadata-providers-heading">
               <header className="settings-section-heading">
                 <div>
-                  <span className="settings-kicker">音乐信息</span>
-                  <h2 id="metadata-providers-heading">补充来源</h2>
+                  <h2 id="metadata-providers-heading">音乐资料来源</h2>
                   <p>补充内容保存在本地数据库中，不会改写音乐文件。在线查找会向对应来源发送曲名、歌手、专辑和时长。</p>
                 </div>
               </header>
@@ -288,8 +281,7 @@ export function SettingsView({
             <section className="settings-lyrics-providers" aria-labelledby="lyrics-providers-heading">
               <header className="settings-section-heading">
                 <div>
-                  <span className="settings-kicker">歌词</span>
-                  <h2 id="lyrics-providers-heading">在线来源</h2>
+                  <h2 id="lyrics-providers-heading">歌词来源</h2>
                   <p>本地歌词缺失时，Zone 会按以下顺序搜索。启用后会向对应来源发送曲名、歌手和专辑。</p>
                 </div>
               </header>
@@ -344,8 +336,7 @@ export function SettingsView({
 
           <aside className="settings-sidebar" aria-label="资料库状态与维护">
             <section className="settings-overview">
-              <span className="settings-kicker">资料库</span>
-              <h2>当前状态</h2>
+              <h2>资料库</h2>
               <dl>
                 <div>
                   <dt>歌曲</dt>
@@ -373,7 +364,6 @@ export function SettingsView({
             </section>
 
             <section className="settings-danger-zone">
-              <span className="settings-kicker">维护</span>
               <h2>清理资料库</h2>
               <p>移除音乐索引、歌单、喜欢、固定内容和播放统计，保留播客资料。不会删除电脑中的音乐文件。</p>
               <Button variant="danger" className="settings-danger-action" onClick={() => { setClearError(""); setConfirmClear(true); }} disabled={isScanning || clearBusy || (folderCount === 0 && trackCount === 0)} icon={<Trash2 size={16} aria-hidden="true" />}>
@@ -407,7 +397,7 @@ export function SettingsView({
               {diagnosticNotice && <p role="status">{diagnosticNotice}</p>}
             </section>
             <section className="settings-about" aria-label="关于 Zone">
-              <span className="settings-kicker">关于</span><h2>Zone {APP_VERSION}</h2>
+              <h2>Zone {APP_VERSION}</h2>
               <Button variant="ghost" onClick={() => { setPrivacyNotice(""); setShowPrivacy(true); }}>隐私说明</Button>
               {RELEASE_LINKS.support && <Button variant="ghost" onClick={() => void invoke("plugin:opener|open_url", { url: RELEASE_LINKS.support }).catch(() => setDiagnosticNotice("无法打开帮助页面，请重试"))}>反馈与帮助</Button>}
               {RELEASE_LINKS.download && <Button variant="ghost" onClick={() => void invoke("plugin:opener|open_url", { url: RELEASE_LINKS.download }).catch(() => setDiagnosticNotice("无法打开下载页面，请重试"))}>获取新版</Button>}

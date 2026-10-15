@@ -1,14 +1,5 @@
 import { createPortal } from "react-dom";
 import {
-  Check,
-  CheckCircle2,
-  Download,
-  ListPlus,
-  Play,
-  RotateCcw,
-  Share2,
-} from "lucide-react";
-import {
   useEffect,
   useLayoutEffect,
   useRef,
@@ -87,23 +78,31 @@ function PodcastEpisodeMenuSurface({
   });
 
   useLayoutEffect(() => {
-    const element = menuRef.current;
-    if (!element) return;
+    function placeMenu() {
+      const element = menuRef.current;
+      if (!element) return;
+      const gutter = 12;
+      const rect = { width: element.offsetWidth, height: element.offsetHeight };
+      const maxLeft = Math.max(gutter, window.innerWidth - rect.width - gutter);
+      const maxTop = Math.max(gutter, window.innerHeight - rect.height - gutter);
+      setPosition({
+        left: Math.min(Math.max(gutter, Math.round(menu.x)), maxLeft),
+        top: Math.min(Math.max(gutter, Math.round(menu.y)), maxTop),
+        ready: true,
+      });
+    }
+    placeMenu();
+    window.addEventListener("resize", placeMenu);
+    return () => window.removeEventListener("resize", placeMenu);
+  }, [menu.episode.id, menu.x, menu.y]);
 
-    const gutter = 12;
-    const rect = element.getBoundingClientRect();
-    const maxLeft = Math.max(gutter, window.innerWidth - rect.width - gutter);
-    const maxTop = Math.max(gutter, window.innerHeight - rect.height - gutter);
-    setPosition({
-      left: Math.min(Math.max(gutter, menu.x), maxLeft),
-      top: Math.min(Math.max(gutter, menu.y), maxTop),
-      ready: true,
-    });
-    const firstAction = element.querySelector<HTMLButtonElement>(
+  useLayoutEffect(() => {
+    if (!position.ready) return;
+    const firstAction = menuRef.current?.querySelector<HTMLButtonElement>(
       'button[role="menuitem"]:not(:disabled)',
     );
     firstAction?.focus({ preventScroll: true });
-  }, [menu.episode.id, menu.x, menu.y]);
+  }, [position.ready, menu.episode.id, menu.x, menu.y]);
 
   useEffect(() => {
     function closeFromOutside(event: PointerEvent) {
@@ -122,7 +121,8 @@ function PodcastEpisodeMenuSurface({
       close(true);
     }
 
-    function closeOnScroll() {
+    function closeOnScroll(event: Event) {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
       onClose();
     }
 
@@ -187,7 +187,7 @@ function PodcastEpisodeMenuSurface({
       ref={menuRef}
       className="context-menu podcast-episode-context-menu"
       role="menu"
-      aria-label={`${menu.episode.title} 的单集操作`}
+      aria-label={`${menu.episode.title} 的播客单集操作`}
       style={{
         left: position.left,
         top: position.top,
@@ -201,7 +201,6 @@ function PodcastEpisodeMenuSurface({
       }}
     >
       <div className="context-title">
-        <span className="context-title-kicker">播客单集</span>
         <strong>{menu.episode.title}</strong>
         <span>{menu.episode.feedTitle || "播客"}</span>
       </div>
@@ -211,7 +210,6 @@ function PodcastEpisodeMenuSurface({
           role="menuitem"
           onClick={() => run(() => onPlay(menu.episode))}
         >
-          <Play size={17} />
           <span>
             {menu.episode.progressSeconds > 0 && !menu.episode.completed
               ? "继续收听"
@@ -224,7 +222,6 @@ function PodcastEpisodeMenuSurface({
           onClick={() => run(() => onQueue(menu.episode))}
           disabled={queueUnavailable}
         >
-          {queueUnavailable ? <Check size={17} /> : <ListPlus size={17} />}
           <span>
             {queueState === "active"
               ? "正在播放"
@@ -239,11 +236,7 @@ function PodcastEpisodeMenuSurface({
           onClick={() => run(() => onTogglePlayed(menu.episode))}
           disabled={updatingPlayed}
         >
-          {updatingPlayed
-            ? <MetroLoader size={17} />
-            : menu.episode.completed
-            ? <RotateCcw size={17} />
-            : <CheckCircle2 size={17} />}
+          {updatingPlayed && <MetroLoader size={14} />}
           <span>
             {updatingPlayed
               ? "正在更新播放状态"
@@ -258,13 +251,7 @@ function PodcastEpisodeMenuSurface({
           onClick={() => run(() => onDownload(menu.episode))}
           disabled={downloading || downloaded}
         >
-          {downloaded ? (
-            <Check size={17} />
-          ) : downloading ? (
-            <MetroLoader size={17} />
-          ) : (
-            <Download size={17} />
-          )}
+          {downloading && !downloaded && <MetroLoader size={14} />}
           <span>
             {downloaded ? "已下载" : downloading ? "正在下载" : "下载"}
           </span>
@@ -276,7 +263,6 @@ function PodcastEpisodeMenuSurface({
           role="menuitem"
           onClick={() => run(() => onShare(menu.episode))}
         >
-          <Share2 size={16} />
           <span>分享</span>
         </button>
       </div>

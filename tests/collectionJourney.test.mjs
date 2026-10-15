@@ -255,11 +255,30 @@ test("context menu exposes explicit object actions, keyboard traversal and safe 
     onOpenInCollection: () => called.push("detail"), onOpenAlbum: nothing, onOpenArtist: nothing }));
   assert.ok(byText("button", "查看歌曲")); assert.ok(byText("button", "前往艺术家"));
   assert.ok(!byText("button", "从播放列表中移除"));
+  assert.deepEqual([...document.querySelectorAll('.context-menu [role="group"]')].map(el => el.getAttribute("aria-label")), ["播放", "收藏与固定", "SmartDJ", "资料与浏览"]);
   assert.equal(document.activeElement.textContent, "播放");
   await key(document.activeElement, "End");
   assert.equal(document.activeElement.textContent, "前往专辑");
   await click(byText("button", "查看歌曲"));
   assert.deepEqual(called, ["detail"]);
+});
+
+test("empty playlist menus skip unavailable playback and retain edit boundaries", async t => {
+  const called = [];
+  document.getElementById("outside").focus();
+  await mount(t, h(ContextMenu, { menu: { x: 12, y: 12, payload: { kind: "playlist", title: "空列表", tracks: [], playlistId: "manual" } },
+    onClose: () => called.push("close"), onPlay: nothing, onAddToQueue: nothing, onPlayNext: nothing, onStartSmartDj: nothing,
+    onAddToPlaylist: nothing, onAddToFavorites: nothing, onRenamePlaylist: nothing, onDeletePlaylist: nothing,
+    onExcludeFromSmartPlaylist: nothing, homePinState: null, onToggleHomePin: nothing, onInfo: nothing }));
+  assert.equal(document.activeElement.textContent, "重命名");
+  assert.deepEqual([...document.querySelectorAll('.context-menu [role="group"]')].map(el => el.getAttribute("aria-label")), ["播放", "SmartDJ", "播放列表操作"]);
+  await key(document.activeElement, "ArrowUp");
+  assert.equal(document.activeElement.textContent, "删除播放列表");
+  await key(document.activeElement, "Home");
+  assert.equal(document.activeElement.textContent, "重命名");
+  await key(document.activeElement, "Escape");
+  assert.deepEqual(called, ["close"]);
+  assert.equal(document.activeElement, document.getElementById("outside"));
 });
 
 test("smart editor handoff keeps background isolated and restores the original launcher", async t => {
