@@ -24,7 +24,7 @@
 
 ## 模块地图
 
-- `src/App.tsx`：应用组合根。收藏在恢复完成且非小屏时由 shell 的 `data-surface-theme` 切换到浅色，其他页面与浮层保留深色；配色令牌见组件规范。持有唯一的 `<audio ref={audioRef}>` 与跨 hook 共享状态（queue/activeTrackId/playHistory、浮层与 actionNotice、playbackSessionRef 及三个 late-bound ref），按依赖调用 `useNavigation` → `useMusicLibrary` → `useMetadataEnrichment` → `usePodcastPlayback` → `usePlaybackControls` → `useAudioEngine` → `usePlaylists`，selectedPlaylistId 由导航 hook 唯一持有并传回 App 持久化；负责音乐数据库快照恢复/写回、旧 localStorage 迁移、卸载清理、`useSystemMedia` 接线与全部 JSX。共享 ref/state 只在 App 层或拥有它的 hook 创建一次，经参数传递；hook 间反向调用经渲染期赋值的 late-bound ref 保持单向传参（播客 → `playbackControlsRef` 的 arm/seek/toggle/intent；播放控制 → `audioEngineRef`；`openNowPlaying` 的媒体目标）。
+- `src/App.tsx`：应用组合根。`useSurfaceTheme` 在恢复完成后为 quickplay、收藏、播客和设置选择浅色，启动、正在播放和小屏选择深色；文档根与 shell 同步主题，使 body portal 浮层继承相同配色。配色令牌见组件规范。持有唯一的 `<audio ref={audioRef}>` 与跨 hook 共享状态（queue/activeTrackId/playHistory、浮层与 actionNotice、playbackSessionRef 及三个 late-bound ref），按依赖调用 `useNavigation` → `useMusicLibrary` → `useMetadataEnrichment` → `usePodcastPlayback` → `usePlaybackControls` → `useAudioEngine` → `usePlaylists`，selectedPlaylistId 由导航 hook 唯一持有并传回 App 持久化；负责音乐数据库快照恢复/写回、旧 localStorage 迁移、卸载清理、`useSystemMedia` 接线与全部 JSX。共享 ref/state 只在 App 层或拥有它的 hook 创建一次，经参数传递；hook 间反向调用经渲染期赋值的 late-bound ref 保持单向传参（播客 → `playbackControlsRef` 的 arm/seek/toggle/intent；播放控制 → `audioEngineRef`；`openNowPlaying` 的媒体目标）。
 - `src/app/podcastPlaybackSettings.ts`：播客倍速/活动单集/自动续播偏好（`zone-podcast-playback-v1`）的常量、类型与 read/patch 纯函数，附 `webkitAudioContext` 全局声明。
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
   - `useNavigation.ts`：顶层 page、`requestNavigation` 页面过渡、对象入口及来源返回、搜索／历史快捷键、`openNowPlaying`；内部调用 `useCollectionNavigation`。

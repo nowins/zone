@@ -912,12 +912,12 @@ test("podcast detail, menus, and full-screen layout cover keyboard and minimum-w
   }
   includes(
     podcastCss,
-    /\.podcast-episode-copy p\s*\{(?=[^}]*font-size:\s*12px)(?=[^}]*color:\s*rgba\(247,\s*242,\s*246,\s*0\.54\))[^}]*\}/,
-    "episode summaries must remain readable against the dark surface",
+    /\.podcast-episode-copy p\s*\{(?=[^}]*font-size:\s*12px)(?=[^}]*color:\s*var\(--muted\))[^}]*\}/,
+    "episode summaries must use the readable secondary text role",
   );
   includes(
     podcastCss,
-    /\.podcast-detail-meta\s*\{(?=[^}]*font-size:\s*12px)(?=[^}]*color:\s*rgba\(247,\s*242,\s*246,\s*0\.52\))[^}]*\}/,
+    /\.podcast-detail-meta\s*\{(?=[^}]*font-size:\s*12px)(?=[^}]*color:\s*var\(--muted\))[^}]*\}/,
     "episode detail metadata must not fall back to micro-copy contrast",
   );
   includes(
@@ -927,7 +927,7 @@ test("podcast detail, menus, and full-screen layout cover keyboard and minimum-w
   );
   includes(
     podcastCss,
-    /\.podcast-inline-state\s*\{(?=[^}]*font-size:\s*12px)(?=[^}]*color:\s*rgba\(247,\s*242,\s*246,\s*0\.52\))[^}]*\}/,
+    /\.podcast-inline-state\s*\{(?=[^}]*font-size:\s*12px)(?=[^}]*color:\s*var\(--muted\))[^}]*\}/,
     "podcast loading and empty states must remain legible",
   );
   includes(

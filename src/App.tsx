@@ -9,6 +9,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Titlebar } from "./components/Titlebar";
 import { useCompactMode } from "./hooks/useCompactMode";
+import { useSurfaceTheme } from "./hooks/useSurfaceTheme";
 import { useNativeWindowVisibility } from "./hooks/useNativeWindowVisibility";
 import { useTouchInteractions } from "./hooks/useTouchInteractions";
 import { AppHeader } from "./components/AppHeader";
@@ -230,6 +231,7 @@ export default function App() {
     flushPodcastProgress,
   } = podcast;
   const startupReady = restored && podcastSessionHydrated && !libraryRestoreFailed;
+  const surfaceTheme = useSurfaceTheme(startupReady, compactMode.active, page);
   const {
     isPlaying,
     setIsPlaying,
@@ -1066,7 +1068,7 @@ export default function App() {
     <div
       ref={shellRef} className={`shell ${compactMode.active ? "shell-compact" : page === "nowPlaying" ? "shell-now-playing" : ""}`}
       data-page-motion="managed"
-      data-surface-theme={startupReady && !compactMode.active && page === "collection" ? "light" : "dark"}
+      data-surface-theme={surfaceTheme}
       style={
         {
           "--motion-dir": navDir,

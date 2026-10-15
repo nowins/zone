@@ -22,12 +22,12 @@ h2 {
   align-items: center;
   gap: 12px;
   text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(var(--surface-bright), 0.07);
 }
 
 .queue-list button:hover,
 .queue-list .playing {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--surface-bright), 0.06);
   box-shadow: inset 4px 0 0 var(--accent);
 }
 
@@ -58,7 +58,7 @@ h2 {
   scrollbar-gutter: stable;
   padding-bottom: clamp(20px, 3vh, 42px);
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  scrollbar-color: rgba(var(--surface-bright), 0.22) transparent;
 }
 
 .settings-header {
@@ -69,7 +69,7 @@ h2 {
   justify-content: space-between;
   gap: 48px;
   padding: 8px 0 32px;
-  border-bottom: 1px solid rgba(247, 242, 246, 0.12);
+  border-bottom: 1px solid rgba(var(--surface-bright), 0.12);
 }
 
 .settings-header > div {
@@ -143,7 +143,7 @@ h2 {
 .settings-overview h2,
 .settings-danger-zone h2 {
   margin: 0;
-  color: rgba(255, 255, 255, 0.94);
+  color: var(--text);
   font-size: var(--type-section-title);
   font-weight: var(--weight-heading);
   line-height: 1.05;
@@ -181,7 +181,7 @@ h2 {
   margin-top: 18px;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+  scrollbar-color: rgba(var(--surface-bright), 0.24) transparent;
 }
 
 .folder-row {
@@ -196,11 +196,11 @@ h2 {
 }
 
 .folder-row:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--surface-bright), 0.06);
 }
 
 .folder-row-icon {
-  color: rgba(255, 255, 255, 0.48);
+  color: var(--muted);
 }
 
 .folder-row-copy,
@@ -214,7 +214,7 @@ h2 {
 }
 
 .folder-row-copy strong {
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text);
   font-size: var(--type-item-title);
   font-weight: var(--weight-body);
 }
@@ -232,8 +232,8 @@ h2 {
   align-items: center;
   gap: 18px;
   padding: 34px 2px;
-  color: rgba(255, 255, 255, 0.42);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.085);
+  color: var(--quiet);
+  border-bottom: 1px solid rgba(var(--surface-bright), 0.085);
 }
 
 .folder-empty > div {
@@ -261,17 +261,17 @@ h2 {
   align-items: center;
   gap: 14px;
   padding: 13px 8px 13px 2px;
-  color: rgba(255, 255, 255, 0.34);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.085);
+  color: var(--quiet);
+  border-bottom: 1px solid rgba(var(--surface-bright), 0.085);
   transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .metadata-provider-row:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--surface-bright), 0.06);
 }
 
 .metadata-provider-row.is-enabled {
-  color: rgba(255, 255, 255, 0.58);
+  color: var(--muted);
 }
 
 .metadata-provider-row > div {
@@ -284,7 +284,7 @@ h2 {
 }
 
 .metadata-provider-row strong {
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text);
   font-size: var(--type-item-title);
   font-weight: var(--weight-body);
 }
@@ -299,7 +299,7 @@ h2 {
 .metadata-provider-row em {
   display: block;
   margin-top: 5px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--quiet);
   font-size: var(--type-caption);
   font-style: normal;
   letter-spacing: 0.06em;
@@ -323,17 +323,17 @@ h2 {
   align-items: center;
   gap: 14px;
   padding: 13px 8px 13px 2px;
-  color: rgba(255, 255, 255, 0.34);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.085);
+  color: var(--quiet);
+  border-bottom: 1px solid rgba(var(--surface-bright), 0.085);
   transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .provider-row:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(var(--surface-bright), 0.06);
 }
 
 .provider-row.is-enabled {
-  color: rgba(255, 255, 255, 0.58);
+  color: var(--muted);
 }
 
 .provider-row-copy {
@@ -348,7 +348,7 @@ h2 {
 }
 
 .provider-row-copy strong {
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--text);
   font-size: var(--type-item-title);
   font-weight: var(--weight-body);
 }
@@ -363,7 +363,7 @@ h2 {
 
 .provider-row-copy em {
   margin-top: 5px;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--quiet);
   font-size: var(--type-caption);
   font-style: normal;
   letter-spacing: 0.04em;
@@ -379,7 +379,7 @@ h2 {
   height: 20px;
   display: grid;
   place-items: center;
-  color: rgba(255, 255, 255, 0.38);
+  color: var(--quiet);
 }
 
 .provider-priority button:hover:not(:disabled),
@@ -393,7 +393,7 @@ h2 {
   grid-template-columns: 24px auto;
   align-items: center;
   gap: 8px;
-  color: rgba(255, 255, 255, 0.42);
+  color: var(--quiet);
   font-size: var(--type-caption);
   text-align: left;
 }
@@ -402,7 +402,7 @@ h2 {
   position: relative;
   width: 24px;
   height: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.34);
+  border: 1px solid rgba(var(--surface-bright), 0.34);
 }
 
 .provider-toggle > span::after {
@@ -412,12 +412,12 @@ h2 {
   left: 2px;
   width: 6px;
   height: 6px;
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(var(--surface-bright), 0.56);
   transition: transform var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard);
 }
 
 .provider-toggle[aria-checked="true"] {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
 }
 
 .provider-toggle[aria-checked="true"] > span {
@@ -430,7 +430,7 @@ h2 {
 }
 
 .folder-empty strong {
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--muted);
   font-size: var(--type-item-title);
   font-weight: var(--weight-body);
 }
@@ -450,7 +450,7 @@ h2 {
   align-content: start;
   gap: clamp(32px, 4vh, 52px);
   padding-left: clamp(28px, 3vw, 48px);
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 1px solid rgba(var(--surface-bright), 0.12);
 }
 
 .settings-overview dl {
@@ -472,7 +472,7 @@ h2 {
 
 .settings-overview dd {
   margin: 5px 0 0;
-  color: rgba(255, 255, 255, 0.94);
+  color: var(--text);
   font-size: var(--type-dialog-title);
   font-weight: var(--weight-display);
   font-variant-numeric: tabular-nums;
@@ -481,7 +481,7 @@ h2 {
 
 .scan-state {
   margin: 18px 0 0;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--muted);
   font-size: var(--type-caption);
   font-weight: var(--weight-body);
 }
@@ -497,7 +497,7 @@ h2 {
 
 .settings-danger-zone {
   padding-top: clamp(24px, 3vh, 38px);
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(var(--surface-bright), 0.12);
 }
 
 .settings-danger-action {
@@ -518,8 +518,8 @@ h2 {
   width: min(460px, 92vw);
   height: 100%;
   overflow: hidden;
-  background: rgba(10, 10, 10, 0.96);
-  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--app-bg-raised);
+  border-left: 1px solid rgba(var(--surface-bright), 0.15);
 }
 
 .info-panel-scroll {
@@ -528,7 +528,7 @@ h2 {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+  scrollbar-color: rgba(var(--surface-bright), 0.24) transparent;
 }
 
 .info-close {
@@ -614,7 +614,7 @@ h2 {
 .info-file-group {
   margin-top: 30px;
   padding-top: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(var(--surface-bright), 0.1);
 }
 
 .info-file-group h3 {
@@ -632,7 +632,7 @@ h2 {
 .info-metadata {
   margin-top: 34px;
   padding-top: 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(var(--surface-bright), 0.12);
 }
 
 .info-metadata > header {
@@ -660,7 +660,7 @@ h2 {
 
 .info-metadata > header strong {
   margin-top: 7px;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--muted);
   font-size: var(--type-caption);
   font-weight: var(--weight-body);
   line-height: 1.4;
@@ -672,7 +672,7 @@ h2 {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: rgba(255, 255, 255, 0.66);
+  color: var(--muted);
   font-size: var(--type-caption);
   transition: color var(--motion-micro) var(--motion-ease-standard), border-color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard);
 }
@@ -724,7 +724,7 @@ h2 {
 
 .info-panel .info-metadata-applied p {
   margin: 0;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--muted);
   font-size: var(--type-caption);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -734,7 +734,7 @@ h2 {
   display: block;
   margin-top: 10px;
   overflow: hidden;
-  color: rgba(255, 255, 255, 0.32);
+  color: var(--quiet);
   font-size: var(--type-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -749,7 +749,7 @@ h2 {
 
 .info-metadata-candidates {
   margin-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(var(--surface-bright), 0.1);
 }
 
 .info-metadata-candidates article {
@@ -758,8 +758,8 @@ h2 {
   align-items: start;
   gap: 11px;
   padding: 16px 0;
-  color: rgba(255, 255, 255, 0.5);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  border-bottom: 1px solid rgba(var(--surface-bright), 0.1);
 }
 
 .info-metadata-candidates article > div {
@@ -781,14 +781,14 @@ h2 {
 }
 
 .info-metadata-candidates article strong {
-  color: rgba(255, 255, 255, 0.86);
+  color: var(--text);
   font-size: var(--type-body);
   font-weight: var(--weight-body);
 }
 
 .info-metadata-candidates article span {
   margin-top: 4px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--muted);
   font-size: var(--type-caption);
 }
 
@@ -813,19 +813,19 @@ h2 {
 }
 
 .info-panel .info-metadata-candidates dd {
-  color: rgba(255, 255, 255, 0.64);
+  color: var(--muted);
   white-space: normal;
 }
 
 .info-metadata-candidates article > button {
   min-height: 28px;
   padding: 0 8px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(var(--surface-bright), 0.18);
 }
 
 .info-panel .info-metadata-notice {
   margin: 13px 0 0;
-  color: rgba(255, 255, 255, 0.52);
+  color: var(--muted);
   font-size: var(--type-caption);
 }
 
@@ -841,7 +841,7 @@ h2 {
   justify-content: space-between;
   gap: 18px;
   padding: 16px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.085);
+  border-bottom: 1px solid rgba(var(--surface-bright), 0.085);
 }
 
 .settings-behavior-row > div:first-child { min-width: 0; }
@@ -853,7 +853,7 @@ h2 {
 }
 
 .settings-behavior-row strong {
-  color: #fff;
+  color: var(--text);
   font-size: var(--type-body);
   font-weight: var(--weight-body);
 }
@@ -880,7 +880,7 @@ h2 {
 
 .settings-segmented > button.is-active,
 .settings-segmented > button[aria-pressed="true"] {
-  color: #fff;
+  color: var(--text);
   box-shadow: inset 0 -1px var(--accent);
 }
 

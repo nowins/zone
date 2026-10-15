@@ -36,7 +36,7 @@
 }
 
 .empty-mark {
-  color: rgba(var(--surface-bright), 0.07);
+  color: var(--quiet);
   font-size: var(--type-ghost);
   line-height: 0.8;
   font-weight: var(--weight-ghost);
@@ -113,7 +113,7 @@
   height: 38px;
   display: grid;
   place-items: center;
-  color: rgba(var(--surface-bright), 0.92);
+  color: var(--text);
   background: rgba(9, 5, 10, 0.7);
   border: 1px solid rgba(var(--surface-bright), 0.8);
   border-radius: 50%;
@@ -292,7 +292,7 @@
 .artist-identity-copy strong {
   display: block;
   overflow: hidden;
-  color: rgba(var(--surface-bright), 0.94);
+  color: var(--text);
   font-size: var(--type-section-title);
   line-height: 1.08;
   font-weight: var(--weight-heading);
@@ -305,7 +305,7 @@
   display: -webkit-box;
   margin: 9px 0 0;
   overflow: hidden;
-  color: rgba(var(--surface-ink), 0.48);
+  color: var(--muted);
   font-size: var(--type-caption);
   line-height: 1.55;
   -webkit-box-orient: vertical;
@@ -338,7 +338,7 @@
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: rgba(var(--surface-bright), 0.82);
+  color: var(--muted);
   font-size: var(--type-item-title);
 }
 
@@ -733,7 +733,7 @@
 .collection-chrome-label {
   flex: 0 0 auto;
   padding: 0 0 6px;
-  color: rgba(var(--surface-bright), 0.9);
+  color: var(--text);
   font-size: var(--type-item-title);
   line-height: 1;
   font-weight: var(--weight-body);
@@ -751,7 +751,7 @@
 
 .collection-search-return {
   flex: 0 0 auto;
-  color: rgba(var(--surface-ink), 0.62);
+  color: var(--muted);
   font-size: var(--type-caption);
   white-space: nowrap;
   transition: color var(--motion-micro) var(--motion-ease-standard);
@@ -768,7 +768,7 @@
   align-items: center;
   gap: 8px;
   padding: 0 2px 6px;
-  color: rgba(var(--surface-ink), 0.58);
+  color: var(--muted);
   border-bottom: 1px solid rgba(var(--surface-ink), 0.24);
   transition:
     color var(--motion-micro) var(--motion-ease-standard),
@@ -777,7 +777,7 @@
 
 .collection-search.has-query .collection-search-field,
 .collection-search-field:focus-within {
-  color: rgba(var(--surface-bright), 0.92);
+  color: var(--text);
   border-bottom-color: var(--accent);
 }
 
@@ -785,7 +785,7 @@
   min-width: 0;
   flex: 1 1 auto;
   padding: 0;
-  color: rgba(var(--surface-bright), 0.94);
+  color: var(--text);
   background: transparent;
   border: 0;
   outline: 0;
@@ -794,7 +794,7 @@
 }
 
 .collection-search-field input::placeholder {
-  color: rgba(var(--surface-ink), 0.44);
+  color: var(--quiet);
   font-weight: var(--weight-body);
 }
 
@@ -804,7 +804,7 @@
   height: 22px;
   display: grid;
   place-items: center;
-  color: rgba(var(--surface-ink), 0.5);
+  color: var(--muted);
   transition: color var(--motion-micro) var(--motion-ease-standard);
 }
 
@@ -828,7 +828,7 @@
 
 .collection-title p {
   margin: 0;
-  color: rgba(var(--surface-ink), 0.72);
+  color: var(--muted);
   font-size: var(--type-body);
 }
 
@@ -856,7 +856,7 @@
 }
 
 .segmented button:hover {
-  color: rgba(var(--surface-bright), 0.82);
+  color: var(--muted);
 }
 
 .segmented button.selected {
@@ -885,7 +885,7 @@
 }
 
 .empty-mark {
-  color: rgba(var(--surface-ink), 0.08);
+  color: var(--quiet);
   font-size: var(--type-ghost);
   line-height: 0.8;
   font-weight: var(--weight-ghost);
@@ -931,7 +931,7 @@
 }
 
 .album-tile strong {
-  color: rgba(var(--surface-bright), 0.92);
+  color: var(--text);
   font-size: var(--type-body);
   line-height: 1.25;
   font-weight: var(--weight-body);
@@ -969,7 +969,7 @@
 }
 
 .album-detail-head strong {
-  color: rgba(var(--surface-bright), 0.95);
+  color: var(--text);
   font-size: var(--type-section-title);
   line-height: 1.2;
   font-weight: var(--weight-heading);
@@ -986,7 +986,7 @@
   height: 40px;
   display: grid;
   place-items: center;
-  color: rgba(var(--surface-bright), 0.82);
+  color: var(--muted);
   background: rgba(9, 5, 10, 0.36);
   border: 1px solid rgba(var(--surface-bright), 0.5);
   border-radius: 50%;
@@ -1023,7 +1023,7 @@
 .search-results-view > .search-results-summary {
   flex: 0 0 auto;
   margin: 0 0 14px;
-  color: rgba(var(--surface-ink), 0.44);
+  color: var(--quiet);
   font-size: var(--type-control);
 }
 
@@ -1044,7 +1044,7 @@
 
 .search-filter h2 {
   margin: 0 0 12px 12px;
-  color: rgba(var(--surface-ink), 0.68);
+  color: var(--muted);
   font-size: var(--type-subsection-title);
   font-weight: var(--weight-body);
 }
@@ -1058,7 +1058,7 @@
   justify-content: space-between;
   gap: 14px;
   padding: 0 10px 0 12px;
-  color: rgba(var(--surface-ink), 0.54);
+  color: var(--muted);
   text-align: left;
   background: transparent;
 }
@@ -1072,7 +1072,7 @@
 }
 
 .search-filter button:hover {
-  color: rgba(var(--surface-bright), 0.84);
+  color: var(--muted);
   background: rgba(var(--surface-ink), 0.035);
 }
 
@@ -1085,12 +1085,12 @@
 }
 
 .search-filter small {
-  color: rgba(var(--surface-ink), 0.32);
+  color: var(--quiet);
   font-size: var(--type-caption);
 }
 
 .search-filter button.selected small {
-  color: rgba(var(--surface-ink), 0.6);
+  color: var(--muted);
 }
 
 .search-results-scroll {
@@ -1119,14 +1119,14 @@
 
 .search-section-heading h2 {
   margin: 0;
-  color: rgba(var(--surface-bright), 0.9);
+  color: var(--text);
   font-size: var(--type-section-title);
   line-height: 1;
   font-weight: var(--weight-heading);
 }
 
 .search-section-heading h2 span {
-  color: rgba(var(--surface-ink), 0.42);
+  color: var(--quiet);
   font-size: var(--type-body);
   font-weight: var(--weight-body);
 }
@@ -1136,7 +1136,7 @@
   align-items: center;
   gap: 2px;
   padding: 4px 0 4px 8px;
-  color: rgba(var(--surface-ink), 0.45);
+  color: var(--quiet);
   font-size: var(--type-caption);
 }
 
@@ -1160,7 +1160,7 @@
   justify-content: space-between;
   gap: 16px;
   padding: 6px 10px;
-  color: rgba(var(--surface-bright), 0.88);
+  color: var(--text);
   text-align: left;
   border-bottom: 1px solid rgba(var(--surface-ink), 0.065);
 }
@@ -1181,7 +1181,7 @@
 .search-artist-result > small,
 .search-playlist-result > em {
   flex: 0 0 auto;
-  color: rgba(var(--surface-ink), 0.4);
+  color: var(--quiet);
   font-size: var(--type-caption);
   font-style: normal;
 }
@@ -1223,14 +1223,14 @@
 
 .search-album-result > strong {
   margin-top: 8px;
-  color: rgba(var(--surface-bright), 0.9);
+  color: var(--text);
   font-size: var(--type-body);
   font-weight: var(--weight-body);
 }
 
 .search-album-result > span {
   margin-top: 3px;
-  color: rgba(var(--surface-ink), 0.42);
+  color: var(--quiet);
   font-size: var(--type-caption);
 }
 
@@ -1251,7 +1251,7 @@
 .search-song-head {
   min-height: 28px;
   padding: 0 10px;
-  color: rgba(var(--surface-ink), 0.32);
+  color: var(--quiet);
   font-size: var(--type-caption);
   border-bottom: 1px solid rgba(var(--surface-ink), 0.08);
 }
@@ -1261,7 +1261,7 @@
   width: 100%;
   min-height: 36px;
   padding: 0 10px;
-  color: rgba(var(--surface-ink), 0.5);
+  color: var(--muted);
   border-bottom: 1px solid rgba(var(--surface-ink), 0.055);
 }
 
@@ -1287,7 +1287,7 @@
 }
 
 .search-song-result strong {
-  color: rgba(var(--surface-bright), 0.88);
+  color: var(--text);
   font-size: var(--type-body);
   font-weight: var(--weight-body);
 }
@@ -1307,13 +1307,13 @@
 }
 
 .search-playlist-result strong {
-  color: rgba(var(--surface-bright), 0.88);
+  color: var(--text);
   font-size: var(--type-item-title);
   font-weight: var(--weight-body);
 }
 
 .search-playlist-result small {
-  color: rgba(var(--surface-ink), 0.38);
+  color: var(--quiet);
   font-size: var(--type-caption);
 }
 
@@ -1323,11 +1323,11 @@
   flex-direction: column;
   justify-content: center;
   gap: 8px;
-  color: rgba(var(--surface-ink), 0.38);
+  color: var(--quiet);
 }
 
 .search-empty strong {
-  color: rgba(var(--surface-ink), 0.72);
+  color: var(--muted);
   font-size: var(--type-section-title);
   font-weight: var(--weight-heading);
 }

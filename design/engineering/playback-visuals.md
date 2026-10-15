@@ -51,7 +51,7 @@ MediaElementAudioSource outputs zeroes due to CORS access restrictions
 
 ## 正在播放的视觉方向
 
-普通页面的底部也复用 `AudioGlowCanvas`：由 App 挂在 `.shell` 下，位于页面内容与透明播放条之后，切换 quickplay／收藏时不跟随页面滑动或重新挂载。播放条不设独立底色、边线或阴影；quickplay 底色在下沿淡出，收藏保持纯白阅读面，保留控件的布局空间和焦点区域。普通页面光焰亮度由 `base.css` 的 `.shell > .audio-glow-canvas` 控制，浅色收藏的底栏使用低透明度乘算混合，信号和停转条件不变；共用画布尺寸仍在 `now-playing.css`，正在播放页继续在自身拼贴之上绘制光焰。播客播放不展示音乐光焰。
+普通页面的底部也复用 `AudioGlowCanvas`：由 App 挂在 `.shell` 下，位于页面内容与透明播放条之后，切换 quickplay／收藏时不跟随页面滑动或重新挂载。播放条不设独立底色、边线或阴影；quickplay 底色在下沿淡出，收藏保持纯白阅读面，保留控件的布局空间和焦点区域。普通页面光焰亮度由 `base.css` 的 `.shell > .audio-glow-canvas` 控制，浅色浏览界面的底栏使用低透明度乘算混合，信号和停转条件不变；共用画布尺寸仍在 `now-playing.css`，正在播放页继续在自身拼贴之上绘制光焰。播客播放不展示音乐光焰。
 
 正在播放页应贴近 Zune 4.8：
 
