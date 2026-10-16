@@ -63,6 +63,7 @@ export function PodcastNowPlayingView({
   rateScope = "default",
   sleepTimer,
   onBack,
+  backLabel = "返回",
   onPlayPause,
   onSeek,
   onVolume,
@@ -92,6 +93,7 @@ export function PodcastNowPlayingView({
   rateScope?: "default" | "show";
   sleepTimer: PodcastSleepTimer;
   onBack: () => void;
+  backLabel?: string;
   onPlayPause: () => void;
   onSeek: (value: number) => void;
   onVolume: (value: number) => void;
@@ -573,7 +575,7 @@ export function PodcastNowPlayingView({
       <div className="podcast-now-grade" aria-hidden="true" />
       <p className="podcast-now-ghost" aria-hidden="true">podcast</p>
 
-      <button className="podcast-now-back" type="button" onClick={onBack} title="返回">
+      <button className="podcast-now-back" type="button" onClick={onBack} title={backLabel}>
         <ArrowLeft size={35} strokeWidth={2.45} />
       </button>
 

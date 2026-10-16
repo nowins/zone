@@ -88,8 +88,19 @@
   transition: border-color var(--motion-content) var(--motion-ease-standard), background var(--motion-content) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-standard);
 }
 
-.now-back:hover {
+.now-back:hover,
+.now-back:focus-visible {
   color: #fff;
+}
+
+.now-back:focus-visible {
+  outline: none;
+}
+
+.now-back:focus-visible::before {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+  border-color: #fff;
 }
 
 .now-back:hover::before {

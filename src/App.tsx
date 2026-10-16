@@ -145,7 +145,8 @@ export default function App() {
     navigationAnimated,
     workspaceRef,
     quickplayEntrance,
-    previousPageRef,
+    nowPlayingBackLabel,
+    returnFromNowPlaying,
     requestNavigation,
     clearCollectionSearch,
     setCollectionSearchQuery,
@@ -1250,7 +1251,8 @@ export default function App() {
               backwardSeconds={podcast.podcastPreferences.backwardSeconds}
               forwardSeconds={podcast.podcastPreferences.forwardSeconds}
               sleepTimer={podcastSleepTimer}
-              onBack={() => requestNavigation(previousPageRef.current)}
+              onBack={returnFromNowPlaying}
+              backLabel={nowPlayingBackLabel}
               onPlayPause={togglePlay}
               onSeek={seek}
               onVolume={setVolume}
@@ -1281,7 +1283,8 @@ export default function App() {
               repeat={repeat}
               isFavorite={isActiveTrackFavorite}
               volume={volume}
-              onBack={() => requestNavigation(previousPageRef.current)}
+              onBack={returnFromNowPlaying}
+              backLabel={nowPlayingBackLabel}
               onPlay={playTrack}
               onPlayPause={togglePlay}
               onToggleFavorite={toggleFavorite}

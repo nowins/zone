@@ -36,7 +36,7 @@ export function PlaybackProgress({
     <div className="zune-progress">
       <div className="zune-progress-heading">
         {onLabelClick ? (
-          <button onClick={onLabelClick} disabled={disabled} title="打开正在播放">
+          <button data-now-playing-trigger="title" onClick={onLabelClick} disabled={disabled} title="打开正在播放">
             {label}
           </button>
         ) : (

@@ -281,6 +281,9 @@ test("back button is restrained like the Zune chrome", () => {
   assert.ok(px(backRule, "height") >= 96, "back button needs a generous click target");
   assert.ok(px(backRingRule, "width") <= 76, "visual ring should stay restrained inside the hit target");
   assert.ok(px(backRingRule, "border") <= 3);
+  const backFocusRingRule = cssRule(nowPlayingCss, ".now-back:focus-visible::before");
+  assert.equal(px(backFocusRingRule, "outline"), 1, "keyboard focus belongs to the visible circular ring inside the larger hit target");
+  assert.equal(px(backFocusRingRule, "outline-offset"), 3);
   assert.ok(nowPlayingTitlebarRule.includes("pointer-events: none"), "titlebar must not intercept the back-button hit target");
   assert.ok(nowPlayingView.includes("strokeWidth={2.55}"));
 });

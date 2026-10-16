@@ -39,6 +39,7 @@ export function NowPlayingView({
   isFavorite,
   volume,
   onBack,
+  backLabel = "返回",
   onPlay,
   onPlayPause,
   onToggleFavorite,
@@ -64,6 +65,7 @@ export function NowPlayingView({
   isFavorite: boolean;
   volume: number;
   onBack: () => void;
+  backLabel?: string;
   onPlay: (track: Track, sourceTracks?: Track[]) => void;
   onPlayPause: () => void;
   onToggleFavorite: () => void;
@@ -381,7 +383,7 @@ export function NowPlayingView({
         onResetTimingOffset={lyrics.resetTimingOffset}
         onInteraction={wakeChrome}
       />
-      <button ref={attachChrome} className="now-back" aria-hidden={chromeMode === "immersive"} onClick={handleBack} title="返回收藏">
+      <button ref={attachChrome} className="now-back" aria-hidden={chromeMode === "immersive"} onClick={handleBack} title={backLabel}>
         <ArrowLeft size={40} strokeWidth={2.55} />
       </button>
 

@@ -23,6 +23,15 @@ export type NowPlayingTargets = {
   activeTrack: Track | null;
 };
 
+type NowPlayingFocus = { attribute: string; value: string; keyboard: boolean };
+
+const pageReturnLabels = {
+  quickplay: "返回首页",
+  collection: "返回收藏",
+  podcasts: "返回播客",
+  settings: "返回设置",
+};
+
 type UseNavigationParams = {
   shortcutsEnabled?: boolean;
   contextMenu: ContextMenuState | null;
@@ -43,6 +52,8 @@ export function useNavigation({
   nowPlayingTargetsRef,
 }: UseNavigationParams) {
   const previousPageRef = useRef<"quickplay" | "collection" | "podcasts" | "settings">("quickplay");
+  const nowPlayingFocus = useRef<NowPlayingFocus | null>(null);
+  const pendingNowPlayingFocus = useRef<"stage" | "origin" | null>(null);
   const pageRef = useRef<AppPage>("quickplay");
   const workspaceRef = useRef<HTMLElement | null>(null);
   const pageMotion = useRef<SurfaceTransition | null>(null);
@@ -83,6 +94,36 @@ export function useNavigation({
     observer.observe(workspace, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [page, navigationRevision, reducedMotion, shortcutsEnabled]);
+
+  useLayoutEffect(() => {
+    const pending = pendingNowPlayingFocus.current;
+    if (!pending || !shortcutsEnabled) return;
+    if ((pending === "stage" && page !== "nowPlaying") || (pending === "origin" && page !== previousPageRef.current)) {
+      pendingNowPlayingFocus.current = null;
+      return;
+    }
+    const restore = (waiting = false) => {
+      // A lazy screen must not take focus back after the user chooses another control.
+      if (waiting && document.activeElement instanceof HTMLElement && document.activeElement !== document.body && document.activeElement.isConnected) {
+        pendingNowPlayingFocus.current = null;
+        return true;
+      }
+      const origin = nowPlayingFocus.current;
+      const target = pending === "stage"
+        ? workspaceRef.current?.querySelector<HTMLElement>(".now-back,.podcast-now-back")
+        : origin && [...document.querySelectorAll<HTMLElement>(`[${origin.attribute}]`)]
+          .find(node => node.getAttribute(origin.attribute) === origin.value && !node.closest(".motion-departure,[inert]"));
+      if (!target) return false;
+      target.focus({ preventScroll: true });
+      pendingNowPlayingFocus.current = null;
+      return true;
+    };
+    if (restore()) return;
+    const observer = new MutationObserver(() => { if (restore(true)) observer.disconnect(); });
+    const host = workspaceRef.current?.closest(".shell");
+    if (host) observer.observe(host, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [page, navigationRevision, shortcutsEnabled]);
 
   useEffect(() => {
     if (!pendingReturn.current || page === "collection") return;
@@ -213,8 +254,20 @@ export function useNavigation({
   function openNowPlaying() {
     const { activePodcastEpisode, activeTrack } = nowPlayingTargetsRef.current;
     if (!activePodcastEpisode && !activeTrack) return;
-    if (pageRef.current !== "nowPlaying") previousPageRef.current = pageRef.current;
+    if (pageRef.current !== "nowPlaying") {
+      previousPageRef.current = pageRef.current;
+      const active = document.activeElement;
+      const trigger = active?.closest<HTMLElement>("[data-now-playing-trigger],[data-collection-focus]");
+      const attribute = trigger?.hasAttribute("data-now-playing-trigger") ? "data-now-playing-trigger" : "data-collection-focus";
+      nowPlayingFocus.current = trigger ? { attribute, value: trigger.getAttribute(attribute)!, keyboard: active?.matches(":focus-visible") ?? false } : null;
+      pendingNowPlayingFocus.current = nowPlayingFocus.current?.keyboard ? "stage" : null;
+    }
     requestNavigation("nowPlaying");
+  }
+
+  function returnFromNowPlaying() {
+    pendingNowPlayingFocus.current = nowPlayingFocus.current ? "origin" : null;
+    requestNavigation(previousPageRef.current);
   }
 
   return {
@@ -234,6 +287,8 @@ export function useNavigation({
     navigationAnimated,
     quickplayEntrance,
     previousPageRef,
+    nowPlayingBackLabel: pageReturnLabels[previousPageRef.current],
+    returnFromNowPlaying,
     requestNavigation,
     clearCollectionSearch,
     setCollectionSearchQuery,

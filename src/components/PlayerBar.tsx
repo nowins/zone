@@ -104,7 +104,7 @@ export function PlayerBar({
       </nav>
 
       <div className="player-primary">
-        <button ref={coverButtonRef} className="player-cover" onClick={handleOpenNowPlaying} disabled={!track} title="打开正在播放">
+        <button ref={coverButtonRef} className="player-cover" data-now-playing-trigger="cover" onClick={handleOpenNowPlaying} disabled={!track} title="打开正在播放">
           <Cover artPath={track?.cover_path} label={track?.album ?? ""} size="mini" />
         </button>
         <PlaybackProgress

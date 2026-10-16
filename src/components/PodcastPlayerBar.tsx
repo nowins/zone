@@ -66,7 +66,7 @@ export function PodcastPlayerBar({
       </nav>
 
       <div className="player-primary">
-        <button className="player-cover podcast-player-cover" onClick={onOpenNowPlaying} title="打开正在播放">
+        <button className="player-cover podcast-player-cover" data-now-playing-trigger="cover" onClick={onOpenNowPlaying} title="打开正在播放">
           {artworkSrc ? (
             <img src={artworkSrc} alt="" draggable={false} />
           ) : (
