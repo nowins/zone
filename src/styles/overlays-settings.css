@@ -83,9 +83,10 @@ h2 {
 .settings-header.settings-header-integrated { align-items: center; padding: 8px 0 16px; gap: 32px; }
 .settings-header.settings-header-integrated h1 { margin: 0; font-size: var(--type-page-title); font-weight: var(--weight-display); line-height: 1.1; }
 .settings-categories { display: flex; gap: 28px; }
-.settings-categories button { min-height: 40px; padding: 6px 0; color: var(--muted); font-size: var(--type-nav-secondary); font-weight: var(--weight-body); }
+.settings-categories button { position: relative; min-height: 40px; padding: 6px 0; color: var(--muted); font-size: var(--type-nav-secondary); font-weight: var(--weight-body); }
 .settings-categories button[aria-current="page"] { color: var(--text); }
-.settings-categories button:hover { color: var(--text); }
+.settings-categories button[aria-current="page"]::after { position: absolute; inset-inline: 0; bottom: 0; height: 2px; background: var(--accent); content: ""; }
+.settings-categories button:hover, .settings-categories button:focus-visible { color: var(--text); }
 .settings-page :is(button,summary,select,input):focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 .settings-content[hidden] { display: none; }
 .settings-general { max-width: 760px; padding-top: 24px; }
