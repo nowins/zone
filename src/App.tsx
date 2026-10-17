@@ -13,6 +13,7 @@ import { useCompactMode } from "./hooks/useCompactMode";
 import { useSurfaceTheme } from "./hooks/useSurfaceTheme";
 import { useNativeWindowVisibility } from "./hooks/useNativeWindowVisibility";
 import { useTouchInteractions } from "./hooks/useTouchInteractions";
+import { useEvent } from "./hooks/useEvent";
 import { AppHeader } from "./components/AppHeader";
 import { PlayerBar } from "./components/PlayerBar";
 import { AudioGlowCanvas } from "./components/AudioGlowCanvas";
@@ -775,21 +776,23 @@ export default function App() {
   }
 
 
+  const handleTrayAction = useEvent((action: "toggle" | "previous" | "next") => {
+    if (action === "toggle") togglePlay();
+    else if (activePodcastEpisode) {
+      if (action === "previous") seek(Math.max(0, progress - 15));
+      else playNextPodcastEpisode();
+    } else move(action === "previous" ? -1 : 1);
+  });
+
   useEffect(() => {
     let unlisteners: Array<() => void> = [];
     let cancelled = false;
     async function bindTrayEvents() {
       try {
         const pairs: Array<[string, () => void]> = [
-          ["zone://tray-toggle", () => togglePlay()],
-          ["zone://tray-previous", () => {
-            if (activePodcastEpisode) seek(Math.max(0, progress - 15));
-            else move(-1);
-          }],
-          ["zone://tray-next", () => {
-            if (activePodcastEpisode) playNextPodcastEpisode();
-            else move(1);
-          }],
+          ["zone://tray-toggle", () => handleTrayAction("toggle")],
+          ["zone://tray-previous", () => handleTrayAction("previous")],
+          ["zone://tray-next", () => handleTrayAction("next")],
         ];
         for (const [eventName, handler] of pairs) {
           const unlisten = await listen(eventName, handler);
@@ -808,7 +811,7 @@ export default function App() {
       cancelled = true;
       for (const unlisten of unlisteners) unlisten();
     };
-  }, [activePodcastEpisode, progress, togglePlay, move, seek, playNextPodcastEpisode]);
+  }, [handleTrayAction]);
 
 
   useEffect(() => {

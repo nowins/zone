@@ -17,7 +17,7 @@ await build({ entryPoints: ["src/App.tsx", "src/components/StartupView.tsx"], ou
       export const isTauri = () => false;
       export const convertFileSrc = path => "asset://" + path;
       export class Channel {}
-      export const listen = async () => () => {};
+      export const listen = (event, handler) => window.zoneListen(event, handler);
       export const getCurrentWindow = () => ({
         minimize: async () => window.zoneWindowActions.push("minimize"),
         toggleMaximize: async () => window.zoneWindowActions.push("maximize"),
@@ -50,6 +50,11 @@ function environment(t, overrides = {}) {
   window.zoneWindowActions = [];
   const commands = [];
   const calls = [];
+  const eventListeners = new Map(), eventCalls = []; let listenerId = 0;
+  window.zoneListen = async (event, handler) => {
+    const id = ++listenerId; eventCalls.push(event);eventListeners.set(id, { event, handler });
+    return () => eventListeners.delete(id);
+  };
   window.zoneInvoke = async (command, args) => {
     commands.push(command);
     calls.push({ command, args });
@@ -63,11 +68,16 @@ function environment(t, overrides = {}) {
   const frames = new Map(), idles = new Map(); let clockId = 0;
   window.requestAnimationFrame = fn => { const id = ++clockId; frames.set(id, fn); return id; };
   window.cancelAnimationFrame = id => frames.delete(id);
+  globalThis.requestAnimationFrame = window.requestAnimationFrame;
+  globalThis.cancelAnimationFrame = window.cancelAnimationFrame;
   window.requestIdleCallback = fn => { const id = ++clockId; idles.set(id, fn); return id; };
   window.cancelIdleCallback = id => idles.delete(id);
   const root = createRoot(document.getElementById("root"));
   t.after(async () => { await act(async () => root.unmount()); dom.window.close(); });
-  return { root, commands, calls, frames, idles,
+  return { root, commands, calls, frames, idles, eventCalls, eventListeners,
+    async emit(event) { await act(async () => {
+      for (const listener of [...eventListeners.values()]) if (listener.event === event) listener.handler({ event, payload: null });
+    }); },
     async mount(view = h(App)) { await act(async () => root.render(h(React.StrictMode, null, view))); },
     async frame() { const batch = [...frames.values()]; frames.clear(); await act(async () => batch.forEach(fn => fn(0))); },
     async idle() { const batch = [...idles.values()]; idles.clear(); await act(async () => batch.forEach(fn => fn({ timeRemaining: () => 50 }))); },
@@ -100,6 +110,33 @@ test("a recovered empty library reveals the real empty state only after recovery
   await act(async () => music.resolve(snapshot([])));
   assert.ok(document.querySelector(".quickplay"));
   assert.equal(document.querySelector(".startup-view"), null);
+});
+
+test("tray subscriptions stay mounted across clock updates and read the latest transport", async t => {
+  const tracks = [track, { ...track, id: "second", title: "第二首", path: "C:/fixture/second.wav" },
+    { ...track, id: "third", title: "第三首", path: "C:/fixture/third.wav" }];
+  const env = environment(t, { music_get_library_snapshot: () => ({ ...snapshot(tracks),
+    playback: { ...snapshot(tracks).playback, positionSeconds: 0 } }) });
+  window.HTMLMediaElement.prototype.play = async function () { Object.defineProperty(this, "paused", { configurable: true, value: false }); };
+  await env.mount();
+  const audio = document.querySelector("audio");
+  Object.defineProperty(audio, "duration", { configurable: true, value: 120 });
+  Object.defineProperty(audio, "readyState", { configurable: true, value: 4 });
+  await act(async () => audio.dispatchEvent(new window.Event("loadedmetadata")));
+  const trayCalls = () => env.eventCalls.filter(event => event.startsWith("zone://tray-"));
+  const before = trayCalls().length;
+  for (let time = 1; time <= 10; time++) {
+    await act(async () => { audio.currentTime = time;audio.dispatchEvent(new window.Event("timeupdate")); });
+  }
+  assert.equal(trayCalls().length, before, "progress must not churn native subscriptions");
+  await env.emit("zone://tray-next");
+  assert.match(document.querySelector(".zune-progress-heading").textContent, /第二首/);
+  await env.emit("zone://tray-next");
+  assert.match(document.querySelector(".zune-progress-heading").textContent, /第三首/, "the same listener must use the latest queue position");
+  assert.equal(trayCalls().length, before);
+  assert.equal([...env.eventListeners.values()].filter(value => value.event.startsWith("zone://tray-")).length, 3);
+  await act(async () => env.root.unmount());
+  assert.equal([...env.eventListeners.values()].filter(value => value.event.startsWith("zone://tray-")).length, 0);
 });
 
 test("failed startup offers retry, preserves legacy data and never enables database writes", async t => {
