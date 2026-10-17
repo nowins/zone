@@ -4,7 +4,7 @@ import { createServer } from 'node:net';
 import { existsSync, createWriteStream } from 'node:fs';
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
 import { join, resolve, dirname } from 'node:path';
-import { hash, validateArtifact, writeWave } from './native/artifactSupport.mjs';
+import { hash, validateArtifact, verifyShellIsolation, writeWave } from './native/artifactSupport.mjs';
 
 if (process.platform !== 'win32') throw Error('Native artifact smoke requires a Windows desktop and WebView2.');
 const root = resolve(import.meta.dirname, '..');
@@ -20,6 +20,15 @@ if (!existsSync(driverPath)) throw Error('Run scripts/ci/setup-webdriver.ps1 fir
 const dataDirectory = join(process.env.APPDATA, manifest.identifier);
 const localDirectory = join(process.env.LOCALAPPDATA, manifest.identifier);
 if ([dataDirectory, localDirectory].some(existsSync)) throw Error('CI application data already exists; build a fresh isolated identity.');
+function captureShellIdentity() {
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+    join(root, 'tests/native/captureShellIdentity.ps1'), '-Identifier', manifest.identifier],
+  { windowsHide: true, encoding: 'utf8', timeout: 30000 });
+  if (result.status !== 0) throw Error(`Cannot capture Shell identity without mutation: ${result.stderr}`);
+  return JSON.parse(result.stdout.replace(/^\uFEFF/, ''));
+}
+const shellBefore = captureShellIdentity();
+await writeFile(join(report, 'shell-before.json'), JSON.stringify(shellBefore, null, 2));
 const media = join(report, 'media');
 await mkdir(media);
 const paths = [join(media, 'CI Sample One.wav'), join(media, 'CI Sample Two.wav')];
@@ -40,7 +49,7 @@ let session;
 const steps = [];
 const outcome = { sourceSha: manifest.sourceSha, executableSha256: manifest.executableSha256, identifier: manifest.identifier,
   startedAt: new Date().toISOString(), ok: false, steps,
-  coverage: { core: false, sqliteLock: false, unavailableSource: false },
+  coverage: { core: false, sqliteLock: false, unavailableSource: false, shellIsolation: false },
   boundaries: ['No audible-output, device-switch, sleep, installer, Store signing or upgrade claims.',
     'Real release executable, WebView2, Rust commands, SQLite and local audio protocol; no IPC mocks or replacement frontend.'] };
 async function record(name, details = {}) { steps.push({ name, at: new Date().toISOString(), ...details }); console.log(name); }
@@ -236,6 +245,17 @@ try {
   if (session) await request('DELETE', `/session/${session}`, undefined, 10000).catch(() => {});
   driver.stdout.unpipe(log); driver.stderr.unpipe(log);
   driver.kill(); log.end();
+  try {
+    const shellAfter = captureShellIdentity();
+    await writeFile(join(report, 'shell-after.json'), JSON.stringify(shellAfter, null, 2));
+    verifyShellIsolation(shellBefore, shellAfter, manifest, executable);
+    outcome.coverage.shellIsolation = true;
+    await record('Production Shell entries stayed unchanged; CI shortcut and registry use this artifact identity');
+  } catch (error) {
+    outcome.ok = false;
+    outcome.error = [outcome.error, error.stack ?? String(error)].filter(Boolean).join('\n');
+    process.exitCode = 1;
+  }
   outcome.finishedAt = new Date().toISOString();
   await writeFile(join(report, 'result.json'), JSON.stringify(outcome, null, 2));
   if (process.env.GITHUB_STEP_SUMMARY) {

@@ -4,18 +4,39 @@ import { mkdtemp, writeFile, readFile, mkdir, copyFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process';
 import { dirname } from 'node:path';
 import { resolve, join } from 'node:path';
-import { hash, validateArtifact, writeWave, within } from './native/artifactSupport.mjs';
+import { hash, validateArtifact, verifyShellIsolation, writeWave, within } from './native/artifactSupport.mjs';
+
+test('Shell guard rejects production-entry changes and a shared CI shortcut identity', () => {
+  const executable = resolve('.tmp/fixture/zone-player.exe');
+  const manifest = {identifier: 'com.zone.player.ci.run-unit-1234'};
+  const before = {protected: {app: {exists: true, values: [{name: 'IconUri', value: 'original.exe'}]}, shortcut: {sha256: 'original'}}};
+  const after = {...structuredClone(before), isolated: {app: {exists: true, values: [{name: 'IconUri', value: executable}]},
+    shortcut: {exists: true, target: executable, icon: `${executable},0`, appUserModelId: manifest.identifier}}};
+  verifyShellIsolation(before, after, manifest, executable);
+  const changedRegistry = structuredClone(after); changedRegistry.protected.app.values[0].value = executable;
+  assert.throws(() => verifyShellIsolation(before, changedRegistry, manifest, executable), /must remain unchanged/);
+  const changedShortcut = structuredClone(after); changedShortcut.protected.shortcut.sha256 = 'changed';
+  assert.throws(() => verifyShellIsolation(before, changedShortcut, manifest, executable), /must remain unchanged/);
+  const shared = structuredClone(after); shared.isolated.shortcut.appUserModelId = 'com.zone.player';
+  assert.throws(() => verifyShellIsolation(before, shared, manifest, executable));
+});
 
 test('artifact preflight rejects production identity, changed executables and escaping paths', async () => {
   const parent = resolve('.tmp/ci-artifact-guard'); await mkdir(parent, { recursive: true });
   const root = await mkdtemp(join(parent, 'case-'));
   const identifier = 'com.zone.player.ci.run-unit-1234';
   const bytes = Buffer.from(`fixture-only ${identifier}`);
-  const manifest = { format: 'ZoneNativeCI', version: 1, identifier, sourceSha: 'a'.repeat(40), executable: 'zone-player.exe', executableSha256: hash(bytes) };
+  const manifest = { format: 'ZoneNativeCI', version: 2, identifier, sourceSha: 'a'.repeat(40), executable: 'zone-player.exe', executableSha256: hash(bytes),
+    shellIdentity: { appUserModelId: identifier, shortcut: `Zone-${identifier}.lnk`, executableAlias: false } };
   const file = join(root, 'build-info.json');
   await writeFile(join(root, 'zone-player.exe'), bytes);
   await writeFile(file, JSON.stringify(manifest));
   assert.equal((await validateArtifact(file)).manifest.identifier, identifier);
+  for (const unsafe of [{version: 1}, {shellIdentity: {...manifest.shellIdentity, executableAlias: true}},
+    {shellIdentity: {...manifest.shellIdentity, shortcut: 'Zone.lnk'}}]) {
+    await writeFile(file, JSON.stringify({...manifest, ...unsafe}));
+    await assert.rejects(validateArtifact(file), /dedicated CI/);
+  }
   await writeFile(file, JSON.stringify({ ...manifest, identifier: 'com.zone.player' }));
   await assert.rejects(validateArtifact(file), /dedicated CI/);
   await writeFile(file, JSON.stringify({ ...manifest, executable: '../zone-player.exe' }));

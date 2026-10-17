@@ -132,10 +132,14 @@ fn setup_system_tray(app: &tauri::App) {
 }
 
 pub fn run() {
+  let context = tauri::generate_context!();
   #[cfg(target_os = "windows")]
   webview_runtime::configure();
   #[cfg(target_os = "windows")]
-  if let Err(error) = system_media::set_process_app_id() {
+  if let Err(error) = system_media::set_process_app_id(
+    &context.config().identifier,
+    context.config().product_name.as_deref().unwrap_or("Zone"),
+  ) {
     eprintln!("Unable to set the Windows AppUserModelID: {error}");
   }
 
@@ -374,6 +378,6 @@ pub fn run() {
       podcast::podcast_load_active_episode,
       podcast::podcast_save_active_episode,
     ])
-    .run(tauri::generate_context!())
+    .run(context)
     .expect("error while running Zone");
 }

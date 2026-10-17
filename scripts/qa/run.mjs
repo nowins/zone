@@ -120,7 +120,7 @@ async function main() {
           if (selected('faults')) args.push('--faults');
           await execute('native-smoke', process.execPath, args);
           const outcome = JSON.parse(await readFile(join(directory, 'native/result.json'), 'utf8'));
-          if (!outcome.ok || !outcome.coverage?.core || outcome.sourceSha !== report.sourceSha) throw Error('Native artifact result has insufficient or mismatched evidence.');
+          if (!outcome.ok || !outcome.coverage?.core || !outcome.coverage?.shellIsolation || outcome.sourceSha !== report.sourceSha) throw Error('Native artifact result has insufficient or mismatched evidence.');
           row('artifact').status = 'passed'; report.artifact = { sourceSha: outcome.sourceSha, executableSha256: outcome.executableSha256, result: join(directory, 'native/result.json') };
           if (selected('faults')) {
             if (!outcome.coverage.sqliteLock || !outcome.coverage.unavailableSource) throw Error('Requested fault cases did not execute.');

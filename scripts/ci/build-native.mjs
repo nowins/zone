@@ -32,7 +32,8 @@ await copyFile(executable, join(artifact, 'zone-player.exe'));
 await copyFile(join(root, 'packaging/THIRD_PARTY_NOTICES.txt'), join(artifact, 'THIRD_PARTY_NOTICES.txt'));
 await copyFile(join(root, 'src-tauri/Cargo.lock'), join(artifact, 'Cargo.lock'));
 const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-const manifest = { format: 'ZoneNativeCI', version: 1, identifier, sourceSha,
+const manifest = { format: 'ZoneNativeCI', version: 2, identifier, sourceSha,
+  shellIdentity: { appUserModelId: identifier, shortcut: `Zone-${identifier}.lnk`, executableAlias: false },
   applicationVersion: JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version,
   executable: 'zone-player.exe', executableSha256: sha256(binary), configurationSha256: sha256(await readFile(configuration)),
   createdAt: new Date().toISOString(), architecture: process.arch,

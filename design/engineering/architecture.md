@@ -104,7 +104,7 @@
 - 上述 Rust 模块各自内带 `#[cfg(test)]` 单元测试。
 - `src-tauri/src/podcast/`：播客目录模块（对外路径保持 `podcast::xxx`，由 `mod.rs` re-export）。`mod.rs` 持有 `PodcastState`、跨模块共享常量与 re-export；`types.rs` 为全部 pub DTO；`util.rs` 通用小工具与 ISO8601 历法解析；`network.rs` 公共 URL/DNS/重定向 SSRF 校验、限流读取与响应工具；`apple.rs` Apple 中国区热门榜与搜索；`feed_parse.rs` 20 MiB RSS 限流拉取、字节修复、命名空间解析与归一化；`store.rs` SQLite schema/迁移与订阅/刷新写入；`query.rs` 查询侧与稍后听/已播；`chapters.rs` 单集详情与章节；`queue.rs` 待播队列；`downloads.rs` 受控目录下载/续传/删除、进度保存与文件守卫；`stream_protocol.rs` `zone-podcast` 分块 Range 代理与音频魔数识别；`artwork_protocol.rs` `zone-podcast-artwork` 限流图片代理；`commands.rs` 为 `#[tauri::command]` 薄壳；测试按被测代码归属下沉到各文件末尾的 `#[cfg(test)] mod tests`（共享 fixture 在 `test_support.rs`），真实网络 smoke 仍仅在 `ZONE_PODCAST_LIVE=1` 后运行。
 - `src-tauri/src/qrc.rs`：有边界限制的 QQ QRC 解密/解压实现；解密后的逐词时间轴由前端 `src/utils/qrc.ts` 转换为统一 TTML 再进入通用解析器。
-- `src-tauri/src/system_media/`：Windows SMTC 集成（`mod.rs` 为跨平台入口，`windows_impl/` 为 Windows 实现：设置 AppUserModelID、媒体信息/时间线更新、媒体按键事件转发到前端）。
+- `src-tauri/src/system_media/`：Windows SMTC 集成（`mod.rs` 为跨平台入口，`windows_impl/` 为 Windows 实现：设置 AppUserModelID、媒体信息/时间线更新、媒体按键事件转发到前端）。进程与 SMTC 身份来自同一 Tauri 配置；`identity.rs` 按该身份隔离注册表与快捷方式，只有正式身份保留旧 exe 别名和 `Zone.lnk`，CI／验收构建不写正式入口。
 - `docs/`：本地探索记录与视觉证据，整个目录被忽略，其他 checkout 不保证存在。需要共享的规则与验证步骤放在 `design/`。
 - `design/`：版本控制中的设计规范与 `engineering/` 专题规则；根目录任务索引决定何时读取。
 - `scripts/`：一次性重构 codemod（PodcastView 拆分时使用的提取/接线/测试路径迁移脚本），仅作历史留档，不在构建链路中。

@@ -64,7 +64,9 @@ npm run test:msix:hyperv -- -Config .tmp/msix-hyperv-config/matrix.json -Baselin
 
 ## GitHub CI 与原生产物测试
 
-`.github/workflows/windows-ci.yml` 复用同一 Windows 工作流，检查 PR 的准确 head SHA 或被推送的 SHA。基础检查后，`npm run build:ci:native` 从现有 Tauri 配置仅覆盖独立 CI 身份／名称并执行 release `--no-bundle` 构建；不改 CSP、capabilities 或原生代码，不增加测试命令和生产后门。每次身份为 `com.zone.player.ci.run-*`，与真实应用和商店验证包隔离。
+`.github/workflows/windows-ci.yml` 复用同一 Windows 工作流，检查 PR 的准确 head SHA 或被推送的 SHA。基础检查后，`npm run build:ci:native` 从现有 Tauri 配置覆盖独立 CI 身份／名称并执行 release `--no-bundle` 构建；不改 CSP、capabilities，不增加测试命令和生产后门。每次身份为 `com.zone.player.ci.run-*`。原生进程 AppUserModelId、SMTC、HKCU 注册表及开始菜单快捷方式均使用配置中的身份；仅正式 `com.zone.player` 保留 `Zone.lnk` 和旧 exe 名称别名，其他身份使用 `Zone-<identifier>.lnk`，不得占用正式入口。
+
+产物清单格式为 `ZoneNativeCI` v2，包含 Shell 身份声明；测试入口拒绝旧格式。每次启动前后读取正式两项注册表及 `Zone.lnk` 的目标、图标、AppUserModelId 和文件哈希，要求完全不变；同时验证本次独立快捷方式和注册表确实指向同一 exe。前后快照随诊断上传，结果必须有 `coverage.shellIsolation = true`。测试不自动清理或恢复正式入口，发现变化时保留证据并失败。
 
 构建输出在忽略的 `.tmp/ci-native/`，artifact 包含真正的 `zone-player.exe`、第三方许可、锁文件和 `build-info.json`（来源 SHA、版本、身份及 exe SHA256）。这是需要 Windows x64 与 WebView2 的未签名测试程序，不是安装包或正式发布。工作流只需 `contents: read`，不使用发布凭据；Actions 固定完整 SHA，缓存按锁文件／工具链区分，Cargo 缓存仅主分支成功运行保存。旧运行自动取消，步骤和总任务均有限时；可下载 exe 和诊断 artifact 保留 7 天，状态以 smoke 结果为准，失败构建不复用旧 exe。
 

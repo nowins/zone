@@ -1,17 +1,32 @@
 import { createHash } from 'node:crypto';
 import { readFile, realpath, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import assert from 'node:assert/strict';
 
 export const hash = value => createHash('sha256').update(value).digest('hex');
+export function verifyShellIsolation(before, after, manifest, executable) {
+  assert.deepEqual(after.protected, before.protected, 'Production Shell registry and shortcut must remain unchanged.');
+  assert.equal(after.isolated.app.exists, true, 'This CI AppUserModelId must be registered.');
+  const icon = after.isolated.app.values.find(value => value.name === 'IconUri')?.value;
+  assert.equal(typeof icon, 'string');
+  assert.equal(resolve(icon).toLowerCase(), resolve(executable).toLowerCase());
+  assert.equal(after.isolated.shortcut.exists, true, 'This CI shortcut must exist.');
+  assert.equal(resolve(after.isolated.shortcut.target).toLowerCase(), resolve(executable).toLowerCase());
+  assert.equal(after.isolated.shortcut.appUserModelId, manifest.identifier);
+  assert.equal(after.isolated.shortcut.icon.toLowerCase(), `${executable},0`.toLowerCase());
+}
 export function within(root, path) {
   const difference = relative(root, path);
   return difference !== '' && difference !== '..' && !difference.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(difference);
 }
 export async function validateArtifact(manifestPath) {
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-  if (manifest.format !== 'ZoneNativeCI' || manifest.version !== 1
+  if (manifest.format !== 'ZoneNativeCI' || manifest.version !== 2
     || !/^com\.zone\.player\.ci\.run-[a-z0-9-]+$/.test(manifest.identifier)
-    || manifest.executable !== 'zone-player.exe' || !/^[a-f0-9]{40}$/.test(manifest.sourceSha)) {
+    || manifest.executable !== 'zone-player.exe' || !/^[a-f0-9]{40}$/.test(manifest.sourceSha)
+    || manifest.shellIdentity?.appUserModelId !== manifest.identifier
+    || manifest.shellIdentity?.shortcut !== `Zone-${manifest.identifier}.lnk`
+    || manifest.shellIdentity?.executableAlias !== false) {
     throw Error('Refusing an artifact without a dedicated CI application identity.');
   }
   const directory = await realpath(dirname(manifestPath));
