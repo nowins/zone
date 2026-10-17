@@ -9,6 +9,7 @@ const animationCss = readFileSync("src/styles/animations-responsive.css", "utf8"
 const motionCss = readFileSync("src/styles/motion.css", "utf8");
 const baseCss = readFileSync("src/styles/base.css", "utf8");
 const nowPlayingView = readFileSync("src/views/NowPlayingView.tsx", "utf8");
+const nowPlayingQueue = readFileSync("src/components/NowPlayingQueue.tsx", "utf8");
 const playerBarView = readFileSync("src/components/PlayerBar.tsx", "utf8");
 const playbackProgressView = readFileSync("src/components/PlaybackProgress.tsx", "utf8");
 const mosaicCanvasSource = readFileSync("src/components/NowPlayingMosaicCanvas.tsx", "utf8");
@@ -158,8 +159,8 @@ test("queue and shared bottom controls follow the compact Zune layout", () => {
   assert.ok(playbackProgressView.includes("zune-progress-time-start"));
   assert.ok(playbackProgressView.includes("zune-progress-time-end"));
   assert.ok(!nowPlayingView.includes("queueAfterCurrent("), "changing songs must not rotate the displayed queue");
-  assert.ok(nowPlayingView.includes("displayedQueue.map("));
-  assert.ok(nowPlayingView.includes('aria-current={item.id === track?.id'));
+  assert.ok(nowPlayingView.includes("<NowPlayingQueue tracks={displayedQueue}"), "windowing must receive the complete ordered source");
+  assert.ok(nowPlayingQueue.includes('aria-current={track.id === activeTrackId'));
   assert.ok(nowPlayingView.includes("useState(true)"), "queue should be expanded on first entry");
   assert.ok(!nowPlayingView.includes("orderedQueue.slice("), "collapsed queue preserves the same items and order");
   assert.ok(nowPlayingView.includes("<Presence show={queueOpen}"), "queue toggles the entire panel with an exit transition");

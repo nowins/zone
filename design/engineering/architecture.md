@@ -29,7 +29,7 @@
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
   - `useNavigation.ts`：顶层 page、`requestNavigation` 页面过渡、对象入口及来源返回、搜索／历史快捷键、`openNowPlaying`；内部调用 `useCollectionNavigation`。
   - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId、连续浏览选择、专辑／歌曲排序与各播放列表浏览排序），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；新 revision 提交前由动效内核保存有限退场画面；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。索引内选择与排序只 patch 当前条目，不增加返回步骤。
-  - `useCollectionRows.ts` / `useCollectionItemWindow.ts`：收藏长索引的可见范围渲染、完整数据的键盘定位及历史焦点恢复。歌曲用固定行高留白，名称和封面保留等高锚点并共用区域内的可见性观察器；不改变排序、队列或普通播放列表改序的数据来源。
+  - `useCollectionRows.ts` / `useCollectionItemWindow.ts`：收藏长索引的可见范围渲染、完整数据的键盘定位及历史焦点恢复。歌曲用固定行高留白，名称和封面保留等高锚点并共用区域内的可见性观察器；不改变排序、队列或普通播放列表改序的数据来源。`useCollectionRows` 也供正在播放长队列复用，可配置测量行选择器与间隙，并区分只滚动定位和带焦点定位。
   - `useCollectionPivot.ts`：收藏分类、详情及返回的方向接线；内部入场与 `useCollectionPanelMotion` 均复用 `useBrowseEntrance.ts`。共享浏览控制器 `motion/browseTransition.ts` 用 `BROWSE_MOTION` 管理收藏、播客及 quickplay 内容的入退场、快速反向及输入接管，分类／搜索保持原位，quickplay 的大字与视差层不继承页面位移。`SurfaceTransition` 与内部 hook 共用异步标题暂隐及首批真实数据入场规则。
   - `useWheelScroll.ts`：收藏与首页内部纵向列表的粗步进滚轮接续，底层 `motion/wheelScroll.ts` 共用动画器与 `snappy` 弹簧；细小连续输入、原生定位和 reduced-motion 保留直接响应。
   - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、只读 `collectionIndex`（albums/artists 等关系集中在 `utils/collectionEntities.ts`）、addFolder/rescan 与 `useLibraryWatcher` 接线。
@@ -58,7 +58,7 @@
   - `PodcastView.tsx`：正式播客页壳。负责分区 chrome、六屏切换与浮层（菜单/确认框）；业务状态与数据加载在 `usePodcastViewModel`，各屏 JSX 在 `screens/*`。默认“收听”聚合继续收听与关注更新；“发现”承载榜单、搜索与辅助 RSS；“资料库”展示已关注、稍后听和已下载；节目/单集详情支持关注、保存、播放状态、即时播放、待播与离线下载；“播放列表”管理当前单集与持久待播队列。
   - `src/views/podcast/`：播客视图模块。`usePodcastViewModel.ts` 持有 screen 状态机、缓存读写与 invoke 编排；`api.ts` 为全部 `podcast_*` 命令的薄封装（屏组件不得直接 `invoke`）；`screens/`（Listen/Discover/Library/Playlist/Show/Episode）为展示层；另有 `types.ts`/`constants.ts`/`cache.ts`（模块级缓存单例，不可拆散）/`episodeModel.ts`/`preferences.ts`/`format.ts` 与 `components/`（EpisodeRows、QueueEpisodeRow、EpisodeDetail、ContinueCard、ShowCards、Dialogs、primitives）。
   - `PodcastNowPlayingView.tsx`：播客专属全屏正在播放。提供 15/30 秒跳转、0.5–3× 倍速、睡眠定时、音量、简介、保存、缓冲/错误反馈与待播管理，不复用音乐 `NowPlayingView` 的拼贴和歌词内部状态。
-  - `NowPlayingView.tsx`：全屏正在播放。Canvas 封面拼贴与本地艺术家照片背景、照片覆盖后的拼贴停转接线、队列浮层、曲目卡片、收藏按钮、进度/走带控制、歌词模式切换。
+  - `NowPlayingView.tsx`：全屏正在播放。Canvas 封面拼贴与本地艺术家照片背景、照片覆盖后的拼贴停转接线、队列浮层、曲目卡片、收藏按钮、进度/走带控制、歌词模式切换。`components/NowPlayingQueue.tsx` 拥有长队列的窗口渲染、完整 Tab 遍历和当前行定位，完整播放来源仍由 App 提供。
   - `SettingsView.tsx`：音乐文件夹管理与在线歌词来源（provider）启用/优先级设置。
 - `src/components/`：可复用 UI。`Select` 统一受控单选下拉的键盘、焦点与顶层面板；`PodcastRateButton` 是底栏／全屏播客共用的循环倍速按钮。包括 `Cover`（唯一封面渲染入口：`artPath` 本地文件或 `src` 已解析 URL，`className`/`fallback` 供播客等上下文适配）、`Button`（动作按钮原语，样式在 `styles/controls.css`，variant/size/`busy` 内嵌 MetroLoader）、`Dialog`（深色确认/表单对话框壳，播客确认框共用；SmartPlaylistDialog 编辑器与正在播放浅色保存框为例外）、`tiles/`（Metro 磁贴系统：`Tile`/`FlipTile`/`CycleTile`/`IconicTile`/`MosaicFrames`，样式在 `styles/tiles.css`，quickplay 固定项在用 FlipTile+MosaicFrames，Cycle/Iconic 为备料模板）、`PlayerBar`、`PodcastPlayerBar`、`TransportControls`、`PlaybackProgress`、`ContextMenu`、`InfoPanel`、`Titlebar`、`EmptyState`、`PlaylistDialog`、`SmartPlaylistDialog`、`MetroLoader`（全局 Metro 五点绕圈加载原语，样式在 `styles/base.css` 的 `.metro-loader`/`metro-orbit`，`size`/`large` 控制尺寸，reduced-motion 在 `motion.css` 统一收敛）、`LyricsStage`（歌词舞台主组件；纯 helper 在 `lyricsStage/lyricsLineUtils.ts`，rAF 逐词绘制在 `lyricsStage/useLyricsPaintLoop.ts`，在线搜索与设置面板分别在 `lyricsStage/LyricsSourceBrowser.tsx`/`LyricsSettingsPanel.tsx`）、`NowPlayingMosaicCanvas`、`NowPlayingArtistCanvas` 与 `AudioGlowCanvas`（拼贴、艺术家照片和真实音频光焰三个 Canvas 视觉层）。
 - `src/hooks/`（独立功能 hook）：

@@ -4,7 +4,7 @@ import { SCROLL_FRAME_EVENT } from "../motion/wheelScroll";
 
 /** Keep the live song DOM bounded while retaining the entire ordered playback source. */
 export function useCollectionRows(scroller: RefObject<HTMLDivElement>, count: number, enabled: boolean,
-  rowHeight: number, savedTop = 0) {
+  rowHeight: number, savedTop = 0, rowSelector = ".collection-track-row", rowGap = 0) {
   const virtual = enabled && count > 80;
   const [viewport, setViewport] = useState(() => ({ top: savedTop, height: 560, stride: rowHeight }));
   const pendingFocus = useRef<string>();
@@ -19,7 +19,8 @@ export function useCollectionRows(scroller: RefObject<HTMLDivElement>, count: nu
     const area = scroller.current;
     if (!area) return;
     // offsetHeight rounds fractional CSS pixels and accumulates errors at zoom.
-    const stride = (measure ? area.querySelector<HTMLElement>(".collection-track-row")?.getBoundingClientRect().height : currentViewport.current.stride) || rowHeight;
+    const measured = measure ? area.querySelector<HTMLElement>(rowSelector)?.getBoundingClientRect().height : 0;
+    const stride = measured ? measured + rowGap : currentViewport.current.stride || rowHeight;
     const next = { top: area.scrollTop, height: area.clientHeight || 560, stride };
     currentViewport.current = next;
     const first = Math.max(0, Math.min(Math.max(0, count - Math.ceil(next.height / stride)), Math.floor(next.top / stride) - 3));
@@ -45,13 +46,22 @@ export function useCollectionRows(scroller: RefObject<HTMLDivElement>, count: nu
     area.addEventListener("scroll", scroll, { passive: true });
     area.addEventListener(SCROLL_FRAME_EVENT, scroll);
     return () => { resize?.disconnect(); area.removeEventListener("scroll", scroll); area.removeEventListener(SCROLL_FRAME_EVENT, scroll); };
-  }, [virtual, count, rowHeight]);
+  }, [virtual, count, rowHeight, rowSelector, rowGap]);
   useLayoutEffect(() => {
     if (!pendingFocus.current) return;
     const target = [...(scroller.current?.querySelectorAll<HTMLElement>("[data-collection-focus]") || [])]
       .find(node => node.dataset.collectionFocus === pendingFocus.current);
     if (target) { target.focus({ preventScroll: true }); pendingFocus.current = undefined; }
   });
+  const scrollToIndex = (index: number) => {
+    const area = scroller.current;
+    if (!area) return;
+    const { stride, height } = currentViewport.current;
+    const top = index * stride, bottom = top + stride;
+    if (top < area.scrollTop) area.scrollTop = top;
+    else if (bottom > area.scrollTop + height) area.scrollTop = bottom - height;
+    read();
+  };
   const reveal = (index: number, focusKey: string) => {
     const area = scroller.current;
     if (!area) return;
@@ -59,13 +69,9 @@ export function useCollectionRows(scroller: RefObject<HTMLDivElement>, count: nu
       .find(node => node.dataset.collectionFocus === focusKey);
     if (!virtual) { target?.focus({ preventScroll: true }); target?.scrollIntoView({ block: "nearest" }); return; }
     pendingFocus.current = focusKey;
-    const { stride, height } = currentViewport.current;
-    const top = index * stride, bottom = top + stride;
-    if (top < area.scrollTop) area.scrollTop = top;
-    else if (bottom > area.scrollTop + height) area.scrollTop = bottom - height;
+    scrollToIndex(index);
     if (target) { target.focus({ preventScroll: true }); pendingFocus.current = undefined; }
-    read();
   };
-  return { virtual, start, end, top: start * viewport.stride, bottom: (count - end) * viewport.stride, reveal,
+  return { virtual, start, end, stride: viewport.stride, top: start * viewport.stride, bottom: (count - end) * viewport.stride, reveal, scrollToIndex,
     reset: () => { if (scroller.current) scroller.current.scrollTop = 0; read(); } };
 }
