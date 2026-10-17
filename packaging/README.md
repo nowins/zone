@@ -72,6 +72,10 @@ npm run test:msix:hyperv -- -Config .tmp/msix-hyperv-config/matrix.json -Baselin
 
 自动流程包括：空库启动；调用正式扫描命令并显示两首夹具歌曲；通过正式本地音频协议读取 Range；从真实界面喜欢歌曲和创建列表；确认写入 SQLite；通过真实窗口关闭控件退出并核实进程结束；重新启动同一 exe，核对歌曲、喜欢、列表和关闭偏好。没有 mock IPC、替换前端或注入额外 Rust 测试宿主。失败尽量保存截图、HTML、驱动日志及 `result.json`，结果绑定来源和 exe hash，WebView2 profile 不上传。
 
+PR 和每晚 UTC 02:00 的运行增加独立故障 job，在另一台干净 runner 下载前一 job 的准确 artifact ID，再运行同一 exe。故障仅作用于该身份的合成资料：真实 SQLite 写锁使保存失败，检查原状态、未保存提示、释放锁后的界面重试；不可用来源扫描须拒绝并保留曲库与列表。使用 `npm run test:ci:faults` 本地复现，手动运行可选择 faults。定时入口须该工作流先经审查进入默认分支才生效；不测试宿主 ACL、真实磁盘满或任意用户数据库损坏。
+
+本地开发代理可使用项目 [zone-qa 技能](../.agents/skills/zone-qa/SKILL.md) 和 `npm run qa -- --layer plan --base origin/main` 按差异建议选测。`fast`、`artifact`、`faults` 和 `auto` 调用确定性入口，输出 `.tmp/qa/` 的退出码、日志、来源／产物 hash 及通过／失败／未执行矩阵。必要专用层未执行时返回 incomplete；没有“AI 认为通过”的覆盖开关，也不自动接受视觉／性能基线。完整环境前提与停止条件见技能，所有推送／设备／安装动作仍沿用本任务和项目授权。
+
 本地复现：先运行 `npm run build:ci:native`，再运行 `./scripts/ci/setup-webdriver.ps1` 和 `npm run test:ci:artifact`。需要可交互的 Windows 桌面；普通实例可以保持运行。若正常 release exe 正被使用，可给构建命令设置独立 `CARGO_TARGET_DIR`，不要结束用户应用。重跑 smoke 前重新构建会获得新身份；已有测试数据保留供诊断。
 
 该 smoke 不证明扬声器可听输出、蓝牙／耳机切换、休眠恢复、SMTC 全矩阵、长时资源稳定性、全部键盘／动效、缺失 WebView2 或 MSIX 安装升级。后者继续使用下文的 Windows 10/11 客户端 Hyper-V 矩阵和硬件验收。正式发布仍须完整依赖审计、真实商店配置及发布守卫，不把 CI 通过当作商店发布批准。

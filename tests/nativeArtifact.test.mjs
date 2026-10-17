@@ -28,7 +28,8 @@ test('artifact preflight rejects production identity, changed executables and es
 });
 
 test('generated audio fixture has a real bounded PCM WAV payload', async () => {
-  const root = resolve('.tmp/ci-artifact-guard'); await mkdir(root, { recursive: true });
+  const parent = resolve('.tmp/ci-artifact-guard'); await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(join(parent, 'wave-'));
   const path = join(root, 'tone.wav'); const digest = await writeWave(path);
   const bytes = await readFile(path);
   assert.equal(hash(bytes), digest);

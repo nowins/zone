@@ -51,6 +51,8 @@ if (-not $driver) {
   Expand-Archive -LiteralPath $archive -DestinationPath $directory -Force
   $driver = Join-Path $directory 'msedgedriver.exe'
 }
+# Resolve the native module when PowerShell 5 inherits a PowerShell 7 module path.
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Security/Microsoft.PowerShell.Security.psd1')
 $signature = Get-AuthenticodeSignature -LiteralPath $driver
 if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft Corporation') {
   throw 'Edge WebDriver must have a valid Microsoft signature.'

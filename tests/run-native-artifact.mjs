@@ -40,6 +40,7 @@ let session;
 const steps = [];
 const outcome = { sourceSha: manifest.sourceSha, executableSha256: manifest.executableSha256, identifier: manifest.identifier,
   startedAt: new Date().toISOString(), ok: false, steps,
+  coverage: { core: false, sqliteLock: false, unavailableSource: false },
   boundaries: ['No audible-output, device-switch, sleep, installer, Store signing or upgrade claims.',
     'Real release executable, WebView2, Rust commands, SQLite and local audio protocol; no IPC mocks or replacement frontend.'] };
 async function record(name, details = {}) { steps.push({ name, at: new Date().toISOString(), ...details }); console.log(name); }
@@ -162,6 +163,50 @@ try {
   await screenshot('02-persisted');
   await record('Real favorite and playlist UI actions persisted through native commands');
   assert.ok((await stat(join(dataDirectory, 'zone.sqlite'))).size > 0);
+  if (process.argv.includes('--faults')) {
+    const { DatabaseSync } = await import('node:sqlite');
+    const databasePath = join(dataDirectory, 'zone.sqlite');
+    // This path belongs to the fresh embedded CI identity already checked above.
+    const database = new DatabaseSync(databasePath);
+    let locked = false;
+    try {
+      database.exec('PRAGMA busy_timeout = 2000; BEGIN IMMEDIATE'); locked = true;
+      await clickText('//nav[@aria-label="收藏视图"]', '歌曲');
+      await click('css selector', '.collection-track-favorite[aria-pressed="true"]');
+      await until(() => script(() => {
+        const failed = JSON.parse(localStorage.getItem('zone-diagnostics-v1') ?? '[]')
+          .some(entry => entry.event === 'save_playlists' && entry.outcome === 'error');
+        return failed && Array.from(document.querySelectorAll('.action-toast[role="alert"]'))
+          .some(node => node.textContent.includes('未保存') && node.querySelector('button'));
+      }), 'Real locked playlist-write failure and notice', 20000);
+      assert.equal(database.prepare('SELECT COUNT(*) AS n FROM music_playlist_items WHERE playlist_id = ? AND track_id = ?').get('favorites', favoriteId).n, 1,
+        'A failed save must not replace the previous durable favorite.');
+      await screenshot('04-locked-save');
+    } finally { if (locked) database.exec('ROLLBACK'); database.close(); }
+    await click('css selector', '.action-toast[role="alert"] button');
+    await until(async () => !(await invoke('music_get_library_snapshot')).playlists.find(list => list.id === 'favorites').trackIds.includes(favoriteId), 'Retry saved the volatile edit after unlocking');
+    await until(() => script(() => !document.querySelector('.action-toast[role="alert"]')), 'Save failure cleared after successful retry');
+    outcome.coverage.sqliteLock = true;
+    await record('Real SQLite write lock preserved durable state; UI retry saved the edit after unlock');
+    await click('css selector', '.collection-track-favorite[aria-pressed="false"]');
+    await until(async () => (await invoke('music_get_library_snapshot')).playlists.find(list => list.id === 'favorites').trackIds.includes(favoriteId), 'Restore favorite for restart check');
+    const before = await invoke('music_get_library_snapshot');
+    const failedScan = await asynchronous(async folder => {
+      const api = window.__TAURI_INTERNALS__, progress = api.transformCallback(() => {});
+      try { await api.invoke('music_scan_library', { folders: [{ path: folder, name: 'Unavailable CI fixture' }], progress: `__CHANNEL__:${progress}` }); return { rejected: false }; }
+      catch (error) { return { rejected: true, error: String(error) }; }
+      finally { api.unregisterCallback(progress); }
+    }, join(media, 'missing-source'));
+    assert.equal(failedScan.rejected, true);
+    assert.match(failedScan.error, /已保留原资料库/);
+    const after = await invoke('music_get_library_snapshot');
+    assert.deepEqual(after.tracks, before.tracks);
+    assert.deepEqual(after.folders, before.folders);
+    assert.deepEqual(after.playlists, before.playlists);
+    outcome.coverage.unavailableSource = true;
+    await screenshot('05-recovered');
+    await record('Unavailable-source scan rejected and retained the real library and playlists');
+  }
   await closeNormally();
   await launch();
   const restored = await invoke('music_get_library_snapshot');
@@ -177,6 +222,7 @@ try {
   await record('Fresh native process recovered library, favorite, playlist and close preference');
   await closeNormally();
   for (let i = 0; i < paths.length; i++) assert.equal(hash(await readFile(paths[i])), originalHashes[i], 'Source audio must remain unchanged.');
+  outcome.coverage.core = true;
   outcome.ok = true;
 } catch (error) {
   outcome.error = error.stack ?? String(error);

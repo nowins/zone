@@ -14,6 +14,8 @@
     "test:visualizer": "node packaging/check-version.mjs && tsc -p tsconfig.test.json && node --test tests/*.test.mjs",
     "build:ci:native": "node scripts/ci/build-native.mjs",
     "test:ci:artifact": "node tests/run-native-artifact.mjs",
+    "test:ci:faults": "node tests/run-native-artifact.mjs --faults",
+    "qa": "node scripts/qa/run.mjs",
     "test:podcast:stability": "node tests/run-podcast-stability.mjs",
     "test:podcast:client": "node tests/run-podcast-client.mjs",
     "preview": "vite preview",

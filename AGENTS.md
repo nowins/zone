@@ -19,6 +19,7 @@ Zone 是受 Microsoft Zune 4.8 启发的本地音乐播放器，使用 Tauri 2 +
 | 组件、页面、磁贴、文案或视觉样式 | [组件与设计规范](design/component-guidelines.md) |
 | 动效、页面导航、Presence、FLIP 或 reduced-motion | [动效系统](design/motion-system.md) |
 | 安装器、MSIX、商店、图标或发布配置 | [安装与发布](packaging/README.md) |
+| 风险选测、回归矩阵、CI 产物或故障验证 | [Zone QA 技能](.agents/skills/zone-qa/SKILL.md) 与 [产物测试](packaging/README.md#github-ci-与原生产物测试) |
 
 ## 全项目约束
 
