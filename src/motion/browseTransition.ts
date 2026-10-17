@@ -4,6 +4,7 @@ import { captureContentFrames, contentEntranceItems, playContentEntrance, suspen
 
 const pageSelector = ".collection-connected,.podcast-page,.quickplay";
 const groupSelector = [
+  ".collection-browse-pane",
   ".collection-artist-index", ".collection-album-index", ".collection-track-list", ".collection-track-scroll",
   ".collection-track-head", ".playlist-content:not(:has(.playlist-detail))", ".playlist-detail", ".playlist-heading",
   ".collection-entity-heading", ".collection-detail-tabs", ".collection-entity-section", ".podcast-content-section",

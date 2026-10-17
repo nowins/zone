@@ -205,12 +205,12 @@
   }
 
   .quickplay {
-    --quick-pin-art: clamp(104px, 14.5vh, 126px);
-    --quick-feature-size: clamp(270px, 27vw, 350px);
+    --quick-pin-art: clamp(100px, 14vh, 116px);
+    --quick-feature-size: clamp(216px, 22vw, 280px);
   }
 
   .quickplay-track {
-    gap: 44px;
+    gap: 64px;
     padding-right: 160px;
   }
 
@@ -259,12 +259,12 @@
   }
 
   .quickplay {
-    --quick-pin-art: clamp(100px, 14vh, 116px);
-    --quick-feature-size: clamp(258px, 28vw, 310px);
+    --quick-pin-art: clamp(96px, 13.5vh, 108px);
+    --quick-feature-size: clamp(192px, 22vw, 240px);
   }
 
   .quickplay-track {
-    gap: 36px;
+    gap: 52px;
     padding-top: 48px;
     padding-right: 132px;
   }

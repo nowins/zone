@@ -2,11 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { flushSync } from "react-dom";
 import { useEntranceCompletion } from "../hooks/useEntranceCompletion";
 import { useNowPlayingFullscreen } from "../hooks/useNowPlayingFullscreen";
+import { useEvent } from "../hooks/useEvent";
 import { ArrowLeft, AudioLines, Heart } from "lucide-react";
 import { AudioGlowCanvas } from "../components/AudioGlowCanvas";
 import { Cover } from "../components/Cover";
 import { LyricsStage } from "../components/LyricsStage";
 import { NowPlayingMosaicCanvas } from "../components/NowPlayingMosaicCanvas";
+import { NowPlayingArtistCanvas } from "../components/NowPlayingArtistCanvas";
 import { PlaybackProgress } from "../components/PlaybackProgress";
 import { TransportControls, VolumeControl } from "../components/TransportControls";
 import { useLyrics } from "../hooks/useLyrics";
@@ -37,6 +39,7 @@ export function NowPlayingView({
   isFavorite,
   volume,
   onBack,
+  backLabel = "返回",
   onPlay,
   onPlayPause,
   onToggleFavorite,
@@ -62,6 +65,7 @@ export function NowPlayingView({
   isFavorite: boolean;
   volume: number;
   onBack: () => void;
+  backLabel?: string;
   onPlay: (track: Track, sourceTracks?: Track[]) => void;
   onPlayPause: () => void;
   onToggleFavorite: () => void;
@@ -79,6 +83,7 @@ export function NowPlayingView({
   const [surfaceMode, setSurfaceMode] = useState<"ambient" | "lyrics">("ambient");
   const [keyboardSurfaceChange, setKeyboardSurfaceChange] = useState(false);
   const [wallRevealStarted, setWallRevealStarted] = useState(false);
+  const [artistOpaque, setArtistOpaque] = useState(false);
   const isEntering = !useEntranceCompletion(wallRevealStarted, STAGE_ENTRANCE_MS);
   const [flipCoverActive, setFlipCoverActive] = useState(false);
   const [queueVisible, setQueueVisible] = useState(true);
@@ -91,6 +96,17 @@ export function NowPlayingView({
   const pointerHeld = useRef(false);
   const previousTrackIdRef = useRef(track?.id ?? null);
   const displayedQueue = useMemo(() => queue.length ? queue : track ? [track] : [], [queue, track]);
+  const playQueueItem = useEvent((item: Track) => item.id === track?.id ? onPlayPause() : onPlay(item, queue));
+  const queueRows = useMemo(() => displayedQueue.map((item, index) => (
+    <button key={`${item.id}-${index}`} className={item.id === track?.id ? "now-panel-current" : undefined}
+      aria-current={item.id === track?.id ? "true" : undefined} onClick={() => playQueueItem(item)}>
+      <div className="queue-row">
+        <AudioLines size={16} aria-hidden="true" style={{ visibility: item.id === track?.id ? "visible" : "hidden" }} />
+        <strong>{item.title}</strong>
+      </div>
+      <span>{item.artist}</span>
+    </button>
+  )), [displayedQueue, track?.id, playQueueItem]);
   const lyricsOpen = surfaceMode === "lyrics" && Boolean(track);
   const queueOpen = !lyricsOpen && queueVisible;
   const lyrics = useLyrics(track, duration);
@@ -331,9 +347,11 @@ export function NowPlayingView({
       <NowPlayingMosaicCanvas
         tracks={tracks}
         activeTrack={track}
-        isPlaying={isPlaying}
+        queue={queue}
+        isPlaying={isPlaying && !artistOpaque}
         onInitialRevealStart={handleInitialWallRevealStart}
       />
+      <NowPlayingArtistCanvas tracks={tracks} activeTrack={track} isPlaying={isPlaying} onOpaqueChange={setArtistOpaque} />
       <div className="now-canvas-grade" />
       <LyricsStage
         document={lyrics.document}
@@ -365,7 +383,7 @@ export function NowPlayingView({
         onResetTimingOffset={lyrics.resetTimingOffset}
         onInteraction={wakeChrome}
       />
-      <button ref={attachChrome} className="now-back" aria-hidden={chromeMode === "immersive"} onClick={handleBack} title="返回收藏">
+      <button ref={attachChrome} className="now-back" aria-hidden={chromeMode === "immersive"} onClick={handleBack} title={backLabel}>
         <ArrowLeft size={40} strokeWidth={2.55} />
       </button>
 
@@ -385,20 +403,7 @@ export function NowPlayingView({
             ) : null}
 
             <div className="now-panel-upcoming">
-              {displayedQueue.map((item, index) => (
-                <button
-                  key={`${item.id}-${index}`}
-                  className={item.id === track?.id ? "now-panel-current" : undefined}
-                  aria-current={item.id === track?.id ? "true" : undefined}
-                  onClick={() => item.id === track?.id ? onPlayPause() : onPlay(item, queue)}
-                >
-                  <div className="queue-row">
-                    <AudioLines size={16} aria-hidden="true" style={{ visibility: item.id === track?.id ? "visible" : "hidden" }} />
-                    <strong>{item.title}</strong>
-                  </div>
-                  <span>{item.artist}</span>
-                </button>
-              ))}
+              {queueRows}
             </div>
           </div>
 

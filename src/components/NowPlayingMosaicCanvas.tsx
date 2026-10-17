@@ -4,35 +4,38 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { AlbumGroup, Track } from "../types";
 import { useReducedMotion } from "../motion/useReducedMotion";
 import { buildNowPlayingWall } from "../utils/nowPlayingWall";
-import { getVisualizerFrame, isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
+import { isDocumentVisible, WINDOW_VISIBILITY_EVENT } from "../utils/visualizerBus";
+import { createMosaicCamera, drawProjectedMosaicImage, projectMosaicPoint, projectMosaicVertex, type MosaicCamera } from "../utils/mosaicProjection";
+import { applyMosaicCoverMaterial, mosaicCoverVertexAlpha, MOSAIC_COVER_MATERIAL } from "../utils/mosaicCoverMaterial";
+import { createIrisGpuRenderer, irisCoverCropUv, irisMediaImageSize, type IrisMediaImage, type IrisGpuRenderer, type IrisQuad, type IrisProjectedVertex } from "../utils/irisGpuRenderer";
+import { createMosaicLightingSampler } from "../utils/mosaicLighting";
+import { advanceMosaicPalette, createMosaicPaletteClock, randomMosaicLightPath, type LightingPalette, type MosaicPaletteClock } from "../utils/mosaicPalette";
 import {
   buildCanvasMosaicTiles,
   advanceMosaicArtwork,
-  createMosaicColorPalette,
-  createMosaicColorFieldSampler,
   createMosaicFlipState,
   createMosaicMotion,
-  extractMosaicColorPalette,
-  interpolateMosaicColorPalette,
+  mosaicLightRevealAmount,
   mosaicTileRevealAmount,
+  mosaicTileRevealScale,
+  mosaicFlipFrame,
   updateMosaicFlipState,
-  type MosaicColorPalette,
   type MosaicFlipState,
   type MosaicTile,
   type MosaicArtworkState,
-  type RgbColor,
 } from "../utils/nowPlayingCanvas";
 
 const imageReadyListeners = new Set<() => void>();
-const imageCache = new Map<string, HTMLCanvasElement>();
-const pendingImageLoads = new Map<string, Promise<HTMLCanvasElement | null>>();
+const imageCache = new Map<string, IrisMediaImage>();
+const turnSurfaces = new WeakMap<IrisMediaImage, HTMLCanvasElement>();
+const coverMaterials = new WeakMap<IrisMediaImage, HTMLCanvasElement>();
+const pendingImageLoads = new Map<string, Promise<IrisMediaImage | null>>();
 const MAX_IMAGE_CACHE = 96;
 const MAX_WALL_IMAGE_EDGE = 384;
 const WALL_IMAGE_LOAD_CONCURRENCY = 4;
+const EMPTY_QUEUE: Track[] = [];
 const imageLoadWaiters: Array<() => void> = [];
 let activeImageLoadCount = 0;
-const FALLBACK_TINT: RgbColor = { r: 62, g: 50, b: 44 };
-const FALLBACK_PALETTE = createMosaicColorPalette(FALLBACK_TINT);
 const WALL_PRELOAD_TIMEOUT_MS = 1_600;
 const COLOR_FIELD_WIDTH = 112;
 const COLOR_FIELD_FRAME_INTERVAL_MS = 42;
@@ -43,35 +46,52 @@ type MosaicColorFieldRenderer = {
   imageData: ImageData;
   aspectRatio: number;
   lastUpdateAt: number;
+  sampleWidth: number;
+  sampleHeight: number;
+  dpiScale: number;
 };
 
 type MosaicFlipArtwork = {
   tileIndex: number;
   startedAt: number;
-  front: HTMLCanvasElement;
-  back: HTMLCanvasElement;
+  front: IrisMediaImage;
+  back: IrisMediaImage;
 };
+
+type MosaicTileArtwork = { image: IrisMediaImage | null; previous: IrisMediaImage | null; mix: number };
 
 export function NowPlayingMosaicCanvas({
   tracks,
+  queue = EMPTY_QUEUE,
   activeTrack,
   isPlaying,
   onInitialRevealStart,
 }: {
   tracks: Track[];
+  queue?: Track[];
   activeTrack: Track | null;
   isPlaying: boolean;
   onInitialRevealStart?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
+  const sizeRef = useRef({ width: 0, height: 0, dpr: 1, dpiScale: 1 });
   const tilesRef = useRef<MosaicTile[]>([]);
-  const artworkRef = useRef<Array<MosaicArtworkState<HTMLCanvasElement>>>([]);
+  const artworkRef = useRef<Array<MosaicArtworkState<IrisMediaImage>>>([]);
   const albumsRef = useRef<AlbumGroup[]>([]);
   const pendingAlbumsRef = useRef<AlbumGroup[] | null>(null);
   const isPlayingRef = useRef(isPlaying);
-  const paletteRef = useRef<MosaicColorPalette>(clonePalette(FALLBACK_PALETTE));
-  const targetPaletteRef = useRef<MosaicColorPalette>(clonePalette(FALLBACK_PALETTE));
+  const paletteClockRef = useRef<MosaicPaletteClock | null>(null);
+  const lightPathRef = useRef<number | null>(null);
+  if (!paletteClockRef.current) {
+    const clock = createMosaicPaletteClock();
+    // Prepare the wall's first light colors before covers reveal. Replaying a
+    // zero-RGBA entrance here exposes gray covers, then a black field, then color.
+    // Subsequent palette changes and individual photo entrances keep their clocks.
+    clock.from = clock.target;
+    clock.palette = clock.target;
+    paletteClockRef.current = clock;
+  }
+  if (lightPathRef.current === null) lightPathRef.current = randomMosaicLightPath();
   const colorFieldRendererRef = useRef<MosaicColorFieldRenderer | null>(null);
   const flipRef = useRef<MosaicFlipState>(createMosaicFlipState());
   const flipArtworkRef = useRef<MosaicFlipArtwork | null>(null);
@@ -81,9 +101,10 @@ export function NowPlayingMosaicCanvas({
   const settleUntilRef = useRef(0);
   const sceneTimeRef = useRef(0);
   const wallRevealStartedAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const wallEntranceStartedRef = useRef(false);
   const motionEnabledRef = useRef(true);
   const reducedMotion = useReducedMotion();
-  const wallAlbums = useMemo(() => buildNowPlayingWall(tracks, activeTrack), [tracks, activeTrack]);
+  const wallAlbums = useMemo(() => buildNowPlayingWall(tracks, activeTrack, queue), [tracks, activeTrack, queue]);
   const wallKey = wallAlbums.map(album => album.coverPath ?? "").join("\0");
 
   useEffect(() => {
@@ -92,7 +113,6 @@ export function NowPlayingMosaicCanvas({
   }, [isPlaying]);
 
   useEffect(() => {
-    const isFirstWall = albumsRef.current.length === 0;
     // Keep the pool's index identities stable until the visible turn lands.
     if (flipRef.current.tileIndex >= 0) pendingAlbumsRef.current = wallAlbums;
     else {
@@ -104,8 +124,13 @@ export function NowPlayingMosaicCanvas({
     if (tilesRef.current.length === 0 && width > 0 && height > 0) {
       tilesRef.current = buildCanvasMosaicTiles(width, height, wallAlbums);
     }
-    wallRevealStartedAtRef.current = isFirstWall ? performance.now() : Number.NEGATIVE_INFINITY;
-    if (isFirstWall) onInitialRevealStart?.();
+    // StrictMode and metadata updates must not skip or restart an entrance
+    // already in flight. Artwork has its own progressive loading/dissolves.
+    if (!wallEntranceStartedRef.current) {
+      wallEntranceStartedRef.current = true;
+      wallRevealStartedAtRef.current = performance.now();
+      onInitialRevealStart?.();
+    }
     invalidateRef.current();
 
     return preloadWallImagesProgressively(wallAlbums);
@@ -117,114 +142,118 @@ export function NowPlayingMosaicCanvas({
   }, [reducedMotion]);
 
   useEffect(() => {
-    if (!activeTrack?.cover_path) {
-      targetPaletteRef.current = clonePalette(FALLBACK_PALETTE);
-      invalidateRef.current();
-      return;
-    }
-
-    let cancelled = false;
-    const extract = (image: CanvasImageSource | null) => {
-      if (cancelled) return;
-      const palette = extractColorPalette(image);
-      targetPaletteRef.current = palette ?? clonePalette(FALLBACK_PALETTE);
-      invalidateRef.current();
-    };
-
-    const cached = imageCache.get(activeTrack.cover_path);
-    if (cached) extract(cached);
-    else void loadWallImage(activeTrack.cover_path).then(extract);
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTrack?.cover_path]);
-
-  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    let resolutionQuery: MediaQueryList | null = null;
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+      const dpiScale = Math.max(1, window.devicePixelRatio || 1);
+      if (!resolutionQuery || sizeRef.current.dpiScale !== dpiScale) {
+        resolutionQuery?.removeEventListener("change", resize);
+        resolutionQuery = window.matchMedia(`(resolution: ${dpiScale}dppx)`);
+        resolutionQuery.addEventListener("change", resize);
+      }
+      const dpr = Math.min(dpiScale, 2);
       const width = Math.max(1, Math.floor(rect.width));
       const height = Math.max(1, Math.floor(rect.height));
-      if (sizeRef.current.width === width && sizeRef.current.height === height && sizeRef.current.dpr === dpr) return;
-      sizeRef.current = { width, height, dpr };
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
+      if (sizeRef.current.width === width && sizeRef.current.height === height && sizeRef.current.dpiScale === dpiScale) return;
+      const geometryChanged = sizeRef.current.width !== width || sizeRef.current.height !== height;
+      sizeRef.current = { width, height, dpr, dpiScale };
+      const pixelWidth = Math.floor(width * dpr), pixelHeight = Math.floor(height * dpr);
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
       invalidateRef.current();
+      if (!geometryChanged) return;
       const previousTiles = tilesRef.current;
+      const previousById = new Map(previousTiles.map((tile, index) => [tile.id, { tile, artwork: artworkRef.current[index] }]));
+      const turningId = previousTiles[flipRef.current.tileIndex]?.id;
+      const lastTurningId = previousTiles[flipRef.current.lastTileIndex]?.id;
       tilesRef.current = albumsRef.current.length > 0
         ? buildCanvasMosaicTiles(width, height, albumsRef.current)
         : [];
-      tilesRef.current.forEach((tile, index) => {
-        if (previousTiles[index]) tile.albumIndex = previousTiles[index].albumIndex;
+      artworkRef.current = tilesRef.current.map(tile => {
+        const previous = previousById.get(tile.id);
+        if (previous) tile.albumIndex = previous.tile.albumIndex;
+        return previous?.artwork ?? { image: null, previous: null, startedAt: 0 };
       });
-      if (flipRef.current.tileIndex >= tilesRef.current.length) {
+      const turningIndex = tilesRef.current.findIndex(tile => tile.id === turningId);
+      flipRef.current.lastTileIndex = tilesRef.current.findIndex(tile => tile.id === lastTurningId);
+      if (turningId && turningIndex < 0) {
         flipRef.current = createMosaicFlipState();
         flipArtworkRef.current = null;
+      } else if (turningId) {
+        flipRef.current.tileIndex = turningIndex;
+        if (flipArtworkRef.current) flipArtworkRef.current.tileIndex = turningIndex;
       }
-      artworkRef.current.length = tilesRef.current.length;
     };
 
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
+    window.addEventListener("resize", resize);
     resize();
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+      resolutionQuery?.removeEventListener("change", resize);
+    };
   }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
+    let gpu: IrisGpuRenderer | null = null;
+    try { gpu = createIrisGpuRenderer(canvas.ownerDocument); } catch { /* Keep Canvas available when the GPU driver rejects initialization. */ }
 
     const draw = (time: number) => {
       try {
         const previousTime = lastTimeRef.current ?? time;
-        const deltaSeconds = Math.min(0.08, Math.max(0.001, (time - previousTime) / 1000));
+        const deltaSeconds = Math.min(0.08, Math.max(0, (time - previousTime) / 1000));
         lastTimeRef.current = time;
         const motionEnabled = motionEnabledRef.current;
-        const frame = getVisualizerFrame();
         sceneTimeRef.current += deltaSeconds * (motionEnabled ? (isPlayingRef.current ? 1 : 0) : 0);
-        paletteRef.current = interpolateMosaicColorPalette(
-          paletteRef.current,
-          targetPaletteRef.current,
-          1 - Math.exp(-deltaSeconds / 1.2),
-        );
-        drawMosaic(
+        const palette = advanceMosaicPalette(paletteClockRef.current!, deltaSeconds * 1000, isPlayingRef.current, !motionEnabled);
+        const gpuFailed = drawMosaic(
           context,
           sizeRef.current,
           tilesRef.current,
           albumsRef.current,
-          paletteRef.current,
-          frame.beatPulse,
-          frame.beatPhase,
-          frame.beatConfidence,
+          palette,
           isPlayingRef.current && pendingAlbumsRef.current === null,
           flipRef.current,
           time,
           sceneTimeRef.current,
+          lightPathRef.current!,
           wallRevealStartedAtRef.current,
           motionEnabled,
           colorFieldRendererRef,
           artworkRef.current,
           flipArtworkRef,
+          gpu,
         );
+        if (gpuFailed) { gpu?.dispose(); gpu = null; }
         if (flipRef.current.tileIndex < 0 && pendingAlbumsRef.current) {
           albumsRef.current = pendingAlbumsRef.current;
           pendingAlbumsRef.current = null;
           flipRef.current = createMosaicFlipState();
+          // A queued pool can land after playback has paused and the previous
+          // settle window expired. Its first draw and dissolves still need time.
+          settleUntilRef.current = time + NOW_PLAYING_MOTION.canvasSettle;
         }
       } catch (error) {
         if (import.meta.env.DEV) console.error("[now-playing:mosaic] draw failed", error);
         frameRef.current = null;
+        lastTimeRef.current = null;
         return;
       }
       if (isDocumentVisible() && ((isPlayingRef.current && motionEnabledRef.current) || flipRef.current.tileIndex >= 0
-        || time < settleUntilRef.current || artworkRef.current.some(state => state.previous))) {
+        || time < settleUntilRef.current || artworkRef.current.some(state => state.previous)
+        || (motionEnabledRef.current && time < wallRevealStartedAtRef.current + NOW_PLAYING_MOTION.mosaicLightReveal))) {
         frameRef.current = window.requestAnimationFrame(draw);
       } else {
         frameRef.current = null;
+        lastTimeRef.current = null;
       }
     };
 
@@ -232,6 +261,7 @@ export function NowPlayingMosaicCanvas({
       if (!isDocumentVisible()) {
         if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
+        lastTimeRef.current = null;
         return;
       }
       if (!frameRef.current) {
@@ -260,6 +290,7 @@ export function NowPlayingMosaicCanvas({
       if (frameRef.current) window.cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
       lastTimeRef.current = null;
+      gpu?.dispose();
     };
   }, []);
 
@@ -268,39 +299,36 @@ export function NowPlayingMosaicCanvas({
 
 function drawMosaic(
   context: CanvasRenderingContext2D,
-  size: { width: number; height: number; dpr: number },
+  size: { width: number; height: number; dpr: number; dpiScale: number },
   tiles: MosaicTile[],
   albums: AlbumGroup[],
-  palette: MosaicColorPalette,
-  beatPulse: number,
-  beatPhase: number,
-  beatConfidence: number,
+  palette: LightingPalette,
   isPlaying: boolean,
   flipState: MosaicFlipState,
   time: number,
   sceneSeconds: number,
+  lightPath: number,
   wallRevealStartedAt: number,
   motionEnabled: boolean,
   colorFieldRendererRef: { current: MosaicColorFieldRenderer | null },
-  artwork: Array<MosaicArtworkState<HTMLCanvasElement>>,
+  artwork: Array<MosaicArtworkState<IrisMediaImage>>,
   flipArtworkRef: { current: MosaicFlipArtwork | null },
+  gpu: IrisGpuRenderer | null,
 ) {
   const { width, height, dpr } = size;
-  if (width <= 1 || height <= 1) return;
+  if (width <= 1 || height <= 1) return false;
 
   const readyAlbums = albums.filter(album => album.coverPath && imageCache.has(album.coverPath));
   const fallbackImages = readyAlbums.map(album => imageCache.get(album.coverPath!)!);
   updateMosaicFlipState(flipState, tiles, {
     isPlaying: isPlaying && motionEnabled,
-    beatPulse,
-    beatPhase,
-    beatConfidence,
     albums,
     time: motionEnabled ? time : Math.max(time, flipState.startedAt + flipState.duration + 1),
     canFlipTile: (tile, index) => {
       const path = albums[tile.albumIndex]?.coverPath;
       const state = artwork[index];
-      return Boolean(path && state?.image === imageCache.get(path) && !state.previous);
+      return Boolean(path && state?.image === imageCache.get(path) && !state.previous
+        && mosaicTileRevealAmount(tile.seed, time - wallRevealStartedAt, motionEnabled) === 1);
     },
     canUseAlbum: index => Boolean(albums[index]?.coverPath && imageCache.has(albums[index].coverPath!)),
   });
@@ -328,76 +356,97 @@ function drawMosaic(
   context.fillRect(0, 0, width, height);
 
   const motion = createMosaicMotion(motionEnabled ? sceneSeconds : 0);
+  const camera = createMosaicCamera(width, height, motion.scale, motion.driftX, motion.driftY, size.dpiScale);
   const revealElapsed = time - wallRevealStartedAt;
-  const wallReveal = motionEnabled
-    ? Math.max(0, Math.min(1, revealElapsed / 950))
-    : 1;
+  const wallReveal = mosaicLightRevealAmount(revealElapsed, motionEnabled);
+
+  let gpuFrame: IrisGpuRenderer | null = null;
+  let gpuFailed = false;
+  if (gpu) {
+    try { gpuFrame = gpu.available && gpu.begin({ width, height, rasterScale: dpr, dpiScale: size.dpiScale }) ? gpu : null; }
+    catch { gpuFrame = null; }
+    gpuFailed = gpuFrame === null;
+  }
+
+  // Advance artwork once before choosing a renderer. A rejected GPU frame can
+  // then redraw every tile without retargeting a dissolve or changing a turn.
+  const prepared = tiles.map((tile, index) => {
+    const tileReveal = mosaicTileRevealAmount(tile.seed, revealElapsed, motionEnabled);
+    const flip = flipState.tileIndex === index && flipArtworkRef.current
+      ? { progress: (time - flipState.startedAt) / flipState.duration, direction: flipState.direction, artwork: flipArtworkRef.current }
+      : null;
+    const state = artwork[index] ??= { image: null, previous: null, startedAt: 0 };
+    const isFlipping = flip !== null && flip.progress >= 0 && flip.progress <= 1;
+    const turn = mosaicFlipFrame(isFlipping ? flip.progress * NOW_PLAYING_MOTION.mosaicTurnFade : 0);
+    const path = albums[tile.albumIndex]?.coverPath;
+    const candidate = path ? imageCache.get(path) ?? null : null;
+    const mix = tileReveal <= 0 || isFlipping ? 1 : advanceMosaicArtwork(state, candidate,
+      fallbackImages[index % Math.max(1, fallbackImages.length)] ?? null, time,
+      motionEnabled ? NOW_PLAYING_MOTION.mosaicReplace : 0,
+      motionEnabled ? tile.seed * NOW_PLAYING_MOTION.mosaicReplaceStagger : 0);
+    const image = isFlipping ? (turn.back ? flip.artwork.back : flip.artwork.front) : state.image;
+    return { tile, tileReveal, revealScale: mosaicTileRevealScale(tile.seed, revealElapsed, motionEnabled),
+      flip, frame: { image, previous: isFlipping ? null : state.previous, mix } };
+  });
 
   context.save();
   context.translate(width / 2, height / 2);
   context.scale(motion.scale, motion.scale);
   context.translate(-width / 2 + motion.driftX, -height / 2 + motion.driftY);
 
-  for (let index = 0; index < tiles.length; index += 1) {
-    const tile = tiles[index];
-    const tileReveal = mosaicTileRevealAmount(tile.seed, revealElapsed, motionEnabled);
-    if (tileReveal <= 0) continue;
-    const flip = flipState.tileIndex === index && flipArtworkRef.current
-      ? {
-          progress: (time - flipState.startedAt) / flipState.duration,
-          direction: flipState.direction,
-          artwork: flipArtworkRef.current,
-        }
-      : null;
-    context.save();
-    context.globalAlpha *= tileReveal;
-    const state = artwork[index] ??= { image: null, previous: null, startedAt: 0 };
-    drawTile(context, tile, albums, flip, state, fallbackImages[index % Math.max(1, fallbackImages.length)] ?? null, time, motionEnabled);
-    context.restore();
+  const drawTiles = (renderer: IrisGpuRenderer | null) => {
+    for (const { tile, tileReveal, revealScale, flip, frame } of prepared) {
+      if (tileReveal <= 0) continue;
+      context.save();
+      try {
+        context.globalAlpha *= tileReveal;
+        context.translate(tile.x + tile.width / 2, tile.y + tile.height / 2);
+        context.scale(revealScale, revealScale);
+        context.translate(-tile.x - tile.width / 2, -tile.y - tile.height / 2);
+        if (!drawTile(context, tile, camera, flip, frame, renderer, tileReveal, revealScale)) return false;
+      } finally { context.restore(); }
+    }
+    return true;
+  };
+  let gpuWall: HTMLCanvasElement | null = null;
+  if (gpuFrame) {
+    try {
+      if (drawTiles(gpuFrame)) gpuWall = gpuFrame.finishWall({ palette, timeSeconds: sceneSeconds, pathIndex: lightPath, opacity: wallReveal });
+    } catch { gpuWall = null; }
+    gpuFailed = gpuWall === null;
   }
+  if (!gpuWall) drawTiles(null);
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   context.globalAlpha = wallReveal;
-  drawMosaicColorField(
+  if (gpuWall) {
+    context.globalAlpha = 1;
+    context.drawImage(gpuWall, 0, 0, width, height);
+    context.globalAlpha = wallReveal;
+  } else drawMosaicColorField(
     context,
     colorFieldRendererRef,
     palette,
     width,
     height,
+    size.dpiScale,
     sceneSeconds,
+    lightPath,
     time,
   );
-  const edgeGrade = context.createLinearGradient(0, 0, width, height);
-  edgeGrade.addColorStop(0, "rgba(0, 0, 0, 0.06)");
-  edgeGrade.addColorStop(0.5, "rgba(0, 0, 0, 0)");
-  edgeGrade.addColorStop(1, "rgba(0, 0, 0, 0.18)");
-  context.globalCompositeOperation = "source-over";
-  context.fillStyle = edgeGrade;
-  context.fillRect(0, 0, width, height);
   context.restore();
-
-  const vignette = context.createRadialGradient(width * 0.5, height * 0.47, width * 0.12, width * 0.5, height * 0.5, width * 0.72);
-  vignette.addColorStop(0, "rgba(0, 0, 0, 0.02)");
-  vignette.addColorStop(0.52, "rgba(0, 0, 0, 0.16)");
-  vignette.addColorStop(1, "rgba(0, 0, 0, 0.56)");
-  context.fillStyle = vignette;
-  context.fillRect(0, 0, width, height);
-
-  const bottom = context.createLinearGradient(0, height * 0.58, 0, height);
-  bottom.addColorStop(0, "rgba(0, 0, 0, 0)");
-  bottom.addColorStop(0.72, "rgba(0, 0, 0, 0.3)");
-  bottom.addColorStop(1, "rgba(0, 0, 0, 0.58)");
-  context.fillStyle = bottom;
-  context.fillRect(0, height * 0.52, width, height * 0.48);
+  return gpuFailed;
 }
 
 function drawMosaicColorField(
   context: CanvasRenderingContext2D,
   rendererRef: { current: MosaicColorFieldRenderer | null },
-  palette: MosaicColorPalette,
+  palette: LightingPalette,
   width: number,
   height: number,
+  dpiScale: number,
   sceneSeconds: number,
+  lightPath: number,
   frameTime: number,
 ) {
   const aspectRatio = width / Math.max(1, height);
@@ -407,13 +456,13 @@ function drawMosaicColorField(
   const renderer = rendererRef.current;
   if (!renderer) return;
 
-  if (frameTime - renderer.lastUpdateAt >= COLOR_FIELD_FRAME_INTERVAL_MS) {
-    // The field is intentionally low resolution: bilinear upscaling turns the
-    // sampled warp into broad gradients and keeps per-frame work bounded.
+  if (frameTime - renderer.lastUpdateAt >= COLOR_FIELD_FRAME_INTERVAL_MS
+      || renderer.sampleWidth !== width || renderer.sampleHeight !== height || renderer.dpiScale !== dpiScale) {
+    // Smooth low-resolution point lighting keeps per-frame work bounded.
     const { data } = renderer.imageData;
     const fieldWidth = renderer.canvas.width;
     const fieldHeight = renderer.canvas.height;
-    const sampleColor = createMosaicColorFieldSampler(palette, sceneSeconds);
+    const sampleColor = createMosaicLightingSampler(palette, sceneSeconds, width, height, dpiScale, lightPath);
     for (let row = 0; row < fieldHeight; row += 1) {
       const y = (row + 0.5) / fieldHeight;
       for (let column = 0; column < fieldWidth; column += 1) {
@@ -423,18 +472,20 @@ function drawMosaicColorField(
         data[index] = color.r;
         data[index + 1] = color.g;
         data[index + 2] = color.b;
-        data[index + 3] = 255;
+        data[index + 3] = (color.a ?? 1) * 255;
       }
     }
     renderer.context.putImageData(renderer.imageData, 0, 0);
     renderer.lastUpdateAt = frameTime;
+    renderer.sampleWidth = width;
+    renderer.sampleHeight = height;
+    renderer.dpiScale = dpiScale;
   }
 
   context.save();
-  // Color blending preserves the cover wall's luminance. Motion therefore
-  // reads as migrating color, not as a spotlight getting brighter and dimmer.
-  context.globalCompositeOperation = "color";
-  context.globalAlpha *= 0.92;
+  // The shipped BlendedLightGraphic overlays the lit field onto its destination.
+  context.globalCompositeOperation = "overlay";
+  // Native Fill + light + primary alpha saturates to 1 on the settled wall.
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.drawImage(renderer.canvas, 0, 0, width, height);
@@ -453,95 +504,149 @@ function createColorFieldRenderer(aspectRatio: number): MosaicColorFieldRenderer
     imageData: context.createImageData(canvas.width, canvas.height),
     aspectRatio,
     lastUpdateAt: Number.NEGATIVE_INFINITY,
+    sampleWidth: 0,
+    sampleHeight: 0,
+    dpiScale: 0,
   };
 }
 
 function drawTile(
   context: CanvasRenderingContext2D,
   tile: MosaicTile,
-  albums: AlbumGroup[],
+  camera: MosaicCamera,
   flip: {
     progress: number;
     direction: -1 | 1;
     artwork: MosaicFlipArtwork;
   } | null,
-  artwork: MosaicArtworkState<HTMLCanvasElement>,
-  fallback: HTMLCanvasElement | null,
-  time: number,
-  motionEnabled: boolean,
+  artwork: MosaicTileArtwork,
+  gpu: IrisGpuRenderer | null,
+  tileReveal: number,
+  revealScale: number,
 ) {
   const isFlipping = flip !== null && flip.progress >= 0 && flip.progress <= 1;
-  const easedFlip = isFlipping ? easeInOutCubic(flip.progress) : 0;
-  const album = albums[tile.albumIndex];
-  const candidate = album?.coverPath ? imageCache.get(album.coverPath) ?? null : null;
-  // A turn owns two decoded surfaces. Pool replacement dissolves belong to
-  // stationary tiles; running one at the apex would outlast the turn.
-  const mix = isFlipping ? 1 : advanceMosaicArtwork(artwork, candidate, fallback, time,
-    motionEnabled ? NOW_PLAYING_MOTION.mosaicReplace : 0,
-    motionEnabled ? tile.seed * NOW_PLAYING_MOTION.mosaicReplaceStagger : 0);
-  const image = isFlipping ? (easedFlip < 0.5 ? flip.artwork.front : flip.artwork.back) : artwork.image;
-  const flipScale = isFlipping ? Math.max(0.02, Math.abs(Math.cos(easedFlip * Math.PI))) : 1;
-  const flipForeshorten = isFlipping ? 1 - Math.sin(easedFlip * Math.PI) * 0.07 : 1;
-  const flipShade = isFlipping ? Math.sin(easedFlip * Math.PI) * 0.5 : 0;
-  const centerX = tile.x + tile.width / 2;
-  const centerY = tile.y + tile.height / 2;
-  const perspectiveOffset = isFlipping
-    ? flip.direction * Math.sin(easedFlip * Math.PI) * tile.height * 0.028
-    : 0;
-
+  const turn = mosaicFlipFrame(isFlipping ? flip.progress * NOW_PLAYING_MOTION.mosaicTurnFade : 0);
+  const { image, mix } = artwork;
+  if (gpu) {
+    const width = tile.width - 2, height = tile.height - 2;
+    const face = { x: tile.x + tile.width / 2 * (1 - revealScale) + revealScale,
+      y: tile.y + tile.height / 2 * (1 - revealScale) + revealScale,
+      width: width * revealScale, height: height * revealScale };
+    const angle = isFlipping ? turn.angle * flip.direction : 0;
+    const vertices: IrisQuad<IrisProjectedVertex> = [projectMosaicVertex(face, camera, angle, 0, 0),
+      projectMosaicVertex(face, camera, angle, 1, 0), projectMosaicVertex(face, camera, angle, 1, 1),
+      projectMosaicVertex(face, camera, angle, 0, 1)];
+    if (image) {
+      const size = irisMediaImageSize(image);
+      const previousSize = artwork.previous ? irisMediaImageSize(artwork.previous) : null;
+      return gpu.cover({ image, previous: !isFlipping ? artwork.previous : null, mix,
+        vertices, uv: irisCoverCropUv(size.width, size.height, width, height),
+        previousUv: previousSize ? irisCoverCropUv(previousSize.width, previousSize.height, width, height) : undefined,
+        opacity: mosaicCoverVertexAlpha(isFlipping ? turn.alpha : 1, tileReveal), backingOpacity: tileReveal });
+    }
+    return true;
+  }
   context.save();
-  context.translate(centerX, centerY + perspectiveOffset);
-  context.scale(flipForeshorten, flipScale);
-  context.translate(-centerX, -centerY);
   context.beginPath();
-  context.rect(tile.x, tile.y, tile.width - 1, tile.height - 1);
+  context.rect(tile.x + 1, tile.y + 1, tile.width - 2, tile.height - 2);
+  if (isFlipping && Math.abs(turn.angle) > 1e-5) {
+    const angle = turn.angle * flip.direction;
+    const face = { x: tile.x + 1, y: tile.y + 1, width: tile.width - 2, height: tile.height - 2 };
+    const corners = [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => {
+      return projectMosaicPoint(face, camera, angle, u, v);
+    });
+    context.beginPath();
+    context.moveTo(corners[0].x, corners[0].y);
+    corners.slice(1).forEach(point => context.lineTo(point.x, point.y));
+    context.closePath();
+    context.clip();
+    context.fillStyle = "#000";
+    context.fill();
+    if (image) {
+      context.globalAlpha = mosaicCoverVertexAlpha(turn.alpha, context.globalAlpha) / MOSAIC_COVER_MATERIAL.opacity;
+      const surface = getTurnSurface(image);
+      if (surface) drawProjectedMosaicImage(context, surface, face, camera, angle);
+      else drawImageCover(context, getCoverMaterial(image), face.x, face.y, face.width, face.height);
+    }
+    context.restore();
+    return true;
+  }
   context.clip();
-  context.fillStyle = "#171717";
+  context.fillStyle = "#000";
   context.fillRect(tile.x, tile.y, tile.width, tile.height);
 
   if (image) {
     const inheritedAlpha = context.globalAlpha;
-    context.filter = "grayscale(0.92) saturate(0.38) brightness(0.5) contrast(1.1)";
-    // Keep the old cover opaque underneath, avoiding a dark gap halfway.
-    if (!isFlipping && artwork.previous) drawImageCover(context, artwork.previous, tile.x, tile.y, tile.width, tile.height);
-    context.globalAlpha *= mix;
-    drawImageCover(context, image, tile.x, tile.y, tile.width, tile.height);
-    context.filter = "none";
+    // Both surfaces already contain the same native opacity on black. Mixing
+    // opaque materials avoids adding two .35 alphas during a replacement.
+    if (!isFlipping && artwork.previous) drawImageCover(context, getCoverMaterial(artwork.previous), tile.x + 1, tile.y + 1, tile.width - 2, tile.height - 2);
+    context.globalAlpha = isFlipping
+      ? mosaicCoverVertexAlpha(turn.alpha, context.globalAlpha) / MOSAIC_COVER_MATERIAL.opacity
+      : context.globalAlpha * mix;
+    drawImageCover(context, getCoverMaterial(image), tile.x + 1, tile.y + 1, tile.width - 2, tile.height - 2);
     context.globalAlpha = inheritedAlpha;
   }
 
-  context.globalCompositeOperation = "source-over";
-  context.fillStyle = `rgba(0, 0, 0, ${0.12 + flipShade})`;
-  context.fillRect(tile.x, tile.y, tile.width, tile.height);
-  if (isFlipping) {
-    const sweepY = tile.y + tile.height * (0.08 + easedFlip * 0.84);
-    const highlight = context.createLinearGradient(0, sweepY - tile.height * 0.1, 0, sweepY + tile.height * 0.1);
-    highlight.addColorStop(0, "rgba(255, 255, 255, 0)");
-    highlight.addColorStop(0.5, `rgba(255, 255, 255, ${0.08 + flipShade * 0.3})`);
-    highlight.addColorStop(1, "rgba(255, 255, 255, 0)");
-    context.fillStyle = highlight;
-    context.fillRect(tile.x, tile.y, tile.width, tile.height);
-  }
-  context.strokeStyle = "rgba(0, 0, 0, 0.82)";
-  context.lineWidth = 1;
-  context.strokeRect(tile.x + 0.5, tile.y + 0.5, tile.width - 1, tile.height - 1);
   context.restore();
+  return true;
 }
 
-function drawImageCover(context: CanvasRenderingContext2D, image: HTMLCanvasElement, x: number, y: number, width: number, height: number) {
-  const sourceRatio = image.width / image.height;
+function getTurnSurface(image: IrisMediaImage) {
+  const cached = turnSurfaces.get(image);
+  if (cached) return cached;
+  const surface = document.createElement("canvas");
+  const size = irisMediaImageSize(image);
+  surface.width = surface.height = Math.min(MAX_WALL_IMAGE_EDGE, Math.max(size.width, size.height));
+  const context = surface.getContext("2d");
+  if (!context) return null;
+  drawImageCover(context, getCoverMaterial(image), 0, 0, surface.width, surface.height);
+  turnSurfaces.set(image, surface);
+  return surface;
+}
+
+function getCoverMaterial(image: IrisMediaImage) {
+  const cached = coverMaterials.get(image);
+  if (cached) return cached;
+  const surface = document.createElement("canvas");
+  const size = irisMediaImageSize(image);
+  surface.width = size.width;
+  surface.height = size.height;
+  const context = surface.getContext("2d", { willReadFrequently: true });
+  if (!context) return image;
+  context.drawImage(image, 0, 0);
+  try {
+    const pixels = context.getImageData(0, 0, surface.width, surface.height);
+    applyMosaicCoverMaterial(pixels.data);
+    context.putImageData(pixels, 0, 0);
+  } catch {
+    // Keep restricted/unreadable image sources usable without widening access.
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, surface.width, surface.height);
+    context.filter = "grayscale(1) contrast(0.85)";
+    context.globalAlpha = MOSAIC_COVER_MATERIAL.opacity;
+    context.drawImage(image, 0, 0);
+    context.filter = "none";
+    context.globalAlpha = 1;
+  }
+  coverMaterials.set(image, surface);
+  return surface;
+}
+
+function drawImageCover(context: CanvasRenderingContext2D, image: IrisMediaImage, x: number, y: number, width: number, height: number) {
+  const size = irisMediaImageSize(image);
+  const sourceRatio = size.width / size.height;
   const targetRatio = width / height;
-  let sourceWidth = image.width;
-  let sourceHeight = image.height;
+  let sourceWidth = size.width;
+  let sourceHeight = size.height;
   let sourceX = 0;
   let sourceY = 0;
 
   if (sourceRatio > targetRatio) {
-    sourceWidth = image.height * targetRatio;
-    sourceX = (image.width - sourceWidth) / 2;
+    sourceWidth = size.height * targetRatio;
+    sourceX = (size.width - sourceWidth) / 2;
   } else {
-    sourceHeight = image.width / targetRatio;
-    sourceY = (image.height - sourceHeight) / 2;
+    sourceHeight = size.width / targetRatio;
+    sourceY = (size.height - sourceHeight) / 2;
   }
 
   context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
@@ -657,12 +762,15 @@ async function loadAndResizeWallImage(path: string) {
   }
 
   try {
+    // A Canvas round trip loses hidden RGB and rounds partial-alpha colors.
+    // Keep bounded decoded originals for direct, straight RGBA GPU upload.
+    if (Math.max(image.naturalWidth, image.naturalHeight) <= MAX_WALL_IMAGE_EDGE) return image;
     const scale = Math.min(1, MAX_WALL_IMAGE_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
     const context = canvas.getContext("2d");
-    if (!context) return null;
+    if (!context) { image.src = ""; return null; }
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -672,28 +780,4 @@ async function loadAndResizeWallImage(path: string) {
     image.src = "";
     return null;
   }
-}
-
-function extractColorPalette(image: CanvasImageSource | null) {
-  if (!image) return null;
-  try {
-    const canvas = document.createElement("canvas");
-    canvas.width = 48;
-    canvas.height = 48;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return null;
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    return extractMosaicColorPalette(context.getImageData(0, 0, canvas.width, canvas.height).data);
-  } catch {
-    return null;
-  }
-}
-
-function clonePalette(palette: MosaicColorPalette): MosaicColorPalette {
-  return palette.map((color) => ({ ...color })) as MosaicColorPalette;
-}
-
-function easeInOutCubic(value: number) {
-  const amount = Math.max(0, Math.min(1, value));
-  return amount < 0.5 ? 4 * amount * amount * amount : 1 - (-2 * amount + 2) ** 3 / 2;
 }

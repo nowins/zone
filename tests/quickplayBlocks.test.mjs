@@ -7,6 +7,7 @@ import {
   buildHistoryBlock,
   buildMostPlayedBlock,
   buildQuickplayBlocks,
+  pickQuickplayCoverPaths,
 } from "../.tmp/visualizer-tests/utils/quickplayBlocks.js";
 
 const quickplaySource = readFileSync("src/views/QuickplayView.tsx", "utf8");
@@ -234,4 +235,27 @@ test("the view consumes buildQuickplayBlocks and never re-implements the continu
   assert.ok(!quickplaySource.includes("function albumForTrack"), "view must not shadow the tested continue logic");
   // A podcast owns the shared audio element; continue must not resume it.
   assert.ok(quickplaySource.includes("podcastActive"));
+});
+
+test("pin artwork samples distinct albums and bounds the mosaic to four covers", () => {
+  const tracks = [track("a", { album: "A", cover_path: "a.jpg" }), track("a2", { album: "A", cover_path: "a-copy.jpg" }),
+    track("missing", { album: "B" }), track("b", { album: "B", cover_path: "b.jpg" }),
+    ...["C", "D", "E"].map(album => track(album, { album, cover_path: `${album}.jpg` }))];
+  assert.deepEqual(pickQuickplayCoverPaths(tracks, 9), ["a.jpg", "b.jpg", "C.jpg", "D.jpg"]);
+  assert.deepEqual(pickQuickplayCoverPaths(tracks, 1), ["a.jpg"]);
+  assert.deepEqual(pickQuickplayCoverPaths(tracks, 0), []);
+  assert.deepEqual(pickQuickplayCoverPaths([track("x", { album: "Same", artist: "Other", cover_path: "other.jpg" }),
+    track("y", { album: "Same", artist: "Preferred", cover_path: "preferred.jpg" })], 4, "preferred"), ["preferred.jpg", "other.jpg"]);
+});
+
+test("home prioritizes recent additions and real history, then samples distinct recommendation albums", () => {
+  const tracks = [track("a", { album: "A" }), track("a2", { album: "A" }), track("b", { album: "B" }), track("c", { album: "C" })];
+  const input = { tracks, albums: [albumGroup("A", "A", "Artist", tracks.slice(0, 2))], playlists: [],
+    activity: { a: { playCount: 5, lastPlayedAt: 10 }, a2: { playCount: 4, lastPlayedAt: 9 }, b: { playCount: 3, lastPlayedAt: 8 } },
+    favoriteTrackIds: new Set(["a2", "c"]), historyIds: ["a2", "a", "b"], activeTrack: tracks[0] };
+  const blocks = buildQuickplayBlocks(input);
+  assert.deepEqual(blocks.map(block => block.id), ["continue", "recentAdded", "history", "mostPlayed", "forgottenFavorites"]);
+  assert.deepEqual(blocks.find(block => block.id === "mostPlayed").items.map(item => item.id), ["a", "b"]);
+  assert.deepEqual(blocks.find(block => block.id === "forgottenFavorites").items.map(item => item.id), ["c"]);
+  assert.deepEqual(blocks.find(block => block.id === "history").items.map(item => item.id), ["a2", "b"], "history retains actual song identity");
 });

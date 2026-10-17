@@ -10,6 +10,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Titlebar } from "./components/Titlebar";
 import { useCompactMode } from "./hooks/useCompactMode";
+import { useSurfaceTheme } from "./hooks/useSurfaceTheme";
 import { useNativeWindowVisibility } from "./hooks/useNativeWindowVisibility";
 import { useTouchInteractions } from "./hooks/useTouchInteractions";
 import { AppHeader } from "./components/AppHeader";
@@ -148,7 +149,8 @@ export default function App() {
     navigationAnimated,
     workspaceRef,
     quickplayEntrance,
-    previousPageRef,
+    nowPlayingBackLabel,
+    returnFromNowPlaying,
     requestNavigation,
     clearCollectionSearch,
     setCollectionSearchQuery,
@@ -234,6 +236,7 @@ export default function App() {
     flushPodcastProgress,
   } = podcast;
   const startupReady = restored && podcastSessionHydrated && !libraryRestoreFailed;
+  const surfaceTheme = useSurfaceTheme(startupReady, compactMode.active, page);
   const {
     isPlaying,
     setIsPlaying,
@@ -307,6 +310,10 @@ export default function App() {
     setPlayHistory,
     podcast: podcastTransport,
   });
+  const playbackQueueTracks = useMemo(() => playbackQueueIds.flatMap(id => {
+    const track = collectionIndex.trackById.get(id);
+    return track ? [track] : [];
+  }), [playbackQueueIds, collectionIndex]);
   // Late-bound: podcast domain calls arm/seek/toggle without a circular hook import.
   playbackControlsRef.current = {
     seek,
@@ -1058,8 +1065,6 @@ export default function App() {
   ) : actionNotice ? (
     <div className="action-toast" role="status">{actionNotice}</div>
   ) : null;
-  const lastAppHeaderElement = useLastNonNull(appHeaderElement);
-  const lastPlayerBarElement = useLastNonNull(playerBarElement);
   const lastContextMenuElement = useLastNonNull(contextMenuElement);
   const lastInfoPanelElement = useLastNonNull(infoPanelElement);
   const lastAddToPlaylistDialogElement = useLastNonNull(addToPlaylistDialogElement);
@@ -1079,6 +1084,7 @@ export default function App() {
     <div
       ref={shellRef} className={`shell ${compactMode.active ? "shell-compact" : page === "nowPlaying" ? "shell-now-playing" : ""}`}
       data-page-motion="managed"
+      data-surface-theme={surfaceTheme}
       style={
         {
           "--motion-dir": navDir,
@@ -1146,9 +1152,7 @@ export default function App() {
           }
         }}
       /></Suspense> : <main ref={workspaceRef} className="workspace" data-page={page} aria-busy={!startupReady}>
-        <Presence show={appHeaderElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
-          {appHeaderElement ?? lastAppHeaderElement ?? <span style={{ display: "none" }} />}
-        </Presence>
+        {appHeaderElement}
 
         {!startupReady ? <StartupView failed={libraryRestoreFailed} onRetry={() => setRestoreAttempt(value => value + 1)} /> : page === "quickplay" ? (
           <QuickplayView
@@ -1159,6 +1163,8 @@ export default function App() {
             playlists={playlists}
             activeTrack={activeTrack}
             historyIds={playHistory}
+            progress={progress}
+            duration={duration}
             activity={trackActivity}
             favoriteTrackIds={favoriteTrackIds}
             homePins={homePins}
@@ -1262,7 +1268,8 @@ export default function App() {
               backwardSeconds={podcast.podcastPreferences.backwardSeconds}
               forwardSeconds={podcast.podcastPreferences.forwardSeconds}
               sleepTimer={podcastSleepTimer}
-              onBack={() => requestNavigation(previousPageRef.current)}
+              onBack={returnFromNowPlaying}
+              backLabel={nowPlayingBackLabel}
               onPlayPause={togglePlay}
               onSeek={seek}
               onVolume={setVolume}
@@ -1284,7 +1291,7 @@ export default function App() {
             <NowPlayingView
               track={activeTrack}
               tracks={tracks}
-              queue={playbackQueueIds.map((id) => tracks.find((track) => track.id === id)).filter(Boolean) as Track[]}
+              queue={playbackQueueTracks}
               isPlaying={isPlaying}
               playbackClock={() => audioRef.current?.currentTime ?? progress}
               progress={progress}
@@ -1293,7 +1300,8 @@ export default function App() {
               repeat={repeat}
               isFavorite={isActiveTrackFavorite}
               volume={volume}
-              onBack={() => requestNavigation(previousPageRef.current)}
+              onBack={returnFromNowPlaying}
+              backLabel={nowPlayingBackLabel}
               onPlay={playTrack}
               onPlayPause={togglePlay}
               onToggleFavorite={toggleFavorite}
@@ -1359,9 +1367,7 @@ export default function App() {
         )}
       </main>}
 
-      {!compactMode.active && <Presence show={playerBarElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
-        {playerBarElement ?? lastPlayerBarElement ?? <span style={{ display: "none" }} />}
-      </Presence>}
+      {!compactMode.active && playerBarElement}
 
       <Presence show={contextMenuElement !== null} exitDurationMs={MOTION_DURATIONS.micro}>
         {contextMenuElement ?? lastContextMenuElement ?? <span style={{ display: "none" }} />}

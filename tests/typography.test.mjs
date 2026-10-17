@@ -13,13 +13,25 @@ function rules(file, selector) {
 
 test("typography consumers use shared roles instead of isolated sizes and weights", () => {
   for (const [file, css] of Object.entries(sheets)) {
-    for (const [, property, value] of css.matchAll(/(?:^|[;{\s])font-(size|weight):\s*([^;}]+)/g)) {
+    // Font-face descriptors describe a local font resource, not a component role.
+    const consumers = css.replace(/@font-face\s*\{[^}]*\}/g, "");
+    for (const [, property, value] of consumers.matchAll(/(?:^|[;{\s])font-(size|weight):\s*([^;}]+)/g)) {
       assert.match(value.trim(), /^(?:var\(--(?:type|weight|lyrics)-[\w-]+\)|inherit)$/, `${file}: font-${property}: ${value}`);
     }
     for (const [, variable] of css.matchAll(/var\((--(?:type|weight)-[\w-]+)\)/g)) {
       assert.ok(base.includes(`${variable}:`), `${file} references undefined ${variable}`);
     }
   }
+});
+
+test("Chinese display fallback stays local and separate from body and Latin text", () => {
+  const face = base.match(/@font-face\s*\{[^}]*\}/)?.[0];
+  assert.ok(face);
+  assert.match(face, /local\("Microsoft YaHei UI Light"\)/);
+  assert.doesNotMatch(face, /url\(/);
+  assert.match(face, /unicode-range:\s*U\+2E80-9FFF, U\+F900-FAFF, U\+FF00-FFEF/);
+  assert.match(base, /--font-display:\s*"Zone Chinese Display"/);
+  assert.doesNotMatch(base.match(/--font-body:[^;]+;/)[0], /Zone Chinese Display|Light/);
 });
 
 test("peer category and content navigation keep the same size and weight", () => {

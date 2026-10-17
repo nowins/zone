@@ -16,19 +16,49 @@ export const MOTION_DURATIONS = {
 
 /** Layered now-playing entrance and the final static Canvas frame. */
 export const NOW_PLAYING_MOTION = {
-  canvasSettle: 1400,
+  canvasSettle: 1800,
+  glowOrangeCycle: 67,
+  glowPinkCycle: 50,
+  mosaicReveal: 400,
+  mosaicRevealDelay: 200,
+  mosaicRevealStep: 100,
+  mosaicLightReveal: 2000,
+  mosaicTurn: 1400,
+  mosaicTurnHold: 1,
+  mosaicTurnFade: 2800,
+  mosaicInterval: 2000,
+  mosaicLightPeriod: 90_000,
+  mosaicPaletteInterval: 20_000,
+  mosaicPaletteTransition: 4000,
+  artistGridDelay: 3000,
+  artistScene: 32_000,
+  artistTransition: 2000,
+  artistTextRetarget: 400,
+  artistDecodeTimeout: 1600,
   mosaicReplace: 900,
   mosaicReplaceStagger: 240,
-  nowQueue: 240,
-  nowQueueDelay: 55,
-  nowCard: 220,
-  nowCardDelay: 220,
+  nowQueue: 400,
+  nowQueueDelay: 0,
+  nowCard: 400,
+  nowCardDelay: 1300,
   coverEnter: 280,
   coverExit: 220,
   coverInfo: 180,
   coverInfoDelay: 60,
   coverHandoff: 80,
-  nowStage: 1250,
+  nowStage: 1700,
+} as const;
+
+/** Native Iris curve parameters; weights already include UIX's factor of ten. */
+export const NOW_PLAYING_CURVES = {
+  mosaicFlipHandles: [1, 1],
+  mosaicRevealAlpha: { weight: 5, handle: 0.5 },
+  mosaicRevealScale: { weight: 10, handle: 0.5, start: 0.8 },
+  mosaicLightReveal: { weight: 10, handle: 0.5 },
+  mosaicLightWeight: 2.5,
+  glowOrangeWeight: 20,
+  glowPinkWeight: 10,
+  artistText: { fadeWeight: 10, handle: 0.5, slideWeight: 100, staticProgress: 0.4 },
 } as const;
 
 /** WP tile timing: interaction, readable live updates and staggered arrival. */
@@ -113,6 +143,9 @@ export const BROWSE_MOTION = {
 /** Coarse vertical wheel signals only; fine gestures retain native momentum. */
 export const SCROLL_MOTION = { coarseDelta: 50, linePixels: 32 } as const;
 
+/** Let the pointer settle before offering an album's playback action. */
+export const COLLECTION_MOTION = { albumHoverDelay: 700 } as const;
+
 export const SPRING_PRESETS = {
   // High stiffness, near-critical damping: press rebound.
   snappy: { stiffness: 500, damping: 40, mass: 1 },
@@ -167,6 +200,7 @@ export function applyMotionTokens(root: HTMLElement = document.documentElement):
   style.setProperty("--motion-browse", `${BROWSE_MOTION.duration}ms`);
   style.setProperty("--motion-browse-reveal", `${BROWSE_MOTION.reveal}ms`);
   style.setProperty("--motion-browse-gutter", `${BROWSE_MOTION.drift}px`);
+  style.setProperty("--motion-collection-hover-delay", `${COLLECTION_MOTION.albumHoverDelay}ms`);
   style.setProperty("--motion-feather-scale", `${BROWSE_MOTION.scale}`);
   style.setProperty("--panorama-backdrop-travel", `${PANORAMA_MOTION.backdropTravel}px`);
   for (const name of Object.keys(MOTION_DURATIONS) as MotionDurationName[]) {

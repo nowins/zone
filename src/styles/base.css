@@ -6,17 +6,8 @@
   font-weight: var(--weight-body);
   font-synthesis: none;
   text-rendering: geometricPrecision;
-  --app-bg: #0b070c;
-  --app-bg-raised: #140d15;
-  --text: #f7f2f6;
-  --muted: rgba(247, 242, 246, 0.58);
-  --quiet: rgba(247, 242, 246, 0.34);
-  --faint: rgba(247, 242, 246, 0.13);
-  --accent: #f12486;
-  --accent-pink: #f12486;
-  --accent-orange: #ff5b19;
   --font-body: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
-  --font-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-display: "Zone Chinese Display", "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   --app-header-height: 56px;
   --type-nav-primary: 25px;
   --type-nav-secondary: 18px;
@@ -50,6 +41,63 @@
   --weight-body: 400;
   --weight-emphasis: 600;
 }
+
+/* Match the light Latin display strokes with a local Chinese light face.
+   The unicode range leaves Latin and functional body text on their own fonts. */
+@font-face {
+  font-family: "Zone Chinese Display";
+  src: local("Microsoft YaHei UI Light"), local("Microsoft YaHei Light");
+  font-style: normal;
+  font-weight: 300;
+  unicode-range: U+2E80-9FFF, U+F900-FAFF, U+FF00-FFEF;
+  font-display: swap;
+}
+
+:root,
+[data-surface-theme="dark"],
+.tile {
+  --app-bg: #0b070c;
+  --app-bg-raised: #140d15;
+  --surface-ink: 247, 242, 246;
+  --surface-bright: 255, 255, 255;
+  --surface-paper: 11, 7, 12;
+  --overlay-veil: rgba(7, 4, 8, 0.72);
+  --surface-shadow: 0 12px 32px rgba(0, 0, 0, 0.36);
+  --danger: #f29aa2;
+  --text: #f7f2f6;
+  --muted: rgba(247, 242, 246, 0.64);
+  --quiet: rgba(247, 242, 246, 0.4);
+  --faint: rgba(247, 242, 246, 0.13);
+  --accent: #f12486;
+  --accent-pink: #f12486;
+  --accent-orange: #ff5b19;
+  color: var(--text);
+  color-scheme: dark;
+}
+
+[data-surface-theme="light"] {
+  --app-bg: #fff;
+  --app-bg-raised: #f3f3f3;
+  --surface-ink: 32, 32, 32;
+  --surface-bright: 0, 0, 0;
+  --surface-paper: 255, 255, 255;
+  --overlay-veil: rgba(24, 18, 23, 0.24);
+  --surface-shadow: 0 8px 28px rgba(24, 18, 23, 0.16);
+  --danger: #a8313f;
+  --text: #242424;
+  --muted: #575757;
+  --quiet: #737373;
+  --faint: rgba(0, 0, 0, 0.12);
+  --accent: #c9006b;
+  --accent-pink: #c9006b;
+  color: var(--text);
+  color-scheme: light;
+}
+
+.shell[data-surface-theme="light"] { background-image: none; }
+.shell[data-surface-handoff="return"] { transition: none; }
+.shell[data-surface-theme="light"] .quickplay-backdrop { background: none; }
+.shell[data-surface-theme="light"] > .audio-glow-canvas { opacity: 0.2; mix-blend-mode: multiply; }
 
 @media (max-width: 1000px) {
   :root {
@@ -111,9 +159,9 @@ input:focus-visible {
   display: grid;
   grid-template-rows: 28px minmax(0, 1fr) 74px;
   overflow: hidden;
-  background:
-    radial-gradient(ellipse at 54% 44%, rgba(80, 48, 70, 0.09), transparent 53%),
-    var(--app-bg);
+  background-color: var(--app-bg);
+  background-image: radial-gradient(ellipse at 54% 44%, rgba(80, 48, 70, 0.09), transparent 53%);
+  transition: background-color var(--motion-page) var(--motion-ease-dissolve), color var(--motion-page) var(--motion-ease-dissolve);
 }
 
 .shell:not(.shell-now-playing)::before {
@@ -235,17 +283,18 @@ input:focus-visible {
   width: 42px;
   display: grid;
   place-items: center;
-  color: rgba(247, 242, 246, 0.58);
+  color: var(--muted);
   transition: color var(--motion-micro) var(--motion-ease-standard), background var(--motion-micro) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-standard);
 }
 
 .window-controls button:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  background: rgba(var(--surface-bright), 0.07);
 }
 
 .window-controls button:last-child:hover {
   background: #b72b49;
+  color: #fff;
 }
 
 .window-controls button:active {
@@ -259,7 +308,7 @@ input:focus-visible {
   justify-content: center;
   gap: 5px;
   font-size: var(--type-caption);
-  border-right: 1px solid rgba(247, 242, 246, 0.09);
+  border-right: 1px solid rgba(var(--surface-ink), 0.09);
 }
 
 .window-controls .titlebar-settings svg {
@@ -267,7 +316,7 @@ input:focus-visible {
 }
 
 .window-controls .titlebar-settings.active {
-  color: #fff;
+  color: var(--text);
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
@@ -294,7 +343,7 @@ input:focus-visible {
 
 .brand {
   margin: 0;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--text);
   font-size: var(--type-subsection-title);
   line-height: 1;
   font-weight: var(--weight-emphasis);
@@ -310,7 +359,7 @@ input:focus-visible {
 .primary-pivot button {
   position: relative;
   padding: 0 0 8px;
-  color: rgba(247, 242, 246, 0.45);
+  color: var(--quiet);
   font-family: var(--font-display);
   font-size: var(--type-nav-primary);
   line-height: 1.1;
@@ -319,24 +368,13 @@ input:focus-visible {
 }
 
 .primary-pivot button:hover {
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--muted);
 }
 
 .primary-pivot button.active {
-  color: #fff;
+  color: var(--text);
 }
 
-.primary-pivot button.active::after {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 2px;
-  content: "";
-  background: var(--accent);
-  transform-origin: left center;
-  animation: pivot-in var(--motion-content) var(--motion-ease-entrance) both;
-}
 
 .header-icon {
   width: 34px;
@@ -347,8 +385,8 @@ input:focus-visible {
 }
 
 .header-icon:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+  background: rgba(var(--surface-bright), 0.07);
 }
 
 .content-band {

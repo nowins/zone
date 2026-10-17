@@ -1,0 +1,155 @@
+{
+  "provenance": {
+    "captureSha256": "cd2c4768e7bf0c6c13c454317ad96fd4be994ce13f57b42267e2172bad083f83",
+    "probeSha256": "2e8ce77fb6883c61e9bf9a32ce13d8732a3caa2b954c590f2630bd69747a8914",
+    "atlasSha256": "bd8ef66c04c2c630a3e1743594cd347737d3e230d552c10628e54da598baa026",
+    "method": "Owned RT/SYSTEMMEM readback after original EndScene; all HRESULT0; unchanged PS/VS/RT/viewport/RS/samplers; detached",
+    "format": 21,
+    "dimensions": [
+      2048,
+      2048
+    ],
+    "pitch": 8192,
+    "encoding": "BGRA8-base64"
+  },
+  "rect": [
+    969,
+    257,
+    1055,
+    343
+  ],
+  "quad": [
+    {
+      "index": 4159,
+      "position": [
+        1747,
+        849,
+        0
+      ],
+      "colorARGB": "0x59ffffff",
+      "alphaByte": 89,
+      "uv0": [
+        0.47314453125,
+        0.16748046875
+      ]
+    },
+    {
+      "index": 4157,
+      "position": [
+        1747,
+        781,
+        0
+      ],
+      "colorARGB": "0x59ffffff",
+      "alphaByte": 89,
+      "uv0": [
+        0.47314453125,
+        0.12548828125
+      ]
+    },
+    {
+      "index": 4158,
+      "position": [
+        1815,
+        781,
+        0
+      ],
+      "colorARGB": "0x59ffffff",
+      "alphaByte": 89,
+      "uv0": [
+        0.51513671875,
+        0.12548828125
+      ]
+    },
+    {
+      "index": 4160,
+      "position": [
+        1815,
+        849,
+        0
+      ],
+      "colorARGB": "0x59ffffff",
+      "alphaByte": 89,
+      "uv0": [
+        0.51513671875,
+        0.16748046875
+      ]
+    }
+  ],
+  "edges": {
+    "top": {
+      "gutter": "EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8=",
+      "content": "EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8="
+    },
+    "bottom": {
+      "gutter": "EQwS/xMPFf8SDRP/EAoN/xAJDP8QCQz/EAkM/w8IC/8QCQz/DwgL/w8IC/8PCAv/EAkL/xIRG/8SDxX/EhAa/xEMEf8QCQz/EAkM/xAJDP8QCAr/EAkK/xAJCv8RCQr/EQkK/xEJCv8QCAr/DwgK/w8ICv8PDBL/Hi5H/xkcJv8XJT7/DwgL/xAJDP8RDRX/EAkM/xEMEP8SDBH/EQsQ/xELEP8RDhX/IkBl/xELEP8QCxD/EQ0S/xEPFf8RDxX/EREZ/xISHP8SEBj/ERId/xANFf8QDxn/EA8a/xEOGP8XIjb/IThY/xUcLf8UFST/ERAa/xEQG/8SERz/EhEb/xEPGf8RDhf/EA4V/xEOE/8RDBH/EQ4V/xENEv8RCw7/EQsQ/xELEP8RCw3/EQsQ/xELEP8RCw//EQsN/xELDf8QCg//FBQe/xcbLf8SDhb/EAoN/xAJDP8=",
+      "content": "EQwS/xMPFf8SDRP/EAoN/xAJDP8QCQz/EAkM/w8IC/8QCQz/DwgL/w8IC/8PCAv/EAkL/xIRG/8SDxX/EhAa/xEMEf8QCQz/EAkM/xAJDP8QCAr/EAkK/xAJCv8RCQr/EQkK/xEJCv8QCAr/DwgK/w8ICv8PDBL/Hi5H/xkcJv8XJT7/DwgL/xAJDP8RDRX/EAkM/xEMEP8SDBH/EQsQ/xELEP8RDhX/IkBl/xELEP8QCxD/EQ0S/xEPFf8RDxX/EREZ/xISHP8SEBj/ERId/xANFf8QDxn/EA8a/xEOGP8XIjb/IThY/xUcLf8UFST/ERAa/xEQG/8SERz/EhEb/xEPGf8RDhf/EA4V/xEOE/8RDBH/EQ4V/xENEv8RCw7/EQsQ/xELEP8RCw3/EQsQ/xELEP8RCw//EQsN/xELDf8QCg//FBQe/xcbLf8SDhb/EAoN/xAJDP8="
+    },
+    "left": {
+      "gutter": "EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8RCQn/EQkK/xEJCv8RCgv/EQoL/xAKC/8QCgv/EQsM/xIMDv8SCw7/EwwP/xMNEP8UDxH/FhAU/xUQFf8VEBf/FA8W/xUQGP8VEBr/FRAa/xYRG/8WERr/FREX/xURFv8VERf/FRIb/xUTHf8VFB//Fhcl/xYcLv8XHjT/GB02/xceO/8ZIEH/GSNI/xglTP8YKE//GihQ/xopU/8aK1z/GCtb/xkoUP8aJUf/GSFA/xkdOf8YHDX/GRsy/xgbMv8XGzT/GBw5/xgdO/8YHT3/Fx09/xcgP/8XHTf/FRku/xgcMv8ZHDD/FBMf/xQRHf8SER3/FBQm/xMQGv8TEBn/FBQi/xEMEv8=",
+      "content": "EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8RCQn/EQkK/xEJCv8RCgv/EQoL/xAKC/8QCgv/EQsM/xIMDv8SCw7/EwwP/xMNEP8UDxH/FhAU/xUQFf8VEBf/FA8W/xUQGP8VEBr/FRAa/xYRG/8WERr/FREX/xURFv8VERf/FRIb/xUTHf8VFB//Fhcl/xYcLv8XHjT/GB02/xceO/8ZIEH/GSNI/xglTP8YKE//GihQ/xopU/8aK1z/GCtb/xkoUP8aJUf/GSFA/xkdOf8YHDX/GRsy/xgbMv8XGzT/GBw5/xgdO/8YHT3/Fx09/xcgP/8XHTf/FRku/xgcMv8ZHDD/FBMf/xQRHf8SER3/FBQm/xMQGv8TEBn/FBQi/xEMEv8="
+    },
+    "right": {
+      "gutter": "EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8QBwf/DwcH/w8HB/8PBwf/DgYG/w8HB/8PBwj/DwcH/xAICP8QCAn/EAgI/xAICf8QCAj/EAgI/xEJCv8RCQr/EAkK/xAJDf8WGi3/GS1T/xs5Z/8cPm7/HD5t/xo1X/8XJEH/GCVD/xkvVf8aNF7/H0d9/yRYmf8scMH/LXTG/ziQ7/9Fpvv/Ubn8/0+2/P9Epfz/QZv4/zuT8/89lvf/Q6T7/0is/P9Fpvz/QJ36/z2X+P86kPP/N43w/zKD4P8vec//KGGr/yNXmf8jU5H/H0V6/x4+b/8bKkz/GCI8/xUZLf8VFSP/Fxcl/xYYLP8XGSr/EwwR/xILD/8RCg3/EQoN/xAJDP8=",
+      "content": "EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8TCQn/EwkJ/xMJCf8QBwf/DwcH/w8HB/8PBwf/DgYG/w8HB/8PBwj/DwcH/xAICP8QCAn/EAgI/xAICf8QCAj/EAgI/xEJCv8RCQr/EAkK/xAJDf8WGi3/GS1T/xs5Z/8cPm7/HD5t/xo1X/8XJEH/GCVD/xkvVf8aNF7/H0d9/yRYmf8scMH/LXTG/ziQ7/9Fpvv/Ubn8/0+2/P9Epfz/QZv4/zuT8/89lvf/Q6T7/0is/P9Fpvz/QJ36/z2X+P86kPP/N43w/zKD4P8vec//KGGr/yNXmf8jU5H/H0V6/x4+b/8bKkz/GCI8/xUZLf8VFSP/Fxcl/xYYLP8XGSr/EwwR/xILD/8RCg3/EQoN/xAJDP8="
+    }
+  },
+  "corners": [
+    {
+      "gutter": [
+        19,
+        9,
+        9,
+        255
+      ],
+      "content": [
+        19,
+        9,
+        9,
+        255
+      ]
+    },
+    {
+      "gutter": [
+        19,
+        9,
+        9,
+        255
+      ],
+      "content": [
+        19,
+        9,
+        9,
+        255
+      ]
+    },
+    {
+      "gutter": [
+        16,
+        9,
+        12,
+        255
+      ],
+      "content": [
+        16,
+        9,
+        12,
+        255
+      ]
+    },
+    {
+      "gutter": [
+        17,
+        12,
+        18,
+        255
+      ],
+      "content": [
+        17,
+        12,
+        18,
+        255
+      ]
+    }
+  ]
+}

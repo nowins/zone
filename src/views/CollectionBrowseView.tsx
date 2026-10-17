@@ -1,0 +1,170 @@
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Info } from "lucide-react";
+import { Button } from "../components/Button";
+import { CollectionAlbumTile } from "../components/CollectionAlbumTile";
+import { CollectionTrackList } from "../components/CollectionTrackList";
+import { useCollectionContext } from "../components/CollectionContext";
+import { useCollectionItemWindow } from "../hooks/useCollectionItemWindow";
+import { albumReference, artistReference } from "../utils/collectionEntities";
+import { buildCollectionGenres, collectionAlbumYear, initialCollectionBrowser, resolveCollectionBrowser,
+  type CollectionBrowserState, type CollectionBrowseView } from "../utils/collectionBrowser";
+import type { LibraryViewProps } from "./LibraryView";
+import type { AlbumGroup } from "../types";
+
+function moveChoice(event: KeyboardEvent<HTMLButtonElement>, index: number, count: number, select: (index: number) => void) {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  const grid = event.currentTarget.closest<HTMLElement>(".collection-album-index");
+  const columns = grid ? Math.max(1, getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length) : 1;
+  const next = event.key === "Home" ? 0 : event.key === "End" ? count - 1
+    : event.key === "ArrowDown" ? index + columns : event.key === "ArrowUp" ? index - columns
+      : grid && event.key === "ArrowRight" ? index + 1 : grid && event.key === "ArrowLeft" ? index - 1 : null;
+  if (next === null) return;
+  event.preventDefault();
+  if (count) select(Math.max(0, Math.min(next, count - 1)));
+}
+
+/** Browsing selection stays in the collection session, entirely apart from transport. */
+export function CollectionBrowseView(props: LibraryViewProps & { view: CollectionBrowseView }) {
+  const context = useCollectionContext();
+  const [fallback, setFallback] = useState(initialCollectionBrowser);
+  const browser = context?.navigation.location.browser || fallback;
+  const update = (next: CollectionBrowserState) => context ? context.navigation.patch({ browser: next }, false) : setFallback(next);
+  const genres = useMemo(() => buildCollectionGenres(props.index.tracks), [props.index]);
+  const scope = useMemo(() => resolveCollectionBrowser(props.index, props.view, browser, genres, props.favoriteTrackIds), [props.index, props.view, browser, genres, props.favoriteTrackIds]);
+  const albumScroll = useRef<HTMLDivElement>(null);
+  const pickerScroll = useRef<HTMLDivElement>(null);
+  const surface = context?.navigation.location.surface;
+  const orderedAlbums = props.view === "genres" ? scope.albumGroups.flatMap(group => group.albums) : scope.albums;
+  const albumPositions = new Map(orderedAlbums.map((album, index) => [album.key, index]));
+  const albumWindow = useCollectionItemWindow(albumScroll, orderedAlbums.map(album => "album:" + album.key),
+    surface?.scrolls["browse-albums:" + props.view]?.anchor, surface?.focus);
+  const pickerKeys = props.view === "artists" ? props.index.artists.map(artist => "artist:" + artist.artist) : genres.map(genre => "genre:" + genre.key);
+  const pickerWindow = useCollectionItemWindow(pickerScroll, pickerKeys, surface?.scrolls["browse-index:" + props.view]?.anchor, surface?.focus, 32);
+  const primaryKey = props.view === "artists" ? scope.artist?.artist || browser.artist?.name
+    : props.view === "genres" ? browser.genre : "albums";
+  const previousPrimary = useRef(primaryKey);
+  useLayoutEffect(() => {
+    if (previousPrimary.current !== primaryKey && albumScroll.current) albumScroll.current.scrollTop = 0;
+    previousPrimary.current = primaryKey;
+  }, [primaryKey]);
+
+  const selectAlbum = (album: AlbumGroup | null) => update({ ...browser,
+    albums: { ...browser.albums, [props.view]: album ? albumReference(album) : null },
+    browseSongSort: { ...browser.browseSongSort, [props.view]: "auto" } });
+  const albumSortLabels = { title: "A–Z", year: "按发行年份", added: "按添加日期" };
+  const songSortLabels = { title: "A–Z", album: "按专辑", favorite: "喜欢优先" };
+  const nextAlbumSort = scope.albumSort === "title" ? "year" : scope.albumSort === "year" ? "added" : "title";
+  const nextSongSort = scope.songSort === "title" ? "album" : scope.songSort === "album" ? "favorite" : "title";
+  const selectedAlbumKey = scope.album?.key;
+  const firstAlbumKey = props.view === "genres" ? scope.albumGroups[0]?.albums[0]?.key : scope.albums[0]?.key;
+  function albumTiles(albums: AlbumGroup[]) {
+    return <div className="collection-album-index">
+      {albums.map((album, index) => <div key={album.key} data-collection-anchor={"album:" + album.key} data-collection-window-item={"album:" + album.key}>
+        {albumWindow.has("album:" + album.key, "browse-album:" + props.view + ":" + album.key) || album.key === (selectedAlbumKey || firstAlbumKey) ? <CollectionAlbumTile name={album.album} artist={album.artist} coverPath={album.coverPath} index={index}
+          subtitle={props.view === "genres" || (props.view === "artists" && scope.artist) ? String(collectionAlbumYear(album) || "未知年份")
+            : props.view === "albums" ? album.artist + "，" + (collectionAlbumYear(album) || "未知年份") : album.artist}
+          selected={album.key === selectedAlbumKey} onSelect={() => selectAlbum(album)}
+          tabIndex={album.key === (selectedAlbumKey || firstAlbumKey) ? 0 : -1}
+          choiceKey={album.key} onKeyDown={event => moveChoice(event, albumPositions.get(album.key)!, orderedAlbums.length, next => {
+            const target = orderedAlbums[next];
+            albumWindow.reveal("album:" + target.key, "browse-album:" + props.view + ":" + target.key);
+            selectAlbum(target);
+          })}
+          focusKey={"browse-album:" + props.view + ":" + album.key}
+          onDetails={() => props.onOpen(albumReference(album))}
+          onPlay={() => props.onPlayTracks(albumPlayback(album))}
+          onContextMenu={event => props.onContextMenu(event, { kind: "album", title: album.album,
+            subtitle: album.artist, tracks: album.tracks, targetId: album.key })} /> : <div className="collection-album-placeholder" aria-hidden="true" />}
+      </div>)}
+    </div>;
+  }
+  // The visible album may differ from the last selected album; playback always uses this album's scope.
+  const albumPlayback = (album: AlbumGroup) => props.view === "genres" && scope.genre
+    ? album.tracks.filter(track => scope.genre!.tracks.some(item => item.id === track.id)) : album.tracks;
+  const tracksKey = "browse:" + props.view + ":" + (primaryKey || "all") + ":" + (scope.album?.key || (scope.albumMissing ? "missing" : "all"));
+  const picker = props.view === "artists" ? props.index.artists : genres;
+  return <div className={"collection-browse collection-browse-" + props.view}>
+    {props.view !== "albums" && <section className="collection-browse-pane collection-browse-picker" aria-label={props.view === "artists" ? "艺术家索引" : "流派索引"}>
+      <div className="collection-browse-caption">
+        <h2>{picker.length}{props.view === "artists" ? " 位艺术家" : " 个流派"}</h2>
+        <Button variant="ghost" size="sm" className="collection-browse-reset" disabled={props.view === "artists" ? !browser.artist : !browser.genre}
+          aria-label={props.view === "artists" ? "全部艺术家" : "全部流派"} onClick={() => update({ ...browser,
+            ...(props.view === "artists" ? { artist: null } : { genre: null }), albums: { ...browser.albums, [props.view]: null },
+            browseSongSort: { ...browser.browseSongSort, [props.view]: "auto" } })}>全部</Button>
+      </div>
+      <div ref={pickerScroll} className="collection-browse-scroll" data-collection-scroll={"browse-index:" + props.view}>
+        <ul className="collection-browse-index" data-browse-roving>
+          {props.view === "artists" ? props.index.artists.map((artist, index) => {
+            const selected = scope.artist?.artist === artist.artist;
+            const chooseArtist = (target: typeof artist) => update({ ...browser, artist: artistReference(target), albums: { ...browser.albums, artists: null },
+              browseSongSort: { ...browser.browseSongSort, artists: "auto" } });
+            const tabbable = scope.artist ? selected : index === 0;
+            return <li key={artist.artist} data-collection-anchor={"artist:" + artist.artist} data-collection-window-item={"artist:" + artist.artist} className={selected ? "selected" : ""}>
+              {pickerWindow.has("artist:" + artist.artist, "browse-artist:" + artist.artist) || tabbable ? <>
+              <Button variant="ghost" className="collection-browse-choice" data-touch-menu data-browse-choice={artist.artist}
+                data-collection-focus={"browse-artist:" + artist.artist} title={artist.artist} aria-pressed={selected} tabIndex={tabbable ? 0 : -1}
+                onClick={() => chooseArtist(artist)} onKeyDown={event => moveChoice(event, index, props.index.artists.length, next => {
+                  const target = props.index.artists[next];
+                  pickerWindow.reveal("artist:" + target.artist, "browse-artist:" + target.artist);
+                  chooseArtist(target);
+                })}
+                onContextMenu={event => props.onContextMenu(event, { kind: "artist", title: artist.artist, subtitle: "艺术家",
+                  tracks: artist.tracks, targetId: artist.artist })}>{artist.artist}</Button>
+              <Button variant="ghost" size="sm" className="collection-browse-info" aria-label={"查看艺术家 " + artist.artist}
+                data-collection-focus={"browse-artist-info:" + artist.artist} tabIndex={tabbable ? 0 : -1}
+                onClick={() => props.onOpen(artistReference(artist))}><Info size={14} /></Button>
+              </> : <div className="collection-name-placeholder" aria-hidden="true" />}
+            </li>;
+          }) : genres.map((genre, index) => <li key={genre.key} data-collection-anchor={"genre:" + genre.key} data-collection-window-item={"genre:" + genre.key} className={scope.genre?.key === genre.key ? "selected" : ""}>
+            {pickerWindow.has("genre:" + genre.key, "browse-genre:" + genre.key) || (scope.genre ? scope.genre.key === genre.key : index === 0) ?
+            <Button variant="ghost" className="collection-browse-choice" data-browse-choice={genre.key} title={genre.name}
+              data-collection-focus={"browse-genre:" + genre.key} aria-pressed={scope.genre?.key === genre.key}
+              tabIndex={scope.genre ? scope.genre.key === genre.key ? 0 : -1 : index === 0 ? 0 : -1}
+              onClick={() => update({ ...browser, genre: genre.key, albums: { ...browser.albums, genres: null },
+                browseSongSort: { ...browser.browseSongSort, genres: "auto" } })}
+              onKeyDown={event => moveChoice(event, index, genres.length, next => {
+                pickerWindow.reveal("genre:" + genres[next].key, "browse-genre:" + genres[next].key);
+                update({ ...browser, genre: genres[next].key, albums: { ...browser.albums, genres: null },
+                  browseSongSort: { ...browser.browseSongSort, genres: "auto" } });
+              })}>{genre.name}</Button> : <div className="collection-name-placeholder" aria-hidden="true" />}
+          </li>)}
+        </ul>
+      </div>
+    </section>}
+    <section className="collection-browse-pane collection-browse-records" aria-label="专辑浏览">
+      <div className="collection-browse-caption"><h2>{scope.albums.length} 张专辑</h2>
+        <Button variant="ghost" size="sm" className="collection-browse-sort" data-collection-focus={"browse-album-sort:" + props.view}
+          aria-label={"专辑排序，当前" + albumSortLabels[scope.albumSort] + "，切换为" + albumSortLabels[nextAlbumSort]}
+          onClick={() => { update({ ...browser, albumSort: { ...browser.albumSort, [props.view]: nextAlbumSort } }); if (albumScroll.current) albumScroll.current.scrollTop = 0; }}>
+          {props.view === "genres" ? "按艺术家 · " : ""}{albumSortLabels[scope.albumSort]}</Button>
+      </div>
+      <div ref={albumScroll} className="collection-browse-scroll" data-browse-roving data-collection-scroll={"browse-albums:" + props.view}>
+        {scope.primaryMissing ? <p className="collection-empty">所选内容已不可用</p>
+          : props.view === "genres" ? scope.albumGroups.map(group => <section key={group.name} className="collection-browse-album-group">
+            <h3 title={group.name}>{group.name}</h3>{albumTiles(group.albums)}
+          </section>) : albumTiles(scope.albums)}
+      </div>
+    </section>
+    <section className="collection-browse-pane collection-browse-songs" aria-label="歌曲浏览">
+      <div className="collection-browse-caption">
+        <h2>{scope.tracks.length} 首歌曲</h2>
+        <Button variant="ghost" size="sm" className="collection-browse-sort" data-collection-focus={"browse-song-sort:" + props.view}
+          aria-label={"歌曲排序，当前" + songSortLabels[scope.songSort] + "，切换为" + songSortLabels[nextSongSort]}
+          onClick={() => update({ ...browser, browseSongSort: { ...browser.browseSongSort, [props.view]: nextSongSort } })}>{songSortLabels[scope.songSort]}</Button>
+        <Button variant="ghost" size="sm" className="collection-browse-reset" aria-label="全部专辑歌曲" disabled={!browser.albums[props.view]}
+          onClick={() => selectAlbum(null)}>全部</Button>
+      </div>
+      {scope.album && <div className="collection-browse-album-label" title={scope.album.album}>
+        <span>{scope.album.album}</span>
+        <Button variant="ghost" size="sm" className="collection-browse-info" aria-label={"查看专辑 " + scope.album.album}
+          data-collection-focus={"browse-selected-album-info:" + props.view} onClick={() => props.onOpen(albumReference(scope.album!))}><Info size={14} /></Button>
+      </div>}
+      <CollectionTrackList key={tracksKey} tracks={scope.tracks} compact windowed label="歌曲" listKey={tracksKey}
+        orderKey={scope.songSort} numberMode={scope.songSort === "album" ? "album" : "position"}
+        activeTrackId={props.activeTrackId} onPlay={props.onPlay} favoriteTrackIds={props.favoriteTrackIds} onToggleFavorite={props.onToggleFavorite}
+        emptyText={scope.primaryMissing || scope.albumMissing ? "所选内容已不可用" : "暂无歌曲"}
+        onContextMenu={(event, track) => props.onContextMenu(event, { kind: "track", title: track.title,
+          subtitle: track.artist + " / " + track.album, tracks: [track], playbackTracks: scope.tracks })} />
+    </section>
+  </div>;
+}

@@ -15,6 +15,8 @@
 
 减少动态效果（`prefers-reduced-motion`）是一等公民：所有空间动效有收敛路径，见下文「reduced-motion 约定」。
 
+普通浏览页面统一浅色，浏览页间导航不切换底色；进入或离开深色播放表面时，shell 的背景色用 page 档与 dissolve 曲线接续。减少动态效果时收敛到 instant 档；页面内容仍沿用现有成对快照与媒体舞台过渡，不为换色新增整页滤镜。
+
 ## 系统分层
 
 ```text
@@ -57,6 +59,8 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 通用短时长原则用于交互反馈，不给分层编排、悬停等待、循环加载或音频 DSP 包络套统一上限。正在播放入场和 Canvas 收敛使用 `tokens.ts` 中的 `NOW_PLAYING_MOTION`，不要在组件中复制时长。
 
+拼贴与艺术家照片使用 `NOW_PLAYING_MOTION.mosaicPaletteInterval`／`mosaicPaletteTransition` 的 20 秒选色与 4 秒线性 RGBA 接续，由 `mosaicPalette.ts` 维护。拼贴整体固定，只让单格入场和翻面；照片保留 32 秒平移／缩放，每片独立初始化光路。暂停冻结环境色与照片／点光场时钟；减少动态效果收稳颜色；隐藏后停止绘制，恢复时不补算隐藏时长。
+
 收藏、播客浏览及 quickplay 的页面交接共用 `BROWSE_MOTION`：内容区域横向位移 22px、640ms 用 browse 曲线减速收稳，透明度显现独立为 180ms，使用 dissolve 曲线从浅到明逐渐显现。向后一个分类／分区前进时，内容从左侧轻移到位；返回时镜像方向。区域同步移动，封面逐项按 46ms 步进显现，等待封顶 506ms，完整入场最迟 686ms 收稳。旧数据在原位用 80ms 淡出，不拖着旧文字长时间重叠；移动内容上的输入用 160ms 收稳。分类导航、搜索、数量和播放列表左侧索引不参加入场，也不提前加速右侧动画。进入播放列表时，旧页面像素副本静态裁切到右侧，不能盖住新左栏。顶层进入收藏／播客也委托同一内容控制器，内部导航接管时清除顶层旧画面，不叠加两层退场。quickplay 只动画可见内容分组，根节点、大字背景和视差底图保持稳定，不叠加整页与分组位移；返回首页不重播首次磁贴翻入。设置仍使用 `NAVIGATION_MOTION` 的页面编排；事实源均为 `tokens.ts`。
 
 `contentEntrance.ts` 区分封面条目和文本列表：艺术家、专辑、播客节目及 quickplay 封面按阅读顺序从完全透明逐项显现，父区域只负责位移，避免双重淡入。含封面的区域中，标题和其他不包含封面的直属文字块独立显现并继承同一次区域位移；反向交接同时保留文字与封面的当前透明度。歌曲表格、播客单集和待播列表由区域整体显现，行本身不启动动画，捕获文字帧也不遍历读取歌曲行样式。歌曲表头与正文共用一个表格区域，播放列表右侧标题与歌曲放在 `.playlist-detail` 中共用一个内容区域，外层分隔线、左侧索引及新建按钮保持稳定。均匀歌曲行与规则网格每区测两个条目，按恢复后的滚动位置选取可见内容；分页播客与全景封面按实际矩形处理不同尺寸内容，最多 12 区、48 个选中条目。专辑网格的延迟渲染占位按封面实际宽度和两行文字预留高度，避免入场测量后塌缩、漏掉底边封面。不增加加载等待，不给屏外条目启动动画。
@@ -69,7 +73,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 每段翻面／滑动捕获真实内容，动画完成不按最新数组下标重新取图。`MosaicFrames` 预加载候选封面，边缘处交接后保持同一内容至落位；图片池长度变化在本段完成后调整布局。`CycleFrames` 同样按内容身份保留淡入与淡出两面，并接入磁贴串行调度、可见性、互动及 reduced-motion 守卫。父组件刷新只供应后续内容，不覆盖正在显示的面板。运行时回归见 `tests/tileInteraction.test.mjs`。
 
-`PANORAMA_MOTION` 维护首页视差、拖动惯性和滚动条停留：背景大字和底色当前分别跟随横向滚动的 22% / 8%，最大行程 480 / 240px；底色平面按 token 扩展，平移时不露出边缘。`useQuickplayPanorama` 直接写 DOM transform 与滚动条位置，不用逐帧 React state；返回页面时在同一 layout effect 内恢复位置，不闪现滚动条。粗步进滚轮与拖动释放使用可打断的 `snappy` 弹簧；触控板横向输入、细小或带小数的连续输入、滑块拖动和键盘定位不叠加惯性。拖动释放将实际速度传入弹簧，不从零速度重启。短滚动条在最后一次位移后停留 700ms，再按 micro 档淡出；拖住滑块时不隐藏，键盘焦点由 `:focus-visible` 保持可见。页面隐藏或卸载时取消动画与显隐计时器，reduced-motion 下停止视差、即时定位并收缩淡出；没有持续空闲动画。
+`PANORAMA_MOTION` 维护首页视差、拖动惯性和滚动条停留：背景大字和底色当前分别跟随横向滚动的 22% / 8%，最大行程 480 / 240px；底色平面按 token 扩展，平移时不露出边缘。`useQuickplayPanorama` 直接写 DOM transform、滚动条位置及分组按钮的边界禁用状态，不用逐帧 React state；返回页面时在同一 layout effect 内恢复位置，不闪现高亮滚动条。粗步进滚轮、鼠标分组按钮与拖动释放使用可打断的 `snappy` 弹簧；触控板横向输入、细小或带小数的连续输入、滑块拖动和键盘定位不叠加惯性。拖动释放将实际速度传入弹簧，不从零速度重启。短滚动条在最后一次位移后停留 700ms，再按 micro 档回到低透明度；拖住滑块时保持高亮，键盘焦点由 `:focus-visible` 保持清晰可见。页面隐藏或卸载时取消动画与显隐计时器，reduced-motion 下停止视差、即时定位并收缩淡出；没有持续空闲动画。
 
 收藏的纵向滚动区与首页内部纵向列表通过 `useWheelScroll` 接入同一弹簧。`wheelScroll.ts` 使用信号启发式：行／页单位或纯纵向、整数且至少 `SCROLL_MOTION.coarseDelta` 的像素步进接续到累积目标，当前阈值 50px；这不是硬件识别。细小、带小数、斜向、Shift 与缩放输入保留原有归属。滚动边界保持列表归属，不启动空转；原生滚动定位、拖滚动条、键盘、指针按下、窗口调整、隐藏和卸载立即停止接续，reduced-motion 下保留原生滚动。滚动位置逐帧写 DOM，不用 React state。
 
@@ -77,7 +81,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 编辑态通过稳定的 `.quick-pin-surface` 在 240ms 内将选中磁贴放大至 1.05，其余磁贴缩至 0.95、透明度降至 0.52，播客更新角标跟随同一表面。重排／尺寸调整使用 400ms FLIP；拖动中只显示浮起的磁贴，浮层从来源表面的当前缩放与透明度接续浮起。松手及取消均捕获浮层的可见表面矩形和透明度，真实磁贴补偿编辑态居中缩放，从该姿态用 500ms 落位；释放位置采用最后一次指针坐标。再次拖动先捕获当前动画矩形，避免从旧终点重启；键盘焦点仍有独立描边。reduced-motion 下取消位移和缩放，直接落位，保留选中与退暗提示。
 
-其他已登记的当前编排：歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、`TILE_MOTION` 中的 Lumia/Metro 校准组（flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。收藏页 `.album-play` 在封面项悬停或键盘聚焦时用 press 档淡入，无额外等待。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
+其他已登记的当前编排：歌词加载呼吸 1.1s、歌词行移动的 `cubic-bezier(0.77,0,0.175,1)`、`TILE_MOTION` 中的 Lumia/Metro 校准组（flip 两半各 200ms、`MosaicFrames` 单格半翻 280ms、cycle 离场清理 900ms、quickplay 磁贴入场错峰 46ms 步进/460ms 封顶与 900ms 挂载窗口）。收藏封面播放／详情动作使用 `COLLECTION_MOTION.albumHoverDelay` 的 700ms 停留判断，随后以 press 档淡入，移出立即隐藏并停止命中。CSS 的延后 `visibility` 在等待期间保持按钮不可见、不可点击，移出取消等待、重入重新计时，不引入组件计时器或逐帧更新。`CollectionAlbumTile` 在键盘聚焦或按键时保持动作可见，直到焦点移出当前专辑，避免 Tab 交接时隐藏下一目标；鼠标选择清除键盘显现状态且不跳过等待。reduced-motion 保留停留判断并取消显隐补间。调整时检验对应交互与 reduced-motion，不将这些参数当成必须另行审批的永久限制。
 
 ## 内核 API（`src/motion/`）
 
@@ -91,7 +95,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 - `pageTransition.ts` — 顶层方向解析（pivot/push/pop）。`surfaceTransition.ts` 在导航意图提交时冻结旧画面，浏览页面只复制数据区并委托 `browseTransition.ts` 入场，分类及搜索始终保持原位；延迟加载通过 MutationObserver 等待实际内容挂载。非浏览页面保持页面运动，正在播放仍由舞台与封面 FLIP 负责。
 - `collectionPivot.ts` — 收藏分类、详情和历史的方向解析及快照准备包装；入场直接复用 `playBrowseTransition`。`useCollectionPivot` 连接浏览 revision；收藏详情标签与播放列表选择复用 `useBrowsePanelMotion`。
 - `browseTransition.ts` — 收藏与播客共用的数据区快照、语义区域位移、可见条目显现、快速反向与输入收稳；同一页同时只有一个入场控制器，子面板接管时释放上一轮效果。`useBrowseEntrance` 统一 reduced-motion、延迟挂载和卸载清理；播客页壳在 screen 改变前准备快照，资料库和播放列表子标签只接管内容面板。
-- `surfaceSnapshot.ts` — 有限、inert 的静态画面复制，冻结当前动画／Canvas、保留根及子滚动位置；长歌曲列表仅复制可见行与少量边缘行，旧 React 生命周期正常卸载。
+- `surfaceSnapshot.ts` — 有限、inert 的静态画面复制，冻结当前动画／Canvas、保留根及子滚动位置；歌曲行、连续浏览名称与封面网格仅复制可见范围及少量边缘行，流派中不可见的艺术家分组只保留原高度。等行距和规则网格以两次条目测量定位，留白保留滚动与列对齐；旧 React 生命周期正常卸载。
 - `contentEntrance.ts` — 两类浏览共用的首屏条目选择与透明度显现；展开期间暂时停用滚动锚定，结束后恢复。快速反向复用快照中的稳定条目标识及透明度，已显现条目不重新隐藏。
 - `useReducedMotion.ts` — `useReducedMotion()` hook，JS/rAF 侧统一入口。
 
@@ -128,7 +132,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 2. 目标侧挂载时 `useLayoutEffect` 里 `takeFlipSource(id)`，命中则播飞行编排（参考 `coverFlip.ts`），未命中回退普通入场。
 3. 两侧都要用 `useReducedMotion()` gate；卸载 cleanup 必须 cancel 动画并移除克隆。
 
-封面链路使用 `registerCoverFlipSource` 携带已解码图片，缺图或未加载时回退普通入场。返程由 `coverFlip.ts` 的有限飞行控制器跨页面持有，正在播放页卸载只清理自己的入场，不取消已开始的返程。快速反向从当前克隆矩形与 Canvas 像素接续，不重读可能已换源的原始 `<img>`；底部栏重挂载时仅在布局变化后修正一次终点，不逐帧追踪布局。目标封面换源时取消旧飞行，避免旧克隆遮盖新内容。完成、取消、窗口尺寸变化、文档隐藏或减少动态效果切换时，统一移除克隆并恢复真实封面。图片请求、背景快切及缓存淘汰的运行时回归见 `tests/coverSwitchRuntime.test.mjs`。
+封面链路使用 `registerCoverFlipSource` 携带已解码图片，缺图或未加载时回退普通入场。返程由 `coverFlip.ts` 的有限飞行控制器跨页面持有，正在播放页卸载只清理自己的入场，不取消已开始的返程。快速反向从当前克隆矩形与 Canvas 像素接续，不重读可能已换源的原始 `<img>`；底部栏重挂载时仅在布局变化后修正一次终点，不逐帧追踪布局。目标封面换源时取消旧飞行，避免旧克隆遮盖新内容。完成、取消、窗口尺寸变化、文档隐藏或减少动态效果切换时，统一移除克隆并恢复真实封面。图片请求与播客背景快切的运行时回归见 `tests/coverSwitchRuntime.test.mjs`。
 
 ### 页面导航
 
@@ -138,7 +142,7 @@ TS 侧对应常量：`MOTION_DURATIONS`、`MOTION_EASINGS`、`MOTION_DRIFT`、`M
 
 全应用的 hover 反馈按内容类型对号入座，不要自创新数值：
 
-1. **行 hover**（列表行、设置行）：`background: rgba(255,255,255,0.06)` + 主文案提亮，过渡 `var(--motion-micro) var(--motion-ease-standard)`，**无位移**——hover 缩进（padding-left 动画）动的是布局属性，禁止。
+1. **行 hover**（列表行、设置行）：使用当前表面墨色的低透明度背景并加强主文案，深色为白色、浅色浏览界面为黑色，过渡 `var(--motion-micro) var(--motion-ease-standard)`，**无位移**——hover 缩进（padding-left 动画）动的是布局属性，禁止。收藏歌曲行使用更轻的背景，非交互时不画行分隔线。
 2. **封面 hover**：`transform: scale(1.02)` + `filter: brightness(1.08)`；transform 走 `var(--motion-content) var(--motion-ease-standard)`，filter 走 `var(--motion-micro) var(--motion-ease-standard)`。刻意例外：`.album-cover-wrap` 悬停压暗到 `brightness(0.72)`，是为配合播放按钮浮现的设计，保留。
 3. **按钮/图标 hover**：只变色/变背景，`var(--motion-micro) var(--motion-ease-standard)`。
 4. **播客封面卡 hover**（已登记）：作用于 `.podcast-artwork` 本身，卡整体不动——发现页节目卡封面 `opacity: 0.8` + `translateY(-2px)`，资料库节目列表只降 `opacity: 0.78`；过渡在封面元素上（opacity/transform 各走 micro 档 standard）。不使用音乐封面的 scale+brightness：播客卡是「节目」，封面压暗轻抬即可，不要放大。
@@ -160,11 +164,15 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - 媒体时钟驱动的进度（歌词、播放）用 rAF 直读时钟，不叠加 CSS 补间。
 - 不要引入与内容无关的无限装饰动画；加载反馈与正在播放媒体背景有明确用途，分别遵守加载组件规范与 [播放视觉规范](engineering/playback-visuals.md) 的停转规则。
 - 启动加载反馈只做透明度显现，等待与显现时长分别消费 page／micro token；使用文档时钟接续入口分块和资料库恢复两个阶段，减少动态效果时直接显示静态 Metro 五点。不增加启动动画的最低停留时间。
-- 每帧数据（可视化帧）走 `visualizerBus.ts` 单槽总线，不走 React state/props。
+- 每帧音频数据走 `visualizerBus.ts` 单槽总线，不走 React state/props；正在播放的封面转面与色场使用独立环境时钟，暂停、隐藏及减少动态效果仍按播放视觉规范收敛停转。
+- 专辑墙逐格入场与灯 Graphic 入场分开求值；后者使用 `NOW_PLAYING_MOTION.mosaicLightReveal` 与 `NOW_PLAYING_CURVES.mosaicLightReveal`。墙面先准备首套颜色，再随网格进入；后续选色保留原版过渡，照片各自的零 RGBA 入场另行推进。组件的首轮入场不因 StrictMode 效果重放或素材刷新提前结束。
+- 正在播放的艺术家照片片段使用同一 `NOW_PLAYING_MOTION` 中的 artist token；场景仅推进可见的播放时间，暂停冻结平移／缩放并完成现有交接，隐藏冻结时钟，减少动态效果立即落稳。全屏照片完全覆盖后通过离散状态停用背后拼贴，逐帧位置、透明度与图像交接仍由 ref／Canvas 驱动。
+- 照片艺术字复用照片／光场片段的可见播放时间，四类装饰排版使用缓存字形与 GPU 背景 Overlay。换同艺术家歌曲只交接文字，暂停允许当前文字反馈完成后停帧；隐藏不消耗交接时间，减少动态效果静态显现首阶段。`artistTextRetarget` 是 Zone 反馈时长，`NOW_PLAYING_CURVES.artistText` 保存无单位曲线权重／静态相位；原版片段时序比例及视口适配分别在 `artistTypography.ts`、`artistTypographyAtlas.ts`。具体加载及降级规则见播放专题。
+- 正在播放的原生 Iris 标量曲线由 `irisCurves.ts` 求值，参数消费 `NOW_PLAYING_CURVES`：五次 Bezier 的六个纵坐标为 `[0,0,h1,h2,1,1]`，SCurve 使用归一化指数的镜像半段，EaseIn 拼接线性起段与倒数指数尾段。它们与 CSS 四柄三次 Bezier 不同；入场 alpha 与 scale 分别求值。时长仍在 `NOW_PLAYING_MOTION`，不能将权重或相机参数塞进自动注入 `ms` 的时长表。
 
 ## reduced-motion 约定
 
-全项目只有一个 `@media (prefers-reduced-motion: reduce)` 块：`src/styles/motion.css` 末尾。策略：入场/反馈动画 `animation: none` 落到终态；过渡压到 `--motion-instant`；空间变换（tilt、歌词缩放/模糊、长音拉伸）清零；**退出不留下静止窗口**——Presence 退场使用短的纯透明度淡出，卸载经 `resolveExitDurationMs` 收缩到同一 instant 档；页面导航直接挂载。新增带动效的组件时把选择器补进清单；JS/rAF 侧用 `useReducedMotion()` 关闭漂移/FLIP/滚轮惯性等连续运动。普通页面底部光焰与正在播放 Canvas 收敛后停止连续 rAF，音频采样也停用；播放中的光焰用固定低亮静帧，暂停或静音后清空，不播放伪音频动画。
+全项目只有一个 `@media (prefers-reduced-motion: reduce)` 块：`src/styles/motion.css` 末尾。策略：入场/反馈动画 `animation: none` 落到终态；过渡压到 `--motion-instant`；空间变换（tilt、歌词缩放/模糊、长音拉伸）清零；**退出不留下静止窗口**——Presence 退场使用短的纯透明度淡出，卸载经 `resolveExitDurationMs` 收缩到同一 instant 档；页面导航直接挂载。新增带动效的组件时把选择器补进清单；JS/rAF 侧用 `useReducedMotion()` 关闭漂移/FLIP/滚轮惯性等连续运动。普通页面底部光焰与正在播放 Canvas 收敛后停止连续 rAF，音频采样也停用；双层光片在reduced-motion、暂停或静音后归零，不用固定低亮假信号替代真实音频。光片循环时长在`NOW_PLAYING_MOTION`，原生Log权重在`NOW_PLAYING_CURVES`；具体数据流与适配边界见播放视觉规范。
 
 ## 测试与验证
 
@@ -174,7 +182,7 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 - `tests/lyricsSettingsUi.test.mjs` / `tests/lyricsDisplay.test.mjs`：歌词设置面板的 Presence 接线、显示偏好持久化和字号归一化。
 - CSS/结构守卫（`nowPlayingCss.test.mjs` 等）会因类名/编排变化失败，按新结构同步，不放宽语义。
 - `tests/tileInteraction.test.mjs`：真实磁贴组件的 StrictMode 生命周期、两块 peek 面板的连续位移、悬停／聚焦保留展示面与剩余停留、揭示及翻回期间互动不跳帧、多磁贴与封面墙串行更新、隐藏／编辑／reduced-motion 停转与恢复，以及长按、混合尺寸空位拖动、释放后接续落位、键盘和外观设置行为；`tests/tileScheduler.test.mjs` 验证同刻就绪、完整周期互斥、静置间隔及取消清理。
-- `tests/panoramaBehavior.test.mjs`：首页分组与视差边界、滚轮归属，以及真实 hook 在 StrictMode 下的滚轮接力、键盘打断、滚动条显隐／拖拽、滚动恢复、窗口变化、reduced-motion 与隐藏／卸载清理。
+- `tests/panoramaBehavior.test.mjs`：首页分组与视差边界、滚轮归属，以及真实 hook 在 StrictMode 下的分组按钮、入场位移不影响停靠坐标、滚轮接力、键盘打断、滚动条显隐／拖拽、滚动恢复、窗口变化、reduced-motion 与隐藏／卸载清理。
 - `tests/collectionPivot.test.mjs`：分类／详情／返回方向、可见区域分组与数量上限、有界条目测量、输入从当前帧收稳与恢复滚动事件的区分，以及真实导航／面板动效 hook 的 StrictMode、快速连切和 reduced-motion 清理。
 - `tests/browseTransition.test.mjs`：收藏、播客和 quickplay 共用控制器、静止导航与背景、标题及封面的独立显现、播客根滚动恢复和稳定媒体身份、有界样式读取、面板接管及隐藏／reduced-motion 清理。
 - `tests/contentEntrance.test.mjs`：长列表与网格的滚动恢复、首屏选择、常数布局读取、错峰封顶、总量上限和条目当前帧反向。
@@ -186,6 +194,20 @@ transition/animation 的缓动一律用 token，禁止裸 `ease` 关键字（唯
 ## 收藏对象浏览
 
 顶层页面走 `requestNavigation`。收藏分类沿用 `COLLECTION_CATEGORY_ORDER` 与历史方向，播客沿用根分区／详情顺序；两边都由 `browseTransition.ts` 执行横向交接和内容显现。收藏分类、搜索、数量及播放列表左栏保持稳定；播客分区、搜索和子标签保持稳定。语义区域负责位移，封面错峰淡入，歌曲与播客文本列表整体显现；参数统一来自 `BROWSE_MOTION`。
+
+连续浏览的艺术家、专辑、流派各栏由 `.collection-browse-pane` 划分语义区域。分类交接和详情返回沿用共享控制器；名称索引作为文本列表显现，封面仍使用有界入场。索引内选择与歌曲列排序只更新当前历史条目，不递增 revision，不重播入场或移动保留的左栏。选择其他艺术家／流派将专辑栏定位到顶部；详情返回先恢复各栏滚动与焦点，不被初始化重置。
+
+长歌曲列表按可见行窗口渲染，滚动位置变化只有跨行窗口时才更新 React。原生滚动与 `wheelScroll.ts` 的弹簧写入在绘制前同步窗口，使用真实小数行高，避免快速反向滚动、缩放或恢复位置时露出占位空白。名称与封面保留完整布局锚点，窗口限制不改变完整播放来源、排序、焦点或历史。
+
+`surfaceSnapshot.ts` 对收藏规则网格／列表按可见范围复制；quickplay、播客及正在播放的可变尺寸条目保留屏幕外布局占位，不复制内部封面和控制子树。快照恢复实际滚动容器的位置；横向全景离屏分组不读取每个磁贴的几何，入场条目共享区域裁切测量。原 React 子树按正常生命周期卸载。
+
+页面快照在创建时记录来源的 `data-surface-theme`，浅色浏览与深色播放表面切换后仍保持原配色；不能让旧白底内容继承目标页的白色文字，或让旧深色内容继承目标页的黑色文字。只保留配色身份，不复制或继续运行旧 React 状态。
+
+进入正在播放时，退场画面捕获完整浏览 shell，包含原位页头、播放条、背景大字与 Canvas 静帧，整体在原位置淡出；副本挂到 body，避免新的沉浸布局改变旧画面的网格和留白。主音频、视频及已有退场层不进入副本。真实浏览页头和播放条随导航立即卸载，不用 Presence 延后占据已收起的布局轨道，使播放舞台从首帧就填满窗口。背景属于参加退场动画的副本，裁切宿主保持透明，防止内容消失后遗留白色矩形。平级浏览仍只复制内容区，快速返回、隐藏、缩放与减少动态效果沿用统一清理。
+
+返回首页时同样冻结完整播放 shell 并原位淡出，时长和曲线与封面回落共用 `NOW_PLAYING_MOTION.coverExit` 和 standard 曲线。目的页在旧画面遮挡下直接就绪浅色底与正文，不再叠加 shell 换色补间；首页按恢复的滚动及视差位置直接显示，不重播浏览级联。短暂的 `data-surface-handoff="return"` 由退场控制器拥有，完成、打断、隐藏、缩放或减少动态效果时释放；入场尚未结束就快速返回仍接续已显现的分组帧。
+
+正在播放的返回提示对应实际来源页面。`useNavigation` 按 `data-now-playing-trigger` 或已有 `data-collection-focus` 记录封面、曲名、队列及首页继续播放入口；键盘进入时聚焦返回键，返回时用 `preventScroll` 交回原入口，不改变全景位置。返回键的键盘描边跟随可见圆环，宽大的命中区保持不变。焦点不等待动画，延迟挂载只消费一次待恢复请求；用户已聚焦其他控件或转到其他页面时取消请求。鼠标进入不主动聚焦舞台控件，音乐和播客共用这条链路。
 
 快速切换不排队等待；先捕获当前画面再交接，不先加速旧动画。退场窗口内反向返回时接续旧画面的可见位置与透明度；已显现的封面不重新错峰。每次最多一层内容退场，旧 React 子树照常卸载。历史返回先恢复滚动锚点、选择和焦点；恢复产生的同位置滚动事件不会打断动画。移动区域内的滚动、指针和键盘输入从当前 transform/opacity 用短过渡收稳，不吞掉输入或反复启动；静止导航上的输入不影响动画。窗口调整、隐藏、卸载及 reduced-motion 开启清理动画与退场层。首次挂载由顶层入场负责，普通数据更新不重播。
 

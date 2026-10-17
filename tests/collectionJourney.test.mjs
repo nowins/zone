@@ -90,7 +90,7 @@ test("playlist → song → album → artist → another album returns focus and
     await click(back);
   }
   assert.equal(api.view, "playlists");
-  assert.deepEqual([...document.querySelectorAll(".collection-categories button")].map(node => node.textContent), ["艺术家", "专辑", "歌曲", "播放列表"]);
+  assert.deepEqual([...document.querySelectorAll(".collection-categories button")].map(node => node.textContent), ["艺术家", "流派", "专辑", "歌曲", "播放列表"]);
   assert.equal(document.querySelector(".collection-back"), null);
   assert.equal(document.activeElement.getAttribute("aria-label"), "查看歌曲 白日梦蓝");
   assert.equal(document.querySelector('[data-collection-selection]').dataset.collectionSelection, "a");
@@ -164,6 +164,40 @@ test("manual reorder, removal, create-and-add and queue save keep other playlist
   assert.deepEqual(playlistApi.playlists.find(p => p.name === "队列快照").trackIds, ["b", "a"]);
   assert.equal(api.selectedPlaylistId, "manual"); assert.deepEqual(played, []);
 });
+
+test("playlist keyboard choices and column sorting preserve stored positions, detail history and the queue", async t => {
+  await mount(t);
+  const indexButton = () => document.querySelector('.playlist-list > button[aria-pressed="true"]');
+  await key(indexButton(), "End");
+  assert.equal(api.selectedPlaylistId, "manual");
+  assert.equal(document.activeElement, indexButton());
+  const original = [...playlistApi.playlists.find(p => p.id === "manual").trackIds];
+  const sortField = field => document.querySelector('.collection-sort[data-sort-field="' + field + '"]');
+  await click(document.querySelector('[data-collection-anchor="b"] .collection-track-main'));
+  await click(sortField("duration"));
+  assert.deepEqual([...document.querySelectorAll(".collection-track-row")].map(row => row.dataset.collectionAnchor), ["a", "b", "d"]);
+  assert.deepEqual([...document.querySelectorAll(".collection-track-number")].map(node => node.textContent), ["03", "02", "01"]);
+  assert.equal(document.querySelector('[data-collection-anchor="b"] .collection-track-main').getAttribute("aria-pressed"), "true");
+  await key(document.querySelector('[data-collection-anchor="b"] .collection-track-main'), "ArrowUp", { altKey: true });
+  assert.deepEqual(playlistApi.playlists.find(p => p.id === "manual").trackIds, original, "display sorting cannot reorder the saved playlist");
+  await click(document.querySelector('[aria-label="查看歌曲 生之响往"]'));
+  await click(document.querySelector(".collection-back"));
+  assert.equal(api.collection.location.browser.playlistSort.manual.field, "duration");
+  assert.equal(document.activeElement.getAttribute("aria-label"), "查看歌曲 生之响往");
+  await click(sortField("position"));
+  assert.deepEqual([...document.querySelectorAll(".collection-track-row")].map(row => row.dataset.collectionAnchor), original);
+  await key(indexButton(), "Home");
+  assert.equal(api.selectedPlaylistId, "now");
+  assert.deepEqual([...document.querySelectorAll(".collection-track-row")].map(row => row.dataset.collectionAnchor), ["b", "a"]);
+  await key(indexButton(), "ArrowDown");
+  assert.equal(api.selectedPlaylistId, "favorites");
+  assert.deepEqual(played, []);
+  await key(indexButton(), "End");
+  await click(sortField("duration"));
+  await click(byText(".playlist-header-actions button", "播放全部"));
+  assert.deepEqual(played.map(source => source.map(track => track.id)), [["a", "b", "d"]], "explicit playback receives the displayed order as a snapshot");
+  assert.deepEqual(playlistApi.playlists.find(p => p.id === "manual").trackIds, original);
+});
 test("metadata switches scope immediately and ignores late responses from another object", async t => {
   const pending = [];
   const metadata = { getContext: payload => new Promise(resolve => pending.push({ title: payload.title, resolve })) };
@@ -221,11 +255,30 @@ test("context menu exposes explicit object actions, keyboard traversal and safe 
     onOpenInCollection: () => called.push("detail"), onOpenAlbum: nothing, onOpenArtist: nothing }));
   assert.ok(byText("button", "查看歌曲")); assert.ok(byText("button", "前往艺术家"));
   assert.ok(!byText("button", "从播放列表中移除"));
+  assert.deepEqual([...document.querySelectorAll('.context-menu [role="group"]')].map(el => el.getAttribute("aria-label")), ["播放", "收藏与固定", "SmartDJ", "资料与浏览"]);
   assert.equal(document.activeElement.textContent, "播放");
   await key(document.activeElement, "End");
   assert.equal(document.activeElement.textContent, "前往专辑");
   await click(byText("button", "查看歌曲"));
   assert.deepEqual(called, ["detail"]);
+});
+
+test("empty playlist menus skip unavailable playback and retain edit boundaries", async t => {
+  const called = [];
+  document.getElementById("outside").focus();
+  await mount(t, h(ContextMenu, { menu: { x: 12, y: 12, payload: { kind: "playlist", title: "空列表", tracks: [], playlistId: "manual" } },
+    onClose: () => called.push("close"), onPlay: nothing, onAddToQueue: nothing, onPlayNext: nothing, onStartSmartDj: nothing,
+    onAddToPlaylist: nothing, onAddToFavorites: nothing, onRenamePlaylist: nothing, onDeletePlaylist: nothing,
+    onExcludeFromSmartPlaylist: nothing, homePinState: null, onToggleHomePin: nothing, onInfo: nothing }));
+  assert.equal(document.activeElement.textContent, "重命名");
+  assert.deepEqual([...document.querySelectorAll('.context-menu [role="group"]')].map(el => el.getAttribute("aria-label")), ["播放", "SmartDJ", "播放列表操作"]);
+  await key(document.activeElement, "ArrowUp");
+  assert.equal(document.activeElement.textContent, "删除播放列表");
+  await key(document.activeElement, "Home");
+  assert.equal(document.activeElement.textContent, "重命名");
+  await key(document.activeElement, "Escape");
+  assert.deepEqual(called, ["close"]);
+  assert.equal(document.activeElement, document.getElementById("outside"));
 });
 
 test("smart editor handoff keeps background isolated and restores the original launcher", async t => {

@@ -15,6 +15,7 @@ const mosaicCanvasSource = readFileSync("src/components/NowPlayingMosaicCanvas.t
 const audioGlowCanvasSource = readFileSync("src/components/AudioGlowCanvas.tsx", "utf8");
 const appSource = readFileSync("src/App.tsx", "utf8");
 const collectionCss = readFileSync("src/styles/collection-details.css", "utf8");
+const collectionSurfaceCss = readFileSync("src/styles/collection.css", "utf8");
 const lyricsSource = readFileSync("src/components/LyricsStage.tsx", "utf8");
 const lyricsPaintLoopSource = readFileSync("src/components/lyricsStage/useLyricsPaintLoop.ts", "utf8");
 const lyricsSourceBrowserSource = readFileSync("src/components/lyricsStage/LyricsSourceBrowser.tsx", "utf8");
@@ -24,7 +25,7 @@ const lyricsCss = readFileSync("src/styles/lyrics.css", "utf8");
 test("now playing visual layers are canvas based", () => {
   assert.ok(nowPlayingView.includes("<NowPlayingMosaicCanvas"));
   assert.ok(nowPlayingView.includes("<AudioGlowCanvas"));
-  assert.ok(mosaicCanvasSource.includes("getVisualizerFrame"), "mosaic canvas should pull frames from the visualizer bus");
+  assert.ok(!mosaicCanvasSource.includes("getVisualizerFrame"), "ambient cover turns stay independent of audio frequency input");
   assert.ok(audioGlowCanvasSource.includes("getVisualizerFrame"), "glow canvas should pull frames from the visualizer bus");
   assert.ok(!nowPlayingView.includes("beatPulse={beatPulse}"), "per-frame beat props should not flow through React");
   assert.ok(!nowPlayingView.includes("onsetStrength={onsetStrength}"), "per-frame beat props should not flow through React");
@@ -44,7 +45,7 @@ test("now playing visual layers are canvas based", () => {
   assert.ok(!nowPlayingCss.includes(".visualizer-wave-svg"), "old SVG visualizer styles should stay out of now playing CSS");
 });
 
-test("browsing shares a live background with its transparent transport", () => {
+test("browsing keeps its shared transport while collection uses a plain reading surface", () => {
   const playerRule = cssRule(playerCss, ".player");
   const shellGlowRule = cssRule(baseCss, ".shell > .audio-glow-canvas");
   assert.match(appSource, /visualizerVisible: !compactMode\.active/);
@@ -53,7 +54,8 @@ test("browsing shares a live background with its transparent transport", () => {
   assert.ok(playerRule.includes("border: 0"));
   assert.ok(shellGlowRule.includes("z-index: -1"), "glow stays behind page content and controls");
   assert.ok(cssRule(baseCss, ".shell").includes("isolation: isolate"), "negative glow layer remains above the shell background");
-  assert.ok(cssRule(collectionCss, ".collection-connected").includes("background: transparent"));
+  assert.match(cssRule(collectionSurfaceCss, ".collection-band"), /background:\s*var\(--app-bg\)/);
+  assert.doesNotMatch(cssRule(collectionCss, ".collection-connected"), /background\s*:/, "connected collection must retain its plain surface");
 });
 
 test("now playing artwork is full bleed without a recording-frame inset", () => {
@@ -61,6 +63,7 @@ test("now playing artwork is full bleed without a recording-frame inset", () => 
 
   assert.ok(stageRule.includes("height: 100%"));
   assert.ok(stageRule.includes("margin: 0"));
+  assert.ok(stageRule.includes("overflow: clip"), "focus and scrollIntoView must not move the entire stage");
   assert.ok(stageRule.includes("border: 0"));
   assert.ok(stageRule.includes("box-shadow: none"));
 });
@@ -243,13 +246,14 @@ test("lyrics search metadata can be corrected without rewriting local tags", () 
   assert.ok(lyricsCss.includes(".lyrics-search-metadata-form"));
 });
 
-test("mosaic canvas animates a multi-color field instead of a brightness sweep", () => {
+test("mosaic canvas overlays the recovered point-light field at bounded resolution", () => {
   assert.ok(!mosaicCanvasSource.includes("energyRef"));
   assert.ok(!mosaicCanvasSource.includes("createEnergyTint"));
   assert.ok(!/globalAlpha\s*=\s*[^;\n]*(energy|beatPulse)/.test(mosaicCanvasSource));
   assert.ok(!/brightness\([^)]*(energy|beatPulse)/.test(mosaicCanvasSource));
-  assert.ok(mosaicCanvasSource.includes("createMosaicColorFieldSampler"));
-  assert.ok(mosaicCanvasSource.includes('globalCompositeOperation = "color"'));
+  assert.ok(mosaicCanvasSource.includes("createMosaicLightingSampler"));
+  assert.ok(mosaicCanvasSource.includes('globalCompositeOperation = "overlay"'));
+  assert.ok(mosaicCanvasSource.includes('createMosaicLightingSampler(palette, sceneSeconds, width, height, dpiScale, lightPath)'));
   assert.ok(!mosaicCanvasSource.includes("createMosaicColorSweep"));
   assert.ok(!mosaicCanvasSource.includes("sepia(0.66)"));
 });
@@ -277,6 +281,9 @@ test("back button is restrained like the Zune chrome", () => {
   assert.ok(px(backRule, "height") >= 96, "back button needs a generous click target");
   assert.ok(px(backRingRule, "width") <= 76, "visual ring should stay restrained inside the hit target");
   assert.ok(px(backRingRule, "border") <= 3);
+  const backFocusRingRule = cssRule(nowPlayingCss, ".now-back:focus-visible::before");
+  assert.equal(px(backFocusRingRule, "outline"), 1, "keyboard focus belongs to the visible circular ring inside the larger hit target");
+  assert.equal(px(backFocusRingRule, "outline-offset"), 3);
   assert.ok(nowPlayingTitlebarRule.includes("pointer-events: none"), "titlebar must not intercept the back-button hit target");
   assert.ok(nowPlayingView.includes("strokeWidth={2.55}"));
 });

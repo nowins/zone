@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { MouseEvent } from "react";
-import { Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play } from "lucide-react";
 import { Button } from "../components/Button";
 import { useQuickplayPanorama } from "../hooks/useQuickplayPanorama";
 import { Cover } from "../components/Cover";
@@ -11,8 +11,9 @@ import { homePinSize } from "../utils/homePins";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
 import {
   buildQuickplayBlocks,
+  pickQuickplayCoverPaths,
 } from "../utils/quickplayBlocks";
-import { pickCoverCandidates } from "../utils/nowPlayingWall";
+import { formatTime } from "../utils/music";
 import { podcastArtworkSrc } from "../utils/podcastArtwork";
 import { QuickplayPinBoard, type ResolvedPin } from "../components/tiles/QuickplayPinBoard";
 import { tiltPressClear, tiltPressDown } from "../utils/tiltPress";
@@ -31,20 +32,6 @@ import type {
 } from "../types";
 
 
-function coverPathsForTracks(tracks: Track[], limit: number, preferredArtist?: string | null) {
-  const preferred = pickCoverCandidates(tracks, limit, preferredArtist);
-  if (preferred.length > 0) return preferred;
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const track of tracks) {
-    if (!track.cover_path || seen.has(track.cover_path)) continue;
-    seen.add(track.cover_path);
-    result.push(track.cover_path);
-    if (result.length === limit) break;
-  }
-  return result;
-}
-
 export function QuickplayView({
   animateEntrance = true,
   tracks,
@@ -52,6 +39,8 @@ export function QuickplayView({
   artists,
   playlists,
   activeTrack,
+  progress = 0,
+  duration = 0,
   historyIds,
   activity,
   favoriteTrackIds,
@@ -78,6 +67,8 @@ export function QuickplayView({
   artists: ArtistGroup[];
   playlists: Playlist[];
   activeTrack: Track | null;
+  progress?: number;
+  duration?: number;
   historyIds: string[];
   activity: TrackActivityMap;
   favoriteTrackIds: ReadonlySet<string>;
@@ -118,6 +109,8 @@ export function QuickplayView({
   const continueArtPath = continueTrack?.cover_path ?? continueItem?.artPath ?? null;
   const continueTitle = continueTrack?.title ?? continueItem?.title ?? "";
   const continueSubtitle = continueTrack?.artist ?? continueItem?.subtitle ?? "";
+  const continueDuration = continueTrack ? (duration > 0 ? duration : continueTrack.duration_seconds ?? 0) : 0;
+  const continueProgress = Number.isFinite(progress) ? Math.max(0, Math.min(progress, continueDuration)) : 0;
   const recentAlbums = useMemo(() => {
     const items = autoBlocks.find((block) => block.id === "recentAdded")?.items ?? [];
     return items.flatMap((item) => {
@@ -180,7 +173,7 @@ export function QuickplayView({
           title: track.title,
           subtitle: track.artist,
           tracks: [track],
-          artPaths: coverPathsForTracks([track], 1),
+          artPaths: pickQuickplayCoverPaths([track], 1),
           payload,
           size: homePinSize(pin),
           isSmart: false,
@@ -203,7 +196,7 @@ export function QuickplayView({
           title: album.album,
           subtitle: album.artist,
           tracks: album.tracks,
-          artPaths: album.coverPath ? [album.coverPath] : coverPathsForTracks(album.tracks, 1),
+          artPaths: album.coverPath ? [album.coverPath] : pickQuickplayCoverPaths(album.tracks, 1),
           payload,
           size: homePinSize(pin),
           isSmart: false,
@@ -225,7 +218,7 @@ export function QuickplayView({
           title: artist.artist,
           subtitle: `${artist.tracks.length} 首歌曲`,
           tracks: artist.tracks,
-          artPaths: coverPathsForTracks(artist.tracks, 9, artist.artist),
+          artPaths: pickQuickplayCoverPaths(artist.tracks, 4, artist.artist),
           payload,
           size: homePinSize(pin),
           isSmart: false,
@@ -287,7 +280,7 @@ export function QuickplayView({
         title: playlist.name,
         subtitle: `${result.tracks.length} 首歌曲`,
         tracks: result.tracks,
-        artPaths: coverPathsForTracks(result.tracks, 9),
+        artPaths: pickQuickplayCoverPaths(result.tracks, 4),
         payload,
         size: homePinSize(pin),
         isSmart: smart,
@@ -299,10 +292,10 @@ export function QuickplayView({
   const sections = useMemo(() => [
     "pins",
     ...(continueItem ? ["continue"] : []),
-    ...(mostPlayedTracks.length ? ["most"] : []),
-    ...(forgottenFavoriteTracks.length ? ["forgotten"] : []),
     ...(recentAlbums.length ? ["recent"] : []),
     ...(historyTracks.length ? ["history"] : []),
+    ...(mostPlayedTracks.length ? ["most"] : []),
+    ...(forgottenFavoriteTracks.length ? ["forgotten"] : []),
   ], [Boolean(continueItem), mostPlayedTracks.length > 0, forgottenFavoriteTracks.length > 0, recentAlbums.length > 0, historyTracks.length > 0]);
   const panorama = useQuickplayPanorama(!empty, sections);
 
@@ -416,96 +409,20 @@ export function QuickplayView({
                 />
                 <span className="quick-play-cue"><Play size={25} fill="currentColor" /></span>
               </button>
-              <button className="quick-caption" data-collection-focus="quick-continue-caption" onClick={() => handleContinueActivate()}>
+              <button className="quick-caption" data-collection-focus="quick-continue-caption" title={`${continueTitle}\n${continueSubtitle}`} onClick={() => handleContinueActivate()}>
                 <strong>{continueTitle}</strong>
                 <span>{continueSubtitle}</span>
               </button>
+              {continueTrack && Number.isFinite(continueDuration) && continueDuration > 0 && <div className="quick-resume-progress"
+                role="progressbar" aria-label="当前歌曲播放进度" aria-valuemin={0} aria-valuemax={continueDuration} aria-valuenow={continueProgress}
+                aria-valuetext={`${formatTime(continueProgress)} / ${formatTime(continueDuration)}`}>
+                <span className="quick-resume-track" aria-hidden="true"><span style={{ width: `${continueProgress / continueDuration * 100}%` }} /></span>
+                <span className="quick-resume-time" aria-hidden="true">{formatTime(continueProgress)} <span>/ {formatTime(continueDuration)}</span></span>
+              </div>}
               </div>
             </div>
         </article>
         ) : null}
-
-        {mostPlayedTracks.length > 0 && (
-          <article className="quick-group quick-most" id="quickplay-most" data-panorama-section="most">
-            <button className="quick-heading" onClick={() => onOpenCollection("songs")}>
-              <h2>最常播放</h2>
-            </button>
-            <div className="quick-section-scroll">
-              <div className="quick-mosaic">
-              {mostPlayedTracks.map((track, index) => (
-                <div
-                  className="quick-album" data-touch-menu
-                  key={`most-${track.id}`}
-                  data-collection-focus={`quick-most:${track.id}`}
-                  onContextMenu={(event) =>
-                    onContextMenu(event, {
-                      kind: "track",
-                      title: track.title,
-                      subtitle: `${track.artist} / ${track.album}`,
-                      tracks: [track],
-                      playbackTracks: tracks,
-                    })
-                  }
-                >
-                  <button
-                    onClick={() => onPlay(track, tracks)}
-                    onPointerDown={tiltPressDown}
-                    onPointerUp={tiltPressClear}
-                    onPointerLeave={tiltPressClear}
-                    onPointerCancel={tiltPressClear}
-                    title={`播放 ${track.title}`}
-                  >
-                    <Cover artPath={track.cover_path} label={track.album} size="large" index={index + 8} />
-                  </button>
-                  <strong>{track.title}</strong>
-                  <span>{track.artist}</span>
-                </div>
-              ))}
-              </div>
-            </div>
-          </article>
-        )}
-
-        {forgottenFavoriteTracks.length > 0 && (
-          <article className="quick-group quick-forgotten" id="quickplay-forgotten" data-panorama-section="forgotten">
-            <button className="quick-heading" onClick={() => onOpenCollection("playlists")}>
-              <h2>久违收藏</h2>
-            </button>
-            <div className="quick-section-scroll">
-              <div className="quick-mosaic">
-              {forgottenFavoriteTracks.map((track, index) => (
-                <div
-                  className="quick-album" data-touch-menu
-                  key={`forgotten-${track.id}`}
-                  data-collection-focus={`quick-forgotten:${track.id}`}
-                  onContextMenu={(event) =>
-                    onContextMenu(event, {
-                      kind: "track",
-                      title: track.title,
-                      subtitle: `${track.artist} / ${track.album}`,
-                      tracks: [track],
-                      playbackTracks: tracks,
-                    })
-                  }
-                >
-                  <button
-                    onClick={() => onPlay(track, tracks)}
-                    onPointerDown={tiltPressDown}
-                    onPointerUp={tiltPressClear}
-                    onPointerLeave={tiltPressClear}
-                    onPointerCancel={tiltPressClear}
-                    title={`播放 ${track.title}`}
-                  >
-                    <Cover artPath={track.cover_path} label={track.album} size="large" index={index + 14} />
-                  </button>
-                  <strong>{track.title}</strong>
-                  <span>{track.artist}</span>
-                </div>
-              ))}
-              </div>
-            </div>
-          </article>
-        )}
 
         {recentAlbums.length > 0 && (<article className="quick-group quick-recent" id="quickplay-recent" data-panorama-section="recent">
           <button className="quick-heading" onClick={() => onOpenCollection("albums")}>
@@ -538,8 +455,8 @@ export function QuickplayView({
                 >
                   <Cover artPath={album.coverPath} label={album.album} size="large" index={index + 1} />
                 </button>
-                <strong>{album.album}</strong>
-              <span>{album.artist}</span>
+                <strong title={album.album}>{album.album}</strong>
+              <span title={album.artist}>{album.artist}</span>
             </div>
             ))}
             </div>
@@ -579,12 +496,98 @@ export function QuickplayView({
             </div>
           </article>
         )}
+        {mostPlayedTracks.length > 0 && (
+          <article className="quick-group quick-most" id="quickplay-most" data-panorama-section="most">
+            <button className="quick-heading" onClick={() => onOpenCollection("songs")}>
+              <h2>最常播放</h2>
+            </button>
+            <div className="quick-section-scroll">
+              <div className="quick-mosaic">
+              {mostPlayedTracks.map((track, index) => (
+                <div
+                  className="quick-album" data-touch-menu
+                  key={`most-${track.id}`}
+                  data-collection-focus={`quick-most:${track.id}`}
+                  onContextMenu={(event) =>
+                    onContextMenu(event, {
+                      kind: "track",
+                      title: track.title,
+                      subtitle: `${track.artist} / ${track.album}`,
+                      tracks: [track],
+                      playbackTracks: tracks,
+                    })
+                  }
+                >
+                  <button
+                    onClick={() => onPlay(track, tracks)}
+                    onPointerDown={tiltPressDown}
+                    onPointerUp={tiltPressClear}
+                    onPointerLeave={tiltPressClear}
+                    onPointerCancel={tiltPressClear}
+                    title={`播放 ${track.title}`}
+                  >
+                    <Cover artPath={track.cover_path} label={track.album} size="large" index={index + 8} />
+                  </button>
+                  <strong title={track.title}>{track.title}</strong>
+                  <span title={track.artist}>{track.artist}</span>
+                </div>
+              ))}
+              </div>
+            </div>
+          </article>
+        )}
+
+        {forgottenFavoriteTracks.length > 0 && (
+          <article className="quick-group quick-forgotten" id="quickplay-forgotten" data-panorama-section="forgotten">
+            <button className="quick-heading" onClick={() => onOpenCollection("playlists")}>
+              <h2>久违收藏</h2>
+            </button>
+            <div className="quick-section-scroll">
+              <div className="quick-mosaic">
+              {forgottenFavoriteTracks.map((track, index) => (
+                <div
+                  className="quick-album" data-touch-menu
+                  key={`forgotten-${track.id}`}
+                  data-collection-focus={`quick-forgotten:${track.id}`}
+                  onContextMenu={(event) =>
+                    onContextMenu(event, {
+                      kind: "track",
+                      title: track.title,
+                      subtitle: `${track.artist} / ${track.album}`,
+                      tracks: [track],
+                      playbackTracks: tracks,
+                    })
+                  }
+                >
+                  <button
+                    onClick={() => onPlay(track, tracks)}
+                    onPointerDown={tiltPressDown}
+                    onPointerUp={tiltPressClear}
+                    onPointerLeave={tiltPressClear}
+                    onPointerCancel={tiltPressClear}
+                    title={`播放 ${track.title}`}
+                  >
+                    <Cover artPath={track.cover_path} label={track.album} size="large" index={index + 14} />
+                  </button>
+                  <strong title={track.title}>{track.title}</strong>
+                  <span title={track.artist}>{track.artist}</span>
+                </div>
+              ))}
+              </div>
+            </div>
+          </article>
+        )}
+
           </div>
         </div>
         <input ref={panorama.scrollbarRef} className="quick-panorama-scrollbar" type="range"
           min={0} step="any" defaultValue={0} disabled={!panorama.overflow}
           aria-label="首页横向滚动" aria-controls="quickplay-viewport" aria-hidden={!panorama.overflow}
           {...panorama.scrollbarProps} />
+        <div ref={panorama.navigationRef} className="quick-panorama-edges" hidden={!panorama.overflow} aria-label="首页分组导航">
+          <Button variant="ghost" data-panorama-step="-1" title="上一组" aria-label="上一组" aria-controls="quickplay-viewport" onClick={event => panorama.step(-1, event.detail > 0)}><ChevronLeft size={20} /></Button>
+          <Button variant="ghost" data-panorama-step="1" title="下一组" aria-label="下一组" aria-controls="quickplay-viewport" onClick={event => panorama.step(1, event.detail > 0)}><ChevronRight size={20} /></Button>
+        </div>
       </>)}
     </section>
   );

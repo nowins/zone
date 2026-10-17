@@ -1,0 +1,415 @@
+{
+  "provenance": {
+    "artifact": "C:/Program Files/Zune/UIXRender.dll",
+    "artifactSha256": "1bccee7b3302810d86f2f230d584abfb945e689dc7f01a7a7e20be6853ead47f",
+    "capture": "docs/zune-photo-runtime-20261013/photo-clean.json",
+    "captureSha256": "4944b96c1cab1f9c6c775f302a79d814ccffb4a8dac850235db411e1cd477b17",
+    "probeSha256": "b4cb9bc7a296bfb46ae00060375cfdb5c4d2502b2396fe4a69436367354be8eb",
+    "shaderSha256": "e64fbdfe1b009718514bcf6d4c8847c95c8d73f99755a355eef393782c43e298",
+    "shaderBytes": 1568,
+    "vertexShaderSha256": "86b9d53dbfed5c6d3213604f8aa534bd0e7bd5dcd669a31a171028ca17b4d04f",
+    "vertexShaderBytes": 2048,
+    "frida": "17.23.3",
+    "architecture": "x64",
+    "executionScope": "Controlled original SlidingBackgroundClip execution through a task-local host loading unchanged Zune UIX/DLL/UIB resources; not the historical online ArtistPhotos entry.",
+    "cleanCapture": {
+      "errors": [],
+      "detached": true,
+      "detachedHooks": true
+    },
+    "cpuObservation": "Original application IB/VB Lock output, CPU writes before original Unlock; selected vertices follow current INDEX16 references; no probe READONLY lock of WRITEONLY buffers."
+  },
+  "shader": {
+    "profile": "ps_3_0",
+    "instructionSlots": 54,
+    "constantBindings": {
+      "g_vPosition6": "c0",
+      "g_flRadius7": "c1",
+      "g_vLightColor8": "c2",
+      "g_vAttenuation10": "c3",
+      "g_vPosition14": "c4",
+      "g_flRadius15": "c5",
+      "g_vLightColor16": "c6",
+      "g_vAttenuation18": "c7",
+      "g_vColorElement29": "c8",
+      "Sampler0": "s0"
+    },
+    "defs": {
+      "c9": [
+        0.0,
+        1.0,
+        0.476190478,
+        0.761904776
+      ],
+      "c10": [
+        0.150000006,
+        0.550000012,
+        0.300000012,
+        0.899999976
+      ],
+      "c11": [
+        0.949999988,
+        0.5,
+        0.0,
+        0.0
+      ],
+      "c12": [
+        0.476190478,
+        0.5,
+        2.0,
+        1.0
+      ]
+    },
+    "instructions": [
+      "add r0.xy, -v2, c0",
+      "dp2add r0.w, r0, r0, c9.x",
+      "rsq r0.z, r0.w",
+      "rcp r0.z, r0.z",
+      "mad r0.z, r0.z, c3.y, c3.x",
+      "add r0.xy, -v2, c4",
+      "mad r0.z, r0.w, c3.z, r0.z",
+      "dp2add r0.w, r0, r0, c9.x",
+      "rcp r0.y, r0.z",
+      "rsq r0.z, r0.w",
+      "mul_sat r1.w, r0.y, c1.x",
+      "rcp r1.z, r0.z",
+      "mov r5.yw, c9",
+      "mad r0.xyz, c2, -r1.w, r5.y",
+      "mad r1.z, r1.z, c7.y, c7.x",
+      "mad r3.xyz, r0, -c9.z, c9.y",
+      "mad r0.w, r0.w, c7.z, r1.z",
+      "mad r1.xyz, r0, -c12.x, c12.y",
+      "rcp r0.w, r0.w",
+      "mul_sat r0.w, r0.w, c5.x",
+      "frc r2.xyz, -r1",
+      "mul r0.xyz, r0.w, c6",
+      "add r2.xyz, r1, r2",
+      "mul r0.xyz, r3, r0",
+      "add r3.xyz, -r2, c9.y",
+      "mad r1.w, c2.w, r1.w, r5.w",
+      "mul r0.xyz, r0, r3",
+      "mad r1.xyz, c12.z, -r1, c12.w",
+      "add r4.xyz, r0, r0",
+      "mad r3.xyz, c6, -r0.w, r5.y",
+      "mad r1.w, c6.w, r0.w, r1.w",
+      "texld r0, v3, s0",
+      "dp3 r0.w, r0, c10",
+      "mad r3.xyz, r1, -r3, c9.y",
+      "lrp r1.xyz, c10.w, r0.w, r0",
+      "mad r4.xyz, r2, r3, r4",
+      "add r0.xyz, r1, -c12.y",
+      "mad r3.xyz, r0, c11.x, c11.y",
+      "add r1.xyz, r4, -c12.y",
+      "mul r2.xyz, r3, c8",
+      "frc r0.xyz, -r1",
+      "mad r3.xyz, r3, -c8, r5.y",
+      "add r0.xyz, r1, r0",
+      "mul r2.xyz, r4, r2",
+      "add r4.xyz, -r0, c9.y",
+      "mad r1.xyz, c12.z, -r1, c12.w",
+      "mul r2.xyz, r2, r4",
+      "add r2.xyz, r2, r2",
+      "mad r1.xyz, r1, -r3, c9.y",
+      "mad r0.xyz, r0, r1, r2",
+      "add r0.w, r1.w, c8.w",
+      "mul oC0, r0, v1"
+    ]
+  },
+  "vertexShader": {
+    "profile": "vs_3_0",
+    "instructionSlots": 10,
+    "instructions": [
+      "mul r0, c5, v0.y",
+      "mul r1.xyz, c1, v0.y",
+      "mad r0, v0.x, c4, r0",
+      "mad r1.xyz, v0.x, c0, r1",
+      "mad r0, v0.z, c6, r0",
+      "mad r1.xyz, v0.z, c2, r1",
+      "mad o0, v0.w, c7, r0",
+      "mad o2.xyz, v0.w, c3, r1",
+      "mov o1, v1",
+      "mov o3.xy, v2"
+    ],
+    "finalRegisterBindings": {
+      "WorldView": "c0-c3",
+      "WorldViewProjection": "c4-c7"
+    }
+  },
+  "sample": {
+    "drawSeq": 19,
+    "spGetDpi": 192,
+    "viewport": {
+      "width": 986,
+      "height": 622,
+      "x": 0,
+      "y": 0
+    },
+    "constantRegisters": {
+      "c0": [
+        983.090576171875,
+        123.4823226928711,
+        0,
+        0
+      ],
+      "c1": [
+        500,
+        0,
+        0,
+        0
+      ],
+      "c2": [
+        0.9725490808486938,
+        0.9294118285179138,
+        0.2666666805744171,
+        1
+      ],
+      "c3": [
+        700,
+        0,
+        0.004999999888241291,
+        0
+      ],
+      "c4": [
+        2.045593023300171,
+        312.9356689453125,
+        0,
+        0
+      ],
+      "c5": [
+        500,
+        0,
+        0,
+        0
+      ],
+      "c6": [
+        0.800000011920929,
+        1,
+        0.800000011920929,
+        1
+      ],
+      "c7": [
+        700,
+        0,
+        0.004999999888241291,
+        0
+      ],
+      "c8": [
+        0.4392157196998596,
+        0.6392157077789307,
+        0.7843137383460999,
+        1
+      ],
+      "c9": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "c10": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "c11": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "c12": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "vertexConstants": [
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      10,
+      0,
+      0,
+      0,
+      0,
+      -15.852089881896973,
+      0,
+      0,
+      0,
+      0,
+      1.5,
+      1,
+      -4935,
+      4937.92578125,
+      3697.5,
+      4930
+    ],
+    "renderStates": {
+      "7": 0,
+      "14": 1,
+      "15": 0,
+      "19": 5,
+      "20": 6,
+      "27": 1,
+      "168": 15,
+      "171": 1,
+      "193": 4294967295,
+      "194": 0,
+      "206": 1,
+      "207": 2,
+      "208": 2,
+      "209": 1
+    },
+    "renderTarget": {
+      "result": 0,
+      "format": 22,
+      "type": 1,
+      "usage": 1,
+      "pool": 0,
+      "width": 986,
+      "height": 622
+    },
+    "textures": [
+      {
+        "stage": 0,
+        "type": 3,
+        "format": 21,
+        "width": 924,
+        "height": 693,
+        "sampler": [
+          {
+            "state": 1,
+            "result": 0,
+            "value": 3
+          },
+          {
+            "state": 2,
+            "result": 0,
+            "value": 3
+          },
+          {
+            "state": 3,
+            "result": 0,
+            "value": 1
+          },
+          {
+            "state": 5,
+            "result": 0,
+            "value": 2
+          },
+          {
+            "state": 6,
+            "result": 0,
+            "value": 2
+          },
+          {
+            "state": 7,
+            "result": 0,
+            "value": 0
+          },
+          {
+            "state": 11,
+            "result": 0,
+            "value": 0
+          }
+        ]
+      }
+    ],
+    "indices": {
+      "format": 101,
+      "usage": 520,
+      "bufferSize": 30720,
+      "start": 0,
+      "count": 6,
+      "offset": 0,
+      "read": "original-CPU-writes-before-Unlock",
+      "lockFlags": 8192,
+      "values": [
+        2,
+        0,
+        1,
+        1,
+        3,
+        2
+      ],
+      "hex": "020000000100010003000200"
+    },
+    "colorDeclaration": {
+      "stream": 0,
+      "offset": 12,
+      "type": 4,
+      "usage": 10,
+      "usageIndex": 0
+    },
+    "vertices": {
+      "usage": 520,
+      "bufferSize": 245760,
+      "stride": 48,
+      "streamOffset": 0,
+      "declaredVertexCount": 5120,
+      "baseVertexIndex": 0,
+      "minVertexIndex": 0,
+      "startIndex": 0,
+      "offset": 0,
+      "count": 256,
+      "read": "original-CPU-writes-before-Unlock",
+      "lockFlags": 0,
+      "referencedVertexCount": 4,
+      "selected": [
+        {
+          "index": 2,
+          "hex": "00c04dc300801b4400000000ffffffff0000000024e6ed3e000000000000000000000000000000000000000000000000"
+        },
+        {
+          "index": 0,
+          "hex": "00c04dc30000000000000000ffffffff0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "index": 1,
+          "hex": "0088c5440000000000000000ffffffff0000803f00000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "index": 3,
+          "hex": "0088c54400801b4400000000ffffffff0000803f24e6ed3e000000000000000000000000000000000000000000000000"
+        }
+      ]
+    },
+    "result": 0
+  },
+  "coverage": {
+    "materialDraws": 52,
+    "indexedCpuSnapshots": 51,
+    "waitingDraws": 1,
+    "selectedSeqRange": [
+      19,
+      527
+    ],
+    "selectedVertices": 204,
+    "packedArgbCounts": {
+      "0xffffffff": 204
+    },
+    "constantFloatsCompared": 1872,
+    "constantFloatDifferences": 0,
+    "drawResults": {
+      "0": 52
+    },
+    "uniqueVertexConstantPacks": 1
+  },
+  "controlledInputs": {
+    "description": "Unit tests vary supplied image RGBA, ViewPos, constant alpha, and VertexRGBA analytically; these controlled pixels are not native texture/readback pixels."
+  }
+}

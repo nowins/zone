@@ -1,13 +1,17 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { Heart, ListMusic, MoreHorizontal, Play, Plus, RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
 import { DEFAULT_PLAYLIST_ID } from "../constants";
 import { Button } from "../components/Button";
 import { Cover } from "../components/Cover";
 import { CollectionTrackList } from "../components/CollectionTrackList";
+import { useCollectionContext } from "../components/CollectionContext";
 import { useCollectionPanelMotion } from "../hooks/useCollectionPivot";
 import { isSmartPlaylist, resolvePlaylistTracks } from "../utils/smartPlaylist";
+import { initialCollectionBrowser, sortCollectionTracks, type CollectionTrackSort } from "../utils/collectionBrowser";
 import type { ContextPayload, Playlist, Track, TrackActivityMap } from "../types";
+
+const originalOrder: CollectionTrackSort = { field: "position", direction: "ascending" };
 
 export function PlaylistBrowser({
   playlists,
@@ -44,6 +48,9 @@ export function PlaylistBrowser({
   activity: TrackActivityMap;
   onReorderPlaylist?: (playlistId: string, trackId: string, targetId: string) => void;
 }) {
+  const context = useCollectionContext();
+  const [browserFallback, setBrowserFallback] = useState(initialCollectionBrowser);
+  const browser = context?.navigation.location.browser || browserFallback;
   const trackMap = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
   const entries = useMemo(() => {
     const nowPlayingTracks = queueIds.map((id) => trackMap.get(id)).filter(Boolean) as Track[];
@@ -69,6 +76,10 @@ export function PlaylistBrowser({
     ];
   }, [activity, favoriteTrackIds, playlists, queueIds, trackMap, tracks]);
   const selected = entries.find((item) => item.id === selectedPlaylistId);
+  const sort = browser.playlistSort[selectedPlaylistId] || originalOrder;
+  const displayTracks = useMemo(() => sortCollectionTracks(selected?.tracks || [], sort, favoriteTrackIds), [selected?.tracks, sort, favoriteTrackIds]);
+  const trackPositions = useMemo(() => new Map(selected?.tracks.map((track, index) => [track.id, index])), [selected?.tracks]);
+  const indexRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLElement>(null);
   useCollectionPanelMotion(contentRef, selectedPlaylistId);
   if (!selected) return <div className="collection-unavailable"><h2>此播放列表已不存在</h2>
@@ -82,18 +93,30 @@ export function PlaylistBrowser({
 
   return (
     <div className="playlist-browser">
-      <section className="playlist-list" aria-label="播放列表" data-collection-scroll="playlist-index">
+      <section ref={indexRef} className="playlist-list" aria-label="播放列表" data-collection-scroll="playlist-index" data-browse-roving>
         <div className="playlist-create">
           <Button className="playlist-create-button" variant="ghost" size="sm" icon={<Plus size={16} />} onClick={onCreatePlaylist}>新建播放列表</Button>
         </div>
-        {entries.map((playlist) => (
+        {entries.map((playlist, index) => (
           <button
             key={playlist.id}
             data-collection-anchor={playlist.id} data-collection-focus={`playlist:${playlist.id}`}
             className={playlist.id === selected.id ? "selected" : ""}
             aria-pressed={playlist.id === selected.id}
+            tabIndex={playlist.id === selected.id ? 0 : -1}
             title={playlist.name} data-touch-menu
             onClick={() => onSelectPlaylist(playlist.id)}
+            onKeyDown={event => {
+              if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+              const next = event.key === "Home" ? 0 : event.key === "End" ? entries.length - 1
+                : event.key === "ArrowDown" ? Math.min(index + 1, entries.length - 1) : event.key === "ArrowUp" ? Math.max(index - 1, 0) : null;
+              if (next === null) return;
+              event.preventDefault();
+              const target = [...(indexRef.current?.querySelectorAll<HTMLButtonElement>("[data-collection-focus]") || [])]
+                .find(node => node.dataset.collectionAnchor === entries[next].id);
+              onSelectPlaylist(entries[next].id);
+              target?.focus({ preventScroll: true }); target?.scrollIntoView({ block: "nearest" });
+            }}
             onContextMenu={(event) =>
               onContextMenu(event, {
                 kind: "playlist",
@@ -129,7 +152,7 @@ export function PlaylistBrowser({
           </div>
           <div className="playlist-header-actions">
             <Button size="sm" icon={<Play size={14} fill="currentColor" />} disabled={selected.tracks.length === 0}
-              onClick={() => onPlayTracks(selected.tracks)}>播放全部</Button>
+              onClick={() => onPlayTracks(displayTracks)}>播放全部</Button>
             {selected.kind === "smart" && selected.source && <>
               <Button variant="ghost" size="sm" icon={<SlidersHorizontal size={14} />} onClick={() => onEditSmartPlaylist(selected.id)}>编辑规则</Button>
               <Button variant="ghost" size="sm" icon={<RefreshCw size={14} />} onClick={() => onRefreshSmartPlaylist(selected.id)}>换一批</Button>
@@ -139,14 +162,18 @@ export function PlaylistBrowser({
                 tracks: selected.tracks, playlistId: selected.id, playlistKind: selected.kind })}>更多</Button>
           </div>
         </header>
-        <CollectionTrackList key={selected.id} listKey={`playlist:${selected.id}`} tracks={selected.tracks} activeTrackId={activeTrackId}
-          onReorder={onReorderPlaylist && selected.source && selected.kind === "manual" && selected.id !== DEFAULT_PLAYLIST_ID
+        <CollectionTrackList key={selected.id} listKey={`playlist:${selected.id}`} tracks={displayTracks} activeTrackId={activeTrackId}
+          windowed trackPositions={trackPositions} sort={sort} onSortChange={nextSort => {
+            const next = { ...browser, playlistSort: { ...browser.playlistSort, [selected.id]: nextSort } };
+            if (context) context.navigation.patch({ browser: next }, false); else setBrowserFallback(next);
+          }}
+          onReorder={onReorderPlaylist && selected.source && selected.kind === "manual" && selected.id !== DEFAULT_PLAYLIST_ID && sort.field === "position" && sort.direction === "ascending"
             ? (trackId, targetId) => onReorderPlaylist(selected.id, trackId, targetId) : undefined}
           onPlay={onPlay} favoriteTrackIds={favoriteTrackIds} onToggleFavorite={onToggleFavorite}
           emptyText={selected.kind === "smart" ? "暂无匹配歌曲" : "暂无歌曲"}
           onContextMenu={(event, track) => onContextMenu(event, {
             kind: "track", title: track.title, subtitle: `${track.artist} / ${track.album}`,
-            tracks: [track], playbackTracks: selected.tracks, playlistId: selected.id, playlistKind: selected.kind,
+            tracks: [track], playbackTracks: displayTracks, playlistId: selected.id, playlistKind: selected.kind,
           })} />
         </div>
       </section>

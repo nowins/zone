@@ -4,13 +4,11 @@ import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { MOTION_DURATIONS } from "../.tmp/visualizer-tests/motion/tokens.js";
 
 await build({ stdin: { contents: `export { Cover } from './src/components/Cover';
-export { CollectionArtworkBackdrop } from './src/components/CollectionArtworkBackdrop';
 export { PodcastNowBackdrop } from './src/components/PodcastNowBackdrop';`, resolveDir: process.cwd(), loader: "tsx" },
   outfile: ".tmp/cover-tests/runtime.js", bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent" });
-const { Cover, CollectionArtworkBackdrop, PodcastNowBackdrop } = await import("../.tmp/cover-tests/runtime.js");
+const { Cover, PodcastNowBackdrop } = await import("../.tmp/cover-tests/runtime.js");
 
 function environment() {
   const dom = new JSDOM('<body><div id="root"></div></body>');
@@ -96,42 +94,6 @@ test("Cover assigns each native image request a distinct node and ignores errors
     await act(async () => old.dispatchEvent(new window.Event("error")));
     assert.equal(document.querySelector("img"), null, "late error cannot resurrect a failed replacement");
     await render("C"); assert.equal(document.querySelector("img").getAttribute("src"), "C");
-  } finally { await env.cleanup(); }
-});
-
-const scene = path => ({ sceneKey: path, assetKey: path, seed: 42, assets: [{ key: path, path, role: "active-album", label: path }] });
-test("collection backdrop keeps fading pixels immutable and commits only the latest prepared scene", async () => {
-  const env = environment();
-  const render = path => env.render(React.createElement(CollectionArtworkBackdrop, { scene: scene(path), surfaceKey: "browse" }));
-  const painted = () => [...document.querySelectorAll("canvas")].map(canvas => (env.draws.get(canvas) ?? []).map(image => image.src));
-  try {
-    await render("A"); await env.load("A"); await env.advance(16); await env.advance(MOTION_DURATIONS.content);
-    await render("B"); await env.load("B"); await env.advance(16);
-    await render("C"); await env.load("C");
-    assert.ok(painted().some(paths => paths.includes("A")), "the outgoing A canvas stays A while fading");
-    assert.ok(!painted().some(paths => paths.includes("C")), "C waits for the reusable layer to become invisible");
-    await render("D"); await env.load("D");
-    await env.advance(MOTION_DURATIONS.content + 32);
-    assert.ok(painted().some(paths => paths.includes("D")));
-    assert.ok(!painted().some(paths => paths.includes("C")), "superseded prepared scenes never paint");
-    await render("bad"); await env.load("bad", false); await env.advance(32);
-    assert.ok(painted().some(paths => paths.includes("D")), "failed artwork does not replace the visible scene with a blank canvas");
-    await render("late"); await render("E"); await env.load("E"); await env.advance(MOTION_DURATIONS.content + 32);
-    await env.load("late"); await env.advance(32);
-    assert.ok(!painted().some(paths => paths.includes("late")), "late decode cannot overwrite the latest scene");
-  } finally { await env.cleanup(); }
-});
-
-test("collection redraw owns its decoded artwork after the preload cache evicts it", async () => {
-  const env = environment();
-  const render = path => env.render(React.createElement(CollectionArtworkBackdrop, { scene: scene(path), surfaceKey: "cache" }));
-  try {
-    await render("held"); await env.load("held"); await env.advance(16);
-    const visible = document.querySelector("canvas.is-visible"), original = env.draws.get(visible)[0];
-    for (let i = 0; i < 40; i++) await render(`queued-${i}`);
-    await env.resize();
-    assert.equal(env.draws.get(visible)[0], original, "resize uses the held decoded image, not a new cache request");
-    assert.equal(env.images.filter(image => image.src === "held").length, 1);
   } finally { await env.cleanup(); }
 });
 

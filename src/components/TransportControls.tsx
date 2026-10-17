@@ -46,6 +46,7 @@ export function TransportControls({
 
   const queueButton = (
     <button
+      data-now-playing-trigger="queue"
       className={queueActive ? "active" : ""}
       onClick={onQueue}
       title={queueActive ? "隐藏正在播放列表" : "显示正在播放列表"}

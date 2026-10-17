@@ -1,5 +1,9 @@
 import type { AlbumGroup } from "../types";
 import { clamp, smoothstep } from "../motion/math.js";
+import { irisBezier, irisEaseIn } from "../motion/irisCurves.js";
+import { NOW_PLAYING_CURVES, NOW_PLAYING_MOTION } from "../motion/tokens.js";
+import { createMosaicLightingSampler } from "./mosaicLighting.js";
+export { createMosaicColorFieldMotion } from "./mosaicLighting.js";
 
 export type RgbColor = {
   r: number;
@@ -14,21 +18,14 @@ export type MosaicColorPalette = [
   RgbColor,
 ];
 
-export type MosaicColorFieldMotion = {
-  angle: number;
-  offsetX: number;
-  offsetY: number;
-  bend: number;
-};
-
 export type MosaicTile = {
+  id: string;
   albumIndex: number;
   x: number;
   y: number;
   width: number;
   height: number;
   seed: number;
-  flipDelay: number;
 };
 
 export type MosaicArtworkState<T> = {
@@ -74,37 +71,43 @@ export type MosaicMotion = {
 
 const ZUNE_BASE: RgbColor = { r: 62, g: 50, b: 44 };
 const FIELD_HUE_OFFSETS = [-64, -18, 28, 72];
-const CANVAS_TILE_PATTERN = [3, 1, 2, 1, 2, 1, 3, 2, 1, 4, 1, 2, 1, 3, 1, 2, 1, 1, 2, 3];
+const MOSAIC_REVEAL_SLICES = 12;
+// Recovered GridDefs geometry (Zune 4.8): 49 squares per 12 x 10 block.
+// Edge squares extend into the next block's empty cells; they do not overlap.
+export const MOSAIC_BLOCK_CELLS = [
+  [2, 1, 3], [7, 0, 3], [10, 1, 3], [1, 5, 3],
+  [5, 4, 3], [8, 4, 4], [0, 8, 3], [4, 7, 3],
+  [3, 0, 1], [4, 0, 1], [5, 0, 1], [6, 0, 1], [10, 0, 1], [11, 0, 1],
+  [1, 1, 1], [5, 1, 1], [6, 1, 1], [1, 2, 1], [5, 2, 1], [6, 2, 1],
+  [1, 3, 1], [5, 3, 1], [6, 3, 1], [7, 3, 1], [8, 3, 1], [9, 3, 1],
+  [1, 4, 1], [2, 4, 1], [3, 4, 1], [4, 4, 1], [12, 4, 1],
+  [4, 5, 1], [12, 5, 1], [4, 6, 1], [12, 6, 1], [7, 7, 1], [12, 7, 1],
+  [3, 8, 1], [7, 8, 1], [8, 8, 1], [9, 8, 1], [10, 8, 1], [11, 8, 1],
+  [3, 9, 1], [7, 9, 1], [8, 9, 1], [9, 9, 1], [10, 9, 1], [11, 9, 1],
+] as const;
 
 export function buildCanvasMosaicTiles(width: number, height: number, albums: AlbumGroup[]) {
   const sourceLength = Math.max(albums.length, 1);
-  const overflowX = Math.max(80, width * 0.1);
-  const overflowY = Math.max(64, height * 0.1);
-  const cell = clamp(Math.round(width / 20), 52, 108);
-  const columns = Math.ceil((width + overflowX * 2) / cell);
-  const rows = Math.ceil((height + overflowY * 2) / cell);
-  const occupied = new Set<string>();
+  const margin = 64;
+  // Preserve the desktop grid, scaling only beyond the original block budget.
+  const cell = Math.max(70, Math.ceil(Math.max((width + 144 + margin) / 96, (height + 200 + margin) / 80)));
+  const columns = Math.min(8, Math.ceil((width + 144 + margin) / (12 * cell)));
+  const rows = Math.min(8, Math.ceil((height + 200 + margin) / (10 * cell)));
   const tiles: MosaicTile[] = [];
 
-  for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
-      if (occupied.has(cellKey(column, row))) continue;
-
-      let span = CANVAS_TILE_PATTERN[(row * 11 + column * 5 + tiles.length) % CANVAS_TILE_PATTERN.length];
-      span = Math.min(span, columns - column, rows - row);
-      while (span > 1 && !canOccupy(column, row, span, span, columns, rows, occupied)) span -= 1;
-      if (!canOccupy(column, row, span, span, columns, rows, occupied)) continue;
-
-      markOccupied(column, row, span, span, occupied);
-      const seed = seededNoise(column * 37 + row * 91 + tiles.length * 17);
-      tiles.push({
-        albumIndex: (tiles.length * 7 + Math.floor(tiles.length / 4)) % sourceLength,
-        x: column * cell - overflowX,
-        y: row * cell - overflowY,
-        width: span * cell,
-        height: span * cell,
-        seed,
-        flipDelay: 5_200 + seededNoise(tiles.length * 29 + 13) * 4_800,
+  for (let row = -1; row < rows; row += 1) {
+    for (let column = -1; column < columns; column += 1) {
+      MOSAIC_BLOCK_CELLS.forEach(([x, y, span], index) => {
+        const left = (column * 12 + x) * cell - 144;
+        const top = (row * 10 + y) * cell - 200;
+        const edge = span * cell;
+        if (left + edge < -margin || top + edge < -margin || left > width + margin || top > height + margin) return;
+        const seed = seededNoise(column * 37 + row * 91 + index * 17);
+        tiles.push({
+          id: `${column}:${row}:${index}`,
+          albumIndex: Math.floor(seededNoise(column * 71 + row * 43 + index * 7) * sourceLength),
+          x: left, y: top, width: edge, height: edge, seed,
+        });
       });
     }
   }
@@ -112,19 +115,56 @@ export function buildCanvasMosaicTiles(width: number, height: number, albums: Al
   return tiles;
 }
 
-export function createMosaicMotion(timeSeconds: number): MosaicMotion {
-  return {
-    driftX: Math.sin(timeSeconds * 0.055) * 16 + Math.sin(timeSeconds * 0.021 + 1.3) * 7,
-    driftY: Math.cos(timeSeconds * 0.047 + 0.6) * 10 + Math.sin(timeSeconds * 0.018) * 5,
-    scale: 1.025 + Math.sin(timeSeconds * 0.039 + 0.4) * 0.006 + Math.sin(timeSeconds * 0.017) * 0.003,
-  };
+export function createMosaicMotion(_timeSeconds: number): MosaicMotion {
+  // Native AlbumGridArt has fixed placement; only individual cells animate.
+  return { driftX: 0, driftY: 0, scale: 1 };
+}
+
+/** The light Graphic has its own native 2s EaseIn, independent of tile entry. */
+export function mosaicLightRevealAmount(elapsedMs: number, motionEnabled = true) {
+  if (!motionEnabled) return 1;
+  const { weight, handle } = NOW_PLAYING_CURVES.mosaicLightReveal;
+  return irisEaseIn(elapsedMs / NOW_PLAYING_MOTION.mosaicLightReveal, weight, handle);
 }
 
 export function mosaicTileRevealAmount(seed: number, elapsedMs: number, motionEnabled = true) {
   if (!motionEnabled) return 1;
-  const delay = clamp(seed, 0, 1) * 620;
-  const progress = clamp((elapsedMs - delay) / 260, 0, 1);
-  return 1 - (1 - progress) ** 3;
+  const { weight, handle } = NOW_PLAYING_CURVES.mosaicRevealAlpha;
+  return irisEaseIn(mosaicTileRevealProgress(seed, elapsedMs), weight, handle);
+}
+
+/** GridShow scales independently of alpha, using the stronger native weight. */
+export function mosaicTileRevealScale(seed: number, elapsedMs: number, motionEnabled = true) {
+  if (!motionEnabled) return 1;
+  const { weight, handle, start } = NOW_PLAYING_CURVES.mosaicRevealScale;
+  return start + (1 - start) * irisEaseIn(mosaicTileRevealProgress(seed, elapsedMs), weight, handle);
+}
+
+function mosaicTileRevealProgress(seed: number, elapsedMs: number) {
+  const slice = Math.min(MOSAIC_REVEAL_SLICES - 1,
+    Math.floor(clamp(seed, 0, 1) * MOSAIC_REVEAL_SLICES));
+  const delay = NOW_PLAYING_MOTION.mosaicRevealDelay + slice * NOW_PLAYING_MOTION.mosaicRevealStep;
+  return clamp((elapsedMs - delay) / NOW_PLAYING_MOTION.mosaicReveal, 0, 1);
+}
+
+/** Two Y-axis keyframe segments and a separately timed back-face alpha tail.
+ * Iris's quintic Bezier keeps the back face edge-on for the shipped 1ms hold. */
+export function mosaicFlipFrame(elapsedMs: number) {
+  const half = NOW_PLAYING_MOTION.mosaicTurn / 2;
+  const back = elapsedMs >= half;
+  const backStart = half + NOW_PLAYING_MOTION.mosaicTurnHold;
+  const amount = easeMosaicBezier(back
+    ? (elapsedMs - backStart) / (NOW_PLAYING_MOTION.mosaicTurn - backStart)
+    : elapsedMs / half);
+  const angle = (back ? amount - 1 : amount) * Math.PI / 2;
+  const alpha = back
+    ? easeMosaicBezier(clamp((elapsedMs - half) / (NOW_PLAYING_MOTION.mosaicTurnFade - half), 0, 1))
+    : 1 - amount;
+  return { back, alpha, angle, rotation: (back ? 1 + amount : amount) / 2, scaleX: Math.max(0.02, Math.cos(angle)) };
+}
+
+function easeMosaicBezier(progress: number) {
+  return irisBezier(progress, ...NOW_PLAYING_CURVES.mosaicFlipHandles);
 }
 
 export function extractMosaicColorPalette(data: Uint8ClampedArray): MosaicColorPalette {
@@ -197,22 +237,6 @@ export function interpolateMosaicColorPalette(
   return from.map((color, index) => lerpRgb(color, to[index], progress)) as MosaicColorPalette;
 }
 
-export function createMosaicColorFieldMotion(timeSeconds: number): MosaicColorFieldMotion {
-  return {
-    angle:
-      -0.75
-      + timeSeconds * 0.09
-      + Math.sin(timeSeconds * 0.17) * 0.35,
-    offsetX:
-      Math.sin(timeSeconds * 0.11 + 0.2) * 0.22
-      + Math.sin(timeSeconds * 0.031 + 2.1) * 0.07,
-    offsetY:
-      Math.cos(timeSeconds * 0.083 + 1.1) * 0.18
-      + Math.sin(timeSeconds * 0.027 + 0.4) * 0.06,
-    bend: 0.15 + Math.sin(timeSeconds * 0.12 + 2.3) * 0.065,
-  };
-}
-
 export function sampleMosaicColorField(
   palette: MosaicColorPalette,
   timeSeconds: number,
@@ -225,16 +249,18 @@ export function sampleMosaicColorField(
 export function createMosaicColorFieldSampler(
   palette: MosaicColorPalette,
   timeSeconds: number,
+  width = 1180,
+  height = 760,
+  dpiScale = 1,
 ) {
-  const motion = createMosaicColorFieldMotion(timeSeconds);
-  return (x: number, y: number) => sampleMosaicColorFieldRgb(palette, motion, timeSeconds, x, y);
+  return createMosaicLightingSampler(palette, timeSeconds, width, height, dpiScale);
 }
 
 export function createMosaicFlipState(): MosaicFlipState {
   return {
     tileIndex: -1,
     startedAt: -Infinity,
-    duration: 1300,
+    duration: NOW_PLAYING_MOTION.mosaicTurnFade,
     nextAt: 0,
     initialized: false,
     lastTileIndex: -1,
@@ -249,18 +275,12 @@ export function updateMosaicFlipState(
   tiles: MosaicTile[],
   {
     isPlaying,
-    beatPulse,
-    beatPhase,
-    beatConfidence,
     albums,
     time,
     canFlipTile,
     canUseAlbum,
   }: {
     isPlaying: boolean;
-    beatPulse: number;
-    beatPhase: number;
-    beatConfidence: number;
     albums: AlbumGroup[];
     time: number;
     canFlipTile?: (tile: MosaicTile, index: number) => boolean;
@@ -272,7 +292,7 @@ export function updateMosaicFlipState(
     return state;
   }
 
-  if (state.tileIndex >= 0 && time - state.startedAt > state.duration) {
+  if (state.tileIndex >= 0 && time - state.startedAt >= state.duration) {
     const completedTile = tiles[state.tileIndex];
     if (completedTile) completedTile.albumIndex = state.toAlbumIndex;
     state.tileIndex = -1;
@@ -288,15 +308,12 @@ export function updateMosaicFlipState(
   if (!state.initialized) {
     state.initialized = true;
     state.tileIndex = -1;
-    state.nextAt = time + 1_800 + seededNoise(tiles.length * 31 + 5) * 2_000;
+    state.nextAt = time + NOW_PLAYING_MOTION.nowStage + NOW_PLAYING_MOTION.mosaicInterval;
     return state;
   }
 
   if (state.tileIndex >= 0 && time - state.startedAt <= state.duration) return state;
   if (time < state.nextAt) return state;
-
-  const waitForBeat = beatConfidence >= 0.34 && beatPulse < 0.24 && beatPhase > 0.14;
-  if (waitForBeat && time < state.nextAt + 650) return state;
 
   const selected = selectFlipTile(tiles, time, state.lastTileIndex, canFlipTile);
   if (selected < 0) return state;
@@ -305,17 +322,17 @@ export function updateMosaicFlipState(
   const fromAlbumIndex = positiveModulo(tile?.albumIndex ?? 0, sourceLength);
   const toAlbumIndex = selectBackAlbumIndex(albums, fromAlbumIndex, time + (tile?.seed ?? 0.5) * 47_000, canUseAlbum);
   if (toAlbumIndex === fromAlbumIndex) {
-    state.nextAt = time + 5_200;
+    state.nextAt = time + NOW_PLAYING_MOTION.mosaicInterval;
     return state;
   }
   state.tileIndex = selected;
   state.lastTileIndex = selected;
   state.fromAlbumIndex = fromAlbumIndex;
   state.toAlbumIndex = toAlbumIndex;
-  state.direction = seededNoise(time * 0.0017 + selected * 19) > 0.5 ? 1 : -1;
+  state.direction = 1;
   state.startedAt = time;
-  state.duration = 560 + Math.round((tile?.seed ?? 0.5) * 160);
-  state.nextAt = time + 5_200 + Math.round((tile?.seed ?? 0.5) * 4_800);
+  state.duration = NOW_PLAYING_MOTION.mosaicTurnFade;
+  state.nextAt = time + state.duration + NOW_PLAYING_MOTION.mosaicInterval;
   return state;
 }
 
@@ -344,73 +361,12 @@ export function averageImageColor(data: Uint8ClampedArray): RgbColor {
     : ZUNE_BASE;
 }
 
-function sampleMosaicColorFieldRgb(
-  palette: MosaicColorPalette,
-  motion: MosaicColorFieldMotion,
-  timeSeconds: number,
-  x: number,
-  y: number,
-) {
-  const centeredX = x - 0.5 + motion.offsetX;
-  const centeredY = y - 0.5 + motion.offsetY;
-  const cosine = Math.cos(motion.angle);
-  const sine = Math.sin(motion.angle);
-  const rotatedX = centeredX * cosine - centeredY * sine;
-  const rotatedY = centeredX * sine + centeredY * cosine;
-  const warpX =
-    rotatedX
-    + Math.sin(rotatedY * 5.2 + timeSeconds * 0.17) * motion.bend
-    + Math.sin((rotatedX + rotatedY) * 3.1 - timeSeconds * 0.11) * 0.045;
-  const warpY =
-    rotatedY
-    + Math.sin(rotatedX * 4.4 - timeSeconds * 0.13) * motion.bend * 0.72
-    + Math.cos((rotatedX - rotatedY) * 2.7 + timeSeconds * 0.09) * 0.04;
-  const horizontal = smoothstep(-0.52, 0.52, warpX);
-  const vertical = smoothstep(-0.48, 0.5, warpY);
-  // Nested shortest-arc hue interpolation changes direction at 180 degrees.
-  // That branch cut produced a moving seam, especially during palette entry.
-  // Cartesian interpolation stays continuous over both space and palette time;
-  // the renderer's color blend still preserves the artwork's luminance.
-  const upper = lerpRgb(palette[0], palette[1], horizontal);
-  const lower = lerpRgb(palette[2], palette[3], 1 - horizontal);
-  return lerpRgb(upper, lower, vertical);
-}
-
-function canOccupy(
-  column: number,
-  row: number,
-  spanColumns: number,
-  spanRows: number,
-  columns: number,
-  rows: number,
-  occupied: Set<string>,
-) {
-  if (column + spanColumns > columns || row + spanRows > rows) return false;
-  for (let y = row; y < row + spanRows; y += 1) {
-    for (let x = column; x < column + spanColumns; x += 1) {
-      if (occupied.has(cellKey(x, y))) return false;
-    }
-  }
-  return true;
-}
-
-function markOccupied(column: number, row: number, spanColumns: number, spanRows: number, occupied: Set<string>) {
-  for (let y = row; y < row + spanRows; y += 1) {
-    for (let x = column; x < column + spanColumns; x += 1) occupied.add(cellKey(x, y));
-  }
-}
-
-function cellKey(column: number, row: number) {
-  return `${column}:${row}`;
-}
-
 function selectFlipTile(tiles: MosaicTile[], time: number, lastTileIndex: number,
   canFlipTile?: (tile: MosaicTile, index: number) => boolean) {
   const eligible = tiles
     .map((tile, index) => ({ tile, index }))
     .filter(({ tile, index }) => !canFlipTile || canFlipTile(tile, index));
-  const largeTiles = eligible.filter(({ tile }) => tile.width === tile.height && tile.width >= 104);
-  const source = largeTiles.length > 0 ? largeTiles : eligible;
+  const source = eligible;
   if (source.length === 0) return -1;
   if (source.length === 1) return source[0].index;
 
@@ -435,7 +391,7 @@ function selectBackAlbumIndex(albums: AlbumGroup[], fromAlbumIndex: number, seed
 function resetFlipState(state: MosaicFlipState, time: number) {
   state.tileIndex = -1;
   state.initialized = false;
-  state.nextAt = time + 2_400;
+  state.nextAt = time + NOW_PLAYING_MOTION.mosaicInterval;
 }
 
 function seededNoise(seed: number) {

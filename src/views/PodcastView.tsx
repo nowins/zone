@@ -89,7 +89,6 @@ export function PodcastView(props: PodcastViewProps) {
 
   return (
     <section ref={rootRef} className="content-band podcast-page" data-browse-motion="managed">
-      <p className="podcast-ghost" aria-hidden="true">podcasts</p>
 
       <header className={`podcast-header ${screen === "show" || screen === "episode" ? "podcast-header-detail" : "podcast-header-root"}`}>
         <div className={screen === "show" || screen === "episode" ? "podcast-heading" : "podcast-heading podcast-heading-hidden"}>

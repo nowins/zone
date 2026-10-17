@@ -28,7 +28,9 @@ test("smart playlist editor starts from presets and keeps a live, explainable pr
 
 test("smart playlist playback resolves live results but queues a snapshot", () => {
   assert.ok(browserSource.includes("resolvePlaylistTracks"));
-  assert.ok(browserSource.includes("onPlayTracks(selected.tracks)"));
+  assert.ok(browserSource.includes("resolvePlaylistTracks(playlist, tracks, { favoriteTrackIds, activity })"));
+  assert.ok(browserSource.includes("sortCollectionTracks(selected?.tracks || [], sort, favoriteTrackIds)"));
+  assert.ok(browserSource.includes("onPlayTracks(displayTracks)"));
   assert.ok(editorSource.includes("当前队列保持不变"));
   assert.ok(appSource.includes("rotationSeed: playlist.smart.rotationSeed + 1"));
 });

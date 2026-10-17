@@ -5,7 +5,8 @@
   height: 100%;
   min-height: 0;
   margin: 0;
-  overflow: hidden;
+  /* Background overflow must not scroll the whole stage when controls focus. */
+  overflow: clip;
   background: #030303;
   border: 0;
   box-shadow: none;
@@ -31,11 +32,26 @@
 .now-canvas-grade {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
-  background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.22), transparent 18%, transparent 80%, rgba(0, 0, 0, 0.3)),
-    linear-gradient(0deg, rgba(0, 0, 0, 0.44), transparent 25%, rgba(0, 0, 0, 0.08));
+  /* Lyrics add their own veil; the native media light field needs no grade. */
+
+}
+
+.now-artist-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+  filter: none;
+}
+
+.now-artist-canvas.is-fallback {
+  filter: saturate(0.72) brightness(0.46);
 }
 
 .now-back,
@@ -72,8 +88,19 @@
   transition: border-color var(--motion-content) var(--motion-ease-standard), background var(--motion-content) var(--motion-ease-standard), transform var(--motion-micro) var(--motion-ease-standard);
 }
 
-.now-back:hover {
+.now-back:hover,
+.now-back:focus-visible {
   color: #fff;
+}
+
+.now-back:focus-visible {
+  outline: none;
+}
+
+.now-back:focus-visible::before {
+  outline: 1px solid var(--accent);
+  outline-offset: 3px;
+  border-color: #fff;
 }
 
 .now-back:hover::before {

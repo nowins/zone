@@ -34,11 +34,6 @@ function ContinueCard({
           url={episode.artworkUrl ?? episode.feedArtworkUrl}
           title={episode.feedTitle ?? episode.title}
         />
-        {progressLabel ? (
-          <span className="podcast-cover-progress" aria-hidden="true">
-            {progressLabel}
-          </span>
-        ) : null}
       </div>
       <button
         type="button"

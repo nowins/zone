@@ -1,0 +1,798 @@
+{
+  "provenance": {
+    "target": "Zune 4.8.2345 x64 original UIXRender; controlled transparent PNG input",
+    "targetDllSha256": "1bccee7b3302810d86f2f230d584abfb945e689dc7f01a7a7e20be6853ead47f",
+    "method": "Original PNG decoder CPU output plus original successful INDEX16 draw input and owned EndScene atlas readback; no original texture/state mutation",
+    "naturallyLoadedArtistPhoto": false,
+    "userMusicCacheObserved": false,
+    "transparentCoverDrawObserved": false,
+    "coverShaderSha256Only": "8d0211079b68e15e071d5b37fd3c0fc0c0d576bdb55d5f88f1387fd33b0c6ad8",
+    "excludedCoverInputCaptureSha256": "5a7007646ddd4ebeb614bf7aec9a648cb44e44125b0519f93d3547bd2c94c051",
+    "excludedCoverInputReason": "PS324 bytecode observed, but zero atlas readbacks and no fully identified transparent draw input"
+  },
+  "source": {
+    "width": 8,
+    "height": 2,
+    "rgbaHex": "f0105000f0105001f0105011f0105040f0105080f01050c0f01050fef01050ff20e06000f87818011030f011e060c04090d808805020f0c0d04890fe10c0e0ff",
+    "rgbaSha256": "221a30cfd9a4ee8ce2846dd981bf52ebb2c603896d662936e9917bd46418e743",
+    "pngHex": "89504e470d0a1a0a0000000d494844520000000800000002080600000065949ded000000424944415478da63f82010c000c48c402c08c40e40dc00c40780f81f10ff67507890c0f0a3428251c0e083e08384030e136e703404287c3870c163c23f81030ffe0300839c1ddf14aba85d0000000049454e44ae426082",
+    "pngSha256": "d356c8a9af93dc2e3da56119306ccf06a7abe7fdc0ecd6d0219a7bd22db56916",
+    "pngChunks": [
+      "IHDR",
+      "IDAT",
+      "IEND"
+    ],
+    "premultiplied": false
+  },
+  "nativeCpuDecoded": {
+    "width": 8,
+    "height": 2,
+    "stride": 32,
+    "surfaceFormat": 2132104,
+    "formatName": "ARGB32",
+    "bgraHex": "5010f0005010f0015010f0115010f0405010f0805010f0c05010f0fe5010f0ff60e020001878f801f0301011c060e04008d89080f02050c09048d0fee0c010ff",
+    "sha256": "8e5c8d02825448d07fecdbc2e6f08c719cd859767c9ccd8bcd51255babe60ce0",
+    "metadataSha256": "2d6c8c1f9a197bb1e5e2e39515127d4e525672da5d19188204cf67ee1260e85d",
+    "source": "Original ImageLoader.FromBuffer / SpBitmapLoadBuffer Decode",
+    "runCorrelation": "Same source PNG identity; CPU decode and GPU captures may be separate controlled runs"
+  },
+  "observations": [
+    {
+      "role": "original-sliding-background-clip-with-controlled-PNG",
+      "capture": {
+        "file": "photo-transparent-atlas-clean.json",
+        "sha256": "0c46dc8c5d8cae3fe799868287ffb7c207a52cf17a061f3f9343fcb320f403c5",
+        "probeSha256": "8dcb0ba17e620c088c2c3b6af096fa178c635690e47718d75a62556ce6c68198",
+        "pid": 39560,
+        "errors": [],
+        "detached": true
+      },
+      "shader": {
+        "bytes": 1568,
+        "sha256": "e64fbdfe1b009718514bcf6d4c8847c95c8d73f99755a355eef393782c43e298",
+        "bytecodeHex": "0003fffffeff8300435441421c000000d50100000003ffff0a0000001c00000000000000ce010000e40000000300000001000000f000000000000000000100000200050001000000100100002001000030010000020001000100000010010000200100003c01000002000300010000005001000020010000600100000200070001000000500100002001000071010000020008000100000084010000200100009401000002000600010000008401000020010000a401000002000200010000008401000020010000b301000002000400010000005001000020010000c10100000200000001000000500100002001000053616d706c65723000ababab04000c00010001000100000000000000675f666c526164697573313500ababab0000030001000100010000000000000000000000000000000000000000000000675f666c5261646975733700675f76417474656e756174696f6e313000ababab01000300010003000100000000000000675f76417474656e756174696f6e313800675f76436f6c6f72456c656d656e74323900ab01000300010004000100000000000000675f764c69676874436f6c6f72313600675f764c69676874436f6c6f723800675f76506f736974696f6e313400675f76506f736974696f6e360070735f335f30004d6963726f736f6674202852292044334458392053686164657220436f6d70696c657220342e30382e30312e3036313200ababfeff0100505245535100000509000fa0000000000000803f3dcff33e310c433f510000050a000fa09a99193ecdcc0c3f9a99993e6666663f510000050b000fa03333733f0000003f0000000000000000510000050c000fa03dcff33e0000003f000000400000803f1f0000020a00008001000f901f00000205000580020003901f00000205000080030003901f0000020000009000080fa002000003000003800200e4910000e4a05a000004000008800000e4800000e480090000a007000002000004800000ff8006000002000004800000aa8004000004000004800000aa80030055a0030000a002000003000003800200e4910400e4a004000004000004800000ff800300aaa00000aa805a000004000008800000e4800000e480090000a006000002000002800000aa8007000002000004800000ff80050000030100188000005580010000a006000002010004800000aa800100000205000a800900e4a004000004000007800200e4a00100ff810500558004000004010004800100aa80070055a0070000a004000004030007800000e4800900aaa1090055a004000004000008800000ff800700aaa00100aa8004000004010007800000e4800c0000a10c0055a006000002000008800000ff8005000003000018800000ff80050000a013000002020007800100e48105000003000007800000ff800600e4a002000003020007800100e4800200e48005000003000007800300e4800000e48002000003030007800200e481090055a004000004010008800200ffa00100ff800500ff8005000003000007800000e4800300e48004000004010007800c00aaa00100e4810c00ffa002000003040007800000e4800000e48004000004030007800600e4a00000ff810500558004000004010008800600ffa00000ff800100ff804200000300000f800300e4900008e4a008000003000008800000e4800a00e4a004000004030007800100e4800300e481090055a012000004010007800a00ffa00000ff800000e48004000004040007800200e4800300e4800400e48002000003000007800100e4800c0055a104000004030007800000e4800b0000a00b0055a002000003010007800400e4800c0055a105000003020007800300e4800800e4a013000002000007800100e48104000004030007800300e4800800e4a10500558002000003000007800100e4800000e48005000003020007800400e4800200e48002000003040007800000e481090055a004000004010007800c00aaa00100e4810c00ffa005000003020007800200e4800400e48002000003020007800200e4800200e48004000004010007800100e4800300e481090055a004000004000007800000e4800100e4800200e48002000003000008800100ff800800ffa00500000300080f800000e4800100e490ffff0000"
+      },
+      "draw": {
+        "read": "original-CPU-writes-before-Unlock",
+        "type": 4,
+        "baseVertex": 0,
+        "minVertex": 0,
+        "declaredVertexCount": 5120,
+        "startIndex": 0,
+        "primitiveCount": 2,
+        "stride": 48,
+        "streamOffset": 0,
+        "declaration": [
+          {
+            "stream": 0,
+            "offset": 0,
+            "type": 2,
+            "usage": 0,
+            "usageIndex": 0
+          },
+          {
+            "stream": 0,
+            "offset": 12,
+            "type": 4,
+            "usage": 10,
+            "usageIndex": 0
+          },
+          {
+            "stream": 0,
+            "offset": 16,
+            "type": 1,
+            "usage": 5,
+            "usageIndex": 0
+          },
+          {
+            "stream": 0,
+            "offset": 24,
+            "type": 1,
+            "usage": 5,
+            "usageIndex": 1
+          },
+          {
+            "stream": 0,
+            "offset": 32,
+            "type": 1,
+            "usage": 5,
+            "usageIndex": 2
+          },
+          {
+            "stream": 0,
+            "offset": 40,
+            "type": 1,
+            "usage": 5,
+            "usageIndex": 3
+          },
+          {
+            "stream": 255,
+            "offset": 0,
+            "type": 17,
+            "usage": 0,
+            "usageIndex": 0
+          }
+        ],
+        "selected": [
+          {
+            "index": 2,
+            "position": [
+              -203.70001220703125,
+              622,
+              0
+            ],
+            "colorARGB": "0xffffffff",
+            "alphaByte": 255,
+            "uv0": [
+              0.0009765625,
+              0.03271484375
+            ]
+          },
+          {
+            "index": 0,
+            "position": [
+              -203.70001220703125,
+              0,
+              0
+            ],
+            "colorARGB": "0xffffffff",
+            "alphaByte": 255,
+            "uv0": [
+              0.0009765625,
+              0.03173828125
+            ]
+          },
+          {
+            "index": 1,
+            "position": [
+              1582.300048828125,
+              0,
+              0
+            ],
+            "colorARGB": "0xffffffff",
+            "alphaByte": 255,
+            "uv0": [
+              0.00390625,
+              0.03173828125
+            ]
+          },
+          {
+            "index": 3,
+            "position": [
+              1582.300048828125,
+              622,
+              0
+            ],
+            "colorARGB": "0xffffffff",
+            "alphaByte": 255,
+            "uv0": [
+              0.00390625,
+              0.03271484375
+            ]
+          }
+        ],
+        "originalDrawResult": {
+          "signed": 0,
+          "hex": "0x00000000"
+        },
+        "lockFlags": {
+          "vertices": 0,
+          "indices": 8192
+        }
+      },
+      "indices": {
+        "format": 101,
+        "values": [
+          2,
+          0,
+          1,
+          1,
+          3,
+          2
+        ],
+        "littleEndianHex": "020000000100010003000200",
+        "encoding": "lossless INDEX16 encoding of captured values"
+      },
+      "atlas": {
+        "sha256": "0970e84e51e274bcc91ced17d57598f53be5f932cf3f147c7e75719b8a5271db",
+        "bytes": 16777216,
+        "format": 21,
+        "width": 2048,
+        "height": 2048,
+        "pitch": 8192,
+        "contentRectExclusive": [
+          1,
+          65,
+          9,
+          67
+        ],
+        "contentLocatedBy": "unique full 8x2 BGRA source-byte match in retained atlas; not UV bounds",
+        "fullSourceMatchCount": 1,
+        "regionRectExclusive": [
+          0,
+          64,
+          10,
+          68
+        ],
+        "regionWidth": 10,
+        "regionHeight": 4,
+        "regionBgraHex": "5010f0005010f0005010f0015010f0115010f0405010f0805010f0c05010f0fe5010f0ff5010f0ff5010f0005010f0005010f0015010f0115010f0405010f0805010f0c05010f0fe5010f0ff5010f0ff60e0200060e020001878f801f0301011c060e04008d89080f02050c09048d0fee0c010ffe0c010ff60e0200060e020001878f801f0301011c060e04008d89080f02050c09048d0fee0c010ffe0c010ff",
+        "regionSha256": "860b307f584bac8a10ede783f75255a6d1081046855298c1287b3275ac57861b"
+      },
+      "uvTexelBounds": [
+        2.0,
+        65.0,
+        8.0,
+        67.0
+      ],
+      "readback": {
+        "valid": true,
+        "failure": null,
+        "stateUnchanged": true,
+        "gettersSucceeded": true,
+        "steps": [
+          {
+            "name": "Texture.GetSurfaceLevel(0)",
+            "hresult": 0
+          },
+          {
+            "name": "SourceSurface.GetDesc",
+            "hresult": 0
+          },
+          {
+            "name": "Device.CreateRenderTarget",
+            "hresult": 0
+          },
+          {
+            "name": "Device.CreateOffscreenPlainSurface(SYSTEMMEM)",
+            "hresult": 0
+          },
+          {
+            "name": "Device.StretchRect(NONE)",
+            "hresult": 0
+          },
+          {
+            "name": "Device.GetRenderTargetData",
+            "hresult": 0
+          },
+          {
+            "name": "OwnedSystemSurface.LockRect(READONLY)",
+            "hresult": 0
+          },
+          {
+            "name": "OwnedSystemSurface.UnlockRect",
+            "hresult": 0
+          }
+        ],
+        "before": {
+          "pointers": {
+            "pixelShader": "0x1f09df80",
+            "vertexShader": "0x206722a0",
+            "renderTarget0": "0x1fa8e118",
+            "texture0": "0x2ae0fc00"
+          },
+          "getterResults": {
+            "pixelShader": 0,
+            "vertexShader": 0,
+            "renderTarget0": 0,
+            "texture0": 0,
+            "viewport": 0
+          },
+          "viewport": [
+            0,
+            0,
+            986,
+            622,
+            0,
+            1
+          ],
+          "renderStates": {
+            "7": 0,
+            "14": 1,
+            "15": 0,
+            "19": 5,
+            "20": 6,
+            "27": 1,
+            "168": 15,
+            "171": 1,
+            "193": 4294967295,
+            "194": 0,
+            "206": 1,
+            "207": 2,
+            "208": 2,
+            "209": 1
+          },
+          "renderStateResults": {
+            "7": 0,
+            "14": 0,
+            "15": 0,
+            "19": 0,
+            "20": 0,
+            "27": 0,
+            "168": 0,
+            "171": 0,
+            "193": 0,
+            "194": 0,
+            "206": 0,
+            "207": 0,
+            "208": 0,
+            "209": 0
+          },
+          "sampler0": {
+            "1": 3,
+            "2": 3,
+            "3": 1,
+            "5": 2,
+            "6": 2,
+            "7": 0,
+            "11": 0
+          },
+          "samplerResults": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "5": 0,
+            "6": 0,
+            "7": 0,
+            "11": 0
+          }
+        },
+        "after": {
+          "pointers": {
+            "pixelShader": "0x1f09df80",
+            "vertexShader": "0x206722a0",
+            "renderTarget0": "0x1fa8e118",
+            "texture0": "0x2ae0fc00"
+          },
+          "getterResults": {
+            "pixelShader": 0,
+            "vertexShader": 0,
+            "renderTarget0": 0,
+            "texture0": 0,
+            "viewport": 0
+          },
+          "viewport": [
+            0,
+            0,
+            986,
+            622,
+            0,
+            1
+          ],
+          "renderStates": {
+            "7": 0,
+            "14": 1,
+            "15": 0,
+            "19": 5,
+            "20": 6,
+            "27": 1,
+            "168": 15,
+            "171": 1,
+            "193": 4294967295,
+            "194": 0,
+            "206": 1,
+            "207": 2,
+            "208": 2,
+            "209": 1
+          },
+          "renderStateResults": {
+            "7": 0,
+            "14": 0,
+            "15": 0,
+            "19": 0,
+            "20": 0,
+            "27": 0,
+            "168": 0,
+            "171": 0,
+            "193": 0,
+            "194": 0,
+            "206": 0,
+            "207": 0,
+            "208": 0,
+            "209": 0
+          },
+          "sampler0": {
+            "1": 3,
+            "2": 3,
+            "3": 1,
+            "5": 2,
+            "6": 2,
+            "7": 0,
+            "11": 0
+          },
+          "samplerResults": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "5": 0,
+            "6": 0,
+            "7": 0,
+            "11": 0
+          }
+        }
+      }
+    },
+    {
+      "role": "original-renderapi-plain-image-controlled-host",
+      "capture": {
+        "file": "alpha-atlas-clean.json",
+        "sha256": "a0663f8b6b412c575183d8d7246d3a0bcd04cd336d765f0564a7f87c2fb76b4e",
+        "probeSha256": "8dcb0ba17e620c088c2c3b6af096fa178c635690e47718d75a62556ce6c68198",
+        "pid": 70940,
+        "errors": [],
+        "detached": true
+      },
+      "shader": {
+        "bytes": 224,
+        "sha256": "892079c3e951efd145857f72d707a235d73e2ea6dad93e123122f6de09e5ecaf",
+        "bytecodeHex": "0003fffffeff2200435441421c000000530000000003ffff010000001c000000000000004c0000003000000003000000010000003c0000000000000053616d706c65723000ababab04000c0001000100010000000000000070735f335f30004d6963726f736f6674202852292044334458392053686164657220436f6d70696c657220342e30382e30312e3036313200feff0100505245531f0000020a00008001000f901f00000205000080020003901f0000020000009000080fa04200000300000f800200e4900008e4a00500000300080f800000e4800100e490ffff0000"
+      },
+      "draw": {
+        "read": "original-CPU-writes-before-Unlock",
+        "type": 4,
+        "baseVertex": 0,
+        "minVertex": 0,
+        "declaredVertexCount": 5120,
+        "startIndex": 0,
+        "primitiveCount": 2,
+        "stride": 48,
+        "streamOffset": 0,
+        "declaration": [
+          {
+            "stream": 0,
+            "offset": 0,
+            "type": 2,
+            "usage": 0,
+            "usageIndex": 0
+          },
+          {
+            "stream": 0,
+            "offset": 12,
+            "type": 4,
+            "usage": 10,
+            "usageIndex": 0
+          },
+          {
+            "stream": 0,
+            "offset": 16,
+            "type": 1,
+            "usage": 5,
+            "usageIndex": 0
+          },
+          {
+            "stream": 0,
+            "offset": 24,
+            "type": 1,
+            "usage": 5,
+            "usageIndex": 1
+          },
+          {
+            "stream": 0,
+            "offset": 32,
+            "type": 1,
+            "usage": 5,
+            "usageIndex": 2
+          },
+          {
+            "stream": 0,
+            "offset": 40,
+            "type": 1,
+            "usage": 5,
+            "usageIndex": 3
+          },
+          {
+            "stream": 255,
+            "offset": 0,
+            "type": 17,
+            "usage": 0,
+            "usageIndex": 0
+          }
+        ],
+        "selected": [
+          {
+            "index": 14,
+            "position": [
+              20,
+              260,
+              0
+            ],
+            "colorARGB": "0xffffffff",
+            "alphaByte": 255,
+            "uv0": [
+              0.00048828125,
+              0.00146484375
+            ]
+          },
+          {
+            "index": 12,
+            "position": [
+              20,
+              20,
+              0
+            ],
+            "colorARGB": "0xffffffff",
+            "alphaByte": 255,
+            "uv0": [
+              0.00048828125,
+              0.00048828125
+            ]
+          },
+          {
+            "index": 13,
+            "position": [
+              380,
+              20,
+              0
+            ],
+            "colorARGB": "0xffffffff",
+            "alphaByte": 255,
+            "uv0": [
+              0.00439453125,
+              0.00048828125
+            ]
+          },
+          {
+            "index": 15,
+            "position": [
+              380,
+              260,
+              0
+            ],
+            "colorARGB": "0xffffffff",
+            "alphaByte": 255,
+            "uv0": [
+              0.00439453125,
+              0.00146484375
+            ]
+          }
+        ],
+        "originalDrawResult": {
+          "signed": 0,
+          "hex": "0x00000000"
+        },
+        "lockFlags": {
+          "vertices": 0,
+          "indices": 8192
+        }
+      },
+      "indices": {
+        "format": 101,
+        "values": [
+          14,
+          12,
+          13,
+          13,
+          15,
+          14
+        ],
+        "littleEndianHex": "0e000c000d000d000f000e00",
+        "encoding": "lossless INDEX16 encoding of captured values"
+      },
+      "atlas": {
+        "sha256": "5be2c0cbe920a10c399ac10c3f78a4d43745d5c7eb2bf049da0136d136bb1710",
+        "bytes": 16777216,
+        "format": 21,
+        "width": 2048,
+        "height": 2048,
+        "pitch": 8192,
+        "contentRectExclusive": [
+          1,
+          1,
+          9,
+          3
+        ],
+        "contentLocatedBy": "unique full 8x2 BGRA source-byte match in retained atlas; not UV bounds",
+        "fullSourceMatchCount": 1,
+        "regionRectExclusive": [
+          0,
+          0,
+          10,
+          4
+        ],
+        "regionWidth": 10,
+        "regionHeight": 4,
+        "regionBgraHex": "5010f0005010f0005010f0015010f0115010f0405010f0805010f0c05010f0fe5010f0ff5010f0ff5010f0005010f0005010f0015010f0115010f0405010f0805010f0c05010f0fe5010f0ff5010f0ff60e0200060e020001878f801f0301011c060e04008d89080f02050c09048d0fee0c010ffe0c010ff60e0200060e020001878f801f0301011c060e04008d89080f02050c09048d0fee0c010ffe0c010ff",
+        "regionSha256": "860b307f584bac8a10ede783f75255a6d1081046855298c1287b3275ac57861b"
+      },
+      "uvTexelBounds": [
+        1.0,
+        1.0,
+        9.0,
+        3.0
+      ],
+      "readback": {
+        "valid": true,
+        "failure": null,
+        "stateUnchanged": true,
+        "gettersSucceeded": true,
+        "steps": [
+          {
+            "name": "Texture.GetSurfaceLevel(0)",
+            "hresult": 0
+          },
+          {
+            "name": "SourceSurface.GetDesc",
+            "hresult": 0
+          },
+          {
+            "name": "Device.CreateRenderTarget",
+            "hresult": 0
+          },
+          {
+            "name": "Device.CreateOffscreenPlainSurface(SYSTEMMEM)",
+            "hresult": 0
+          },
+          {
+            "name": "Device.StretchRect(NONE)",
+            "hresult": 0
+          },
+          {
+            "name": "Device.GetRenderTargetData",
+            "hresult": 0
+          },
+          {
+            "name": "OwnedSystemSurface.LockRect(READONLY)",
+            "hresult": 0
+          },
+          {
+            "name": "OwnedSystemSurface.UnlockRect",
+            "hresult": 0
+          }
+        ],
+        "before": {
+          "pointers": {
+            "pixelShader": "0x28961080",
+            "vertexShader": "0x1590ba0",
+            "renderTarget0": "0x1f4b6738",
+            "texture0": "0x1fe03a40"
+          },
+          "getterResults": {
+            "pixelShader": 0,
+            "vertexShader": 0,
+            "renderTarget0": 0,
+            "texture0": 0,
+            "viewport": 0
+          },
+          "viewport": [
+            0,
+            0,
+            800,
+            600,
+            0,
+            1
+          ],
+          "renderStates": {
+            "7": 0,
+            "14": 1,
+            "15": 0,
+            "19": 5,
+            "20": 6,
+            "27": 1,
+            "168": 15,
+            "171": 1,
+            "193": 4294967295,
+            "194": 0,
+            "206": 1,
+            "207": 2,
+            "208": 2,
+            "209": 1
+          },
+          "renderStateResults": {
+            "7": 0,
+            "14": 0,
+            "15": 0,
+            "19": 0,
+            "20": 0,
+            "27": 0,
+            "168": 0,
+            "171": 0,
+            "193": 0,
+            "194": 0,
+            "206": 0,
+            "207": 0,
+            "208": 0,
+            "209": 0
+          },
+          "sampler0": {
+            "1": 3,
+            "2": 3,
+            "3": 1,
+            "5": 2,
+            "6": 2,
+            "7": 0,
+            "11": 0
+          },
+          "samplerResults": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "5": 0,
+            "6": 0,
+            "7": 0,
+            "11": 0
+          }
+        },
+        "after": {
+          "pointers": {
+            "pixelShader": "0x28961080",
+            "vertexShader": "0x1590ba0",
+            "renderTarget0": "0x1f4b6738",
+            "texture0": "0x1fe03a40"
+          },
+          "getterResults": {
+            "pixelShader": 0,
+            "vertexShader": 0,
+            "renderTarget0": 0,
+            "texture0": 0,
+            "viewport": 0
+          },
+          "viewport": [
+            0,
+            0,
+            800,
+            600,
+            0,
+            1
+          ],
+          "renderStates": {
+            "7": 0,
+            "14": 1,
+            "15": 0,
+            "19": 5,
+            "20": 6,
+            "27": 1,
+            "168": 15,
+            "171": 1,
+            "193": 4294967295,
+            "194": 0,
+            "206": 1,
+            "207": 2,
+            "208": 2,
+            "209": 1
+          },
+          "renderStateResults": {
+            "7": 0,
+            "14": 0,
+            "15": 0,
+            "19": 0,
+            "20": 0,
+            "27": 0,
+            "168": 0,
+            "171": 0,
+            "193": 0,
+            "194": 0,
+            "206": 0,
+            "207": 0,
+            "208": 0,
+            "209": 0
+          },
+          "sampler0": {
+            "1": 3,
+            "2": 3,
+            "3": 1,
+            "5": 2,
+            "6": 2,
+            "7": 0,
+            "11": 0
+          },
+          "samplerResults": {
+            "1": 0,
+            "2": 0,
+            "3": 0,
+            "5": 0,
+            "6": 0,
+            "7": 0,
+            "11": 0
+          }
+        }
+      }
+    }
+  ],
+  "limits": [
+    "Only controlled PNG input; no natural artist-service or user's music-cover cache path was observed",
+    "PS1568 photo selected UV spans inner 6x2 texels of the full 8x2 image; not a Zone crop-equivalence claim",
+    "Source alpha is retained in decoded and sampled texture bytes; photo effect output alpha separately follows its Primary/light operations",
+    "PS324 shader identity alone does not bind a transparent input draw; that source-input observation remains absent",
+    "Readback state snapshots are after successful EndScene, not a substitute for per-draw shader uniform capture"
+  ]
+}

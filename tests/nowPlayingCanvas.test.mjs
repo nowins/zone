@@ -10,10 +10,24 @@ import {
   createMosaicMotion,
   interpolateMosaicColorPalette,
   mosaicTileRevealAmount,
+  mosaicLightRevealAmount,
+  mosaicTileRevealScale,
+  mosaicFlipFrame,
+  MOSAIC_BLOCK_CELLS,
   relativeLuminance,
   sampleMosaicColorField,
   updateMosaicFlipState,
 } from "../.tmp/visualizer-tests/utils/nowPlayingCanvas.js";
+
+test("native light entrance is a distinct two-second Iris curve with bounded endpoints", () => {
+  assert.equal(mosaicLightRevealAmount(-1), 0);
+  assert.equal(mosaicLightRevealAmount(0), 0);
+  assert.ok(Math.abs(mosaicLightRevealAmount(1000) - .7166494787033915) < 1e-10);
+  assert.ok(mosaicLightRevealAmount(1700) < 1, "tile entry completion does not finish the light Graphic");
+  assert.equal(mosaicLightRevealAmount(2000), 1);
+  assert.equal(mosaicLightRevealAmount(Infinity), 1);
+  assert.equal(mosaicLightRevealAmount(0, false), 1);
+});
 
 test("wall keeps decoded covers through failed loads and rapid retargeting", () => {
   const a = {}, b = {}, c = {};
@@ -76,18 +90,17 @@ test("cover sampling produces a restrained multi-color Zune field palette", () =
   assert.ok(palette.every((color) => relativeLuminance(color) < 0.19), "field colors should stay dark enough for Zune");
 });
 
-test("mosaic color field changes its gradient direction and color distribution over time", () => {
-  const palette = createMosaicColorPalette(
-    { r: 36, g: 110, b: 188 },
-    [{ r: 26, g: 92, b: 188 }, { r: 38, g: 170, b: 102 }],
-  );
+test("mosaic point lights follow the recovered paths and change local colors over time", () => {
+  const palette = [{r:189,g:164,b:214},{r:250,g:160,b:24},{r:249,g:47,b:232}];
   const firstMotion = createMosaicColorFieldMotion(0);
   const laterMotion = createMosaicColorFieldMotion(12);
   const positions = [[0.02, 0.02], [0.5, 0.5], [0.02, 0.98]];
   const firstColors = positions.map(([x, y]) => sampleMosaicColorField(palette, 0, x, y));
   const laterColors = positions.map(([x, y]) => sampleMosaicColorField(palette, 12, x, y));
 
-  assert.ok(Math.abs(firstMotion.angle - laterMotion.angle) > 0.35, "gradient direction should visibly turn");
+  assert.deepEqual(firstMotion.highlight1, [0.5, 0]);
+  assert.deepEqual(firstMotion.highlight2, [0.1, 1]);
+  assert.ok(laterMotion.highlight1[0] > firstMotion.highlight1[0], "the upper light moves toward its next stop");
   assert.notDeepEqual(firstColors, laterColors, "the same screen positions should receive different colors over time");
   assert.ok(colorDistance(firstColors[0], firstColors[2]) > 35, "one frame should contain distinct color regions");
 });
@@ -146,23 +159,48 @@ test("neighboring palette transition frames cannot flip the field's hue route", 
   }
 });
 
-test("mosaic wall breathes across useful distances without exposing its edges", () => {
-  const first = createMosaicMotion(0);
-  const later = createMosaicMotion(16);
-
-  assert.notDeepEqual(first, later, "the wall should visibly migrate during ordinary playback");
-  for (const motion of [first, later, createMosaicMotion(90)]) {
-    assert.ok(Math.abs(motion.driftX) <= 24, `horizontal drift should stay restrained, got ${motion.driftX}`);
-    assert.ok(Math.abs(motion.driftY) <= 16, `vertical drift should stay restrained, got ${motion.driftY}`);
-    assert.ok(motion.scale >= 1.016 && motion.scale <= 1.034, `breathing scale should stay subtle, got ${motion.scale}`);
+test("album wall placement stays fixed across playback and reduced-motion clocks", () => {
+  for (const time of [0, 1, 16, 90, 3600]) {
+    assert.deepEqual(createMosaicMotion(time), { driftX: 0, driftY: 0, scale: 1 });
   }
 });
 
-test("mosaic entry pops tiles in one by one in a brisk non-sequential cascade", () => {
-  assert.ok(mosaicTileRevealAmount(0.05, 150) > 0, "an early random tile should already be visible");
-  assert.equal(mosaicTileRevealAmount(0.95, 150), 0, "a later random tile should still be hidden");
-  assert.equal(mosaicTileRevealAmount(0.95, 900), 1, "the full wall should settle briskly");
+test("mosaic entry uses the recovered 200–1300ms random delay and 400ms reveal", () => {
+  assert.equal(mosaicTileRevealAmount(0, 200), 0);
+  assert.ok(mosaicTileRevealAmount(0.05, 400) > 0, "an early random tile should already be visible");
+  assert.equal(mosaicTileRevealAmount(0.95, 400), 0, "a later random tile should still be hidden");
+  assert.equal(mosaicTileRevealAmount(1, 1699) < 1, true);
+  assert.equal(mosaicTileRevealAmount(1, 1700), 1, "the final delay slice completes after 1700ms");
   assert.equal(mosaicTileRevealAmount(0.95, 0, false), 1, "reduced motion should reveal the wall immediately");
+});
+
+test("GridShow alpha and scale use distinct native EaseIn weights on the same reveal clock", () => {
+  assert.equal(mosaicTileRevealScale(0, 200), 0.8);
+  assert.ok(Math.abs(mosaicTileRevealAmount(0, 400) - 0.6661875990895327) < 1e-12);
+  assert.ok(Math.abs(mosaicTileRevealScale(0, 400) - 0.9433298957406785) < 1e-12);
+  assert.ok(Math.abs(mosaicTileRevealAmount(0, 500) - 0.8968462951855624) < 1e-12);
+  assert.ok(Math.abs(mosaicTileRevealScale(0, 500) - 0.9863848332845174) < 1e-12);
+  assert.equal(mosaicTileRevealScale(0.95, 400), 0.8, "late slices retain the native initial scale");
+  assert.equal(mosaicTileRevealScale(1, 1700), 1);
+  assert.equal(mosaicTileRevealScale(0.95, 0, false), 1, "reduced motion immediately reaches full size");
+  for (const seed of [-1, 0, 0.5, 1, 2]) {
+    let lastAlpha = 0, lastScale = 0.8;
+    for (let time = 0; time <= 1700; time += 10) {
+      const alpha = mosaicTileRevealAmount(seed, time), scale = mosaicTileRevealScale(seed, time);
+      assert.ok(alpha >= lastAlpha && alpha <= 1);
+      assert.ok(scale >= lastScale && scale <= 1);
+      lastAlpha = alpha;
+      lastScale = scale;
+    }
+  }
+});
+
+test("light-path quarter segments use native SCurve instead of smoothstep", () => {
+  const quarter = createMosaicColorFieldMotion(3.75);
+  assert.ok(Math.abs(quarter.highlight1[0] - 0.5968564716806983) < 1e-12);
+  assert.equal(quarter.highlight1[1], 0);
+  const threeQuarter = createMosaicColorFieldMotion(11.25);
+  assert.ok(Math.abs(threeQuarter.highlight1[0] - 0.9031435283193017) < 1e-12);
 });
 
 test("mosaic flip scheduler is global, frequent, and commits the live tile back face", () => {
@@ -184,7 +222,7 @@ test("mosaic flip scheduler is global, frequent, and commits the live tile back 
   });
 
   assert.equal(state.tileIndex, -1);
-  assert.ok(state.nextAt >= 2_800 && state.nextAt <= 4_800, `initial flip should be scheduled soon, got ${state.nextAt}`);
+  assert.equal(state.nextAt, 4_700, "entry completes before the first ambient interval");
 
   updateMosaicFlipState(state, tiles, {
     isPlaying: true,
@@ -198,9 +236,9 @@ test("mosaic flip scheduler is global, frequent, and commits the live tile back 
   assert.ok(state.tileIndex >= 0, "low beat confidence should still allow a scheduled flip");
   const flippedTileIndex = state.tileIndex;
   assert.ok(tiles[state.tileIndex].width === tiles[state.tileIndex].height, "flipped tile should be square");
-  assert.ok(tiles[state.tileIndex].width >= 104, "scheduler should prefer medium or large tiles");
-  assert.ok(state.duration >= 560 && state.duration <= 720, `flip duration should feel like a live tile turn, got ${state.duration}`);
-  assert.ok(state.nextAt >= state.startedAt + 5_200 && state.nextAt <= state.startedAt + 10_000, "next flip should arrive within a useful rhythm");
+  assert.ok(tiles[state.tileIndex].width >= 70, "all visible square sizes may turn");
+  assert.equal(state.duration, 2800, "a turn owns its back-face fade tail");
+  assert.equal(state.nextAt, state.startedAt + state.duration + 2000, "turns stay serial with a two-second rest");
   assert.notEqual(state.fromAlbumIndex, state.toAlbumIndex, "the back face should use a different album");
   assert.notEqual(albums[state.fromAlbumIndex].coverPath, albums[state.toAlbumIndex].coverPath, "the live tile should visibly change artwork");
 
@@ -218,7 +256,7 @@ test("mosaic flip scheduler is global, frequent, and commits the live tile back 
   assert.equal(tiles[flippedTileIndex].albumIndex, committedAlbumIndex, "the back face must remain as the new front face");
 });
 
-test("mosaic flip waits briefly for a confident beat but never disappears", () => {
+test("ambient cover turns follow their own clock regardless of a confident beat", () => {
   const albums = [makeAlbum("a", "One", "Artist"), makeAlbum("b", "Two", "Artist")];
   const tiles = buildCanvasMosaicTiles(1280, 720, albums);
   const state = createMosaicFlipState();
@@ -233,7 +271,8 @@ test("mosaic flip waits briefly for a confident beat but never disappears", () =
     albums,
     time: 10_200,
   });
-  assert.equal(state.tileIndex, -1, "high-confidence grid should wait briefly for a beat");
+  assert.ok(state.tileIndex >= 0, "frequency analysis must not delay ambient artwork");
+  const tileIndex = state.tileIndex;
 
   updateMosaicFlipState(state, tiles, {
     isPlaying: true,
@@ -243,7 +282,54 @@ test("mosaic flip waits briefly for a confident beat but never disappears", () =
     albums,
     time: 10_660,
   });
-  assert.ok(state.tileIndex >= 0, "flip should fire after the beat wait window");
+  assert.equal(state.tileIndex, tileIndex, "another beat sample cannot restart the captured turn");
+});
+
+test("the repeated 49-square block covers window edges without overlaps and keeps resize identities", () => {
+  assert.equal(MOSAIC_BLOCK_CELLS.length, 49);
+  assert.equal(MOSAIC_BLOCK_CELLS.filter(([, , size]) => size === 3).length, 7);
+  assert.equal(MOSAIC_BLOCK_CELLS.filter(([, , size]) => size === 4).length, 1);
+  const small = buildCanvasMosaicTiles(920, 620, []);
+  const large = new Map(buildCanvasMosaicTiles(1920, 1080, []).map(tile => [tile.id, tile]));
+  for (const tile of small) assert.deepEqual(large.get(tile.id), tile, "existing geometry survives a resize");
+  for (const [width, height] of [[920, 620], [1180, 760], [1920, 1080], [3840, 2160], [7680, 4320]]) {
+    const tiles = buildCanvasMosaicTiles(width, height, []);
+    const sampleStep = width > 3840 ? 70 : 35;
+    assert.ok(tiles.length <= 4096, "extreme windows retain a bounded grid");
+    for (let y = -24; y <= height + 24; y += sampleStep) {
+      for (let x = -24; x <= width + 24; x += sampleStep) {
+        const owners = tiles.filter(tile => x >= tile.x && x < tile.x + tile.width && y >= tile.y && y < tile.y + tile.height);
+        assert.equal(owners.length, 1, `expected one square at ${width}x${height}: ${x},${y}`);
+      }
+    }
+  }
+});
+
+test("a Y-axis turn swaps edge-on and completes rotation before its alpha tail", () => {
+  const front = mosaicFlipFrame(350);
+  const edge = mosaicFlipFrame(700);
+  const back = mosaicFlipFrame(1050);
+  const landed = mosaicFlipFrame(1400);
+  assert.equal(front.back, false);
+  assert.equal(edge.back, true);
+  assert.equal(edge.scaleX, 0.02);
+  assert.equal(edge.alpha, 0);
+  assert.equal(mosaicFlipFrame(700.5).angle, edge.angle, "back rotation holds edge-on through the 1ms handoff");
+  assert.equal(mosaicFlipFrame(701).angle, edge.angle);
+  assert.ok(mosaicFlipFrame(702).angle > edge.angle, "rotation resumes after the hold");
+  assert.ok(Math.abs(front.rotation - 0.40625) < 1e-12, "front angle follows the native quintic at halfway");
+  assert.ok(Math.abs(front.alpha - 0.1875) < 1e-12);
+  assert.equal(back.back, true);
+  assert.ok(back.alpha > edge.alpha && back.alpha < landed.alpha);
+  assert.equal(landed.scaleX, 1);
+  assert.ok(landed.alpha > 0 && landed.alpha < 1);
+  assert.equal(mosaicFlipFrame(2800).alpha, 1);
+  assert.ok(Math.abs(mosaicFlipFrame(1750).alpha - 0.8125) < 1e-12, "alpha has its own quintic midpoint at 1750ms");
+  for (const elapsed of [-100, 0, 700, 701, 1400, 2800, 4000]) {
+    const frame = mosaicFlipFrame(elapsed);
+    assert.ok(frame.alpha >= 0 && frame.alpha <= 1);
+    assert.ok(frame.rotation >= 0 && frame.rotation <= 1);
+  }
 });
 
 test("pausing lets an in-progress live tile finish without snapping back", () => {

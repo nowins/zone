@@ -24,11 +24,12 @@
 
 ## 模块地图
 
-- `src/App.tsx`：应用组合根。持有唯一的 `<audio ref={audioRef}>` 与跨 hook 共享状态（queue/activeTrackId/playHistory、浮层与 actionNotice、playbackSessionRef 及三个 late-bound ref），按依赖调用 `useNavigation` → `useMusicLibrary` → `useMetadataEnrichment` → `usePodcastPlayback` → `usePlaybackControls` → `useAudioEngine` → `usePlaylists`，selectedPlaylistId 由导航 hook 唯一持有并传回 App 持久化；负责音乐数据库快照恢复/写回、旧 localStorage 迁移、卸载清理、`useSystemMedia` 接线与全部 JSX。共享 ref/state 只在 App 层或拥有它的 hook 创建一次，经参数传递；hook 间反向调用经渲染期赋值的 late-bound ref 保持单向传参（播客 → `playbackControlsRef` 的 arm/seek/toggle/intent；播放控制 → `audioEngineRef`；`openNowPlaying` 的媒体目标）。
+- `src/App.tsx`：应用组合根。`useSurfaceTheme` 在恢复完成后为 quickplay、收藏、播客和设置选择浅色，启动、正在播放和小屏选择深色；文档根与 shell 同步主题，使 body portal 浮层继承相同配色。配色令牌见组件规范。持有唯一的 `<audio ref={audioRef}>` 与跨 hook 共享状态（queue/activeTrackId/playHistory、浮层与 actionNotice、playbackSessionRef 及三个 late-bound ref），按依赖调用 `useNavigation` → `useMusicLibrary` → `useMetadataEnrichment` → `usePodcastPlayback` → `usePlaybackControls` → `useAudioEngine` → `usePlaylists`，selectedPlaylistId 由导航 hook 唯一持有并传回 App 持久化；负责音乐数据库快照恢复/写回、旧 localStorage 迁移、卸载清理、`useSystemMedia` 接线与全部 JSX。共享 ref/state 只在 App 层或拥有它的 hook 创建一次，经参数传递；hook 间反向调用经渲染期赋值的 late-bound ref 保持单向传参（播客 → `playbackControlsRef` 的 arm/seek/toggle/intent；播放控制 → `audioEngineRef`；`openNowPlaying` 的媒体目标）。
 - `src/app/podcastPlaybackSettings.ts`：播客倍速/活动单集/自动续播偏好（`zone-podcast-playback-v1`）的常量、类型与 read/patch 纯函数，附 `webkitAudioContext` 全局声明。
 - `src/hooks/`（应用组合 hook，由 App 按上述顺序调用）：
   - `useNavigation.ts`：顶层 page、`requestNavigation` 页面过渡、对象入口及来源返回、搜索／历史快捷键、`openNowPlaying`；内部调用 `useCollectionNavigation`。
-  - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；新 revision 提交前由动效内核保存有限退场画面；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。
+  - `useCollectionNavigation.ts`：唯一收藏浏览状态（分类、实体、搜索、标签、selectedPlaylistId、连续浏览选择、专辑／歌曲排序与各播放列表浏览排序），有界前进／返回历史以及 DOM 滚动锚点、选中行和焦点恢复；新 revision 提交前由动效内核保存有限退场画面；纯历史转换在 `utils/collectionNavigation.ts`，不依赖播放状态。索引内选择与排序只 patch 当前条目，不增加返回步骤。
+  - `useCollectionRows.ts` / `useCollectionItemWindow.ts`：收藏长索引的可见范围渲染、完整数据的键盘定位及历史焦点恢复。歌曲用固定行高留白，名称和封面保留等高锚点并共用区域内的可见性观察器；不改变排序、队列或普通播放列表改序的数据来源。
   - `useCollectionPivot.ts`：收藏分类、详情及返回的方向接线；内部入场与 `useCollectionPanelMotion` 均复用 `useBrowseEntrance.ts`。共享浏览控制器 `motion/browseTransition.ts` 用 `BROWSE_MOTION` 管理收藏、播客及 quickplay 内容的入退场、快速反向及输入接管，分类／搜索保持原位，quickplay 的大字与视差层不继承页面位移。`SurfaceTransition` 与内部 hook 共用异步标题暂隐及首批真实数据入场规则。
   - `useWheelScroll.ts`：收藏与首页内部纵向列表的粗步进滚轮接续，底层 `motion/wheelScroll.ts` 共用动画器与 `snappy` 弹簧；细小连续输入、原生定位和 reduced-motion 保留直接响应。
   - `useMusicLibrary.ts`：folders/tracks/scan/trackActivity 状态、元数据重扫、trackActivity 迁移、只读 `collectionIndex`（albums/artists 等关系集中在 `utils/collectionEntities.ts`）、addFolder/rescan 与 `useLibraryWatcher` 接线。
@@ -47,17 +48,19 @@
   - 收藏、播客、设置、小屏和播客正在播放视图通过 React `lazy` / `Suspense` 按需加载，等待时使用 `MetroLoader`；React 运行时独立分块。主音频、播放 hook 和音乐正在播放页保持挂载与同步入口，避免加载边界打断播放或共享封面动效。Ctrl+F 的待聚焦意图在收藏内容实际挂载后消费，离开页面清理观察器。
   - `CompactPlayerView.tsx`：Zune HD 风格的小屏界面，消费已有收藏索引、列表解析和音乐／播客播放动作，内部浏览独立于正常页面历史；样式在 `styles/compact-player.css`，功能范围与验证见 [组件规范](../component-guidelines.md)。
   - `QuickplayView.tsx`：Zune quickplay 首页，解析固定内容；`components/tiles/QuickplayPinBoard.tsx` 负责 WP 风格磁贴编辑、重排与外观，稳定表面承载选中缩放与角标，外层 FLIP 接续重排和释放落位；`utils/homePinLayout.ts` 模拟混合尺寸网格并解析空位落点，`usePinDrag.ts` 通过指针捕获管理拖动、抓取偏移、跟随预览与取消，释放时回传浮层矩形，不依赖 WebView2 的 HTML 拖放；`useTileActivity.ts` 管理动态可见性，`motion/tileScheduler.ts` 串行调度翻面及封面墙更新。
-  - `src/hooks/useQuickplayPanorama.ts`：首页视口滚动、短滚动条显隐与拖拽、背景视差、鼠标拖动、滚轮／键盘归属与返回位置恢复；`src/utils/quickplayPanorama.ts` 提供键盘分组边界和输入意图的纯函数。背景与滚动条位置由 DOM ref 更新，React 仅接收是否存在横向溢出。
+  - `src/hooks/useQuickplayPanorama.ts`：首页视口滚动、短滚动条显隐与拖拽、上一组／下一组入口、背景视差、鼠标拖动、滚轮／键盘归属与返回位置恢复；`src/utils/quickplayPanorama.ts` 提供分组边界和输入意图的纯函数。背景、滚动条位置与按钮边界状态由 DOM ref 更新，React 仅接收是否存在横向溢出。
+  - `src/utils/quickplayBlocks.ts`：首页自动分组、推荐专辑去重及固定磁贴封面采样；继续播放的时钟由 App 的主音频状态传给 `QuickplayView`，不创建独立播放会话。
   - `CollectionView.tsx` / `CollectionEntityView.tsx`：收藏索引／搜索／详情外壳及歌曲、专辑、艺术家对象详情，关系通过 `CollectionContext` 的统一入口跳转。
-  - `LibraryView.tsx`：歌曲、专辑、艺术家索引与播放列表的展示分派；共享 `CollectionTrackList` 与 `CollectionAlbumTile`。
-  - `ArtistBrowser.tsx`：艺术家的紧凑媒体索引；主动作打开艺术家对象，不自动选中首张专辑。
-  - `PlaylistBrowser.tsx`：当前队列与已存播放列表（含智能播放列表）。
+  - `LibraryView.tsx`：艺术家、流派、专辑、歌曲索引与播放列表的展示分派；共享 `CollectionTrackList` 与 `CollectionAlbumTile`。歌曲索引提供可切换方向的列排序；详情中的 `AlbumIndex` 保留打开详情的主动作。
+  - `CollectionBrowseView.tsx`：艺术家三栏、专辑两区、流派三栏连续浏览；流派的中栏按专辑艺术家分组。选择只更新内容，独立播放按钮与详情入口各自处理动作；范围解析、流派派生和稳定排序在 `utils/collectionBrowser.ts`。
+  - `ArtistBrowser.tsx`：搜索结果中的紧凑艺术家媒体索引；主动作打开艺术家对象。
+  - `PlaylistBrowser.tsx`：当前队列与已存播放列表（含智能播放列表）；左侧键盘选择、右侧列排序及来源序号。排序派生显示与显式播放来源，不写回列表；普通列表原始顺序下保留改序。
   - `PodcastView.tsx`：正式播客页壳。负责分区 chrome、六屏切换与浮层（菜单/确认框）；业务状态与数据加载在 `usePodcastViewModel`，各屏 JSX 在 `screens/*`。默认“收听”聚合继续收听与关注更新；“发现”承载榜单、搜索与辅助 RSS；“资料库”展示已关注、稍后听和已下载；节目/单集详情支持关注、保存、播放状态、即时播放、待播与离线下载；“播放列表”管理当前单集与持久待播队列。
   - `src/views/podcast/`：播客视图模块。`usePodcastViewModel.ts` 持有 screen 状态机、缓存读写与 invoke 编排；`api.ts` 为全部 `podcast_*` 命令的薄封装（屏组件不得直接 `invoke`）；`screens/`（Listen/Discover/Library/Playlist/Show/Episode）为展示层；另有 `types.ts`/`constants.ts`/`cache.ts`（模块级缓存单例，不可拆散）/`episodeModel.ts`/`preferences.ts`/`format.ts` 与 `components/`（EpisodeRows、QueueEpisodeRow、EpisodeDetail、ContinueCard、ShowCards、Dialogs、primitives）。
   - `PodcastNowPlayingView.tsx`：播客专属全屏正在播放。提供 15/30 秒跳转、0.5–3× 倍速、睡眠定时、音量、简介、保存、缓冲/错误反馈与待播管理，不复用音乐 `NowPlayingView` 的拼贴和歌词内部状态。
-  - `NowPlayingView.tsx`：全屏正在播放。Canvas 封面拼贴背景、队列浮层、曲目卡片、收藏按钮、进度/走带控制、歌词模式切换。
+  - `NowPlayingView.tsx`：全屏正在播放。Canvas 封面拼贴与本地艺术家照片背景、照片覆盖后的拼贴停转接线、队列浮层、曲目卡片、收藏按钮、进度/走带控制、歌词模式切换。
   - `SettingsView.tsx`：音乐文件夹管理与在线歌词来源（provider）启用/优先级设置。
-- `src/components/`：可复用 UI。`Select` 统一受控单选下拉的键盘、焦点与顶层面板；`PodcastRateButton` 是底栏／全屏播客共用的循环倍速按钮。包括 `Cover`（唯一封面渲染入口：`artPath` 本地文件或 `src` 已解析 URL，`className`/`fallback` 供播客等上下文适配）、`Button`（动作按钮原语，样式在 `styles/controls.css`，variant/size/`busy` 内嵌 MetroLoader）、`Dialog`（深色确认/表单对话框壳，播客确认框共用；SmartPlaylistDialog 编辑器与正在播放浅色保存框为例外）、`tiles/`（Metro 磁贴系统：`Tile`/`FlipTile`/`CycleTile`/`IconicTile`/`MosaicFrames`，样式在 `styles/tiles.css`，quickplay 固定项在用 FlipTile+MosaicFrames，Cycle/Iconic 为备料模板）、`PlayerBar`、`PodcastPlayerBar`、`TransportControls`、`PlaybackProgress`、`ContextMenu`、`InfoPanel`、`Titlebar`、`EmptyState`、`PlaylistDialog`、`SmartPlaylistDialog`、`MetroLoader`（全局 Metro 五点绕圈加载原语，样式在 `styles/base.css` 的 `.metro-loader`/`metro-orbit`，`size`/`large` 控制尺寸，reduced-motion 在 `motion.css` 统一收敛）、`LyricsStage`（歌词舞台主组件；纯 helper 在 `lyricsStage/lyricsLineUtils.ts`，rAF 逐词绘制在 `lyricsStage/useLyricsPaintLoop.ts`，在线搜索与设置面板分别在 `lyricsStage/LyricsSourceBrowser.tsx`/`LyricsSettingsPanel.tsx`）、`NowPlayingMosaicCanvas` 与 `AudioGlowCanvas`（正在播放的两个 Canvas 视觉层）。
+- `src/components/`：可复用 UI。`Select` 统一受控单选下拉的键盘、焦点与顶层面板；`PodcastRateButton` 是底栏／全屏播客共用的循环倍速按钮。包括 `Cover`（唯一封面渲染入口：`artPath` 本地文件或 `src` 已解析 URL，`className`/`fallback` 供播客等上下文适配）、`Button`（动作按钮原语，样式在 `styles/controls.css`，variant/size/`busy` 内嵌 MetroLoader）、`Dialog`（深色确认/表单对话框壳，播客确认框共用；SmartPlaylistDialog 编辑器与正在播放浅色保存框为例外）、`tiles/`（Metro 磁贴系统：`Tile`/`FlipTile`/`CycleTile`/`IconicTile`/`MosaicFrames`，样式在 `styles/tiles.css`，quickplay 固定项在用 FlipTile+MosaicFrames，Cycle/Iconic 为备料模板）、`PlayerBar`、`PodcastPlayerBar`、`TransportControls`、`PlaybackProgress`、`ContextMenu`、`InfoPanel`、`Titlebar`、`EmptyState`、`PlaylistDialog`、`SmartPlaylistDialog`、`MetroLoader`（全局 Metro 五点绕圈加载原语，样式在 `styles/base.css` 的 `.metro-loader`/`metro-orbit`，`size`/`large` 控制尺寸，reduced-motion 在 `motion.css` 统一收敛）、`LyricsStage`（歌词舞台主组件；纯 helper 在 `lyricsStage/lyricsLineUtils.ts`，rAF 逐词绘制在 `lyricsStage/useLyricsPaintLoop.ts`，在线搜索与设置面板分别在 `lyricsStage/LyricsSourceBrowser.tsx`/`LyricsSettingsPanel.tsx`）、`NowPlayingMosaicCanvas`、`NowPlayingArtistCanvas` 与 `AudioGlowCanvas`（拼贴、艺术家照片和真实音频光焰三个 Canvas 视觉层）。
 - `src/hooks/`（独立功能 hook）：
   - `useLibraryWatcher.ts`：配置 Rust 目录监听、接收文件变化事件并在 800ms 防抖后触发曲库刷新。
   - `useLyrics.ts`：歌词加载/缓存/在线搜索状态机（本地缓存键 `zone-local-lyrics-v1`）。
@@ -66,14 +69,15 @@
   - `useSystemMedia.ts`：与 Rust 端 SMTC 集成（`update_system_media*` 命令与媒体按键事件）。
 - `src/lyrics/providers.ts`：AMLL TTML DB、QQ 音乐、网易云音乐、LRCLIB 四个在线歌词 provider 的定义与编排。自动查找按优先级回退并在高置信命中后停止；手动在线搜索并行查询全部已启用来源。请求统一经 Rust 命令 `request_lyrics_provider` 中转。
 - `src/utils/`：共享工具模块（详见各测试）。
+  - `artistTypography.ts` / `artistTypographyAtlas.ts`：艺术家照片的本地名称模型、四类文字片段、独立文字交接和有界字形图集；`NowPlayingArtistCanvas` 负责照片／文字生命周期，`irisGpuRenderer.ts` 负责照片材质及背景文字 Overlay。逐帧时钟／几何使用 ref，功能性曲目信息仍由普通曲目卡呈现。
   - `touchInteractions.ts`：应用根节点的 DOM 触摸守卫，处理滚动／取消／多指后的兼容点击与已标记实体的长按菜单；`hooks/useTouchInteractions.ts` 负责安装和生命周期清理，行为边界见 [组件规范](../component-guidelines.md)。
   - `music.ts`：专辑分组、曲目排序、播放列表默认值、`normalizePlaylists`。
   - `podcastArtwork.ts` / `podcastPlayback.ts`：播客代理封面 URL、播放模型归一化、实时播放状态覆盖和待播顺序移动。
   - `playback.ts`：队列移动/随机顺序/边界解析。
   - `smartPlaylist.ts`：智能播放列表规则求值与归一化。
   - `homePins.ts`：quickplay 固定项的归一化、移动、外观设置与对账。
-  - `visualizer.ts` / `beatAnalysis.ts` / `audioGlow.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格、Zune 光焰与封面拼贴的纯计算部分。
-  - `visualizerBus.ts`：可视化帧的单槽 latest-frame 总线（`publishVisualizerFrame` / `getVisualizerFrame`）。`useAudioEngine` 采样循环发布，App 普通页面的底部 `AudioGlowCanvas` 或正在播放页两个 Canvas 在活动的 rAF 中拉取；暂停/减少动态效果后收敛停转，静音时光焰停转，不经 React state/props。页面浏览不重启采样，小屏与播客播放停用音乐可视化。
+  - `visualizer.ts` / `beatAnalysis.ts` / `nowPlayingWall.ts` / `nowPlayingCanvas.ts`：音频帧、节拍网格与封面拼贴的纯计算部分。`zuneSpectrumGlow.ts`维护左右频谱分组、40位置空间排列及橙／粉独立循环，供`AudioGlowCanvas`绘制80张缓存软光贴片；旧`audioGlow.ts`轮廓计算仅保留分析回归夹具兼容，不再驱动Canvas。`mosaicPalette.ts` 维护原版色板、宿主选色时钟与每片照片的独立光路生命周期；`mosaicLighting.ts` / `mosaicProjection.ts` 分别维护环境点光与共享视口相机下的转面纹理投影，原生曲线求值复用 `motion/irisCurves.ts`；`nowPlayingArtist.ts` 维护本地照片池与场景时钟。
+  - `visualizerBus.ts`：可视化帧的单槽 latest-frame 总线（`publishVisualizerFrame` / `getVisualizerFrame`）。`useAudioEngine` 采样循环发布，App 普通页面或正在播放页的 `AudioGlowCanvas` 在活动的 rAF 中拉取；`NowPlayingMosaicCanvas` 的封面／色场按独立环境时钟绘制，共用文档和原生窗口可见性信号。暂停/减少动态效果后收敛停转，静音时光焰停转，不经 React state/props。页面浏览不重启采样，小屏与播客播放停用音乐可视化。
   - `lyrics.ts` / `amllTtml.ts` / `qrc.ts`：plain、LRC、增强 LRC、TTML、AMLL 元数据和 QQ QRC 的解析与归一化。
   - `lyricsProviders.ts` / `lyricsProviderSearch.ts` / `lyricsSearch.ts`：候选打分与多样性裁剪、多来源搜索策略、按曲目保存的搜索信息修正。
   - `lyricsTiming.ts` / `lyricsExport.ts` / `lyricsMotion.ts`：时间校准、TTML/LRC 导出与真实逐词时间驱动的长音包络。

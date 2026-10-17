@@ -3,48 +3,65 @@ import test from "node:test";
 import {
   buildNowPlayingWall,
   NOW_PLAYING_WALL_TILE_COUNT,
-  WALL_TILE_PATTERN,
-  wallTilePatternForIndex,
 } from "../.tmp/visualizer-tests/utils/nowPlayingWall.js";
 
-test("wall tile pattern stays bounded and repeatable", () => {
-  assert.equal(WALL_TILE_PATTERN.length, 18);
-  assert.deepEqual(wallTilePatternForIndex(WALL_TILE_PATTERN.length), WALL_TILE_PATTERN[0]);
-
-  for (const pattern of WALL_TILE_PATTERN) {
-    assert.ok(pattern.columns >= 1 && pattern.columns <= 5, `unexpected column span ${pattern.columns}`);
-    assert.ok(pattern.rows >= 1 && pattern.rows <= 4, `unexpected row span ${pattern.rows}`);
-  }
-
-  const areas = WALL_TILE_PATTERN.map((pattern) => pattern.columns * pattern.rows);
-  const largeTiles = areas.filter((area) => area >= 9);
-  assert.ok(Math.max(...areas) <= 12, `wall tiles should not dominate the center, got max area ${Math.max(...areas)}`);
-  assert.ok(largeTiles.length <= 1, `only one large tile should appear per pattern cycle, got ${largeTiles.length}`);
-
-  for (let index = 1; index < areas.length; index += 1) {
-    assert.ok(
-      !(areas[index] >= 8 && areas[index - 1] >= 8),
-      `large tiles should not be adjacent at ${index - 1}/${index}`,
-    );
-  }
+test("the wall bounds its artwork pool to twenty slots in a large library", () => {
+  const tracks = Array.from({ length: 200 }, (_, index) => makeTrack(`${index}`, "Artist", `Album ${index}`, `${index}.jpg`));
+  const wall = buildNowPlayingWall(tracks, tracks[199]);
+  assert.equal(NOW_PLAYING_WALL_TILE_COUNT, 20);
+  assert.equal(wall.length, 20);
+  assert.equal(new Set(wall.map(album => album.key)).size, 20);
+  assert.ok(wall.some(album => album.coverPath === "199.jpg"), "current album survives a large library");
 });
 
-test("now playing wall keeps active artist and album weighted", () => {
-  const active = makeTrack("1", "Aerial", "Red Room", "red.jpg");
+test("the current album and queued albums take priority over library fillers", () => {
+  const library = Array.from({ length: 40 }, (_, index) => makeTrack(`library-${index}`, "Library", `Library ${index}`, `library-${index}.jpg`));
+  const active = makeTrack("active", "Active", "Current", "active.jpg");
+  const queue = Array.from({ length: 19 }, (_, index) => makeTrack(`queue-${index}`, "Queue", `Queue ${index}`, `queue-${index}.jpg`));
+  const wall = buildNowPlayingWall(library, active, queue);
+  const paths = new Set(wall.map(album => album.coverPath));
+  assert.equal(paths.size, 20);
+  assert.ok(paths.has(active.cover_path));
+  for (const item of queue) assert.ok(paths.has(item.cover_path));
+  assert.ok(wall.every(album => !album.coverPath.startsWith("library-")));
+});
+
+test("only the queue's first twenty songs nominate albums and duplicates leave space for library art", () => {
+  const library = Array.from({ length: 30 }, (_, index) => makeTrack(`library-${index}`, "Library", `Library ${index}`, `library-${index}.jpg`));
+  const repeated = Array.from({ length: 20 }, (_, index) => makeTrack(`queue-${index}`, "Queue", "Repeated", "queue.jpg"));
+  const outsideWindow = makeTrack("late", "Queue", "Outside", "outside.jpg");
+  const wall = buildNowPlayingWall(library, repeated[0], [...repeated, outsideWindow]);
+  assert.equal(wall.filter(album => album.coverPath === "queue.jpg").length, 1);
+  assert.equal(new Set(wall.map(album => album.key)).size, 20);
+  assert.ok(wall.some(album => album.coverPath.startsWith("library-")));
+  assert.ok(wall.every(album => album.coverPath !== outsideWindow.cover_path));
+});
+
+test("small artwork pools repeat evenly and shuffle without changing on repeated calls", () => {
   const tracks = [
-    active,
-    makeTrack("2", "Aerial", "Blue Room", "blue.jpg"),
-    makeTrack("3", "Elsewhere", "Side Room", "side.jpg"),
+    makeTrack("1", "One", "First", "one.jpg"),
+    makeTrack("2", "Two", "Second", "two.jpg"),
+    makeTrack("3", "Three", "Third", "three.jpg"),
   ];
+  const wall = buildNowPlayingWall(tracks, tracks[0], tracks);
+  assert.deepEqual(wall, buildNowPlayingWall(tracks, tracks[0], tracks));
+  const counts = tracks.map(track => wall.filter(album => album.coverPath === track.cover_path).length);
+  assert.ok(Math.max(...counts) - Math.min(...counts) <= 1);
+  assert.notDeepEqual(wall.map(album => album.coverPath), Array.from({ length: 20 }, (_, index) => tracks[index % 3].cover_path));
+});
 
-  const wall = buildNowPlayingWall(tracks, active);
-  const activeAlbumCount = wall.filter((album) => album.album === active.album).length;
-  const activeArtistCount = wall.filter((album) => album.artist === active.artist).length;
-  const otherArtistCount = wall.filter((album) => album.artist !== active.artist).length;
-
-  assert.equal(wall.length, NOW_PLAYING_WALL_TILE_COUNT);
-  assert.ok(activeAlbumCount > 0, "active album should be present in the wall");
-  assert.ok(activeArtistCount > otherArtistCount, "active artist albums should be weighted over other artists");
+test("same-album song changes keep the cover pool order and canonical artwork", () => {
+  const first = makeTrack("first", "Artist", "Album", "canonical.jpg");
+  first.artist_image_path = "artist-one.jpg";
+  const second = makeTrack("second", "Artist", "Album", "alternative.jpg");
+  second.artist_image_path = "artist-two.jpg";
+  const other = makeTrack("other", "Other", "Another", "other.jpg");
+  const tracks = [first, second, other];
+  const firstWall = buildNowPlayingWall(tracks, first, tracks);
+  const secondWall = buildNowPlayingWall(tracks, second, tracks);
+  assert.deepEqual(firstWall, secondWall);
+  assert.ok(secondWall.some(album => album.coverPath === "canonical.jpg"));
+  assert.ok(secondWall.every(album => album.coverPath !== "alternative.jpg"));
 });
 
 test("now playing wall falls back when no covers are available", () => {
@@ -72,6 +89,22 @@ test("an active song without cover art never inserts blank albums into a covered
   const covered = makeTrack("covered", "Other", "Cover", "cover.jpg");
   const wall = buildNowPlayingWall([missing, covered], missing);
   assert.ok(wall.every(album => album.coverPath === "cover.jpg"));
+});
+
+test("missing and empty queue artwork never crowds out covered library albums", () => {
+  const missing = makeTrack("missing", "Artist", "Missing", null);
+  const empty = makeTrack("empty", "Artist", "Empty", "");
+  const covered = makeTrack("covered", "Other", "Cover", "cover.jpg");
+  const wall = buildNowPlayingWall([covered], missing, [missing, empty]);
+  assert.ok(wall.every(album => album.coverPath === covered.cover_path));
+});
+
+test("an album can use a queued sibling's cover when its library song lacks art", () => {
+  const missing = makeTrack("missing", "Artist", "Album", null);
+  const sibling = makeTrack("sibling", "Artist", "Album", "sibling.jpg");
+  const wall = buildNowPlayingWall([missing], missing, [sibling]);
+  assert.ok(wall.every(album => album.coverPath === sibling.cover_path));
+  assert.equal(new Set(wall.map(album => album.key)).size, 1);
 });
 
 test("now playing wall mixes in enriched artist photos for the active artist only", () => {
@@ -114,4 +147,16 @@ test("artist photos are capped and keep the wall alive without any covers", () =
     wall.filter((album) => album.key.startsWith("artist-image:")).map((album) => album.key),
   );
   assert.ok(artistKeys.size <= 4, `artist photos should be capped, got ${artistKeys.size}`);
+});
+
+test("artist photos reserve at most four bounded slots while keeping current and queue albums", () => {
+  const active = makeTrack("active", "Artist", "Current", "active.jpg");
+  active.artist_images = Array.from({ length: 8 }, (_, index) => ({ path: `artist-${index}.jpg`, providerId: "test" }));
+  const queue = Array.from({ length: 20 }, (_, index) => makeTrack(`queue-${index}`, "Queue", `Queued ${index}`, `queue-${index}.jpg`));
+  const wall = buildNowPlayingWall([], active, queue);
+  assert.equal(wall.length, 20);
+  assert.equal(wall.filter(album => album.key.startsWith("artist-image:")).length, 4);
+  assert.ok(wall.some(album => album.coverPath === "active.jpg"));
+  for (const item of queue.slice(0, 15)) assert.ok(wall.some(album => album.coverPath === item.cover_path));
+  assert.ok(wall.every(album => album.coverPath !== "queue-15.jpg"));
 });

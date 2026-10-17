@@ -1,16 +1,20 @@
-import { useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Heart, Info, Play } from "lucide-react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { ChevronDown, ChevronUp, Heart, Info, Play } from "lucide-react";
+import { Button } from "./Button";
+import { collectionGenreNames, nextCollectionTrackSort, type CollectionTrackSort, type CollectionTrackSortField } from "../utils/collectionBrowser";
 import { formatTime } from "../utils/music";
 import { albumReference, artistReference } from "../utils/collectionEntities";
 import { CollectionLink, useCollectionContext } from "./CollectionContext";
 import { usePinDrag } from "./tiles/usePinDrag";
+import { useCollectionRows } from "../hooks/useCollectionRows";
 import type { Track } from "../types";
 
 /** Shared selection and playback behavior for every collection browser. */
 export function CollectionTrackList({
   tracks, activeTrackId, onPlay, onContextMenu, favoriteTrackIds, onToggleFavorite,
   compact = false, label = "歌曲", emptyText = "暂无歌曲", listKey = label, playbackTracks,
-  onReorder, scrollable = true,
+  onReorder, scrollable = true, sort, onSortChange, showGenre = false, windowed = false,
+  orderKey, numberMode = "position", trackPositions,
 }: {
   tracks: Track[];
   activeTrackId: string | null;
@@ -25,16 +29,44 @@ export function CollectionTrackList({
   playbackTracks?: Track[];
   onReorder?: (trackId: string, targetId: string) => void;
   scrollable?: boolean;
+  sort?: CollectionTrackSort;
+  onSortChange?: (sort: CollectionTrackSort) => void;
+  showGenre?: boolean;
+  windowed?: boolean;
+  orderKey?: string;
+  numberMode?: "position" | "album";
+  trackPositions?: ReadonlyMap<string, number>;
 }) {
   const context = useCollectionContext();
   const [selectedId, setSelectedId] = useState<string | null>(() => context?.navigation.location.surface.selections[listKey] || null);
   const hasFavorite = Boolean(onToggleFavorite);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const rows = useCollectionRows(scrollerRef, tracks.length, windowed && scrollable && !onReorder, compact ? 34 : 36,
+    context?.navigation.location.surface.scrolls[`tracks:${listKey}`]?.top);
+  const previousOrder = useRef(orderKey);
+  useLayoutEffect(() => {
+    if (previousOrder.current !== orderKey) rows.reset();
+    previousOrder.current = orderKey;
+  }, [orderKey]);
   const pendingDrag = useRef<{ id: string; row: HTMLElement; pointerId: number; x: number; y: number } | null>(null);
   const draggedId = useRef<string | null>(null), dropTarget = useRef<string | null>(null);
   const suppressClick = useRef(false);
   const touchTap = useRef<{ id: number; trackId: string; x: number; y: number; valid: boolean; released: boolean } | null>(null);
   const lastTouchPlayback = useRef<string | null>(null);
+  function column(label: string, field: CollectionTrackSortField) {
+    if (!sort || !onSortChange) return <span>{label}</span>;
+    const current = sort.field === field;
+    const next = nextCollectionTrackSort(sort, field);
+    const direction = next.direction === "ascending" ? "升序" : "降序";
+    const name = field === "position" ? "原始顺序" : label;
+    return <Button variant="ghost" size="sm" className="collection-sort" aria-pressed={current}
+      data-sort-field={field}
+      data-collection-focus={"sort:" + listKey + ":" + field}
+      aria-label={current ? name + "，当前" + (sort.direction === "ascending" ? "升序" : "降序") + "，切换为" + direction : "按" + name + direction + "排列"}
+      onClick={() => { onSortChange(next); rows.reset(); }}>
+      {field === "favorite" ? <Heart size={13} fill={current ? "currentColor" : "none"} /> : label}{current && (sort.direction === "ascending" ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+    </Button>;
+  }
   const pointerDrag = usePinDrag(scrollerRef, {
     ghostClassName: "collection-track-drag-ghost",
     onStart: id => { draggedId.current = id; suppressClick.current = true; },
@@ -73,19 +105,98 @@ export function CollectionTrackList({
       : event.key === "End" ? tracks.length - 1 : null;
     if (next === null) return;
     event.preventDefault();
-    const buttons = event.currentTarget.closest(".collection-track-scroll")
-      ?.querySelectorAll<HTMLButtonElement>(".collection-track-main");
     setSelectedId(tracks[next].id);
-    buttons?.[next]?.focus({ preventScroll: true });
-    buttons?.[next]?.scrollIntoView({ block: "nearest" });
+    rows.reveal(next, `track:${listKey}:${tracks[next].id}`);
   }
 
+  const trackRows = tracks.length === 0 ? <p className="collection-empty">{emptyText}</p> : tracks.slice(rows.start, rows.end).map((track, offset) => {
+    const index = rows.start + offset;
+    const playing = track.id === activeTrackId;
+    const favorite = favoriteTrackIds?.has(track.id) ?? false;
+    const duration = track.duration_seconds;
+    const number = numberMode === "album" ? Number.isInteger(track.track_number) && (track.track_number ?? -1) >= 0 ? track.track_number : null
+      : (trackPositions?.get(track.id) ?? index) + 1;
+    const artist = context?.index.artistsByName.get(track.artist);
+    const album = context?.index.albumByTrackId.get(track.id);
+    return (
+      <div key={track.id} role="listitem" aria-posinset={index + 1} aria-setsize={tracks.length} data-collection-anchor={track.id} data-touch-menu
+        className={`collection-track-row${selectedId === track.id ? " selected" : ""}${playing ? " playing" : ""}`}
+        onContextMenu={(event) => {
+          if (touchTap.current) touchTap.current.valid = false;
+          onContextMenu(event, track);
+        }}>
+        <button type="button" className="collection-track-main"
+          aria-keyshortcuts={onReorder ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
+          onDragStart={event => event.preventDefault()}
+          onPointerDown={event => {
+            suppressClick.current = false;
+            lastTouchPlayback.current = null;
+            touchTap.current = event.pointerType === "touch" && event.isPrimary && event.button === 0
+              ? { id: event.pointerId, trackId: track.id, x: event.clientX, y: event.clientY, valid: true, released: false } : null;
+            if (onReorder && event.button === 0 && event.pointerType !== "touch") pendingDrag.current = {
+              id: track.id, row: event.currentTarget.parentElement!, pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+            };
+          }}
+          data-collection-focus={`track:${listKey}:${track.id}`}
+          aria-pressed={selectedId === track.id}
+          aria-current={playing ? "true" : undefined}
+          title={`${track.title} · ${track.artist} · ${track.album}`}
+          onClick={(event) => {
+            if (suppressClick.current && event.detail > 0) { suppressClick.current = false; return; }
+            suppressClick.current = false;
+            const tap = touchTap.current;
+            touchTap.current = null;
+            if (tap && (!tap.valid || !tap.released || tap.trackId !== track.id)) return;
+            setSelectedId(track.id);
+            if (tap) {
+              lastTouchPlayback.current = track.id;
+              onPlay(track, playbackTracks || tracks);
+              return;
+            }
+            // Native keyboard/assistive activation emits a click with detail 0.
+            if (event.detail === 0) onPlay(track, playbackTracks || tracks);
+          }}
+          onDoubleClick={() => { if (lastTouchPlayback.current !== track.id) onPlay(track, playbackTracks || tracks); }}
+          onKeyDown={(event) => navigate(event, index)}>
+          <span className="collection-track-number" aria-label={playing ? "当前曲目" : undefined}>
+            {playing && numberMode !== "album" && !trackPositions ? <Play size={11} fill="currentColor" /> : number === null ? "—" : String(number).padStart(2, "0")}
+          </span>
+          <strong>{track.title}</strong>
+        </button>
+        {!compact && <>
+          <span className="collection-track-artist" title={track.artist}>{artist ? <CollectionLink entity={artistReference(artist)}
+            focusKey={`artist:${listKey}:${track.id}`}>{track.artist}</CollectionLink> : track.artist}</span>
+          <span className="collection-track-album" title={track.album}>{album ? <CollectionLink entity={albumReference(album)}
+            focusKey={`album:${listKey}:${track.id}`}>{track.album}</CollectionLink> : track.album}</span>
+          {showGenre && <span className="collection-track-genre" title={collectionGenreNames(track).join(" / ") || "未知流派"}>
+            {collectionGenreNames(track).join(" / ") || "未知流派"}
+          </span>}
+        </>}
+        <span className="collection-track-duration">{duration && Number.isFinite(duration) && duration > 0 ? formatTime(duration) : "—"}</span>
+        <div className="collection-track-actions">{context && <button type="button" className="collection-track-info" aria-label={`查看歌曲 ${track.title}`}
+          data-collection-focus={`info:${listKey}:${track.id}`} onClick={() => context.open({ kind: "track", id: track.id })}>
+          <Info size={15} />
+        </button>}
+        {onToggleFavorite && <button type="button"
+          className={`collection-track-favorite${favorite ? " active" : ""}`}
+          aria-label={`${favorite ? "取消喜欢" : "喜欢"} ${track.title}`}
+          aria-pressed={favorite}
+          data-collection-focus={`favorite:${listKey}:${track.id}`}
+          onClick={() => onToggleFavorite(track)}>
+          <Heart size={15} fill={favorite ? "currentColor" : "none"} />
+        </button>}</div>
+      </div>
+    );
+  });
+
   return (
-    <section className={`collection-track-list${compact ? " is-compact" : ""}${hasFavorite ? " has-favorite" : ""}${context ? " has-details" : ""}`} aria-label={label}
+    <section className={`collection-track-list${compact ? " is-compact" : ""}${hasFavorite ? " has-favorite" : ""}${context ? " has-details" : ""}${showGenre && !compact ? " has-genre" : ""}`} aria-label={label}
       data-collection-list={listKey} data-collection-selection={selectedId || undefined}>
       {!compact && (
-        <div className="collection-track-head" aria-hidden="true">
-          <span>#</span><span>歌曲</span><span>艺术家</span><span>专辑</span><span>时长</span><span />
+        <div className="collection-track-head" aria-hidden={onSortChange ? undefined : true}>
+          {trackPositions ? column("#", "position") : <span>#</span>}{column("歌曲", "title")}{column("艺术家", "artist")}{column("专辑", "album")}
+          {showGenre && column("流派", "genre")}{column("时长", "duration")}
+          <div className="collection-track-head-actions">{hasFavorite && sort && onSortChange && column("喜欢", "favorite")}</div>
         </div>
       )}
       <div ref={scrollerRef} className="collection-track-scroll" role="list" data-collection-scroll={scrollable ? `tracks:${listKey}` : undefined}
@@ -108,79 +219,9 @@ export function CollectionTrackList({
         }}
         onPointerCancel={() => { if (touchTap.current) touchTap.current.valid = false; pointerDrag.cancel(); pendingDrag.current = null; }}
         onLostPointerCapture={pointerDrag.cancel}>
-        {tracks.length === 0 ? <p className="collection-empty">{emptyText}</p> : tracks.map((track, index) => {
-          const playing = track.id === activeTrackId;
-          const favorite = favoriteTrackIds?.has(track.id) ?? false;
-          const duration = track.duration_seconds;
-          const artist = context?.index.artistsByName.get(track.artist);
-          const album = context?.index.albumByTrackId.get(track.id);
-          return (
-            <div key={track.id} role="listitem" data-collection-anchor={track.id} data-touch-menu
-              className={`collection-track-row${selectedId === track.id ? " selected" : ""}${playing ? " playing" : ""}`}
-              onContextMenu={(event) => {
-                if (touchTap.current) touchTap.current.valid = false;
-                onContextMenu(event, track);
-              }}>
-              <button type="button" className="collection-track-main"
-                aria-keyshortcuts={onReorder ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
-                onDragStart={event => event.preventDefault()}
-                onPointerDown={event => {
-                  suppressClick.current = false;
-                  lastTouchPlayback.current = null;
-                  touchTap.current = event.pointerType === "touch" && event.isPrimary && event.button === 0
-                    ? { id: event.pointerId, trackId: track.id, x: event.clientX, y: event.clientY, valid: true, released: false } : null;
-                  if (onReorder && event.button === 0 && event.pointerType !== "touch") pendingDrag.current = {
-                    id: track.id, row: event.currentTarget.parentElement!, pointerId: event.pointerId, x: event.clientX, y: event.clientY,
-                  };
-                }}
-                data-collection-focus={`track:${listKey}:${track.id}`}
-                aria-pressed={selectedId === track.id}
-                aria-current={playing ? "true" : undefined}
-                title={`${track.title} · ${track.artist} · ${track.album}`}
-                onClick={(event) => {
-                  if (suppressClick.current && event.detail > 0) { suppressClick.current = false; return; }
-                  suppressClick.current = false;
-                  const tap = touchTap.current;
-                  touchTap.current = null;
-                  if (tap && (!tap.valid || !tap.released || tap.trackId !== track.id)) return;
-                  setSelectedId(track.id);
-                  if (tap) {
-                    lastTouchPlayback.current = track.id;
-                    onPlay(track, playbackTracks || tracks);
-                    return;
-                  }
-                  // Native keyboard/assistive activation emits a click with detail 0.
-                  if (event.detail === 0) onPlay(track, playbackTracks || tracks);
-                }}
-                onDoubleClick={() => { if (lastTouchPlayback.current !== track.id) onPlay(track, playbackTracks || tracks); }}
-                onKeyDown={(event) => navigate(event, index)}>
-                <span className="collection-track-number" aria-label={playing ? "当前曲目" : undefined}>
-                  {playing ? <Play size={11} fill="currentColor" /> : String(index + 1).padStart(2, "0")}
-                </span>
-                <strong>{track.title}</strong>
-              </button>
-              {!compact && <>
-                <span className="collection-track-artist" title={track.artist}>{artist ? <CollectionLink entity={artistReference(artist)}
-                  focusKey={`artist:${listKey}:${track.id}`}>{track.artist}</CollectionLink> : track.artist}</span>
-                <span className="collection-track-album" title={track.album}>{album ? <CollectionLink entity={albumReference(album)}
-                  focusKey={`album:${listKey}:${track.id}`}>{track.album}</CollectionLink> : track.album}</span>
-              </>}
-              <span className="collection-track-duration">{duration && Number.isFinite(duration) && duration > 0 ? formatTime(duration) : "—"}</span>
-              <div className="collection-track-actions">{context && <button type="button" className="collection-track-info" aria-label={`查看歌曲 ${track.title}`}
-                data-collection-focus={`info:${listKey}:${track.id}`} onClick={() => context.open({ kind: "track", id: track.id })}>
-                <Info size={15} />
-              </button>}
-              {onToggleFavorite && <button type="button"
-                className={`collection-track-favorite${favorite ? " active" : ""}`}
-                aria-label={`${favorite ? "取消喜欢" : "喜欢"} ${track.title}`}
-                aria-pressed={favorite}
-                data-collection-focus={`favorite:${listKey}:${track.id}`}
-                onClick={() => onToggleFavorite(track)}>
-                <Heart size={15} fill={favorite ? "currentColor" : "none"} />
-              </button>}</div>
-            </div>
-          );
-        })}
+        {rows.virtual ? <div className="collection-track-window" style={{ paddingTop: rows.top, paddingBottom: rows.bottom, overflowAnchor: "none" }}>
+          {trackRows}
+        </div> : trackRows}
       </div>
     </section>
   );

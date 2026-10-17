@@ -22,7 +22,7 @@ const responsiveCss = readFileSync("src/styles/animations-responsive.css", "utf8
 
 test("music folder management has one persistent entry point", () => {
   assert.ok(settingsView.includes('className="settings-heading-action"'));
-  assert.ok(settingsView.includes('variant="page"'));
+  assert.ok(settingsView.includes('<Button variant="outline" className="settings-heading-action" onClick={onAddFolder}'));
   assert.ok(!appHeader.includes("FolderPlus"));
   assert.ok(!appHeader.includes("onAddFolder"));
   assert.ok(!settingsView.includes("settings-actions"));
@@ -38,7 +38,7 @@ test("settings use a spacious Zune-like library hierarchy", () => {
   assert.ok(layoutRule.includes("gap: clamp(48px, 6vw, 96px)"));
   assert.ok(headerRule.includes("border-bottom: 1px solid"));
   assert.ok(folderRowRule.includes("min-height: 66px"));
-  assert.ok(folderRowRule.includes("grid-template-columns: 28px minmax(0, 1fr) auto"));
+  assert.ok(folderRowRule.includes("grid-template-columns: 28px minmax(0, 1fr)"));
   assert.ok(sidebarRule.includes("border-left: 1px solid"));
 });
 

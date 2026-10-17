@@ -17,6 +17,7 @@ export function AppHeader({
           <button
             disabled={disabled}
             className={page === "quickplay" ? "active" : ""}
+            aria-current={page === "quickplay" ? "page" : undefined}
             onClick={() => onNavigate("quickplay")}
           >
             quickplay
@@ -24,6 +25,7 @@ export function AppHeader({
           <button
             disabled={disabled}
             className={page === "collection" ? "active" : ""}
+            aria-current={page === "collection" ? "page" : undefined}
             onClick={() => onNavigate("collection")}
           >
             收藏
@@ -31,6 +33,7 @@ export function AppHeader({
           <button
             disabled={disabled}
             className={page === "podcasts" ? "active" : ""}
+            aria-current={page === "podcasts" ? "page" : undefined}
             onClick={() => onNavigate("podcasts")}
           >
             播客

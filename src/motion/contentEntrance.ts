@@ -1,7 +1,7 @@
 import { BROWSE_MOTION } from "./tokens.js";
 
-const listSelector = ".collection-track-scroll,.collection-artist-index,.collection-album-index";
-const itemSelector = ".collection-track-row,.collection-artist-index > li,.collection-album-index > div";
+const listSelector = ".collection-track-scroll,.collection-track-window,.collection-artist-index,.collection-album-index,.collection-browse-index";
+const itemSelector = ".collection-track-row,.collection-artist-index > li,.collection-album-index > div,.collection-browse-index > li";
 const podcastItemSelector = ".podcast-episode,.podcast-show-card,.podcast-library-show,.podcast-continue-card,.podcast-queue-episode";
 const quickplayItemSelector = ".quick-pin,.quick-album,.quick-feature";
 export type ContentFrame = { transform: string; opacity: string };
@@ -21,7 +21,7 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
   const viewport = root.getBoundingClientRect();
   const items: ContentItem[] = [];
   const append = (node: HTMLElement, index: number) => {
-    const kind = node.matches(".collection-track-row,.podcast-episode,.podcast-queue-episode") ? "list" : "card";
+    const kind = node.matches(".collection-track-row,.collection-browse-index > li,.podcast-episode,.podcast-queue-episode") ? "list" : "card";
     items.push({ node, key: itemKey(node), kind, delay: kind === "card" ? Math.min(index * BROWSE_MOTION.stagger, BROWSE_MOTION.maxDelay) : 0 });
   };
   for (const list of [...root.querySelectorAll<HTMLElement>(listSelector)].slice(0, BROWSE_MOTION.maxRegions)) {
@@ -50,10 +50,24 @@ export function contentEntranceItems(root: HTMLElement): ContentItem[] {
   }
   // Podcast rows and panorama covers have variable geometry; inspect only their
   // viewport band instead of inferring a uniform stride or animating hidden items.
+  const clips = new Map<HTMLElement, DOMRect>();
+  const hiddenGroups = new Map<HTMLElement, boolean>();
   for (const node of root.querySelectorAll<HTMLElement>(`${podcastItemSelector},${quickplayItemSelector}`)) {
     if (items.length === BROWSE_MOTION.maxItems) break;
     const area = node.closest<HTMLElement>(".podcast-screen,.quick-section-scroll,.quickplay-viewport") ?? root;
-    const clip = area.getBoundingClientRect(), rect = node.getBoundingClientRect();
+    let clip = clips.get(area);
+    if (!clip) { clip = area.getBoundingClientRect(); clips.set(area, clip); }
+    const group = node.closest<HTMLElement>(".quick-group,.podcast-content-section,.podcast-show-episodes");
+    if (group) {
+      if (!hiddenGroups.has(group)) {
+        const bounds = group.getBoundingClientRect();
+        hiddenGroups.set(group, bounds.bottom <= Math.max(viewport.top, clip.top, 0)
+          || bounds.top >= Math.min(viewport.bottom, clip.bottom, window.innerHeight)
+          || bounds.right <= Math.max(viewport.left, clip.left, 0) || bounds.left >= Math.min(viewport.right, clip.right, window.innerWidth));
+      }
+      if (hiddenGroups.get(group)) continue;
+    }
+    const rect = node.getBoundingClientRect();
     if (rect.height <= 0 || rect.width <= 0 || rect.bottom <= Math.max(viewport.top, clip.top, 0)
       || rect.top >= Math.min(viewport.bottom, clip.bottom, window.innerHeight)
       || rect.right <= Math.max(viewport.left, clip.left, 0) || rect.left >= Math.min(viewport.right, clip.right, window.innerWidth)) continue;

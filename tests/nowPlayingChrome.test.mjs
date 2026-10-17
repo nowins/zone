@@ -3,6 +3,7 @@ import test from "node:test";
 import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import React, { act } from "react";
+import { AudioLines } from "lucide-react";
 
 // Let React detect modern input events against a DOM before it is imported.
 const bootstrap = new JSDOM('<body></body>');
@@ -13,24 +14,26 @@ bootstrap.window.close();
 
 // Isolate media/network leaves while exercising the real view, queue and controls.
 const leaves = {
-  NowPlayingMosaicCanvas: `import React, {useEffect} from 'react'; export function NowPlayingMosaicCanvas({onInitialRevealStart}) { useEffect(onInitialRevealStart, [onInitialRevealStart]); return React.createElement('canvas'); }`,
+  NowPlayingMosaicCanvas: `import React, {useEffect} from 'react'; export function NowPlayingMosaicCanvas({onInitialRevealStart,isPlaying}) { useEffect(onInitialRevealStart, [onInitialRevealStart]); return React.createElement('canvas', {'data-mosaic-playing':String(isPlaying)}); }`,
+  NowPlayingArtistCanvas: `import React,{useEffect} from 'react'; export function NowPlayingArtistCanvas({onOpaqueChange}) { useEffect(()=>{window.artistOpaqueChange=onOpaqueChange;return()=>{delete window.artistOpaqueChange;};},[onOpaqueChange]); return React.createElement('canvas'); }`,
   AudioGlowCanvas: "export function AudioGlowCanvas() { return null; }",
   Cover: `import React from 'react'; export function Cover() { return React.createElement('div', {className:'mini-cover'}); }`,
   LyricsStage: "export function LyricsStage() { return null; }",
   useLyrics: "export function useLyrics() { return {}; }",
   useNowPlayingFullscreen: "export function useNowPlayingFullscreen() { return {active:false, pending:false, toggle(){}}; }",
 };
-await build({ entryPoints: ["src/views/NowPlayingView.tsx"], outfile: ".tmp/now-chrome-tests/view.js",
+await build({ stdin: { contents: `export { NowPlayingView } from './src/views/NowPlayingView';
+export { NOW_PLAYING_MOTION } from './src/motion/tokens';`, loader: "ts", resolveDir: process.cwd() }, outfile: ".tmp/now-chrome-tests/view.js",
   bundle: true, packages: "external", format: "esm", platform: "browser", logLevel: "silent",
   plugins: [{ name: "media-leaves", setup(build) {
-    build.onResolve({ filter: /\/(NowPlayingMosaicCanvas|AudioGlowCanvas|Cover|LyricsStage|useLyrics|useNowPlayingFullscreen)$/ }, args => ({ path: args.path.split("/").at(-1), namespace: "media-leaf" }));
+    build.onResolve({ filter: /\/(NowPlayingMosaicCanvas|NowPlayingArtistCanvas|AudioGlowCanvas|Cover|LyricsStage|useLyrics|useNowPlayingFullscreen)$/ }, args => ({ path: args.path.split("/").at(-1), namespace: "media-leaf" }));
     build.onLoad({ filter: /.*/, namespace: "media-leaf" }, args => ({ contents: leaves[args.path], resolveDir: process.cwd() }));
   } }],
 });
-const { NowPlayingView } = await import("../.tmp/now-chrome-tests/view.js");
+const { NowPlayingView, NOW_PLAYING_MOTION } = await import("../.tmp/now-chrome-tests/view.js");
 const tracks = Array.from({ length: 14 }, (_, i) => ({ id: String(i), title: `歌曲 ${i + 1}`, artist: `艺术家 ${i + 1}`, album: "专辑", path: String(i), duration: 300 }));
 
-async function fixture() {
+async function fixture(queue = tracks, { settle = true } = {}) {
   const dom = new JSDOM('<body><div id="root"></div></body>', { pretendToBeVisual: true });
   for (const key of ["window", "document", "HTMLElement", "Element", "Node"]) globalThis[key] = dom.window[key];
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -45,7 +48,7 @@ async function fixture() {
   const root = createRoot(document.getElementById("root"));
   const noop = () => {};
   const played = [];
-  let props = { track: tracks[0], tracks, queue: tracks, isPlaying: true, playbackClock: () => 10,
+  let props = { track: tracks[0], tracks: queue, queue, isPlaying: true, playbackClock: () => 10,
     progress: 10, duration: 300, shuffle: false, repeat: "off", isFavorite: false, volume: 0.5,
     onBack: noop, onPlay: track => played.push(track.id), onPlayPause: noop, onToggleFavorite: noop,
     onPrevious: noop, onNext: noop, onSeek: noop, onShuffle: noop, onRepeat: noop, onVolume: noop, onSaveQueueAsPlaylist: noop };
@@ -64,12 +67,40 @@ async function fixture() {
   const stage = () => document.querySelector(".now-playing-stage");
   const isIdle = () => stage().classList.contains("chrome-immersive");
   await render({});
-  await advance(1250);
+  if (settle) await advance(NOW_PLAYING_MOTION.nowStage);
   return { render, advance, event, stage, isIdle, played,
     async visibility(value) { hidden = value; await act(() => document.dispatchEvent(new window.Event("visibilitychange"))); },
     async close() { await act(() => root.unmount()); assert.equal(timers.size, 0, "unmount clears idle and entrance timers"); assert.deepEqual(errors, []); dom.window.close(); },
   };
 }
+
+test("an opaque artist photo sleeps the covered mosaic while preserving music and chrome state", async () => {
+  const env = await fixture();
+  try {
+    assert.equal(document.querySelector('[data-mosaic-playing]').dataset.mosaicPlaying, "true");
+    await act(() => window.artistOpaqueChange(true));
+    assert.equal(document.querySelector('[data-mosaic-playing]').dataset.mosaicPlaying, "false");
+    assert.equal(env.stage().classList.contains("wall-playing"), true);
+    assert.deepEqual(env.played, []);
+    await act(() => window.artistOpaqueChange(false));
+    assert.equal(document.querySelector('[data-mosaic-playing]').dataset.mosaicPlaying, "true");
+  } finally { await env.close(); }
+});
+
+test("the delayed track card completes before the idle countdown starts", async () => {
+  const env = await fixture(tracks, { settle: false });
+  try {
+    await env.advance(1699);
+    assert.equal(env.stage().classList.contains("stage-entering"), true);
+    assert.equal(env.isIdle(), false);
+    await env.advance(1);
+    assert.equal(env.stage().classList.contains("stage-entering"), false);
+    await env.advance(4999);
+    assert.equal(env.isIdle(), false);
+    await env.advance(1);
+    assert.equal(env.isIdle(), true);
+  } finally { await env.close(); }
+});
 
 test("idle chrome becomes inert, wakes from document keys and preserves the mounted queue", async () => {
   const env = await fixture();
@@ -93,6 +124,31 @@ test("idle chrome becomes inert, wakes from document keys and preserves the moun
     await env.advance(5000); assert.equal(env.isIdle(), true);
     await env.event(env.stage(), "mousemove"); assert.equal(env.isIdle(), false);
   } finally { await env.close(); }
+});
+
+test("progress updates reuse long queue elements while handlers keep current playback behavior", async () => {
+  let iconRenders = 0;
+  const original = AudioLines.render;
+  AudioLines.render = (...args) => { iconRenders++; return original(...args); };
+  const queue = Array.from({ length: 300 }, (_, i) => ({ ...tracks[0], id: String(i), title: "歌曲 " + i }));
+  const env = await fixture(queue);
+  try {
+    const rows = [...document.querySelectorAll('.now-panel-upcoming button')];
+    const calls = [];
+    iconRenders = 0;
+    for (let progress = 20; progress < 25; progress++) await env.render({ progress,
+      onPlay: (item, source) => calls.push([progress, item.id, source]), onPlayPause: () => calls.push([progress, "pause"]) });
+    assert.equal(iconRenders, 0, "the queue is not reconciled for clock ticks or new callback identities");
+    await env.event(rows[6], "click");
+    assert.deepEqual(calls[0], [24, "6", queue], "a cached row calls the latest playback handler with the complete source");
+    await env.event(rows[0], "click");
+    assert.deepEqual(calls[1], [24, "pause"]);
+    await env.render({ track: queue[6] });
+    assert.equal(rows[6].getAttribute('aria-current'), 'true');
+    assert.equal(rows[0].getAttribute('aria-current'), null);
+    await env.render({ queue: queue.slice(4, 12) });
+    assert.deepEqual([...document.querySelectorAll('.now-panel-upcoming strong')].map(row => row.textContent), queue.slice(4, 12).map(item => item.title));
+  } finally { await env.close(); AudioLines.render = original; }
 });
 
 test("pause, held pointers, keyboard focus and the save dialog keep controls available", async () => {

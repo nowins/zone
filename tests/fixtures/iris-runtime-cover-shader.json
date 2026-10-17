@@ -1,0 +1,411 @@
+{
+  "provenance": {
+    "artifact": "C:/Program Files/Zune/UIXrender.dll",
+    "artifactSha256": "1bccee7b3302810d86f2f230d584abfb945e689dc7f01a7a7e20be6853ead47f",
+    "capture": "docs/zune-cover-material-20261013/capture-paused-indexed.json",
+    "captureSha256": "6022746823f00264bdd0c8fbeee4ffaea1757ab712bce7e7a652b6b513f1164e",
+    "probeSha256": "517f70d5ce0f63a5efd800076046596aa8c581dee808b29780671921cf8e5118",
+    "frida": "17.23.3",
+    "architecture": "x64",
+    "shaderSha256": "8d0211079b68e15e071d5b37fd3c0fc0c0d576bdb55d5f88f1387fd33b0c6ad8",
+    "shaderBytes": 324,
+    "vertexShaderSha256": "0b016b4d3ede3abc3d548e444cf9f030b66e9117ae53da870350ec3b43a87b7f",
+    "cpuObservation": "Original IB/VB Lock output, CPU writes captured before application Unlock; selected vertices follow actual draw indices via GetIndices slot 105. The unreferenced leading 256 VB vertices are deliberately omitted."
+  },
+  "shader": {
+    "profile": "ps_3_0",
+    "instructionSlots": 5,
+    "constantBindings": {
+      "Sampler0": "s0"
+    },
+    "defs": {
+      "c0": [
+        0.150000006,
+        0.550000012,
+        0.300000012,
+        -0.5
+      ],
+      "c1": [
+        0.850000024,
+        0.5,
+        0.0,
+        0.0
+      ]
+    },
+    "instructions": [
+      "texld r0, v2, s0",
+      "dp3 r0.z, r0, c0",
+      "add r0.z, r0.z, c0.w",
+      "mad r0.xyz, r0.z, c1.x, c1.y",
+      "mul oC0, r0, v1"
+    ]
+  },
+  "sample": {
+    "drawSeq": 20,
+    "spGetDpi": 192,
+    "viewport": {
+      "width": 3840,
+      "height": 2064,
+      "x": 0,
+      "y": 0
+    },
+    "constantRegisters": {
+      "c0": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "c1": [
+        500,
+        0,
+        0,
+        0
+      ]
+    },
+    "renderStates": {
+      "7": 0,
+      "14": 1,
+      "15": 0,
+      "19": 5,
+      "20": 6,
+      "27": 1,
+      "168": 15,
+      "171": 1,
+      "193": 4294967295,
+      "194": 0,
+      "206": 1,
+      "207": 2,
+      "208": 2,
+      "209": 1
+    },
+    "renderTargetFormat": 22,
+    "sampler0": {
+      "format": 21,
+      "width": 2048,
+      "height": 2048,
+      "sampler": [
+        {
+          "state": 1,
+          "result": 0,
+          "value": 3
+        },
+        {
+          "state": 2,
+          "result": 0,
+          "value": 3
+        },
+        {
+          "state": 3,
+          "result": 0,
+          "value": 1
+        },
+        {
+          "state": 5,
+          "result": 0,
+          "value": 2
+        },
+        {
+          "state": 6,
+          "result": 0,
+          "value": 2
+        },
+        {
+          "state": 7,
+          "result": 0,
+          "value": 0
+        },
+        {
+          "state": 11,
+          "result": 0,
+          "value": 0
+        }
+      ]
+    },
+    "indices": {
+      "format": 101,
+      "usage": 520,
+      "bufferSize": 30720,
+      "start": 0,
+      "count": 6,
+      "offset": 0,
+      "read": "original-CPU-writes-before-Unlock",
+      "lockFlags": 8192,
+      "data": [
+        96,
+        1,
+        94,
+        1,
+        95,
+        1,
+        95,
+        1,
+        97,
+        1,
+        96,
+        1
+      ],
+      "values": [
+        352,
+        350,
+        351,
+        351,
+        353,
+        352
+      ]
+    },
+    "vertices": {
+      "stride": 48,
+      "streamOffset": 0,
+      "baseVertexIndex": 0,
+      "minVertexIndex": 0,
+      "startIndex": 0,
+      "read": "original-CPU-writes-before-Unlock",
+      "lockFlags": 0,
+      "referencedVertexCount": 4,
+      "selected": [
+        {
+          "index": 352,
+          "data": [
+            0,
+            224,
+            235,
+            68,
+            0,
+            192,
+            31,
+            68,
+            0,
+            0,
+            0,
+            0,
+            255,
+            255,
+            255,
+            89,
+            0,
+            0,
+            0,
+            58,
+            0,
+            128,
+            43,
+            62,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 350,
+          "data": [
+            0,
+            224,
+            235,
+            68,
+            0,
+            192,
+            14,
+            68,
+            0,
+            0,
+            0,
+            0,
+            255,
+            255,
+            255,
+            89,
+            0,
+            0,
+            0,
+            58,
+            0,
+            128,
+            0,
+            62,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 351,
+          "data": [
+            0,
+            96,
+            244,
+            68,
+            0,
+            192,
+            14,
+            68,
+            0,
+            0,
+            0,
+            0,
+            255,
+            255,
+            255,
+            89,
+            0,
+            0,
+            46,
+            61,
+            0,
+            128,
+            0,
+            62,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "index": 353,
+          "data": [
+            0,
+            96,
+            244,
+            68,
+            0,
+            192,
+            31,
+            68,
+            0,
+            0,
+            0,
+            0,
+            255,
+            255,
+            255,
+            89,
+            0,
+            0,
+            46,
+            61,
+            0,
+            128,
+            43,
+            62,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    "colorDeclaration": {
+      "stream": 0,
+      "offset": 12,
+      "type": 4,
+      "usage": 10,
+      "usageIndex": 0
+    }
+  },
+  "coverage": {
+    "materialDraws": 55,
+    "indexedCpuSnapshots": 54,
+    "waitingDraws": 1,
+    "selectedSeqRange": [
+      20,
+      936
+    ],
+    "selectedVertices": 216,
+    "packedArgbCounts": {
+      "0x59ffffff": 216
+    }
+  },
+  "flattening": {
+    "backgroundRgba": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "note": "The production material precomposes shader output with observed SRCALPHA/INVSRCALPHA over the opaque black CellPanel. It then stores opaque RGBA so entrance/flip UI alpha can be applied once to the complete tile."
+  }
+}

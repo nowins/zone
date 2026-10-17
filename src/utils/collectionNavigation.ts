@@ -1,5 +1,6 @@
 import type { AppPage, ViewMode } from "../types";
 import { collectionEntityKey, type CollectionEntityRef } from "./collectionEntities.js";
+import { initialCollectionBrowser, type CollectionBrowserState } from "./collectionBrowser.js";
 
 export type CollectionSearchFilter = "all" | "artists" | "albums" | "songs" | "playlists";
 export type CollectionScrollPosition = { top: number; left: number; anchor?: string; offset?: number };
@@ -17,14 +18,15 @@ export type CollectionLocation = {
   tab: "overview" | "albums" | "songs";
   playlistId: string;
   surface: CollectionSurface;
+  browser: CollectionBrowserState;
   origin?: { page: Exclude<AppPage, "collection">; focus?: string; scrolls?: { top: number; left: number }[] };
 };
-export const COLLECTION_CATEGORY_ORDER: readonly ViewMode[] = ["artists", "albums", "songs", "playlists"];
+export const COLLECTION_CATEGORY_ORDER: readonly ViewMode[] = ["artists", "genres", "albums", "songs", "playlists"];
 export const COLLECTION_ARTIST_TAB_ORDER = ["overview", "albums", "songs"] as const;
 export type CollectionHistory = { entries: CollectionLocation[]; cursor: number; revision: number; direction: 1 | -1; animate: boolean };
 export const emptyCollectionSurface = (): CollectionSurface => ({ scrolls: {}, selections: {} });
 export const initialCollectionLocation = (): CollectionLocation => ({ entity: null, view: "artists", query: "",
-  searchMode: "results", filter: "all", tab: "overview", playlistId: "favorites", surface: emptyCollectionSurface() });
+  searchMode: "results", filter: "all", tab: "overview", playlistId: "favorites", surface: emptyCollectionSurface(), browser: initialCollectionBrowser() });
 export const initialCollectionHistory = (): CollectionHistory => ({ entries: [initialCollectionLocation()], cursor: 0, revision: 0, direction: 1, animate: true });
 export function locationKey(location: CollectionLocation): string {
   if (location.query.trim() && location.searchMode === "results") return `search:${location.query}`;

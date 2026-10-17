@@ -272,7 +272,7 @@ export type ScanResult = {
   skipped: number;
 };
 
-export type ViewMode = "songs" | "albums" | "artists" | "playlists";
+export type ViewMode = "songs" | "albums" | "artists" | "genres" | "playlists";
 export type AppPage = "quickplay" | "collection" | "podcasts" | "nowPlaying" | "settings";
 export type RepeatMode = "off" | "one" | "all";
 
