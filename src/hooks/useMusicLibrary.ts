@@ -12,11 +12,13 @@ import type {
 } from "../types";
 
 type UseMusicLibraryParams = {
+  persistenceReady?: boolean;
   setQueue: React.Dispatch<React.SetStateAction<string[]>>;
 };
 
 export function useMusicLibrary({
   setQueue,
+  persistenceReady = true,
 }: UseMusicLibraryParams) {
   const activityMigrationRef = useRef(false);
   const scanInFlightRef = useRef(false);
@@ -31,16 +33,16 @@ export function useMusicLibrary({
   const [trackActivity, setTrackActivity] = useState<TrackActivityMap>({});
   foldersRef.current = folders;
 
-  useLibraryWatcher(folders, restored, () => {
+  useLibraryWatcher(folders, restored && persistenceReady, () => {
     void rescan(folders, true);
   });
 
   useEffect(() => {
-    if (!restored || folders.length === 0 || tracks.length === 0) return;
+    if (!restored || !persistenceReady || folders.length === 0 || tracks.length === 0) return;
     if (!needsMetadataRefresh && "cover_path" in tracks[0]) return;
 
     void rescan(folders);
-  }, [restored, needsMetadataRefresh]);
+  }, [restored, persistenceReady, needsMetadataRefresh]);
 
   useEffect(() => {
     if (!restored) return;
@@ -62,6 +64,7 @@ export function useMusicLibrary({
   const { albums, artists } = collectionIndex;
 
   async function addFolder() {
+    if (!persistenceReady) { setScanNote("资料库尚未恢复，添加目录已暂停"); return; }
     const folder = await invoke<MusicFolder | null>("select_music_folder");
     if (!folder || folders.some((item) => item.path === folder.path)) return;
 
@@ -71,6 +74,7 @@ export function useMusicLibrary({
   }
 
   async function rescan(targetFolders = folders, automatic = false) {
+    if (!persistenceReady) { setScanNote("资料库尚未恢复，扫描已暂停"); return; }
     if (targetFolders.length === 0) return;
     if (scanInFlightRef.current) {
       queuedScanRef.current = { folders: targetFolders, automatic };

@@ -227,7 +227,7 @@ test("playback enrichment is silent, provider-aware, and excludes podcast playba
   assert.match(hookSource, /AUTO_ARTIST_RETRY_MS = 30 \* 60 \* 1_000/);
   assert.match(hookSource, /provider\.id === "local-sidecar"[\s\S]+NETEASE_MUSIC_PROVIDER_ID/);
   assert.match(hookSource, /selectAutomaticArtistCandidate\([\s\S]+await search\(payload, undefined, true\),[\s\S]+appliedProviderIds/);
-  assert.match(appSource, /!restored \|\| !isPlaying \|\| activePodcastEpisode \|\| !activeTrack/);
+  assert.match(appSource, /!restored \|\| !libraryPersistenceReady \|\| !isPlaying \|\| activePodcastEpisode \|\| !activeTrack/);
   assert.match(appSource, /metadata\.enrichArtistForPlayback\(activeTrack\)/);
 });
 

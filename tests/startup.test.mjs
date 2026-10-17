@@ -49,8 +49,10 @@ function environment(t, overrides = {}) {
   window.HTMLMediaElement.prototype.pause = () => {};
   window.zoneWindowActions = [];
   const commands = [];
+  const calls = [];
   window.zoneInvoke = async (command, args) => {
     commands.push(command);
+    calls.push({ command, args });
     if (overrides[command]) return overrides[command](args);
     if (command === "podcast_load_active_episode" || command === "music_get_radio_session") return null;
     if (command === "podcast_get_preferences") return {};
@@ -65,7 +67,7 @@ function environment(t, overrides = {}) {
   window.cancelIdleCallback = id => idles.delete(id);
   const root = createRoot(document.getElementById("root"));
   t.after(async () => { await act(async () => root.unmount()); dom.window.close(); });
-  return { root, commands, frames, idles,
+  return { root, commands, calls, frames, idles,
     async mount(view = h(App)) { await act(async () => root.render(h(React.StrictMode, null, view))); },
     async frame() { const batch = [...frames.values()]; frames.clear(); await act(async () => batch.forEach(fn => fn(0))); },
     async idle() { const batch = [...idles.values()]; idles.clear(); await act(async () => batch.forEach(fn => fn({ timeRemaining: () => 50 }))); },
@@ -145,4 +147,95 @@ test("native and document backgrounds are dark before application code loads", (
   assert.equal(config.app.windows[0].backgroundColor, "#0b070c");
   assert.match(readFileSync("index.html", "utf8"), /<html[^>]+background: #0b070c/);
   assert.match(readFileSync("src/styles/motion.css", "utf8"), /@media \(prefers-reduced-motion: reduce\)[\s\S]+\.startup-loading/);
+});
+
+const legacyKey = "zone-player-state-v1";
+function legacyState() { return JSON.stringify({ librarySchemaVersion: 6, tracks: [track],
+  folders: [{ path: "C:/fixture", name: "fixture" }], activeTrackId: track.id, queue: [track.id],
+  shuffle: false, playlists: [], homePins: [], trackActivity: {} }); }
+async function settleSaves() { await act(async () => new Promise(resolve => setTimeout(resolve, 450))); }
+async function confirmRecovery() {
+  await act(async () => document.querySelector(".library-recovery-notice button").click());
+  assert.match(document.querySelector('[role="dialog"]').textContent, /临时修改不会写入数据库/);
+  await act(async () => document.querySelector('[role="dialog"] button[type="submit"]').click());
+}
+const saveCommands = ["music_save_playlists", "music_save_home_pins", "music_save_track_activity", "music_save_playback_state"];
+
+test("normal startup enables every automatic persistence channel", async t => {
+  const env = environment(t);
+  await env.mount(); await settleSaves();
+  for (const command of saveCommands) assert.ok(env.commands.includes(command), command);
+  assert.equal(document.querySelector(".library-recovery-notice"), null);
+});
+
+test("legacy fallback keeps a persistent warning, pauses music writes and preserves edits on failed retry", async t => {
+  const env = environment(t, { music_get_library_snapshot: () => Promise.reject(Error("offline")) });
+  const raw = legacyState(); localStorage.setItem(legacyKey, raw);
+  await env.mount();
+  assert.ok(document.querySelector(".quickplay"));
+  await act(async () => document.querySelector('[title="随机播放"]').click());
+  await act(async () => new Promise(resolve => setTimeout(resolve, 2500)));
+  assert.match(document.querySelector(".library-recovery-notice").textContent, /当前修改未保存/);
+  assert.equal(localStorage.getItem(legacyKey), raw);
+  assert.equal(env.commands.some(command => saveCommands.includes(command) || ["music_scan_library", "music_session_start", "music_session_end", "music_analyze_features"].includes(command)), false);
+  // Cancelling the dialog is a pure UI action.
+  const attempts = env.commands.filter(command => command === "music_get_library_snapshot").length;
+  await act(async () => document.querySelector(".library-recovery-notice button").click());
+  await act(async () => document.querySelector('[role="dialog"] button[type="button"]').click());
+  assert.equal(env.commands.filter(command => command === "music_get_library_snapshot").length, attempts);
+  await confirmRecovery(); await settleSaves();
+  assert.ok(document.querySelector(".quickplay"));
+  assert.equal(document.querySelector('[title="随机播放"]').getAttribute("aria-pressed"), "true");
+  assert.ok(document.querySelector(".library-recovery-notice"));
+  assert.equal(localStorage.getItem(legacyKey), raw);
+  assert.equal(env.commands.some(command => saveCommands.includes(command)), false);
+});
+
+test("successful degraded recovery reloads database state before restarting persistence", async t => {
+  let fail = true;
+  const recovery = deferred();
+  const dbTrack = { ...track, id: "db-track", title: "数据库中的歌曲" };
+  const env = environment(t, { music_get_library_snapshot: () => fail ? Promise.reject(Error("offline")) : recovery.promise });
+  const raw = legacyState(); localStorage.setItem(legacyKey, raw);
+  await env.mount();
+  await act(async () => document.querySelector('[title="随机播放"]').click());
+  fail = false; await confirmRecovery();
+  assert.equal(document.querySelector(".library-recovery-notice button").disabled, true);
+  await settleSaves(); assert.equal(env.commands.some(command => saveCommands.includes(command)), false);
+  await act(async () => recovery.resolve(snapshot([dbTrack])));
+  await settleSaves();
+  assert.equal(document.querySelector(".library-recovery-notice"), null);
+  assert.ok(document.querySelector(".quickplay").textContent.includes(dbTrack.title));
+  assert.equal(localStorage.getItem(legacyKey), raw, "existing database must not consume or overwrite the legacy source");
+  assert.equal(env.commands.includes("music_import_legacy_player_state"), false);
+  for (const command of saveCommands) assert.ok(env.commands.includes(command), command);
+  const playback = env.calls.filter(call => call.command === "music_save_playback_state").at(-1).args.playback;
+  assert.equal(playback.activeTrackId, dbTrack.id);
+  assert.equal(playback.shuffle, false, "volatile edits must never overwrite recovered database state");
+  await act(async () => document.querySelector('[title="随机播放"]').click()); await settleSaves();
+  assert.equal(env.calls.filter(call => call.command === "music_save_playback_state").at(-1).args.playback.shuffle, true);
+});
+
+test("degraded recovery migrates only the original legacy source and retains it when migration fails", async t => {
+  let offline = true, importFails = true;
+  const raw = legacyState();
+  const env = environment(t, {
+    music_get_library_snapshot: () => offline ? Promise.reject(Error("offline")) : { ...snapshot([]), hasLibrary: false },
+    music_import_legacy_player_state: ({ legacy }) => {
+      assert.deepEqual(legacy, JSON.parse(raw));
+      if (importFails) throw Error("import failed");
+      return snapshot();
+    },
+  });
+  localStorage.setItem(legacyKey, raw); await env.mount();
+  await act(async () => document.querySelector('[title="随机播放"]').click());
+  offline = false; await confirmRecovery(); await settleSaves();
+  assert.ok(document.querySelector(".library-recovery-notice"));
+  assert.equal(localStorage.getItem(legacyKey), raw);
+  assert.equal(env.commands.some(command => saveCommands.includes(command)), false);
+  importFails = false; await confirmRecovery(); await settleSaves();
+  assert.equal(document.querySelector(".library-recovery-notice"), null);
+  assert.equal(localStorage.getItem(legacyKey), null);
+  assert.equal(localStorage.getItem(legacyKey + "-backup"), raw);
+  for (const command of saveCommands) assert.ok(env.commands.includes(command), command);
 });
