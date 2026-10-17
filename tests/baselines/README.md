@@ -16,7 +16,7 @@ runner 桌面可能小于默认窗口。若桌面最大跟踪尺寸收窄了目�
 
 ## 性能口径
 
-在同一暂停小夹具上，排除一次预热后各取 7 个样本：正式 `music_get_library_snapshot` 的渲染器往返；从播放列表 DOM 点击到两首歌曲出现并经过两帧。计时在 WebView2 内使用 `performance.now`，不含 WebDriver HTTP 延迟。记录原始样本、数量、中位数、p95、min/max、OS、CPU、内存、runner 镜像、WebView2 UA、DPI 和字体度量。
+在同一暂停小夹具、真实 1180×760 客户区上，排除一次预热后各取 7 个样本：正式 `music_get_library_snapshot` 的渲染器往返；从播放列表 DOM 点击到两首歌曲出现并经过两帧。计时在 WebView2 内使用 `performance.now`，不含 WebDriver HTTP 延迟。记录采样实际窗口、原始样本、数量、中位数、p95、min/max、OS、CPU、内存、runner 镜像、WebView2 UA、DPI 和字体度量；采样期间窗口变化时拒绝结果。
 
 结果为 `performanceVerdict=observed`，没有默认产品阈值。7 个样本的 p95 是该小样本的上端观察值，不代表统计容量结论；不推断大曲库、冷启动、默认动效、真实输入设备或长期稳定性。比较报告可以并列参考数值，但当前不以未校准耗时判断产品失败。
 
