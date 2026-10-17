@@ -5,7 +5,9 @@ import type {
   Track,
   TrackActivityMap,
 } from "../types";
-import { resolvePlaylistTracks } from "./smartPlaylist.js";
+import { isSmartPlaylist, resolvePlaylistTracks } from "./smartPlaylist.js";
+
+const searchCollator = new Intl.Collator("zh-CN", { numeric: true });
 
 export type LibrarySearchPlaylist = {
   playlist: Playlist;
@@ -79,7 +81,7 @@ function sortRanked<T>(items: Ranked<T>[]): T[] {
   return items
     .sort((left, right) =>
       left.score - right.score
-      || left.label.localeCompare(right.label, "zh-CN", { numeric: true }),
+      || searchCollator.compare(left.label, right.label),
     )
     .map(({ item }) => item);
 }
@@ -114,20 +116,26 @@ export function searchLibrary({
   }
 
   const rankedTracks: Ranked<Track>[] = [];
+  const trackScores = new Map<Track, number | null>();
   for (const track of tracks) {
     const score = trackScore(track, needle);
+    if (playlists.length) trackScores.set(track, score);
     if (score !== null) rankedTracks.push({ item: track, score, label: track.title });
   }
 
   const rankedPlaylists: Ranked<LibrarySearchPlaylist>[] = [];
+  const context = { favoriteTrackIds, activity,
+    trackById: playlists.some(playlist => !isSmartPlaylist(playlist))
+      ? new Map(tracks.map(track => [track.id, track])) : undefined };
   for (const playlist of playlists) {
-    const resolved = resolvePlaylistTracks(playlist, tracks, { favoriteTrackIds, activity }).tracks;
+    const resolved = resolvePlaylistTracks(playlist, tracks, context).tracks;
     const directScore = bestScore([
       [playlist.name, 0],
       [playlist.description, 4],
     ], needle);
     const contentScore = resolved.reduce<number | null>((best, track) => {
-      const score = trackScore(track, needle);
+      const cached = trackScores.get(track);
+      const score = cached === undefined ? trackScore(track, needle) : cached;
       if (score === null) return best;
       const weighted = score + 10;
       return best === null || weighted < best ? weighted : best;

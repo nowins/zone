@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { searchLibrary } from "../.tmp/visualizer-tests/utils/librarySearch.js";
+import { defaultSmartPlaylistConfig, smartRule } from "../.tmp/visualizer-tests/utils/smartPlaylist.js";
 
 function track(id, overrides = {}) {
   return {
@@ -87,4 +88,53 @@ test("blank queries do not create a synthetic result page", () => {
 
   assert.equal(results.total, 0);
   assert.deepEqual(results.tracks, []);
+});
+
+test("rank ties retain legacy multilingual numeric collation and stable equivalent labels", () => {
+  const titles = ["歌曲 10", "歌曲 2", "歌曲 é", "歌曲 e", "歌曲 Ａ", "歌曲 A", "歌曲 a", "歌曲 中", "歌曲 重庆"];
+  const tracks = titles.map((title, index) => track(`id-${index}`, { title }));
+  // Compare against the former API on this runtime's ICU data, including case/width ties.
+  const expected = [...tracks].sort((a, b) => a.title.localeCompare(b.title, "zh-CN", { numeric: true })).map(item => item.id);
+  const result = search({ query: "歌曲", tracks, albums: [], artists: [] });
+  assert.deepEqual(result.tracks.map(item => item.id), expected);
+  assert.ok(expected.indexOf("id-1") < expected.indexOf("id-0"));
+  assert.deepEqual(tracks.map(item => item.id), titles.map((_, index) => `id-${index}`));
+});
+
+test("shared list lookup preserves missing entries, duplicates and original manual order", () => {
+  const one = track("one", { title: "needle one" }), two = track("two", { title: "needle two" });
+  const lists = [
+    { id: "a", name: "first", description: "", trackIds: ["missing", "two", "one", "two"] },
+    { id: "b", name: "second", description: "", trackIds: ["one"] },
+  ];
+  const result = search({ query: "needle", tracks: [one, two], albums: [], artists: [], playlists: lists });
+  assert.deepEqual(result.playlists.map(item => [item.playlist.id, item.tracks.map(t => t.id)]), [
+    ["a", ["two", "one", "two"]], ["b", ["one"]],
+  ]);
+  assert.deepEqual(lists[0].trackIds, ["missing", "two", "one", "two"]);
+  one.title = "changed";two.title = "changed";
+  assert.equal(search({ query: "needle", tracks: [one, two], albums: [], artists: [], playlists: lists }).total, 0);
+});
+
+test("search keeps smart rules, favorites and exclusions while sharing manual resolutions", () => {
+  const tracks = [track("a", { title: "needle a" }), track("b", { title: "needle b" }), track("c", { title: "needle c" })];
+  const playlists = [{ id: "smart", kind: "smart", name: "smart", description: "", excludedTrackIds: ["b"],
+    smart: { ...defaultSmartPlaylistConfig(), rules: [smartRule("favorite", "is", true)], rotateDaily: false } },
+    { id: "manual", name: "manual", description: "", trackIds: ["c", "a"] }];
+  const result = searchLibrary({ query: "needle", tracks, playlists, albums: [], artists: [], favoriteTrackIds: new Set(["a", "b"]), activity: {} });
+  assert.deepEqual(result.playlists.find(item => item.playlist.id === "smart").tracks.map(t => t.id), ["a"]);
+  assert.deepEqual(result.playlists.find(item => item.playlist.id === "manual").tracks.map(t => t.id), ["c", "a"]);
+});
+
+test("empty metadata and duplicate IDs keep global scoring separate from last-record playlist lookup", () => {
+  const stale = track("duplicate", { title: "stale", artist: "", album: "", file_name: "" });
+  const current = track("duplicate", { title: "needle current", artist: "", album: "", file_name: "" });
+  const emptyTitle = track("empty", { title: "", artist: "needle artist", album: "", file_name: "" });
+  const lists = [{ id: "manual", name: "list", description: "", trackIds: ["duplicate", "empty"] }];
+  const result = search({ query: "needle", tracks: [stale, current, emptyTitle], albums: [], artists: [], playlists: lists });
+  assert.deepEqual(result.tracks, [current, emptyTitle]);
+  assert.deepEqual(result.playlists[0].tracks, [current, emptyTitle]);
+  const reordered = search({ query: "needle", tracks: [current, stale, emptyTitle], albums: [], artists: [], playlists: lists });
+  assert.deepEqual(reordered.tracks, [current, emptyTitle]);
+  assert.deepEqual(reordered.playlists[0].tracks, [stale, emptyTitle]);
 });

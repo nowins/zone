@@ -111,10 +111,12 @@ export function useAudioEngine({
     window.addEventListener("focus", returned);
     window.addEventListener("pageshow", returned);
     document.addEventListener("visibilitychange", returned);
+    document.addEventListener(WINDOW_VISIBILITY_EVENT, returned);
     return () => {
       window.removeEventListener("focus", returned);
       window.removeEventListener("pageshow", returned);
       document.removeEventListener("visibilitychange", returned);
+      document.removeEventListener(WINDOW_VISIBILITY_EVENT, returned);
     };
   }, [activePlayback?.kind, isPlaying, audioRef]);
 

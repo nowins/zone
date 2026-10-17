@@ -40,7 +40,7 @@ async function fixture() {
   return { audio, get engine() { return engine; }, get context() { return context; }, get sources() { return sources; }, get contexts() { return contexts; },
     set resume(value) { resume = value; },
     render: async changes => { props = { ...props, ...changes };await render(); },
-    returned: async type => act(async () => (type === "visibilitychange" ? document : window).dispatchEvent(new window.Event(type))),
+    returned: async type => act(async () => (type === "visibilitychange" || type === "zone-window-visibility" ? document : window).dispatchEvent(new window.Event(type))),
     unmount, close: async () => { await unmount();dom.window.close(); },
   };
 }
@@ -81,6 +81,23 @@ test("a rejected resume stays handled and a later explicit request can retry", a
   } finally { await h.close(); }
 });
 
+test("native visibility arriving after focus recovers compact and reduced-motion music once", async () => {
+  const h = await fixture();
+  try {
+    h.context.state = "suspended";
+    document.documentElement.dataset.zoneWindowVisible = "false";
+    await h.returned("focus");assert.equal(h.context.calls, 0);
+    // The native visibility query resolves after the focus listeners ran.
+    document.documentElement.dataset.zoneWindowVisible = "true";
+    await h.returned("zone-window-visibility");
+    assert.equal(h.context.calls, 1);
+    assert.equal(h.context.state, "running");assert.equal(h.audio.currentTime, 42);
+    assert.equal(h.sources, 1);assert.equal(h.contexts, 1);
+    await h.unmount();h.context.state = "suspended";
+    await h.returned("zone-window-visibility");assert.equal(h.context.calls, 1);
+  } finally { await h.close(); }
+});
+
 test("paused media, podcast sleep ownership and hidden pages cannot trigger music graph recovery", async () => {
   const h = await fixture();
   try {
@@ -90,6 +107,7 @@ test("paused media, podcast sleep ownership and hidden pages cannot trigger musi
     await h.returned("pageshow");assert.equal(h.context.calls, 0);
     await h.render({ isPlaying: true, activePlayback: { kind: "podcast" }, activePlaybackSourceKey: "podcast:one" });
     await h.returned("focus");assert.equal(h.context.calls, 0, "podcast recovery must expire sleep first");
+    await h.returned("zone-window-visibility");assert.equal(h.context.calls, 0);
     await h.render({ activePlayback: { kind: "music" }, activePlaybackSourceKey: "music:one" });
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
     await h.returned("visibilitychange");assert.equal(h.context.calls, 0);

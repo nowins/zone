@@ -32,3 +32,26 @@ test("decode errors do not retry and focus only resumes an audio graph with acti
   h.audio.paused = false; h.controller.returned(); assert.equal(h.resumes, 1);
   h.pause(); h.controller.returned(); assert.equal(h.resumes, 1);
 });
+
+test("focus and online return cannot rearm a stall from an older play generation", () => {
+  for (const offline of [false, true]) {
+    const h = fixture();
+    if (offline) { h.online = false;h.controller.offline(); }
+    else h.controller.stalled();
+    h.pause();h.play();h.online = true;h.audio.paused = false;
+    h.controller.returned();
+    assert.equal(h.resumes, 1, "the current playing graph may still recover");
+    assert.equal(h.timers.size, 0, "old waiting state must not inherit the new generation");
+    h.tick();assert.equal(h.retries, 0);
+    h.controller.stalled(true);h.tick();assert.equal(h.retries, 1, "a new stall still retries");
+    h.controller.dispose();
+  }
+});
+
+test("a new stall replaces the old generation timer before it fires", () => {
+  const h = fixture();h.controller.stalled();h.pause();h.play();
+  h.controller.stalled(true);
+  assert.deepEqual([...h.timers.values()].map(timer => timer.ms), [1000]);
+  h.tick();assert.equal(h.retries, 1);
+  h.controller.dispose();
+});
