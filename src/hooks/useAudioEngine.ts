@@ -56,6 +56,7 @@ export function useAudioEngine({
   const reducedMotion = useReducedMotion();
   const audible = isPlaying && volume > 0;
   const audioContextRef = useRef<AudioContext | null>(null);
+  const audioResumeRef = useRef<Promise<void> | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const outputGainRef = useRef<GainNode | null>(null);
@@ -77,7 +78,10 @@ export function useAudioEngine({
   enhancementOptionsRef.current = { source: activePlaybackSourceKey, podcast: activePlayback?.kind === "podcast", rate: podcastAudio?.rate ?? 1, normalize: podcastAudio?.normalize ?? false, trim: podcastAudio?.trim ?? false, volume };
   const enhancementErrorRef = useRef(onEnhancementError); enhancementErrorRef.current = onEnhancementError;
   useEffect(() => {
-    if (enhancementOptionsRef.current.podcast && (podcastAudio?.normalize || podcastAudio?.trim)) ensureAudioGraph();
+    if (enhancementOptionsRef.current.podcast && (podcastAudio?.normalize || podcastAudio?.trim)) {
+      ensureAudioGraph();
+      if (audioRef.current && !audioRef.current.paused) void resumeAudioGraph();
+    }
     enhancementRef.current?.update(enhancementOptionsRef.current);
   }, [activePlaybackSourceKey, activePlayback?.kind, podcastAudio?.rate, podcastAudio?.normalize, podcastAudio?.trim, volume]);
   useEffect(() => () => { enhancementRef.current?.dispose(); enhancementRef.current = null; }, []);
@@ -95,6 +99,24 @@ export function useAudioEngine({
     if (!audioRef.current) return;
     audioRef.current.volume = volume;
   }, [volume]);
+
+  useEffect(() => {
+    if (!isPlaying || activePlayback?.kind !== "music") return;
+    const returned = () => {
+      // Resume only an existing music graph. Media play and podcast sleep intent
+      // remain owned by transport; focus must never call audio.play().
+      if (isDocumentVisible() && audioRef.current && !audioRef.current.paused
+        && audioContextRef.current?.state === "suspended") void resumeAudioGraph();
+    };
+    window.addEventListener("focus", returned);
+    window.addEventListener("pageshow", returned);
+    document.addEventListener("visibilitychange", returned);
+    return () => {
+      window.removeEventListener("focus", returned);
+      window.removeEventListener("pageshow", returned);
+      document.removeEventListener("visibilitychange", returned);
+    };
+  }, [activePlayback?.kind, isPlaying, audioRef]);
 
   useEffect(() => {
     const stopLoop = () => {
@@ -176,9 +198,6 @@ export function useAudioEngine({
         enhancementRef.current.update(enhancementOptionsRef.current);
       }
 
-      if (audioContextRef.current.state === "suspended") {
-        void audioContextRef.current.resume();
-      }
     } catch (error) {
       console.warn("Audio visualizer disabled", error);
       visualizerUnavailableRef.current = true;
@@ -189,9 +208,16 @@ export function useAudioEngine({
     if (!audioRef.current || visualizerUnavailableRef.current) return;
 
     ensureAudioGraph();
-    if (audioContextRef.current?.state === "suspended") {
-      await audioContextRef.current.resume().catch(() => undefined);
-    }
+    if (audioResumeRef.current) return audioResumeRef.current;
+    const context = audioContextRef.current;
+    if (context?.state !== "suspended") return;
+    const pending = Promise.resolve().then(() => context.resume()).catch(() => {
+      recordDiagnostic({ domain: enhancementOptionsRef.current.podcast ? "podcast" : "music", event: "audio_graph_resume", outcome: "error" });
+    }).finally(() => {
+      if (audioResumeRef.current === pending) audioResumeRef.current = null;
+    });
+    audioResumeRef.current = pending;
+    return pending;
   }
 
   function cancelBeatAnalysis() {
