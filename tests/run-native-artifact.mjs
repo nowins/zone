@@ -171,6 +171,14 @@ try {
   await until(async () => (await invoke('music_get_library_snapshot')).playlists.some(list => list.name === 'CI 持久化列表'), 'UI playlist saved to SQLite');
   await screenshot('02-persisted');
   await record('Real favorite and playlist UI actions persisted through native commands');
+  if (process.argv.includes('--baselines')) {
+    const { captureNativeBaselines } = await import('./native/nativeBaseline.mjs');
+    const baselines = await captureNativeBaselines({ command, script, asynchronous, clickText, until, ownedProcesses,
+      executable, manifest, report, fixtureHashes: originalHashes });
+    outcome.baselines = { captureStatus: baselines.captureStatus, visualReview: baselines.visualReview,
+      performanceVerdict: baselines.performanceVerdict, result: 'baselines/result.json' };
+    await record('Native fixed-scene screenshot candidates repeated exactly; UI/IPC timings observed without product thresholds');
+  }
   assert.ok((await stat(join(dataDirectory, 'zone.sqlite'))).size > 0);
   if (process.argv.includes('--faults')) {
     const { DatabaseSync } = await import('node:sqlite');

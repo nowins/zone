@@ -15,6 +15,8 @@
     "build:ci:native": "node scripts/ci/build-native.mjs",
     "test:ci:artifact": "node tests/run-native-artifact.mjs",
     "test:ci:faults": "node tests/run-native-artifact.mjs --faults",
+    "test:ci:baselines": "node tests/run-native-artifact.mjs --baselines",
+    "qa:compare-baselines": "node scripts/qa/compare-native-baselines.mjs",
     "qa": "node scripts/qa/run.mjs",
     "test:podcast:stability": "node tests/run-podcast-stability.mjs",
     "test:podcast:client": "node tests/run-podcast-client.mjs",

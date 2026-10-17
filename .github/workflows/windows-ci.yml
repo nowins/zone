@@ -112,9 +112,19 @@ jobs:
         timeout-minutes: 10
         run: >-
           node tests/run-native-artifact.mjs
+          --baselines
           --manifest "${{ steps.native.outputs.manifest }}"
           --driver "${{ steps.webdriver.outputs.driver }}"
           --report .tmp/ci-artifact-smoke
+
+      - name: Compare an explicitly reviewed visual reference when present
+        run: |
+          $reference = 'tests/baselines/approved/reference.json'
+          if (Test-Path -LiteralPath $reference) {
+            node scripts/qa/compare-native-baselines.mjs --candidate .tmp/ci-artifact-smoke/baselines/result.json --reference $reference --output .tmp/ci-artifact-smoke/baselines/comparison
+            exit $LASTEXITCODE
+          }
+          'Visual candidates captured; reference review pending. Performance is observational; no product budget approved.' >> $env:GITHUB_STEP_SUMMARY
 
       - name: Upload native executable
         id: artifact
@@ -140,6 +150,7 @@ jobs:
             .tmp/ci-artifact-smoke/*.log
             .tmp/ci-artifact-smoke/*.png
             .tmp/ci-artifact-smoke/failure.html
+            .tmp/ci-artifact-smoke/baselines/
           if-no-files-found: warn
           retention-days: 7
 

@@ -84,6 +84,12 @@ PR 和每晚 UTC 02:00 的运行增加独立故障 job，在另一台干净 runn
 
 依据：[微软 WebView2 WebDriver](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/webdriver)、[WebView2 driver 配置](https://learn.microsoft.com/en-us/microsoft-edge/webdriver/capabilities-edge-options)。
 
+### 小范围视觉候选与性能观察
+
+CI 的产物 smoke 同时传入 `--baselines`：固定两首 WAV、浅色暂停的收藏歌曲页、减少动态效果，采集真实客户区 1180×760／920×620 的稳定区域及重复图。结果为 `visualReview=pending`；没有批准参考时，CI 通过只包括候选可重复采集，不代表视觉回归已批准。资料库快照 IPC 和列表到歌曲切换各保留一次预热后的 7 个渲染器计时样本，记录统计与环境，未设置产品耗时门槛。
+
+独立入口为 `npm run test:ci:baselines`，参考比较为 `npm run qa:compare-baselines`。批准流程、退出码、截图排除区域与测量边界见 [原生基线说明](../tests/baselines/README.md)。不自动接受新图，不以小夹具观测替代大库性能、正常动效、音频硬件或 MSIX 验收。
+
 ## NSIS 独立分发
 
 `npm run tauri:build` 生成当前用户 NSIS 包，WebView2 使用在线引导。保留的 `npm run tauri:build:store` 是旧 EXE 商店路线：自包含 WebView2、用户/全机安装、静默参数 `/S`。其预检改用 `npm run release:check:nsis`。
