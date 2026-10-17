@@ -33,6 +33,8 @@
 
 ## 验证
 
+生成大库的读取／扫描及前端搜索对照入口见 [性能观察与对照](performance.md)，不读取真实资料库；模型或后端测试不能替代原生界面性能。
+
 - 前端变化运行 `npm run build` 与 `npm test`，重点覆盖 `tests/legacyMigration.test.mjs`、`tests/diagnostics.test.mjs`、`tests/libraryWatcher.test.mjs` 与播放列表/固定项归一化测试。
 - Rust 变化运行 `cargo check`，迁移、取消与数据库行为补充并运行对应 `cargo test --lib` 测试。
 - 迁移必须覆盖失败时旧数据保留、备份写入失败、成功后重启不会重复导入；扫描覆盖取消后不提交部分结果与连续扫描不会相互覆盖。

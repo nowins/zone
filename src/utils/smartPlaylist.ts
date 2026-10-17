@@ -13,6 +13,8 @@ export type SmartPlaylistContext = {
   favoriteTrackIds: ReadonlySet<string>;
   activity: TrackActivityMap;
   now?: number;
+  /** Optional lookup built from the same track array for a batch of list resolutions. */
+  trackById?: ReadonlyMap<string, Track>;
 };
 
 export type SmartPlaylistResult = {
@@ -151,7 +153,7 @@ export function resolvePlaylistTracks(
   context: SmartPlaylistContext,
 ): SmartPlaylistResult {
   if (!isSmartPlaylist(playlist)) {
-    const trackMap = new Map(tracks.map((track) => [track.id, track]));
+    const trackMap = context.trackById ?? new Map(tracks.map((track) => [track.id, track]));
     const resolved = playlist.trackIds.map((id) => trackMap.get(id)).filter(Boolean) as Track[];
     return summarize(resolved, resolved.length, 0);
   }
