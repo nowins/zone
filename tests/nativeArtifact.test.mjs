@@ -39,18 +39,23 @@ test('generated audio fixture has a real bounded PCM WAV payload', async () => {
   assert.notEqual(bytes.readInt16LE(46), 0);
 });
 
-test('version command updates the tracked application lock entry in an isolated project', async () => {
+test('version command updates and validates the tracked lock entry with LF and CRLF', async () => {
   const parent = resolve('.tmp/ci-artifact-guard'); await mkdir(parent, { recursive: true });
-  const project = await mkdtemp(join(parent, 'version-'));
-  for (const file of ['package.json', 'package-lock.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock',
-    'src-tauri/tauri.conf.json', 'src/app/releaseInfo.ts', 'packaging/check-version.mjs']) {
-    const target = join(project, file); await mkdir(dirname(target), { recursive: true });
-    await copyFile(resolve(file), target);
+  for (const newline of ['\n', '\r\n']) {
+    const project = await mkdtemp(join(parent, 'version-'));
+    for (const file of ['package.json', 'package-lock.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock',
+      'src-tauri/tauri.conf.json', 'src/app/releaseInfo.ts', 'packaging/check-version.mjs']) {
+      const target = join(project, file); await mkdir(dirname(target), { recursive: true });
+      await copyFile(resolve(file), target);
+    }
+    const lockPath = join(project, 'src-tauri/Cargo.lock');
+    const original = await readFile(lockPath, 'utf8');
+    await writeFile(lockPath, original.replace(/\r?\n/g, newline));
+    execFileSync(process.execPath, [join(project, 'packaging/check-version.mjs'), '--set', '1.0.1']);
+    assert.match(await readFile(lockPath, 'utf8'), /name = "zone-player"\r?\nversion = "1\.0\.1"/);
+    execFileSync(process.execPath, [join(project, 'packaging/check-version.mjs')]);
+    const lock = await readFile(lockPath, 'utf8');
+    await writeFile(lockPath, lock.replace(/(name = "zone-player"\r?\nversion = )"1\.0\.1"/, '$1"1.0.2"'));
+    assert.throws(() => execFileSync(process.execPath, [join(project, 'packaging/check-version.mjs')], { stdio: 'pipe' }));
   }
-  execFileSync(process.execPath, [join(project, 'packaging/check-version.mjs'), '--set', '1.0.1']);
-  assert.match(await readFile(join(project, 'src-tauri/Cargo.lock'), 'utf8'), /name = "zone-player"\nversion = "1\.0\.1"/);
-  execFileSync(process.execPath, [join(project, 'packaging/check-version.mjs')]);
-  const lock = await readFile(join(project, 'src-tauri/Cargo.lock'), 'utf8');
-  await writeFile(join(project, 'src-tauri/Cargo.lock'), lock.replace('name = "zone-player"\nversion = "1.0.1"', 'name = "zone-player"\nversion = "1.0.2"'));
-  assert.throws(() => execFileSync(process.execPath, [join(project, 'packaging/check-version.mjs')], { stdio: 'pipe' }));
 });

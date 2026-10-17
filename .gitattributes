@@ -1,0 +1,4 @@
+# Keep generated dependency and license snapshots byte-stable on Windows runners.
+src-tauri/Cargo.lock text eol=lf
+packaging/THIRD_PARTY_NOTICES.txt text eol=lf
+packaging/licenses/** text eol=lf
