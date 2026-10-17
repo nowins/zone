@@ -10,6 +10,7 @@
 - 音乐启动恢复保持暂停，显式播放、切歌与自然续播才建立播放意图；SmartDJ 启动恢复只恢复队列和推荐会话，不抢占播客。音乐位置写入 `zone.sqlite` 已有的 `music_playback_state.position_ms`，播放中每 5 秒及状态变化后保存；元数据就绪后恢复位置，超出实际时长或已接近结尾时从头开始。
 - `usePodcastPlayback.ts` 通过 `podcastTransport.ts` 暴露产品状态与语义方法。播客自然结束委托 `handleEpisodeEnded`，待播消费以对应音源实际开始为准；守卫统一复用 `src/utils/playbackTransport.ts`。
 - Web Audio 图由 `useAudioEngine.ts` 持有，通过 `AudioEngineHandle` 接入播放控制。跨 hook 共享 ref/state 只创建一次，沿 App 的单向传参和 late-bound ref 接线；修改组合关系先读 [架构地图](architecture.md)。
+- 音乐仍在播放且主音频未暂停时，窗口焦点、页面恢复和可见性恢复会尝试恢复已挂起的现有 AudioContext；不调用 `audio.play()`，不重建媒体源，减少动态效果和小屏不阻断此恢复。播客继续由自己的恢复门闩先核对睡眠截止时间。并发图恢复合并为一次，失败记录结构化诊断并允许后续重试，不产生未处理的 Promise 拒绝。确定性测试见 `tests/audioEngineRecovery.test.mjs`；这不代表真实设备拔插或 Windows 休眠已经验收。
 
 ## 音频分析与 Canvas 生命周期
 
