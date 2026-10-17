@@ -12,6 +12,8 @@
 - 稳定区域从收藏工具栏到第二首歌曲下方，排除原生窗口控件、播放条、封面与动态频谱。保留完整截图用于定位，裁剪图用于比较；不靠隐藏功能性文字或注入假音频稳定画面。
 - 每个尺寸重复采集两次，像素必须完全一致才标记 `captureStatus=repeatable`。这只证明本次候选可重复，`visualReview` 仍为 `pending`，不能称为视觉回归已通过。
 
+runner 桌面可能小于默认窗口。若桌面最大跟踪尺寸收窄了目标客户区，只对已核对的 CI 窗口采用 `SWP_NOSENDCHANGING` 保留离屏客户区，仍以真实 DOM 尺寸和截图边界核实；报告记录 `desktopOverflow`／`desktopTrackingOverride`。这验证窗口布局和完整客户区捕获，不代表该小桌面的全部可见性或操作体验，不修改桌面分辨率。相关行为见 [WM_WINDOWPOSCHANGING](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-windowposchanging) 与 [SetWindowPos](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos)。
+
 ## 性能口径
 
 在同一暂停小夹具上，排除一次预热后各取 7 个样本：正式 `music_get_library_snapshot` 的渲染器往返；从播放列表 DOM 点击到两首歌曲出现并经过两帧。计时在 WebView2 内使用 `performance.now`，不含 WebDriver HTTP 延迟。记录原始样本、数量、中位数、p95、min/max、OS、CPU、内存、runner 镜像、WebView2 UA、DPI 和字体度量。
