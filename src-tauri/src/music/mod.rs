@@ -8,6 +8,8 @@ mod radio;
 mod store;
 mod types;
 mod worker;
+#[cfg(test)]
+mod performance_observation;
 
 pub(crate) use commands::*;
 pub(crate) use features::*;
