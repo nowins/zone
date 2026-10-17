@@ -24,11 +24,7 @@ config.build.frontendDist=path.relative(workspace,path.join(root,'dist')).replac
 delete config.build.devUrl;
 config.bundle.resources={[path.join(root,'packaging','THIRD_PARTY_NOTICES.txt')]:'THIRD_PARTY_NOTICES.txt'};
 await fs.writeFile(path.join(workspace,'tauri.conf.json'),JSON.stringify(config,null,2));
-// Native shell integration must not replace the user's installed Zone shortcut.
-const mediaModule=path.join(workspace,'src','system_media','windows_impl','mod.rs');
-await fs.writeFile(mediaModule,replaceOnce(await fs.readFile(mediaModule,'utf8'),'const APP_USER_MODEL_ID: &str = "com.zone.player";',`const APP_USER_MODEL_ID: &str = "${config.identifier}";`));
-const identityModule=path.join(workspace,'src','system_media','windows_impl','identity.rs');
-await fs.writeFile(identityModule,replaceOnce(await fs.readFile(identityModule,'utf8'),'shortcut_directory.join("Zone.lnk")','shortcut_directory.join("Zone Podcast Client Review.lnk")'));
+// Shell integration derives its namespace from this isolated Tauri configuration.
 await fs.copyFile(path.join(root,'tests','native','podcastClient.rs'),path.join(workspace,'src','podcastClient.rs'));
 const manifest=path.join(workspace,'Cargo.toml');await fs.writeFile(manifest,(await fs.readFile(manifest,'utf8')).replace('[dependencies]','[dependencies]\nwebview2-com = "0.38.2"'));
 const lib=path.join(workspace,'src','lib.rs');let source=await fs.readFile(lib,'utf8');

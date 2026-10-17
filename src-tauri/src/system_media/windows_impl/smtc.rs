@@ -1,7 +1,7 @@
-use super::{emit_command, SystemMediaCommand, APP_USER_MODEL_ID};
+use super::{emit_command, SystemMediaCommand};
 use crate::system_media::SystemMediaState;
 use tauri::{AppHandle, Emitter};
-use windows::core::{factory, HSTRING, Result as WindowsResult};
+use windows::core::{factory, Result as WindowsResult, HSTRING};
 use windows::Foundation::{TimeSpan, TypedEventHandler};
 use windows::Media::{
     MediaPlaybackStatus, MediaPlaybackType, PlaybackPositionChangeRequestedEventArgs,
@@ -18,9 +18,8 @@ pub(super) fn initialize_system_media(
     app: &AppHandle,
     hwnd: HWND,
 ) -> Result<SystemMediaTransportControls, String> {
-    let interop =
-        factory::<SystemMediaTransportControls, ISystemMediaTransportControlsInterop>()
-            .map_err(|error| error.to_string())?;
+    let interop = factory::<SystemMediaTransportControls, ISystemMediaTransportControlsInterop>()
+        .map_err(|error| error.to_string())?;
     let controls: SystemMediaTransportControls =
         unsafe { interop.GetForWindow(hwnd) }.map_err(|error| error.to_string())?;
 
@@ -78,6 +77,7 @@ pub(super) fn update_system_media_state(
     controls: &SystemMediaTransportControls,
     state: &SystemMediaState,
     metadata_changed: bool,
+    identifier: &str,
 ) -> WindowsResult<()> {
     let has_track = state.track.is_some();
     controls.SetIsEnabled(has_track)?;
@@ -100,7 +100,7 @@ pub(super) fn update_system_media_state(
 
     let updater = controls.DisplayUpdater()?;
     updater.ClearAll()?;
-    updater.SetAppMediaId(&HSTRING::from(APP_USER_MODEL_ID))?;
+    updater.SetAppMediaId(&HSTRING::from(identifier))?;
     if let Some(track) = &state.track {
         updater.SetType(MediaPlaybackType::Music)?;
         let music = updater.MusicProperties()?;

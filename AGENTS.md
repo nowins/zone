@@ -19,6 +19,7 @@ Zone 是受 Microsoft Zune 4.8 启发的本地音乐播放器，使用 Tauri 2 +
 | 组件、页面、磁贴、文案或视觉样式 | [组件与设计规范](design/component-guidelines.md) |
 | 动效、页面导航、Presence、FLIP 或 reduced-motion | [动效系统](design/motion-system.md) |
 | 安装器、MSIX、商店、图标或发布配置 | [安装与发布](packaging/README.md) |
+| 风险选测、回归矩阵、CI 产物或故障验证 | [Zone QA 技能](.agents/skills/zone-qa/SKILL.md) 与 [产物测试](packaging/README.md#github-ci-与原生产物测试) |
 
 ## 全项目约束
 
@@ -70,6 +71,6 @@ Zone 是受 Microsoft Zune 4.8 启发的本地音乐播放器，使用 Tauri 2 +
 - 根目录保持简明；专题规则在 `design/engineering/`，界面/动效规范在 `design/`，发布在 `packaging/README.md`，均纳入版本控制。保持每条详细规则有明确归属，根目录仅作必要摘要。
 - 文档记录长期行为边界与定位入口，不复制易失效的文件行数、命令数量或完整源码。参数表标明事实源，调整时同步对应专题；修复经过和截图放在本地记录，不自动升级为永久禁令。
 - `docs/` 是被忽略的本地探索与视觉证据，其他 checkout 不保证存在。可参考其中已有资料，但必需规则和验证步骤不能只放在那里。
-- `.tmp/` 是被忽略的测试/临时产物目录，不将其中生成文件作为正式源码修改或提交。`Cargo.lock` 按仓库现有 `.gitignore` 不提交。
+- `.tmp/` 是被忽略的测试/临时产物目录，不将其中生成文件作为正式源码修改或提交。应用的 `src-tauri/Cargo.lock` 纳入版本控制；CI 与原生构建使用 `--locked`，依赖更新须同步许可清单并验证。
 - 图标事实源是根目录 `app-icon.png`，修改后 `npx tauri icon` 生成 `src-tauri/icons/`；MSIX 资产在 `packaging/Assets/`。
 - 修改结构、命令、约定或数据流时更新所属文档；只有全局规则或入口改变才同步根目录，不在多个文件重复维护同一细节。

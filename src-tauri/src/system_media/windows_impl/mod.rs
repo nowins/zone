@@ -21,7 +21,6 @@ const TASKBAR_PREVIOUS_ID: u32 = 0x5A01;
 const TASKBAR_PLAY_PAUSE_ID: u32 = 0x5A02;
 const TASKBAR_NEXT_ID: u32 = 0x5A03;
 const TASKBAR_FAVORITE_ID: u32 = 0x5A04;
-const APP_USER_MODEL_ID: &str = "com.zone.player";
 const PKEY_APP_USER_MODEL_ID: PROPERTYKEY = PROPERTYKEY {
     fmtid: GUID::from_u128(0x9f4c2855_9f79_4b39_a8d0_e1d42de1d5f3),
     pid: 5,
@@ -98,15 +97,16 @@ impl TaskbarIntegration {
     fn update(&self, state: SystemMediaState) -> Result<(), String> {
         let preview_changed = self.taskbar.apply_state(&state);
         taskbar::schedule_taskbar_refresh(self.hwnd, self.taskbar.clone(), preview_changed);
-        smtc::update_system_media_state(&self.system_media, &state, preview_changed)
-            .map_err(|error| error.to_string())
+        smtc::update_system_media_state(
+            &self.system_media,
+            &state,
+            preview_changed,
+            &self.taskbar.app.config().identifier,
+        )
+        .map_err(|error| error.to_string())
     }
 
-    fn update_timeline(
-        &self,
-        duration_seconds: f64,
-        position_seconds: f64,
-    ) -> Result<(), String> {
+    fn update_timeline(&self, duration_seconds: f64, position_seconds: f64) -> Result<(), String> {
         smtc::update_system_media_timeline(&self.system_media, duration_seconds, position_seconds)
             .map_err(|error| error.to_string())
     }
@@ -114,15 +114,13 @@ impl TaskbarIntegration {
 
 impl TaskbarData {
     fn install(app: AppHandle, hwnd: HWND) -> Result<Arc<Self>, String> {
-        let taskbar_created_message =
-            unsafe { RegisterWindowMessageW(w!("TaskbarButtonCreated")) };
+        let taskbar_created_message = unsafe { RegisterWindowMessageW(w!("TaskbarButtonCreated")) };
         if taskbar_created_message == 0 {
             return Err("RegisterWindowMessageW failed".into());
         }
 
         let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
-        let icon_size =
-            unsafe { GetSystemMetricsForDpi(SM_CXSMICON, dpi) }.clamp(16, 64) as u32;
+        let icon_size = unsafe { GetSystemMetricsForDpi(SM_CXSMICON, dpi) }.clamp(16, 64) as u32;
         let data = Arc::new(Self {
             app,
             taskbar_created_message,
@@ -213,10 +211,10 @@ impl TaskbarData {
     }
 }
 
-pub fn set_process_app_id() -> Result<(), String> {
-    unsafe { SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(APP_USER_MODEL_ID)) }
+pub fn set_process_app_id(identifier: &str, product_name: &str) -> Result<(), String> {
+    unsafe { SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(identifier)) }
         .map_err(|error| error.to_string())?;
-    identity::register_app_identity()
+    identity::register_app_identity(identifier, product_name)
 }
 
 pub fn initialize(app: AppHandle, hwnd: isize) -> Result<(), String> {

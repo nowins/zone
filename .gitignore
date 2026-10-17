@@ -42,8 +42,7 @@ src-tauri/release/
 src-tauri/debug/
 
 # Rust 依赖缓存
-Cargo.lock
-# 注：如果是库项目建议提交 Cargo.lock，二进制应用可忽略
+# The application lockfile is tracked so CI and release builds resolve the same dependencies.
 
 # Tauri 临时文件
 src-tauri/.tauri/

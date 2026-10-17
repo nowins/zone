@@ -1,0 +1,214 @@
+name: Windows CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      faults:
+        description: Run isolated native persistence fault checks
+        type: boolean
+        default: false
+  schedule:
+    - cron: "0 2 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-checks:
+    name: Windows build and tests
+    runs-on: windows-2022
+    timeout-minutes: 60
+    outputs:
+      artifact-id: ${{ steps.artifact.outputs.artifact-id }}
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: "1"
+      RUSTUP_TOOLCHAIN: stable-x86_64-pc-windows-msvc
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Prepare diagnostic directory
+        run: New-Item -ItemType Directory -Force .tmp/ci-logs | Out-Null
+
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "^24.15.0"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install npm dependencies
+        timeout-minutes: 10
+        run: npm ci --engine-strict --no-audit --no-fund
+
+      - name: Build frontend
+        timeout-minutes: 10
+        run: |
+          npm run build 2>&1 | Tee-Object .tmp/ci-logs/frontend-build.log
+          exit $LASTEXITCODE
+
+      - name: Run Node.js regression tests
+        timeout-minutes: 10
+        run: |
+          npm test 2>&1 | Tee-Object .tmp/ci-logs/frontend-tests.log
+          exit $LASTEXITCODE
+
+      - name: Install stable Rust MSVC toolchain
+        timeout-minutes: 10
+        run: rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
+
+      - name: Cache Cargo dependencies and build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check Rust compilation
+        timeout-minutes: 25
+        working-directory: src-tauri
+        run: |
+          cargo check --locked 2>&1 | Tee-Object ../.tmp/ci-logs/cargo-check.log
+          exit $LASTEXITCODE
+
+      # Live-network and external audio-fixture tests remain ignored by default.
+      - name: Run Rust unit tests
+        timeout-minutes: 25
+        working-directory: src-tauri
+        run: |
+          cargo test --locked --lib 2>&1 | Tee-Object ../.tmp/ci-logs/cargo-tests.log
+          exit $LASTEXITCODE
+
+      - name: Build native release artifact
+        id: native
+        timeout-minutes: 25
+        run: npm run build:ci:native
+
+      - name: Verify dependency and license files stayed unchanged
+        run: git diff --exit-code -- src-tauri/Cargo.lock packaging/THIRD_PARTY_NOTICES.txt
+
+      - name: Set up matching signed Edge WebDriver
+        id: webdriver
+        timeout-minutes: 5
+        run: ./scripts/ci/setup-webdriver.ps1
+
+      - name: Test this native artifact
+        timeout-minutes: 10
+        run: >-
+          node tests/run-native-artifact.mjs
+          --baselines
+          --manifest "${{ steps.native.outputs.manifest }}"
+          --driver "${{ steps.webdriver.outputs.driver }}"
+          --report .tmp/ci-artifact-smoke
+
+      - name: Compare an explicitly reviewed visual reference when present
+        run: |
+          $reference = 'tests/baselines/approved/reference.json'
+          if (Test-Path -LiteralPath $reference) {
+            node scripts/qa/compare-native-baselines.mjs --candidate .tmp/ci-artifact-smoke/baselines/result.json --reference $reference --output .tmp/ci-artifact-smoke/baselines/comparison
+            exit $LASTEXITCODE
+          }
+          'Visual candidates captured; reference review pending. Performance is observational; no product budget approved.' >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload native executable
+        id: artifact
+        if: ${{ !cancelled() && steps.native.outcome == 'success' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: zone-windows-x64-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ steps.native.outputs.artifact }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload build and smoke diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: windows-diagnostics-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            .tmp/ci-logs/
+            .tmp/ci-native/*/native-build.log
+            .tmp/ci-tools/webdriver.json
+            .tmp/ci-artifact-smoke/*.json
+            .tmp/ci-artifact-smoke/*.log
+            .tmp/ci-artifact-smoke/*.png
+            .tmp/ci-artifact-smoke/failure.html
+            .tmp/ci-artifact-smoke/baselines/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Link downloadable artifact
+        if: ${{ !cancelled() && steps.artifact.outputs.artifact-url != '' }}
+        run: |
+          "Native artifact: ${{ steps.artifact.outputs.artifact-url }}" >> $env:GITHUB_STEP_SUMMARY
+
+  native-faults:
+    name: Isolated native persistence faults
+    needs: windows-checks
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'schedule' || inputs.faults == true }}
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out tested source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js 24 LTS
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "^24.15.0"
+
+      - name: Download the exact native build artifact
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.windows-checks.outputs.artifact-id }}
+          path: .tmp/ci-fault-artifact
+          merge-multiple: true
+
+      - name: Set up matching signed Edge WebDriver
+        id: webdriver
+        timeout-minutes: 5
+        run: ./scripts/ci/setup-webdriver.ps1
+
+      - name: Verify write failure and recovery on this executable
+        timeout-minutes: 8
+        run: >-
+          node tests/run-native-artifact.mjs --faults
+          --manifest .tmp/ci-fault-artifact/build-info.json
+          --driver "${{ steps.webdriver.outputs.driver }}"
+          --report .tmp/ci-fault-smoke
+
+      - name: Upload fault diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: native-fault-diagnostics-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            .tmp/ci-fault-smoke/*.json
+            .tmp/ci-fault-smoke/*.log
+            .tmp/ci-fault-smoke/*.png
+            .tmp/ci-fault-smoke/failure.html
+          if-no-files-found: warn
+          retention-days: 7
