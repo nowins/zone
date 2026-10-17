@@ -19,11 +19,11 @@ cargo test --lib
 
 ### Windows CI
 
-[Windows CI](.github/workflows/windows-ci.yml) 在面向 `main` 的 PR、`main` 提交及手动触发时运行。使用 `windows-2022`、Node.js 24 LTS（至少 24.15.0）和 stable x64 Rust/MSVC，依次执行 `npm ci`、`npm run build`、`npm test`、`cargo check --locked` 与 `cargo test --locked --lib`，失败即停止。
+[Windows CI](.github/workflows/windows-ci.yml) 在面向 `main` 的 PR、`main` 提交及手动触发时运行。保留前端构建、Node 回归和 Rust 检查／单测，再构建真正的 Tauri release exe，并对这个 exe 执行真实 WebView2、原生命令、SQLite 和重启恢复 smoke。
 
-npm 下载缓存按 `package-lock.json` 区分，仍通过 `npm ci --engine-strict` 安装；Cargo 缓存包含依赖与 `src-tauri/target`，按工具链及依赖配置区分，仅主分支成功运行保存 Cargo 缓存，PR 可恢复已有缓存。仓库按现有约定不提交 `Cargo.lock`，CI 在缓存恢复前生成锁文件，再用 `--locked` 保证本次编译检查与测试共用同一依赖解析；不同运行之间仍可能解析到新版本。整个任务最多 45 分钟，各检查另设超时，同一 PR 或分支的新运行会取消旧运行。
+npm 与 Rust 依赖分别由已提交的 `package-lock.json` 和 `src-tauri/Cargo.lock` 固定，后者使干净 runner 的原生依赖和许可清单不随运行漂移。使用 Windows Server 2022、Node.js 24 LTS（至少 24.15.0）和 stable x64 Rust/MSVC，权限仅 `contents: read`；缓存按锁文件区分，仅主分支成功运行保存 Cargo 缓存。同一 PR／分支自动取消旧运行，总超时 60 分钟。exe、构建信息和诊断 artifact 保留 7 天。
 
-自动检查覆盖 TypeScript/Vite 构建、现有 Node 回归测试和 Rust 默认单元测试。真实 Windows 桌面验收仍需运行 `npm run tauri:dev`，检查触控/长按菜单、音量滑动、进度预览、磁贴拖动与动效、键盘焦点、减少动态效果及默认/最小窗口；真实音频播放、原生协议、系统媒体控制与设备行为也需桌面验证。已有客户端 smoke、真实网络及音频 fixture 测试按各测试源码显式运行，CI 不自动启用忽略测试。MSIX/Hyper-V 生命周期验证继续走原发布流程，CI 不签名、打包或发布。
+产物采用独立 CI 身份和生成的 WAV 夹具，不访问真实曲库；自动检查扫描、歌曲显示、本地音频 Range、喜欢／列表保存、正常退出与新进程恢复。失败保存截图、页面、驱动日志和结构化结果。可听音频、设备切换、休眠、完整交互／动效及客户端安装升级仍需专门矩阵，不能由托管 Windows Server runner 代替。CI 不签名或发布，详见[产物测试与验证边界](packaging/README.md#github-ci-与原生产物测试)。
 
 ## 安装与发布
 

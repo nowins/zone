@@ -6,6 +6,8 @@
 
 版本事实源为 `package.json`、锁文件、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` 和 `src/app/releaseInfo.ts`。使用 `npm run version:set -- 1.0.1` 统一更新；构建与测试检查一致性。MSIX 打包时将三段版本映射为四段 `1.0.1.0`，第四段保留为零；商店版本第一段必须非零，各段不得超过 65535。
 
+应用的 `src-tauri/Cargo.lock` 与 npm 锁文件都纳入版本控制，原生 CI／构建使用 `--locked`。依赖更新须显式更新锁文件、运行 `npm run notices:generate` 核对许可变化，再完成检查与产物 smoke；不能通过删除锁文件或跳过许可检查让构建通过。`version:set` 同步锁文件中应用自身的版本。
+
 正式发布机通过环境变量配置：
 
 | 变量 | 内容 |
@@ -59,6 +61,22 @@ npm run test:msix:hyperv -- -Config .tmp/msix-hyperv-config/matrix.json -Baselin
 - 卸载，检查包注册、开始菜单入口和包内测试标记清理，原始 WAV 源文件保持不变。
 
 还原后自动启动处于关机或已保存状态的虚拟机，暂停状态则恢复运行；不支持的状态明确失败，启动前再次核对专用标记。测试结束关闭专用虚拟机，报告写入忽略的 `.tmp/msix-hyperv/`；失败、超时或未执行流程均不能标成通过。这套生命周期检查不替代真实播放、数据库语义迁移、无 WebView2 环境以及商店服务端更新测试。MSIX 更新保留包内数据；正常卸载会清理包内应用数据，媒体源文件不属于应用包。用户需知晓收藏、设置等卸载语义；不通过卸载脚本额外清理媒体或宿主机数据库。
+
+## GitHub CI 与原生产物测试
+
+`.github/workflows/windows-ci.yml` 复用同一 Windows 工作流，检查 PR 的准确 head SHA 或被推送的 SHA。基础检查后，`npm run build:ci:native` 从现有 Tauri 配置仅覆盖独立 CI 身份／名称并执行 release `--no-bundle` 构建；不改 CSP、capabilities 或原生代码，不增加测试命令和生产后门。每次身份为 `com.zone.player.ci.run-*`，与真实应用和商店验证包隔离。
+
+构建输出在忽略的 `.tmp/ci-native/`，artifact 包含真正的 `zone-player.exe`、第三方许可、锁文件和 `build-info.json`（来源 SHA、版本、身份及 exe SHA256）。这是需要 Windows x64 与 WebView2 的未签名测试程序，不是安装包或正式发布。工作流只需 `contents: read`，不使用发布凭据；Actions 固定完整 SHA，缓存按锁文件／工具链区分，Cargo 缓存仅主分支成功运行保存。旧运行自动取消，步骤和总任务均有限时；可下载 exe 和诊断 artifact 保留 7 天，状态以 smoke 结果为准，失败构建不复用旧 exe。
+
+`scripts/ci/setup-webdriver.ps1` 检测已安装的 WebView2，复用或从微软下载版本匹配的 Edge WebDriver，并验证微软签名。不安装或更新系统浏览器。`npm run test:ci:artifact` 直接以 WebDriver 启动本次 exe；测试前校验 hash、内嵌 CI 身份并拒绝已有测试资料目录，不能指向正常应用。测试期间使用专用 WebView2 profile 和两个生成的真实 PCM WAV 文件，原生数据库位于该 CI 身份的应用数据目录；测试不删除或扫描用户曲库，也不自动清理其他身份目录。
+
+自动流程包括：空库启动；调用正式扫描命令并显示两首夹具歌曲；通过正式本地音频协议读取 Range；从真实界面喜欢歌曲和创建列表；确认写入 SQLite；通过真实窗口关闭控件退出并核实进程结束；重新启动同一 exe，核对歌曲、喜欢、列表和关闭偏好。没有 mock IPC、替换前端或注入额外 Rust 测试宿主。失败尽量保存截图、HTML、驱动日志及 `result.json`，结果绑定来源和 exe hash，WebView2 profile 不上传。
+
+本地复现：先运行 `npm run build:ci:native`，再运行 `./scripts/ci/setup-webdriver.ps1` 和 `npm run test:ci:artifact`。需要可交互的 Windows 桌面；普通实例可以保持运行。若正常 release exe 正被使用，可给构建命令设置独立 `CARGO_TARGET_DIR`，不要结束用户应用。重跑 smoke 前重新构建会获得新身份；已有测试数据保留供诊断。
+
+该 smoke 不证明扬声器可听输出、蓝牙／耳机切换、休眠恢复、SMTC 全矩阵、长时资源稳定性、全部键盘／动效、缺失 WebView2 或 MSIX 安装升级。后者继续使用下文的 Windows 10/11 客户端 Hyper-V 矩阵和硬件验收。正式发布仍须完整依赖审计、真实商店配置及发布守卫，不把 CI 通过当作商店发布批准。
+
+依据：[微软 WebView2 WebDriver](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/webdriver)、[WebView2 driver 配置](https://learn.microsoft.com/en-us/microsoft-edge/webdriver/capabilities-edge-options)。
 
 ## NSIS 独立分发
 
