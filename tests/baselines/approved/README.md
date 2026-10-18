@@ -9,6 +9,7 @@
 - EXE SHA-256：`e7cbe595c31c95a714e800595d8ffed2bead36d421eacade446644de8d873655`。
 - 原始 `result.json` SHA-256：`7d972e0a88c7558e0c7856afadffda9a7d9e5de5d756796720858af8f4d14d45`。
 - 候选 JSON 和全部 PNG 保留原始字节；`result.json` 的 `visualReview=pending` 是采集时状态，不改写历史证据。当前人工批准记录位于 `reference.json`。
+- `.gitattributes` 为 `result.json` 关闭文本换行转换，确保 Windows 的 `core.autocrlf` 不改变已批准文件的 SHA-256。首次 PR CI 因 LF 被检出为 CRLF 而被哈希守卫拒绝；修复仅固定检出字节，不更新候选、批准哈希或像素容差。
 
 | 场景 | 比较区域 | PNG SHA-256 |
 | --- | --- | --- |
