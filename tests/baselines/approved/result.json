@@ -1,0 +1,283 @@
+{
+  "format": "ZoneNativeBaseline",
+  "version": 1,
+  "artifactSourceSha": "64bd1a427408fc6a543aca3e86b03415cab868ee",
+  "executableSha256": "e7cbe595c31c95a714e800595d8ffed2bead36d421eacade446644de8d873655",
+  "identifier": "com.zone.player.ci.run-39079355797-1-2575b31c",
+  "captureStatus": "repeatable",
+  "visualReview": "pending",
+  "performanceVerdict": "observed",
+  "generatedAt": "2026-10-17T23:41:35.542Z",
+  "scenes": [
+    {
+      "id": "songs-1180x760",
+      "image": "songs-1180x760.png",
+      "sha256": "2ec1eb8cb8271f74aac4783e48264f9e9bfaabbf7fa53f600b56fcf5145bc2dd",
+      "viewport": {
+        "crop": {
+          "height": 210,
+          "width": 1108,
+          "x": 36,
+          "y": 84
+        },
+        "dpr": 1,
+        "favorites": [
+          "CI Sample One"
+        ],
+        "fonts": {
+          "body": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", \"Microsoft YaHei\", sans-serif",
+          "metrics": [
+            [
+              "Segoe UI",
+              174.4052734375
+            ],
+            [
+              "Microsoft YaHei UI",
+              184.6796875
+            ]
+          ]
+        },
+        "height": 760,
+        "reducedMotion": true,
+        "rows": [
+          "CI Sample One",
+          "CI Sample Two"
+        ],
+        "screen": {
+          "height": 768,
+          "width": 1024
+        },
+        "theme": "light",
+        "width": 1180
+      },
+      "repetition": {
+        "changedRatio": 0,
+        "meanChannelDelta": 0,
+        "width": 1108,
+        "maxChannelDelta": 0,
+        "changedPixels": 0,
+        "height": 210
+      },
+      "nativeWindow": {
+        "dpi": 96,
+        "desktopOverflow": true,
+        "requestedClient": {
+          "height": 760,
+          "width": 1180
+        },
+        "desktopTrackingOverride": false,
+        "pid": 5716
+      }
+    },
+    {
+      "id": "songs-920x620",
+      "image": "songs-920x620.png",
+      "sha256": "9fe780347372371a7a244e0c1e8048ec79a884b1f41091f175a1ee2ee4c351cb",
+      "viewport": {
+        "crop": {
+          "height": 210,
+          "width": 864,
+          "x": 28,
+          "y": 84
+        },
+        "dpr": 1,
+        "favorites": [
+          "CI Sample One"
+        ],
+        "fonts": {
+          "body": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", \"Microsoft YaHei\", sans-serif",
+          "metrics": [
+            [
+              "Segoe UI",
+              174.4052734375
+            ],
+            [
+              "Microsoft YaHei UI",
+              184.6796875
+            ]
+          ]
+        },
+        "height": 620,
+        "reducedMotion": true,
+        "rows": [
+          "CI Sample One",
+          "CI Sample Two"
+        ],
+        "screen": {
+          "height": 768,
+          "width": 1024
+        },
+        "theme": "light",
+        "width": 920
+      },
+      "repetition": {
+        "changedRatio": 0,
+        "meanChannelDelta": 0,
+        "width": 864,
+        "maxChannelDelta": 0,
+        "changedPixels": 0,
+        "height": 210
+      },
+      "nativeWindow": {
+        "dpi": 96,
+        "desktopOverflow": false,
+        "requestedClient": {
+          "height": 620,
+          "width": 920
+        },
+        "desktopTrackingOverride": false,
+        "pid": 5716
+      }
+    }
+  ],
+  "measurements": {
+    "snapshotIpc": {
+      "unit": "ms",
+      "samples": [
+        6.299999999930151,
+        6.300000000046566,
+        6.400000000023283,
+        6.599999999976717,
+        6.300000000046566,
+        9.599999999976717,
+        10.399999999906868
+      ],
+      "count": 7,
+      "median": 6.400000000023283,
+      "p95": 10.399999999906868,
+      "min": 6.299999999930151,
+      "max": 10.399999999906868,
+      "verdict": "observed",
+      "threshold": null,
+      "warmupExcluded": 1,
+      "scope": "Official native snapshot IPC for two generated tracks; renderer round-trip"
+    },
+    "playlistToSongs": {
+      "unit": "ms",
+      "samples": [
+        45.40000000002328,
+        47,
+        46,
+        47.39999999990687,
+        46.20000000006985,
+        46.89999999990687,
+        48.29999999993015
+      ],
+      "count": 7,
+      "median": 46.89999999990687,
+      "p95": 48.29999999993015,
+      "min": 45.40000000002328,
+      "max": 48.29999999993015,
+      "verdict": "observed",
+      "threshold": null,
+      "warmupExcluded": 1,
+      "scope": "Renderer DOM click from playlist list to two song rows, readiness plus two frames; reduced motion"
+    }
+  },
+  "limits": [
+    "Two generated WAV files; no artwork, large-library, cold-start, audible-output or normal-motion claims.",
+    "UI timings use renderer performance.now through readiness plus two animation frames; no WebDriver transport time.",
+    "No approved visual reference or calibrated performance budget is created automatically."
+  ],
+  "performanceContext": {
+    "viewport": {
+      "dpr": 1,
+      "height": 760,
+      "width": 1180
+    },
+    "reducedMotion": true,
+    "warmupExcluded": 1,
+    "nativeWindow": {
+      "dpi": 96,
+      "desktopOverflow": true,
+      "requestedClient": {
+        "height": 760,
+        "width": 1180
+      },
+      "desktopTrackingOverride": false,
+      "pid": 5716
+    }
+  },
+  "compatibility": {
+    "fixture": {
+      "version": 1,
+      "audioHashes": [
+        "94b6d98f31921cdd142465df502ff491c37b19d03023d8c3a1b332eceb6bf2fe",
+        "94b6d98f31921cdd142465df502ff491c37b19d03023d8c3a1b332eceb6bf2fe"
+      ],
+      "tracks": [
+        "CI Sample One",
+        "CI Sample Two"
+      ],
+      "favorite": "CI Sample One"
+    },
+    "renderer": {
+      "os": "10.0.20348",
+      "architecture": "x64",
+      "runnerImage": "win22",
+      "imageVersion": "20261012.333.1",
+      "browserVersion": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+      "cpu": "AMD EPYC 7763 64-Core Processor                "
+    },
+    "viewports": [
+      {
+        "dpr": 1,
+        "fonts": {
+          "body": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", \"Microsoft YaHei\", sans-serif",
+          "metrics": [
+            [
+              "Segoe UI",
+              174.4052734375
+            ],
+            [
+              "Microsoft YaHei UI",
+              184.6796875
+            ]
+          ]
+        },
+        "height": 760,
+        "reducedMotion": true,
+        "screen": {
+          "height": 768,
+          "width": 1024
+        },
+        "theme": "light",
+        "width": 1180
+      },
+      {
+        "dpr": 1,
+        "fonts": {
+          "body": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei UI\", \"Microsoft YaHei\", sans-serif",
+          "metrics": [
+            [
+              "Segoe UI",
+              174.4052734375
+            ],
+            [
+              "Microsoft YaHei UI",
+              184.6796875
+            ]
+          ]
+        },
+        "height": 620,
+        "reducedMotion": true,
+        "screen": {
+          "height": 768,
+          "width": 1024
+        },
+        "theme": "light",
+        "width": 920
+      }
+    ]
+  },
+  "environment": {
+    "os": "10.0.20348",
+    "architecture": "x64",
+    "cpu": "AMD EPYC 7763 64-Core Processor                ",
+    "memoryBytes": 17174360064,
+    "runnerImage": "win22",
+    "imageVersion": "20261012.333.1",
+    "browserVersion": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
+  },
+  "compatibilitySha256": "410a1cb6d4b820f6610b3949bd5f52d9c04baa29f0842d02749d21078d55a28d"
+}

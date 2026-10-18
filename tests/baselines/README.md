@@ -37,7 +37,7 @@ runner 桌面可能小于默认窗口。若桌面最大跟踪尺寸收窄了目�
 }
 ```
 
-比较前核对已审阅 JSON 与 PNG 的实际哈希；输出不得写进参考目录。OS、镜像、WebView2、字体、DPI、主题、窗口或夹具变化时报告 incompatible，不能把渲染环境漂移算成产品回归或直接接受新图；同环境下区域几何或像素变化按已批准容差比较。当前没有提交任何已批准应用参考图。
+比较前核对已审阅 JSON 与 PNG 的实际哈希；输出不得写进参考目录。OS、镜像、WebView2、字体、DPI、主题、窗口或夹具变化时报告 incompatible，不能把渲染环境漂移算成产品回归或直接接受新图；同环境下区域几何或像素变化按已批准容差比较。当前已批准参考见 [approved/README.md](approved/README.md)，其 JSON 与 PNG 保留采集时的原始字节；批准状态以 `approved/reference.json` 为准。
 
 若将正式批准参考放在 `tests/baselines/approved/reference.json`，CI 才运行比较步骤；缺少时只上传候选并在摘要写明 review pending。所有候选和报告在原生 smoke 的 `baselines/` 下，随诊断保留 7 天；结果不是完整 UI／键盘／动效验收。
 

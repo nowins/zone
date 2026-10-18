@@ -1,0 +1,15 @@
+{
+  "format": "ZoneNativeBaselineReference",
+  "version": 1,
+  "candidate": "result.json",
+  "candidateSha256": "7d972e0a88c7558e0c7856afadffda9a7d9e5de5d756796720858af8f4d14d45",
+  "review": {
+    "status": "approved",
+    "reviewer": "用户（当前会话明确批准）",
+    "reviewedAt": "2026-10-18T14:59:13+08:00"
+  },
+  "limits": {
+    "perChannelTolerance": 0,
+    "maxChangedPixelRatio": 0
+  }
+}
