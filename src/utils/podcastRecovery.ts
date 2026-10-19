@@ -19,9 +19,13 @@ export function createPodcastRecovery(options: PodcastRecoveryOptions) {
   let timer: Timer | null = null;
   let attempts = 0;
   let waiting = false;
+  let waitingGeneration: number | undefined;
   let position = options.audio.currentTime;
   let disposed = false;
   function cancelTimer() { if (timer !== null) clearTimer(timer); timer = null; }
+  function discardStaleWait() {
+    if (waiting && waitingGeneration !== options.generation?.()) { waiting = false; cancelTimer(); }
+  }
   function allowed() { return !disposed && options.hasIntent() && options.isRemote() && !options.expireSleep(); }
   function schedule(ms: number) {
     if (!allowed() || attempts >= 3 || timer !== null || !options.online()) return;
@@ -40,21 +44,23 @@ export function createPodcastRecovery(options: PodcastRecoveryOptions) {
     attempts = 0; waiting = false; cancelTimer();
   }
   function stalled(failure = false) {
+    discardStaleWait();
     if (!allowed()) return;
     // Decode failures are content errors and must remain available for explicit retry.
     if (options.audio.error?.code === 3) { waiting = false; cancelTimer(); return; }
     if (!waiting) position = options.audio.currentTime;
-    waiting = true;
+    waiting = true; waitingGeneration = options.generation?.();
     schedule(failure ? [1000, 3000, 8000][attempts] ?? 8000 : 15000);
   }
   function returned() {
+    discardStaleWait();
     if (disposed || options.expireSleep() || !options.hasIntent()) { cancelTimer(); return; }
     if (!options.audio.paused) options.resumeGraph();
     if (waiting && options.online()) { cancelTimer(); schedule(500); }
   }
   return {
     stalled, healthy, returned,
-    offline() { if (allowed()) { waiting = true; position = options.audio.currentTime; cancelTimer(); } },
+    offline() { if (allowed()) { waiting = true; waitingGeneration = options.generation?.(); position = options.audio.currentTime; cancelTimer(); } },
     cancel: cancelTimer,
     dispose() { disposed = true; cancelTimer(); },
   };

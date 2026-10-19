@@ -33,13 +33,25 @@ export function usePodcastRecovery(options: Options) {
     window.addEventListener("focus", returned); window.addEventListener("pageshow", returned);
     document.addEventListener("visibilitychange", visible);
     const devices = window.navigator.mediaDevices;
-    let outputs: string | null = null;
+    let outputs: { ids: string; defaultTarget: string | null } | null = null;
+    let deviceRead = 0;
     async function checkDevices(initial = false) {
       if (!devices?.enumerateDevices) return;
+      const read = ++deviceRead;
+      const generation = latest.current.generation();
       try {
-        const all = await devices.enumerateDevices(); if (disposed) return;
-        const next = all.filter(device => device.kind === "audiooutput").map(device => device.deviceId).sort().join("|");
-        if (!initial && outputs !== null && next !== outputs && latest.current.hasIntent()) latest.current.pauseForDevice();
+        const all = await devices.enumerateDevices(); if (disposed || read !== deviceRead) return;
+        const available = all.filter(device => device.kind === "audiooutput");
+        const defaultGroup = available.find(device => device.deviceId === "default")?.groupId;
+        // groupId groups physical hardware, not an endpoint ID. Resolve only an
+        // unambiguous exposed output; hidden/changed permission data is not a route change.
+        const matches = defaultGroup ? available.filter(device => device.deviceId && device.deviceId !== "default"
+          && device.deviceId !== "communications" && device.groupId === defaultGroup) : [];
+        const next = { ids: JSON.stringify(available.map(device => device.deviceId).sort()),
+          defaultTarget: matches.length === 1 ? matches[0].deviceId : null };
+        const changed = outputs !== null && (next.ids !== outputs.ids
+          || Boolean(next.defaultTarget && outputs.defaultTarget && next.defaultTarget !== outputs.defaultTarget));
+        if (!initial && changed && generation === latest.current.generation() && latest.current.hasIntent()) latest.current.pauseForDevice();
         outputs = next;
       } catch { /* Device permissions are optional; playback remains usable. */ }
     }
