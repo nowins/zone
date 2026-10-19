@@ -2,3 +2,6 @@
 src-tauri/Cargo.lock text eol=lf
 packaging/THIRD_PARTY_NOTICES.txt text eol=lf
 packaging/licenses/** text eol=lf
+
+# Preserve the reviewed report bytes covered by candidateSha256 on every checkout.
+tests/baselines/approved/result.json -text

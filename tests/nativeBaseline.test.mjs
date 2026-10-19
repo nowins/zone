@@ -28,6 +28,48 @@ test('unreviewed references and changed rendering environments cannot become vis
   assert.throws(() => reviewDecision({...candidate,captureStatus:'incomplete'},candidate,approval));
 });
 
+test('CPU model alone is diagnostic while every other recorded rendering condition remains strict', async () => {
+  const reference = JSON.parse(await readFile('tests/baselines/approved/result.json', 'utf8'));
+  const approval = JSON.parse(await readFile('tests/baselines/approved/reference.json', 'utf8'));
+  const before = canonical(reference);
+  for (const cpu of ['AMD EPYC 9V45 96-Core Processor', 'Intel Xeon Platinum 8370C', undefined]) {
+    const candidate = structuredClone(reference);
+    if (cpu === undefined) delete candidate.compatibility.renderer.cpu;
+    else candidate.compatibility.renderer.cpu = cpu;
+    candidate.environment.cpu = cpu;
+    assert.equal(reviewDecision(candidate, reference, approval).status, 'comparable');
+  }
+  const changes = [
+    ['Windows', value => { value.compatibility.renderer.os = '10.0.26100'; }],
+    ['architecture', value => { value.compatibility.renderer.architecture = 'arm64'; }],
+    ['runner image', value => { value.compatibility.renderer.runnerImage = 'win25'; }],
+    ['image version', value => { value.compatibility.renderer.imageVersion += '.changed'; }],
+    ['WebView2', value => { value.compatibility.renderer.browserVersion += '.changed'; }],
+    ['font family', value => { value.compatibility.viewports[0].fonts.body = 'Arial'; }],
+    ['font metrics', value => { value.compatibility.viewports[0].fonts.metrics[0][1] += 0.01; }],
+    ['DPR', value => { value.compatibility.viewports[0].dpr = 1.25; }],
+    ['native DPI', value => { value.scenes[0].nativeWindow.dpi = 120; }],
+    ['missing native DPI', value => { delete value.scenes[0].nativeWindow.dpi; }],
+    ['viewport', value => { value.compatibility.viewports[1].width += 1; }],
+    ['screen', value => { value.compatibility.viewports[0].screen.width += 1; }],
+    ['theme', value => { value.compatibility.viewports[0].theme = 'dark'; }],
+    ['reduced motion', value => { value.compatibility.viewports[0].reducedMotion = false; }],
+    ['fixture version', value => { value.compatibility.fixture.version += 1; }],
+    ['fixture bytes', value => { value.compatibility.fixture.audioHashes[0] = '0'.repeat(64); }],
+    ['fixture tracks', value => { value.compatibility.fixture.tracks[0] = 'Different song'; }],
+    ['fixture favorite', value => { value.compatibility.fixture.favorite = 'CI Sample Two'; }],
+    ['new renderer condition', value => { value.compatibility.renderer.gpu = 'different'; }],
+    ['new compatibility condition', value => { value.compatibility.newCondition = true; }],
+  ];
+  for (const [condition, change] of changes) {
+    const candidate = structuredClone(reference);
+    candidate.compatibility.renderer.cpu = 'AMD EPYC 9V45 96-Core Processor';
+    change(candidate);
+    assert.equal(reviewDecision(candidate, reference, approval).status, 'incompatible', condition);
+  }
+  assert.equal(canonical(reference), before, 'Comparison must not rewrite approved evidence');
+});
+
 test('real PNG comparison detects changed pixels, preserves reference bytes and enforces reviewed limits', {skip:process.platform!=='win32'}, async () => {
   const parent=resolve('.tmp/native-baseline-tests'); await mkdir(parent,{recursive:true});
   const root=await mkdtemp(join(parent,'case-')), referenceRoot=join(root,'reviewed'); await mkdir(referenceRoot);
@@ -40,18 +82,37 @@ test('real PNG comparison detects changed pixels, preserves reference bytes and 
   assert.equal((await imageOperation('Compare',reference,join(root,'same-diff.png'),{ReferencePath:reference,Tolerance:0})).changedPixels,0);
   assert.equal((await imageOperation('Crop',changed,join(root,'crop.png'),{X:1,Y:1,Width:1,Height:1})).width,1);
   await assert.rejects(imageOperation('Crop',changed,join(root,'bad.png'),{Width:4,Height:4}));
-  const fixture={format:'ZoneNativeBaseline',version:1,captureStatus:'repeatable',artifactSourceSha:'a'.repeat(40),compatibility:{fixture:'unit-image-only'},measurements:{},
+  const fixture={format:'ZoneNativeBaseline',version:1,captureStatus:'repeatable',artifactSourceSha:'a'.repeat(40),compatibility:{fixture:'unit-image-only',renderer:{os:'Windows fixture',cpu:'reference CPU'}},measurements:{},
     scenes:[{id:'songs',image:'songs.png',sha256:digest(await readFile(changed)),viewport:{crop:{width:3,height:3}}}]};
   await writeFile(join(root,'songs.png'),await readFile(changed));
   const candidatePath=join(root,'result.json'); await writeFile(candidatePath,JSON.stringify(fixture));
-  const referenceReport={...fixture,scenes:[{...fixture.scenes[0],sha256:before}]};
+  const referenceReport={...fixture,compatibility:structuredClone(fixture.compatibility),scenes:[{...fixture.scenes[0],sha256:before}]};
   await writeFile(join(referenceRoot,'songs.png'),await readFile(reference));
   const bytes=JSON.stringify(referenceReport); await writeFile(join(referenceRoot,'result.json'),bytes);
   const approval={format:'ZoneNativeBaselineReference',version:1,candidate:'result.json',candidateSha256:digest(bytes),
     review:{status:'approved',reviewer:'Unit fixture only, not an app baseline',reviewedAt:'2026-10-17T00:00:00Z'},limits:{perChannelTolerance:0,maxChangedPixelRatio:0}};
   const approvalPath=join(referenceRoot,'reference.json'); await writeFile(approvalPath,JSON.stringify(approval));
   assert.equal((await compareNativeBaselines(candidatePath,null,join(root,'pending'))).status,'needs-review');
-  assert.equal((await compareNativeBaselines(candidatePath,approvalPath,join(root,'comparison'))).status,'failed');
+  // Use different CPU metadata for both the passing and failing pixel cases.
+  fixture.compatibility.renderer.cpu = 'different CPU';
+  await writeFile(candidatePath,JSON.stringify(fixture));
+  const failed = await compareNativeBaselines(candidatePath,approvalPath,join(root,'comparison'));
+  assert.equal(failed.status,'failed');
+  assert.equal(failed.scenes[0].changedPixels,1);
+  assert.deepEqual(failed.scenes[0].limits,{perChannelTolerance:0,maxChangedPixelRatio:0});
+  await writeFile(join(root,'songs.png'),await readFile(reference));
+  fixture.scenes[0].sha256 = before;
+  await writeFile(candidatePath,JSON.stringify(fixture));
+  const passed = await compareNativeBaselines(candidatePath,approvalPath,join(root,'cpu-only'));
+  assert.equal(passed.status,'passed'); assert.equal(passed.scenes[0].changedPixels,0);
+  fixture.compatibility.renderer.os = 'different Windows';
+  await writeFile(candidatePath,JSON.stringify(fixture));
+  const incompatible = await compareNativeBaselines(candidatePath,approvalPath,join(root,'os-change'));
+  assert.equal(incompatible.status,'incompatible'); assert.deepEqual(incompatible.scenes,[]);
+  fixture.compatibility.renderer.os = referenceReport.compatibility.renderer.os;
+  await writeFile(candidatePath,JSON.stringify(fixture));
+  assert.equal(await readFile(join(referenceRoot,'result.json'),'utf8'),bytes);
+  assert.equal(digest(await readFile(join(referenceRoot,'songs.png'))),before);
   await assert.rejects(compareNativeBaselines(candidatePath,approvalPath,referenceRoot),/outside/);
   await assert.rejects(compareNativeBaselines(candidatePath,approvalPath,join(referenceRoot,'..still-inside')),/outside/);
   assert.equal(digest(await readFile(reference)),before);
