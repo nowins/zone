@@ -22,7 +22,7 @@
 
 `reference.json` 固定 `perChannelTolerance=0`、`maxChangedPixelRatio=0`。现有 Windows CI 检测该文件后执行既有比较步骤，无需增加平台、修改应用或放宽判断；任何像素变化仍须审查，没有自动接受入口。
 
-本参考记录 Windows `10.0.20348`、win22 镜像 `20261012.333.1`、WebView2 `131.0.2903.86`、AMD EPYC 7763 及原始字体度量。兼容性对象包含 CPU，必须继续精确匹配。较早 CI 的 Intel Xeon 8370C 与本参考 CPU 不同，即使 PNG 相同，现有比较器也应返回 `incompatible`、退出码 2。共享 Windows runner 可能分配不同 CPU，镜像或浏览器也可能更新；环境漂移须单独处理，不得自动重采集并批准来消除门禁失败。
+本参考记录 Windows `10.0.20348`、win22 镜像 `20261012.333.1`、WebView2 `131.0.2903.86`、AMD EPYC 7763 及原始字体度量。CPU 型号保留在原始报告中作诊断，比较器仅在判定硬兼容性时排除 `compatibility.renderer.cpu`，不改变报告、哈希、截图或审批记录。CI 39116081809 的 AMD EPYC 9V45 与本参考仅 CPU 不同，诊断 ZIP SHA-256 为 `1c0b942a5e9e1bb0dc249e6114d2e28e5de346c1d76ddd766676d467da126832`，两张裁剪 PNG 均与参考字节相同；这支持将 CPU 视为诊断信息，不推断所有 CPU 都必然产生相同像素。Windows、架构、runner 镜像及版本、WebView2、字体、DPR／原生 DPI、主题、窗口和夹具仍严格匹配，其他未知兼容性字段也不忽略。任何实际像素变化继续按零容差失败；镜像或浏览器漂移仍报告 `incompatible`，不得自动重采集并批准来消除门禁失败。
 
 1180×760 客户区超出 runner 的 1024×768 桌面；实际 DOM 与完整 PNG 尺寸已核对，未使用桌面跟踪覆盖。这覆盖布局与捕获，不代表该桌面上的完整操作体验。
 

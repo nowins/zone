@@ -29,6 +29,13 @@ export async function baselineImagePath(reportPath, entry) {
   assert.equal(digest(await readFile(file)), entry.sha256, 'Baseline PNG bytes do not match the recorded hash.');
   return file;
 }
+// CPU model is diagnostic only. Keep the original reports and their hashes intact,
+// and exclude only this known field so new renderer conditions remain strict.
+function visualCompatibility(compatibility) {
+  if (!compatibility?.renderer) return compatibility;
+  const { cpu: _cpu, ...renderer } = compatibility.renderer;
+  return { ...compatibility, renderer };
+}
 export function reviewDecision(candidate, reference, approval) {
   if (!approval || approval.review?.status !== 'approved') return { status: 'needs-review', reason: 'No reviewed reference; candidate capture is not visual approval.' };
   assert.equal(approval.format, 'ZoneNativeBaselineReference'); assert.equal(approval.version, 1);
@@ -38,7 +45,9 @@ export function reviewDecision(candidate, reference, approval) {
   assert.ok(Number.isFinite(approval.limits?.maxChangedPixelRatio) && approval.limits.maxChangedPixelRatio >= 0 && approval.limits.maxChangedPixelRatio <= 1);
   assert.equal(candidate.format, 'ZoneNativeBaseline'); assert.equal(reference.format, 'ZoneNativeBaseline');
   assert.equal(candidate.captureStatus, 'repeatable'); assert.equal(reference.captureStatus, 'repeatable');
-  if (canonical(candidate.compatibility) !== canonical(reference.compatibility)) return { status: 'incompatible', reason: 'Viewport, renderer, image, fonts or fixture environment changed; review a new candidate.' };
+  if (canonical(visualCompatibility(candidate.compatibility)) !== canonical(visualCompatibility(reference.compatibility))) return { status: 'incompatible', reason: 'Viewport, renderer, image, fonts or fixture environment changed; review a new candidate.' };
   assert.deepEqual(candidate.scenes.map(scene => scene.id), reference.scenes.map(scene => scene.id));
+  if (canonical(candidate.scenes.map(scene => scene.nativeWindow?.dpi)) !== canonical(reference.scenes.map(scene => scene.nativeWindow?.dpi)))
+    return { status: 'incompatible', reason: 'Native window DPI changed; review a new candidate.' };
   return { status: 'comparable' };
 }
