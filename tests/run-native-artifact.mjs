@@ -224,6 +224,22 @@ try {
     await screenshot('05-recovered');
     await record('Unavailable-source scan rejected and retained the real library and playlists');
   }
+  if (process.argv.includes('--local-whisper') || process.argv.includes('--local-whisper-backend')) {
+    const {testLocalWhisperClient} = await import('./native/localWhisperClient.mjs');
+    const restartAfterCrash = async () => {
+      const pids = ownedProcesses(); assert.equal(pids.length, 1);
+      const stopped = spawnSync('taskkill.exe', ['/PID', String(pids[0]), '/F'], {windowsHide:true,encoding:'utf8',timeout:15000});
+      assert.equal(stopped.status, 0, stopped.stderr);
+      await until(() => ownedProcesses().length === 0, 'Exact owned CI application forcibly exited');
+      await request('DELETE', `/session/${session}`).catch(() => {}); session = undefined;
+      await launch();
+    };
+    const backendOnly = process.argv.includes('--local-whisper-backend');
+    await testLocalWhisperClient({root,report,dataDirectory,manifest,executable,invoke,script,command,click,clickText,until,screenshot,ownedProcesses,restartAfterCrash,record,backendOnly});
+    outcome.coverage.localWhisper = true;
+    outcome.coverage.localWhisperNativeSmallWindow = !backendOnly;
+    if (backendOnly) outcome.boundaries.push('Local transcription passed at a real 1180x760 viewport; 920x620 was explicitly emulated. Native small-window WebView synchronization remains unverified on the separate desktop.');
+  }
   await closeNormally();
   await launch();
   const restored = await invoke('music_get_library_snapshot');

@@ -98,6 +98,32 @@ EXE 商店路线仍要求真实 `ZONE_PUBLISHER`、可信 `ZONE_CERT_THUMBPRINT`
 
 ## 依赖、图标与商店素材
 
+### 本地转写引擎
+
+Windows x64 包含原生 `whisper/zone-whisper.exe`、`engine.json` 与 MIT 原文。引擎由 `native/whisper/` 调用 whisper.cpp 1.8.2（`4979e04f5dcaccb36057e059bbaed8a2f5288315`）构建；固定官方下载地址及源码 SHA-256 在 `whisper-source.json`。脚本只使用已安装的 Visual Studio C++/CMake，不安装工具。每次使用全新解包/构建目录，关闭 GPU、AVX/AVX2/FMA/F16C/SSE4.2/BMI2 与 OpenMP，静态链接运行库；x64 基线使用 SSE2。构建环境与真实老 CPU 仍需分别验证，不以关闭编译选项冒充硬件验收。
+
+从仓库根显式准备引擎，二选一：
+
+```powershell
+./scripts/build-whisper.ps1 -DownloadSource
+./scripts/build-whisper.ps1 -Archive <已下载的官方v1.8.2源码.zip>
+node scripts/check-whisper.mjs
+```
+
+`-DownloadSource` 是显式开发构建动作；应用运行时不下载或安装引擎。源码压缩包 SHA-256 不匹配即停止，不使用其他来源替代。引擎生成于忽略的 `src-tauri/binaries/whisper/`，`engine.json` 记录版本、完整上游提交、源码和 exe 哈希。构建及原生运行均校验清单；Tauri 资源映射将目录保存为 `whisper/`，不扩大 shell/capabilities/CSP。MSIX 明确复制该目录并检查包中 exe、清单和许可；CI artifact 同样携带目录。引擎不接受前端自定义可执行路径。第三方总声明另包含固定版本 MIT 原文。
+
+模型不随包分发，由用户通过设置打开 Hugging Face 官方固定修订下载链接后自行导入。模型保存在应用用户数据目录 `podcast-models/`，临时音频位于 `podcast-local-work/`，避免写入 MSIX/NSIS 安装目录。当前仅提供经 SHA-256 校验的多语言轻量/基础模型；模型来源与精确字节数以 `local_config.rs` 为准。模型亦按上游 MIT 许可使用。安装升级/卸载语义继续服从相应包类型的用户数据规则。
+
+无安装的真实验证：先 `npm run build:ci:native` 生成新 CI 身份，准备合成中英音频、官方测试模型和已签名匹配的 Edge WebDriver，再运行：
+
+```powershell
+./tests/run-local-whisper-desktop.ps1 -Manifest <build-info.json> -Driver <msedgedriver.exe> -Report .tmp/local-whisper-client
+```
+
+该入口创建独立 Windows 桌面且不切换用户输入桌面，复用正式产物、命令、SQLite 和页面；拒绝已有 CI 资料目录。保留桌面执行记录、前后正式 Shell 入口快照、截图及本地转写结果。测试源码/资料和生产应用隔离，模型导入使用夹具复制，原生文件选择器仍需专用交互验收。结果不是商店发布批准，包生命周期继续用专用 Windows 10/11 VM。
+
+若独立桌面上原生窗口已缩小而 WebView2 未同步视口，完整入口继续失败并保留证据；可用新 CI 身份显式加 `-BackendOnly` 验证真实 1180×760、取消、模型损坏、SQLite 回滚、推理中强退及重启恢复，并另采明确标记为仿真的 920×620 响应式布局。该模式的结果报告 `nativeSmallWindowVerified=false`，不能代替真实原生小窗口验收，也不会自动切换到用户输入桌面。
+
 - `npm run audit:release` 检查 npm 与实际 Win32 Rust 构建图，需先 `cargo install cargo-audit --locked`。漏洞、不健全或撤回版本使检查失败，不忽略公告 ID。Tauri/Symphonia 的部分间接依赖有停止维护警告，保留并跟踪上游，不称为已消除。
 - 第三方许可用 `npm run notices:generate` 维护，正式构建核对并随包分发。
 - 图标事实源是 `app-icon.png`；`packaging/generate-icons.ps1` 更新 Tauri 图标与 MSIX 资产。

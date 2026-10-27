@@ -80,6 +80,10 @@ jobs:
           workspaces: src-tauri -> target
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Build pinned local CPU transcription engine
+        timeout-minutes: 10
+        run: ./scripts/build-whisper.ps1 -DownloadSource
+
       - name: Check Rust compilation
         timeout-minutes: 25
         working-directory: src-tauri

@@ -16,6 +16,9 @@ mod backup;
 mod search;
 mod transcripts;
 mod cloud_config;
+mod local_config;
+mod local_process;
+mod local_transcript;
 mod listening_stats;
 pub(crate) mod clip_export;
 pub(crate) mod cloud_transcript;
@@ -51,6 +54,10 @@ pub use backup::*;
 pub use search::*;
 pub use transcripts::*;
 pub use cloud_config::*;
+pub use local_config::{podcast_local_transcription_status, podcast_set_transcription_settings, podcast_import_local_model,
+  __cmd__podcast_local_transcription_status, __cmd__podcast_set_transcription_settings, __cmd__podcast_import_local_model,
+  __tauri_command_name_podcast_local_transcription_status, __tauri_command_name_podcast_set_transcription_settings, __tauri_command_name_podcast_import_local_model};
+pub use local_transcript::{podcast_generate_local_transcript, __cmd__podcast_generate_local_transcript, __tauri_command_name_podcast_generate_local_transcript};
 pub use listening_stats::*;
 pub use clip_export::*;
 pub use cloud_transcript::*;
@@ -164,6 +171,9 @@ impl PodcastState {
     fs::create_dir_all(&downloads_dir).map_err(|error| format!("无法创建播客下载目录：{error}"))?;
     fs::create_dir_all(&artwork_cache_dir).map_err(|error| format!("无法创建播客封面缓存目录：{error}"))?;
     let _ = open_database(&db_path)?;
+    if let Err(error) = local_transcript::recover_temporary_files(&db_path) {
+      eprintln!("[podcast] 本地转写临时文件恢复失败：{error}");
+    }
     if let Err(error) = sweep_orphan_download_files(&db_path, &downloads_dir) {
       eprintln!("[podcast] 无法清理播客遗留下载文件：{error}");
     }

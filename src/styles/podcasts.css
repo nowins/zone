@@ -2428,6 +2428,7 @@
 .podcast-backup-history small { color:var(--muted);margin-top:4px; }
 
 .podcast-cloud-settings { max-width: 620px; }
+.podcast-cloud-settings .podcast-preference-save { position: static; bottom: auto; z-index: auto; }
 .podcast-cloud-settings small { display: block; color: var(--muted); font-size: var(--type-caption); line-height: 1.6; margin: 14px 0; }
 .podcast-cloud-settings .podcast-cloud-address { grid-column: 1 / -1; }
 .podcast-cloud-settings input { width: 100%; min-width: 0; height: 36px; background: var(--app-bg); color: var(--text); border: 1px solid var(--quiet); padding: 0 8px; font: inherit; }
@@ -2448,3 +2449,8 @@
 .podcast-clip-dialog small { color: var(--muted); font-size: var(--type-caption); }
 .podcast-clip-dialog input { width: 100px; background: var(--app-bg); border: 1px solid var(--quiet); color: var(--text); font: inherit; padding: 6px; }
 .podcast-clip-saved { font-size: var(--type-caption); color: var(--muted); overflow-wrap: anywhere; user-select: text; }
+.podcast-local-settings { margin-bottom: 28px; }
+.podcast-local-settings p, .podcast-local-model-info small { color: var(--muted); line-height: 1.6; }
+.podcast-local-model-info small { display: block; overflow-wrap: anywhere; }
+.podcast-local-model-info .podcast-local-path { user-select: text; }
+.podcast-local-settings .podcast-preference-advanced { margin-top: 12px; }
