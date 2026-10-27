@@ -41,10 +41,29 @@ export async function testLocalWhisperClient({root,report,dataDirectory,manifest
     if(value.status!==0)throw Error(value.stderr);const parsed=value.stdout.trim()?JSON.parse(value.stdout):[];const rows=Array.isArray(parsed)?parsed:[parsed];
     return rows.filter(p=>engineParents.has(p.ParentProcessId)&&p.ExecutablePath&&normalPath(p.ExecutablePath)===normalPath(engine)).map(p=>p.ProcessId);
   }
+  const resizeObservations=[];
+  const observeViewport=async(label)=>{
+    const native=await invoke('plugin:window|inner_size',{label:'main'});
+    const viewport=await script(()=>({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,
+      shell:document.querySelector('.shell').getBoundingClientRect().toJSON(),
+      controls:[...document.querySelectorAll('.window-controls button,.player button')].filter(e=>e.getClientRects().length).map(e=>({label:e.title||e.getAttribute('aria-label'),rect:e.getBoundingClientRect().toJSON()}))}));
+    assert.equal(viewport.width,native.width/viewport.dpr,'WebView width must match the owned native client');
+    assert.equal(viewport.height,native.height/viewport.dpr,'WebView height must match the owned native client');
+    assert.equal(viewport.shell.width,viewport.width);assert.equal(viewport.shell.height,viewport.height);
+    for(const {label,rect} of viewport.controls)assert.ok(rect.left>=0&&rect.top>=0&&rect.right<=viewport.width&&rect.bottom<=viewport.height,`clipped window/player control: ${label}`);
+    resizeObservations.push({label,native,viewport});
+    await writeFile(join(report,'window-resize-observations.json'),JSON.stringify(resizeObservations,null,2));
+    return viewport;
+  };
   const resize=async(width,height)=>{
     const pids=ownedProcesses();assert.equal(pids.length,1);
-    await promisify(execFile)('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',join(root,'tests/native/setBaselineWindow.ps1'),'-RootPid',String(pids[0]),'-ExpectedExecutable',executable,'-Identifier',manifest.identifier,'-Width',String(width),'-Height',String(height)],{windowsHide:true,timeout:30000});
+    const result=await promisify(execFile)('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',join(root,'tests/native/setBaselineWindow.ps1'),'-RootPid',String(pids[0]),'-ExpectedExecutable',executable,'-Identifier',manifest.identifier,'-Width',String(width),'-Height',String(height)],{windowsHide:true,timeout:30000});
+    const bounds=JSON.parse(result.stdout);assert.equal(bounds.windowClass,'Tauri Window');
+    assert.equal(bounds.actualClient.width,width*bounds.dpi/96);assert.equal(bounds.actualClient.height,height*bounds.dpi/96);
     await until(()=>script((w,h)=>innerWidth===w&&innerHeight===h,width,height),'local native viewport');
+    const viewport=await observeViewport(`resize-${width}x${height}`);
+    resizeObservations.at(-1).sizing=bounds;
+    return viewport;
   };
   const select=async(label,value)=>{await click('css selector',`[role="combobox"][aria-label="${label}"]`);await click('css selector',`[role="option"][data-value="${value}"]`);};
   const plainRequest=async(expected,requestId)=>invoke('podcast_generate_local_transcript',{episodeId:episode,expectedSettings:expected,requestId});
@@ -55,13 +74,33 @@ export async function testLocalWhisperClient({root,report,dataDirectory,manifest
     await select('转写方式','local');await clickText('//*','保存转写方式');
     const settings={backend:'local',modelId:'base-q5_1',language:'auto',threads:4};
     await until(async()=>{const value=(await invoke('podcast_local_transcription_status')).settings;return Object.entries(settings).every(([key,item])=>value[key]===item);},'saved native local selection');
-    const nativeViewports=backendOnly?[[1180,760]]:[[1180,760],[920,620]];
+    const nativeViewports=backendOnly?[[1180,760]]:[[1180,760],[920,620],[1180,760],[920,620]];
     for(const [width,height] of nativeViewports) {
       await resize(width,height);
       await script(()=>{document.querySelector('.settings-content:not([hidden])').scrollTop=0;});
       const bounds=await script(()=>{const e=document.querySelector('.podcast-local-settings');const r=e.getBoundingClientRect();return {left:r.left,right:r.right,width:innerWidth,text:e.textContent,overflow:e.scrollWidth>e.clientWidth};});
       assert.ok(bounds.left>=0&&bounds.right<=width&&!bounds.overflow);assert.match(bounds.text,/不上传音频/);assert.match(bounds.text,/中文翻译仍需/);
       await screenshot(`local-settings-${width}x${height}`);
+    }
+    if(!backendOnly){
+      await click('css selector','[role="combobox"][aria-label="本地多语言模型"]');
+      const options=await script(()=>[...document.querySelectorAll('[role="option"]')].map(e=>e.getBoundingClientRect().toJSON()));
+      assert.ok(options.length>=2);for(const rect of options)assert.ok(rect.left>=0&&rect.top>=0&&rect.right<=920&&rect.bottom<=620,'model option must fit the real small viewport');
+      await screenshot('local-model-options-920x620');
+      await command('POST','/actions',{actions:[{type:'key',id:'resize-keyboard',actions:[{type:'keyDown',value:'\uE00C'},{type:'keyUp',value:'\uE00C'}]}]});
+      await until(()=>script(()=>!document.querySelector('[role="listbox"]')),'model list dismissed with Escape');
+      await clickText('//*','保存转写方式');
+      const save=await script(()=>{const e=[...document.querySelectorAll('.podcast-local-settings button')].find(e=>e.textContent==='保存转写方式');const r=e.getBoundingClientRect(),p=document.querySelector('.settings-content:not([hidden])').getBoundingClientRect();return {rect:r.toJSON(),clip:p.toJSON()};});
+      assert.ok(save.rect.top>=save.clip.top&&save.rect.bottom<=save.clip.bottom&&save.rect.right<=920,'local save action must be reachable inside the settings scrollport');
+      await screenshot('local-settings-save-920x620');
+      await click('css selector','.window-controls button[title="最大化"]');
+      await until(()=>invoke('plugin:window|is_maximized',{label:'main'}),'window maximized through its real control');
+      await until(async()=>{const size=await invoke('plugin:window|inner_size',{label:'main'});return script((w,h)=>innerWidth*devicePixelRatio===w&&innerHeight*devicePixelRatio===h,size.width,size.height);},'maximized native/WebView bounds');
+      await observeViewport('maximized');await screenshot('local-settings-maximized');
+      await click('css selector','.window-controls button[title="最大化"]');
+      await until(()=>script(()=>innerWidth===920&&innerHeight===620),'restore previous small native viewport');
+      assert.equal(await invoke('plugin:window|is_maximized',{label:'main'}),false);
+      await observeViewport('restored-920x620');await screenshot('local-settings-restored-920x620');
     }
     if(backendOnly){
       const dpr=await script(()=>devicePixelRatio);
@@ -110,7 +149,7 @@ export async function testLocalWhisperClient({root,report,dataDirectory,manifest
     assert.equal(database.prepare("SELECT COUNT(*) AS n FROM podcast_episode_resources WHERE episode_id=? AND origin='translated'").get(episode).n,0);
     assert.equal(database.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
     await screenshot('local-generated-transcript');
-    await writeFile(join(report,'local-whisper-result.json'),JSON.stringify({ok:true,modelSha256:createHash('sha256').update(await readFile(modelFile)).digest('hex'),settings,cancelledChildReaped:true,oldDataPreservedOnCancelAndFailure:true,oldDataPreservedOnForcedExit:true,temporaryAudioRecoveredAfterRestart:true,sqliteIntegrity:true,nativeViewports,responsiveEmulatedViewport:backendOnly?[920,620]:null,nativeSmallWindowVerified:!backendOnly,smallWindowBlocker:backendOnly?'On the separate desktop the native client resized correctly but WebView2 retained its old viewport; no input-desktop switch was made.':null,reducedMotion:true,sourceHash},null,2));
+    await writeFile(join(report,'local-whisper-result.json'),JSON.stringify({ok:true,modelSha256:createHash('sha256').update(await readFile(modelFile)).digest('hex'),settings,cancelledChildReaped:true,oldDataPreservedOnCancelAndFailure:true,oldDataPreservedOnForcedExit:true,temporaryAudioRecoveredAfterRestart:true,sqliteIntegrity:true,nativeViewports,resizeObservations,responsiveEmulatedViewport:backendOnly?[920,620]:null,nativeSmallWindowVerified:!backendOnly,smallWindowBlocker:backendOnly?'BackendOnly explicitly limits native coverage to 1180x760; emulated 920x620 does not verify native resizing.':null,reducedMotion:true,sourceHash},null,2));
     await record('真实本地转写成功并显示共用时间轴，成功后清除旧翻译，SQLite 完整性检查通过');
     assert.equal(createHash('sha256').update(await readFile(audio)).digest('hex'),sourceHash);
   } finally { database.close(); }

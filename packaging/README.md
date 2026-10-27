@@ -122,7 +122,9 @@ node scripts/check-whisper.mjs
 
 该入口创建独立 Windows 桌面且不切换用户输入桌面，复用正式产物、命令、SQLite 和页面；拒绝已有 CI 资料目录。保留桌面执行记录、前后正式 Shell 入口快照、截图及本地转写结果。测试源码/资料和生产应用隔离，模型导入使用夹具复制，原生文件选择器仍需专用交互验收。结果不是商店发布批准，包生命周期继续用专用 Windows 10/11 VM。
 
-若独立桌面上原生窗口已缩小而 WebView2 未同步视口，完整入口继续失败并保留证据；可用新 CI 身份显式加 `-BackendOnly` 验证真实 1180×760、取消、模型损坏、SQLite 回滚、推理中强退及重启恢复，并另采明确标记为仿真的 920×620 响应式布局。该模式的结果报告 `nativeSmallWindowVerified=false`，不能代替真实原生小窗口验收，也不会自动切换到用户输入桌面。
+尺寸辅助程序按 CI 进程和 `Tauri Window` 窗口类定位唯一主窗口，不能使用可能指向输入指示或托盘辅助窗口的 `Process.MainWindowHandle`。它核对最终物理客户区尺寸；完整本地转写入口再核对 Rust 窗口尺寸、WebView 视口、窗口与播放控件边界，并验证 1180×760 → 920×620 → 放大 → 缩小、真实标题栏最大化及恢复、小窗口模型选项与保存动作。尺寸失败继续保留原始证据，不改显示设置或切换用户输入桌面。
+
+显式 `-BackendOnly` 仅验证原生 1180×760、取消、模型损坏、SQLite 回滚、推理中强退及重启恢复，并另采明确标记为仿真的 920×620 布局。该模式报告 `nativeSmallWindowVerified=false`，不能代替完整入口的真实原生小窗口验收。
 
 - `npm run audit:release` 检查 npm 与实际 Win32 Rust 构建图，需先 `cargo install cargo-audit --locked`。漏洞、不健全或撤回版本使检查失败，不忽略公告 ID。Tauri/Symphonia 的部分间接依赖有停止维护警告，保留并跟踪上游，不称为已消除。
 - 第三方许可用 `npm run notices:generate` 维护，正式构建核对并随包分发。

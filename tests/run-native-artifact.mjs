@@ -238,7 +238,7 @@ try {
     await testLocalWhisperClient({root,report,dataDirectory,manifest,executable,invoke,script,command,click,clickText,until,screenshot,ownedProcesses,restartAfterCrash,record,backendOnly});
     outcome.coverage.localWhisper = true;
     outcome.coverage.localWhisperNativeSmallWindow = !backendOnly;
-    if (backendOnly) outcome.boundaries.push('Local transcription passed at a real 1180x760 viewport; 920x620 was explicitly emulated. Native small-window WebView synchronization remains unverified on the separate desktop.');
+    if (backendOnly) outcome.boundaries.push('BackendOnly covers a real 1180x760 viewport and explicitly emulated 920x620; native resizing requires the full local transcription mode.');
   }
   await closeNormally();
   await launch();
