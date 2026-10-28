@@ -43,7 +43,7 @@ test('CPU model alone is diagnostic while every other recorded rendering conditi
     ['Windows', value => { value.compatibility.renderer.os = '10.0.26100'; }],
     ['architecture', value => { value.compatibility.renderer.architecture = 'arm64'; }],
     ['runner image', value => { value.compatibility.renderer.runnerImage = 'win25'; }],
-    ['image version', value => { value.compatibility.renderer.imageVersion += '.changed'; }],
+    ['image version with different image bytes', value => { value.compatibility.renderer.imageVersion += '.changed'; value.scenes[0].sha256 = '0'.repeat(64); }],
     ['WebView2', value => { value.compatibility.renderer.browserVersion += '.changed'; }],
     ['font family', value => { value.compatibility.viewports[0].fonts.body = 'Arial'; }],
     ['font metrics', value => { value.compatibility.viewports[0].fonts.metrics[0][1] += 0.01; }],
@@ -70,6 +70,39 @@ test('CPU model alone is diagnostic while every other recorded rendering conditi
   assert.equal(canonical(reference), before, 'Comparison must not rewrite approved evidence');
 });
 
+test('runner image revision drift is comparable only with identical recorded scene bytes and geometry', async () => {
+  const reference = JSON.parse(await readFile('tests/baselines/approved/result.json', 'utf8'));
+  const approval = JSON.parse(await readFile('tests/baselines/approved/reference.json', 'utf8'));
+  const candidate = structuredClone(reference);
+  assert.equal(reference.compatibility.renderer.imageVersion, '20261012.333.1');
+  // Run 40633818188: the only compatibility difference; both PNG hashes match.
+  candidate.compatibility.renderer.imageVersion = '20261022.344.1';
+  const before = canonical({ candidate, reference, approval });
+  const decision = reviewDecision(candidate, reference, approval);
+  assert.equal(decision.status, 'comparable');
+  assert.deepEqual(decision.compatibilityNotes, [{ field: 'renderer.imageVersion',
+    reference: '20261012.333.1', candidate: '20261022.344.1',
+    reason: 'Runner image revision differs, but every scene has identical PNG hashes and viewport geometry; PNG bytes must still be verified.' }]);
+  assert.equal(reviewDecision(reference, candidate, approval).status, 'comparable');
+  const changes = [
+    value => { value.scenes[0].sha256 = '0'.repeat(64); },
+    value => { delete value.scenes[0].sha256; },
+    value => { value.scenes.pop(); },
+    value => { value.scenes[0].viewport.crop.x += 1; },
+    value => { value.compatibility.renderer.browserVersion += '.changed'; },
+    value => { value.compatibility.fixture.audioHashes[0] = '0'.repeat(64); },
+    value => { value.compatibility.viewports[0].fonts.metrics[0][1] += 1; },
+    value => { value.compatibility.renderer.newCondition = true; },
+    value => { value.scenes[0].nativeWindow.dpi = 120; },
+    value => { delete value.compatibility.renderer.imageVersion; },
+  ];
+  for (const change of changes) {
+    const changed = structuredClone(candidate); change(changed);
+    assert.equal(reviewDecision(changed, reference, approval).status, 'incompatible');
+  }
+  assert.equal(canonical({ candidate, reference, approval }), before);
+});
+
 test('real PNG comparison detects changed pixels, preserves reference bytes and enforces reviewed limits', {skip:process.platform!=='win32'}, async () => {
   const parent=resolve('.tmp/native-baseline-tests'); await mkdir(parent,{recursive:true});
   const root=await mkdtemp(join(parent,'case-')), referenceRoot=join(root,'reviewed'); await mkdir(referenceRoot);
@@ -82,7 +115,7 @@ test('real PNG comparison detects changed pixels, preserves reference bytes and 
   assert.equal((await imageOperation('Compare',reference,join(root,'same-diff.png'),{ReferencePath:reference,Tolerance:0})).changedPixels,0);
   assert.equal((await imageOperation('Crop',changed,join(root,'crop.png'),{X:1,Y:1,Width:1,Height:1})).width,1);
   await assert.rejects(imageOperation('Crop',changed,join(root,'bad.png'),{Width:4,Height:4}));
-  const fixture={format:'ZoneNativeBaseline',version:1,captureStatus:'repeatable',artifactSourceSha:'a'.repeat(40),compatibility:{fixture:'unit-image-only',renderer:{os:'Windows fixture',cpu:'reference CPU'}},measurements:{},
+  const fixture={format:'ZoneNativeBaseline',version:1,captureStatus:'repeatable',artifactSourceSha:'a'.repeat(40),compatibility:{fixture:'unit-image-only',renderer:{os:'Windows fixture',cpu:'reference CPU',imageVersion:'original image'}},measurements:{},
     scenes:[{id:'songs',image:'songs.png',sha256:digest(await readFile(changed)),viewport:{crop:{width:3,height:3}}}]};
   await writeFile(join(root,'songs.png'),await readFile(changed));
   const candidatePath=join(root,'result.json'); await writeFile(candidatePath,JSON.stringify(fixture));
@@ -105,6 +138,20 @@ test('real PNG comparison detects changed pixels, preserves reference bytes and 
   await writeFile(candidatePath,JSON.stringify(fixture));
   const passed = await compareNativeBaselines(candidatePath,approvalPath,join(root,'cpu-only'));
   assert.equal(passed.status,'passed'); assert.equal(passed.scenes[0].changedPixels,0);
+  fixture.compatibility.renderer.imageVersion = 'updated image';
+  await writeFile(candidatePath,JSON.stringify(fixture));
+  const revisionOnly = await compareNativeBaselines(candidatePath,approvalPath,join(root,'image-revision-only'));
+  assert.equal(revisionOnly.status,'passed'); assert.equal(revisionOnly.scenes[0].changedPixels,0);
+  assert.equal(revisionOnly.compatibilityNotes[0].field,'renderer.imageVersion');
+  // Equal claimed hashes must never bypass verification of the actual PNG bytes.
+  await writeFile(join(root,'songs.png'),await readFile(changed));
+  await assert.rejects(compareNativeBaselines(candidatePath,approvalPath,join(root,'forged-image-revision')),/recorded hash/);
+  fixture.scenes[0].sha256 = digest(await readFile(changed));
+  await writeFile(candidatePath,JSON.stringify(fixture));
+  const revisionAndPixels = await compareNativeBaselines(candidatePath,approvalPath,join(root,'image-revision-and-pixels'));
+  assert.equal(revisionAndPixels.status,'incompatible'); assert.deepEqual(revisionAndPixels.scenes,[]);
+  await writeFile(join(root,'songs.png'),await readFile(reference));
+  fixture.scenes[0].sha256 = before;
   fixture.compatibility.renderer.os = 'different Windows';
   await writeFile(candidatePath,JSON.stringify(fixture));
   const incompatible = await compareNativeBaselines(candidatePath,approvalPath,join(root,'os-change'));
