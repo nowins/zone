@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { animateValue, type AnimationHandle } from "../motion/animate";
 import { PANORAMA_MOTION, SPRING_PRESETS } from "../motion/tokens";
 import { useReducedMotion } from "../motion/useReducedMotion";
@@ -167,6 +167,24 @@ export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
     };
   }, [enabled, sectionKey, reducedMotion]);
 
+  function onFocusCapture(event: FocusEvent<HTMLDivElement>) {
+    stop();
+    const viewport = event.currentTarget;
+    const target = event.target;
+    // Focus can bubble through React portals; only reveal this panorama's DOM children.
+    if (!(target instanceof HTMLElement) || target === viewport || !viewport.contains(target)) return;
+    const bounds = viewport.getBoundingClientRect();
+    const focused = target.getBoundingClientRect();
+    if (!bounds.width || !focused.width) return;
+    const style = window.getComputedStyle(viewport);
+    const start = bounds.left + (Number.parseFloat(style.scrollPaddingLeft) || 0);
+    const end = bounds.right - (Number.parseFloat(style.scrollPaddingRight) || 0);
+    const delta = focused.left < start ? focused.left - start : focused.right > end ? focused.right - end : 0;
+    // Hidden ancestor scrollports may prevent the browser from revealing a focused tile.
+    // Move the owned horizontal viewport immediately, keeping depth and controls in sync.
+    if (delta) panTo(viewport.scrollLeft + delta, false);
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.target !== event.currentTarget || event.altKey || event.ctrlKey || event.metaKey) return;
     if (!["ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End"].includes(event.key)) return;
@@ -240,6 +258,6 @@ export function useQuickplayPanorama(enabled: boolean, sectionIds: string[]) {
       onPointerDown: onScrollbarPointerDown, onPointerUp: onScrollbarPointerUp,
       onPointerCancel: hideScrollbar, onLostPointerCapture: onScrollbarPointerUp },
     viewportProps: { onScroll: () => sync(), onKeyDown, onPointerDown, onPointerMove, onPointerUp,
-      onPointerCancel: cancelDrag, onLostPointerCapture: cancelDrag, onFocusCapture: stop },
+      onPointerCancel: cancelDrag, onLostPointerCapture: cancelDrag, onFocusCapture },
   };
 }

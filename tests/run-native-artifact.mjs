@@ -134,6 +134,11 @@ try {
   await record('This build launched with an empty isolated library');
   assert.equal((await invoke('music_get_library_snapshot')).tracks.length, 0);
   await screenshot('01-empty');
+  if (process.argv.includes('--home-layout')) {
+    const { testHomeLayout } = await import('./native/homeLayout.mjs');
+    await testHomeLayout({root,report,dataDirectory,manifest,executable,media,paths,invoke,script,command,click,clickText,until,screenshot,ownedProcesses,record});
+    await closeNormally();outcome.coverage.homeLayout=true;outcome.ok=true;
+  } else {
   const scan = await asynchronous(async folder => {
     const api = window.__TAURI_INTERNALS__;
     const progress = api.transformCallback(() => {});
@@ -257,6 +262,7 @@ try {
   for (let i = 0; i < paths.length; i++) assert.equal(hash(await readFile(paths[i])), originalHashes[i], 'Source audio must remain unchanged.');
   outcome.coverage.core = true;
   outcome.ok = true;
+  }
 } catch (error) {
   outcome.error = error.stack ?? String(error);
   console.error(outcome.error);

@@ -1,4 +1,4 @@
-﻿param([Parameter(Mandatory=$true)][string]$Manifest, [Parameter(Mandatory=$true)][string]$Driver, [Parameter(Mandatory=$true)][string]$Report, [switch]$BackendOnly)
+﻿param([Parameter(Mandatory=$true)][string]$Manifest, [Parameter(Mandatory=$true)][string]$Driver, [Parameter(Mandatory=$true)][string]$Report, [switch]$BackendOnly, [switch]$HomeLayout)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $node = (Get-Command node).Source
@@ -42,7 +42,8 @@ try {
   $startup.desktop = 'winsta0\' + $name
   $startup.flags = 1
   $startup.show = 0
-  $testMode = if ($BackendOnly) { '--local-whisper-backend' } else { '--local-whisper' }
+  if ($BackendOnly -and $HomeLayout) { throw 'Choose one isolated test mode' }
+  $testMode = if ($HomeLayout) { '--home-layout' } elseif ($BackendOnly) { '--local-whisper-backend' } else { '--local-whisper' }
   $arguments = @($node,(Join-Path $root 'tests/run-native-artifact.mjs'),'--manifest',$Manifest,'--driver',$Driver,'--report',$Report,$testMode)
   $command = [Text.StringBuilder]::new((($arguments | ForEach-Object {[ZoneIsolatedDesktop]::Quote($_)}) -join ' '))
   if (-not [ZoneIsolatedDesktop]::CreateProcess($node,$command,[IntPtr]::Zero,[IntPtr]::Zero,$false,0x08000000,[IntPtr]::Zero,$root,[ref]$startup,[ref]$info)) { throw "独立桌面测试启动失败：$([Runtime.InteropServices.Marshal]::GetLastWin32Error())" }

@@ -132,3 +132,9 @@ node scripts/check-whisper.mjs
 - 商店列表准备真实截图、简短描述、关键词和分级；建议覆盖 quickplay、收藏、正在播放、歌词和播客。
 - 应用回归覆盖默认 1180×760、最小 920×620、键盘、减少动态效果、常用 DPI、音频格式、离线目录、迁移与播客下载。
 - 当前音乐、播客与补充资料共用 `zone.sqlite`，旧库仅作迁移源。MSIX/NSIS 转换前验证数据路径与迁移，不能把打包切换视为自动完成旧数据迁移。
+
+### 主页布局原生验证
+
+先运行 `npm run build:ci:native` 创建全新 CI 身份，再用 `tests/run-local-whisper-desktop.ps1 -Manifest <build-info.json> -Driver .tmp/ci-tools/msedgedriver.exe -Report .tmp/home-layout-verified -HomeLayout` 在独立桌面验证；不会切换用户输入桌面。`--home-layout` 也可直接传给 `tests/run-native-artifact.mjs`。入口保留产物哈希、空数据目录和正式 Shell 身份保护，拒绝真实媒体路径。
+
+该模式使用生成的 WAV 和明确标记的合成元数据，覆盖空库、稀疏与密集主页、混合尺寸及全部大磁贴、推荐区横向导航与列表纵向滚动、真实窗口缩放/最大化恢复、逐项 Tab 焦点和离开后返回，以及普通/减少动态效果。稀疏夹具在密集夹具导入前清空，避免旧样本混入。只观察暂停状态，不启动音频播放。报告分为 `home-layout-result.json`、`home-remaining-result.json` 和外层 `result.json`，未执行的流程不算通过；截图和 DPI 记录用于判断当前环境，不代表其他显示器组合或安装生命周期已验收。
