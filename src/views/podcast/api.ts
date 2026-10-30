@@ -268,6 +268,13 @@ export const getCloudSettings = () => invoke<CloudSettings>("podcast_get_cloud_s
 export const saveCloudSettings = (settings:CloudSettings,key?:string,clearKey=false) => invoke<CloudSettings>("podcast_set_cloud_settings",{settings,key,clearKey});
 export const transcriptSources = (episodeId:string) => invoke<string[]>("podcast_transcript_sources",{episodeId});
 export const generateTranscript = (episodeId:string,mode:string,source:string,expectedBaseUrl:string) => invokeNetwork<TranscriptDocument>("cloud","podcast_generate_transcript",{episodeId,mode,source,expectedBaseUrl});
+export type TranscriptionSettings = { backend: "cloud" | "local"; modelId: string; language: "auto" | "en" | "zh"; threads: number };
+export type LocalModel = { id: string; filename: string; bytes: number; sha256: string; installed: boolean; sourceUrl: string };
+export type LocalTranscriptionStatus = { settings: TranscriptionSettings; models: LocalModel[]; modelDirectory: string; availableBytes: number | null; engineReady: boolean; engineError: string | null };
+export const getLocalTranscriptionStatus = () => invoke<LocalTranscriptionStatus>("podcast_local_transcription_status");
+export const saveTranscriptionSettings = (value: TranscriptionSettings) => invoke<void>("podcast_set_transcription_settings", {value});
+export const importLocalModel = (modelId: string) => invoke<LocalTranscriptionStatus>("podcast_import_local_model", {modelId});
+export const generateLocalTranscript = (episodeId: string, expectedSettings: TranscriptionSettings) => invokeNetwork<TranscriptDocument>("local-transcript", "podcast_generate_local_transcript", {episodeId, expectedSettings});
 
 export type ListeningStats = {totalSeconds:number;recentSeconds:number;episodeCount:number;feedCount:number;days:Array<{day:string;seconds:number}>};
 export const getListeningStats = () => invoke<ListeningStats>("podcast_listening_stats");

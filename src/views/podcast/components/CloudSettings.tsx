@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../../components/Button";
 import { getCloudSettings, saveCloudSettings, type CloudSettings as Settings } from "../api";
+import { LocalTranscriptionSettings } from "./LocalTranscriptionSettings";
 export function CloudSettings() {
   const [value,setValue]=useState<Settings|null>(null),[key,setKey]=useState("");
   const [busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null),[saved,setSaved]=useState(false),[revision,setRevision]=useState(0);
   useEffect(()=>{let disposed=false;setError(null);void getCloudSettings().then(value=>{if(!disposed)setValue(value);}).catch(reason=>{if(!disposed)setError(String(reason));});return()=>{disposed=true;};},[revision]);
   function update(next:Settings){setValue(next);setSaved(false);}
   async function save(clearKey=false){if(!value||busy)return;setBusy(true);setError(null);try{setValue(await saveCloudSettings(value,key||undefined,clearKey));setKey("");setSaved(true);}catch(reason){setError(String(reason));}finally{setBusy(false);}}
-  return <div className="podcast-cloud-settings">
+  return <div className="podcast-cloud-settings"><LocalTranscriptionSettings/><h3>云端转写与中文翻译</h3>
     {value && <><div className="podcast-playback-setting-grid">
       <label className="podcast-cloud-address">服务地址<input type="url" aria-label="转写服务地址" value={value.baseUrl} disabled={busy} onChange={event=>update({...value,baseUrl:event.target.value})}/></label>
       <label>转写模型<input aria-label="转写模型" value={value.transcriptionModel} disabled={busy} onChange={event=>update({...value,transcriptionModel:event.target.value})}/></label>

@@ -134,6 +134,11 @@ try {
   await record('This build launched with an empty isolated library');
   assert.equal((await invoke('music_get_library_snapshot')).tracks.length, 0);
   await screenshot('01-empty');
+  if (process.argv.includes('--home-layout')) {
+    const { testHomeLayout } = await import('./native/homeLayout.mjs');
+    await testHomeLayout({root,report,dataDirectory,manifest,executable,media,paths,invoke,script,command,click,clickText,until,screenshot,ownedProcesses,record});
+    await closeNormally();outcome.coverage.homeLayout=true;outcome.ok=true;
+  } else {
   const scan = await asynchronous(async folder => {
     const api = window.__TAURI_INTERNALS__;
     const progress = api.transformCallback(() => {});
@@ -224,6 +229,22 @@ try {
     await screenshot('05-recovered');
     await record('Unavailable-source scan rejected and retained the real library and playlists');
   }
+  if (process.argv.includes('--local-whisper') || process.argv.includes('--local-whisper-backend')) {
+    const {testLocalWhisperClient} = await import('./native/localWhisperClient.mjs');
+    const restartAfterCrash = async () => {
+      const pids = ownedProcesses(); assert.equal(pids.length, 1);
+      const stopped = spawnSync('taskkill.exe', ['/PID', String(pids[0]), '/F'], {windowsHide:true,encoding:'utf8',timeout:15000});
+      assert.equal(stopped.status, 0, stopped.stderr);
+      await until(() => ownedProcesses().length === 0, 'Exact owned CI application forcibly exited');
+      await request('DELETE', `/session/${session}`).catch(() => {}); session = undefined;
+      await launch();
+    };
+    const backendOnly = process.argv.includes('--local-whisper-backend');
+    await testLocalWhisperClient({root,report,dataDirectory,manifest,executable,invoke,script,command,click,clickText,until,screenshot,ownedProcesses,restartAfterCrash,record,backendOnly});
+    outcome.coverage.localWhisper = true;
+    outcome.coverage.localWhisperNativeSmallWindow = !backendOnly;
+    if (backendOnly) outcome.boundaries.push('BackendOnly covers a real 1180x760 viewport and explicitly emulated 920x620; native resizing requires the full local transcription mode.');
+  }
   await closeNormally();
   await launch();
   const restored = await invoke('music_get_library_snapshot');
@@ -241,6 +262,7 @@ try {
   for (let i = 0; i < paths.length; i++) assert.equal(hash(await readFile(paths[i])), originalHashes[i], 'Source audio must remain unchanged.');
   outcome.coverage.core = true;
   outcome.ok = true;
+  }
 } catch (error) {
   outcome.error = error.stack ?? String(error);
   console.error(outcome.error);

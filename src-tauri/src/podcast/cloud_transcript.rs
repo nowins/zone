@@ -4,7 +4,7 @@ use rusqlite::{params,OptionalExtension,TransactionBehavior};
 use serde_json::{Value,json};
 use std::sync::{OnceLock,atomic::{AtomicBool,Ordering}};
 use tauri::{State,Emitter};
-static PROCESSING:OnceLock<tokio::sync::Mutex<()>>=OnceLock::new();
+pub(crate) static PROCESSING:OnceLock<tokio::sync::Mutex<()>>=OnceLock::new();
 struct Cancellation(Arc<AtomicBool>);
 impl Drop for Cancellation {fn drop(&mut self){self.0.store(true,Ordering::Relaxed);}}
 
@@ -48,6 +48,7 @@ fn apply_translation(cues:&[TranscriptCue],response:&[u8])->Result<Vec<Transcrip
 }
 async fn process(state:&PodcastState,app:&AppHandle,episode:&str,mode:&str,source:&str,expected_base:&str)->Result<TranscriptDocument,String>{
   let _permit=PROCESSING.get_or_init(||tokio::sync::Mutex::new(())).try_lock().map_err(|_|"已有转写或翻译正在处理，请先完成或取消")?;
+  if mode=="transcribe" && super::local_config::settings(&state.db_path)?.backend!="cloud" {return Err("转写方式已变化，请重新确认；未上传音频".into());}
   let (settings,key)=super::cloud_config::credentials(&state.db_path)?;
   if settings.base_url!=expected_base{return Err("服务设置已变化，请重新确认上传".into());}
   let detail=get_episode_detail(&state.db_path,&state.downloads_dir,episode)?;let enclosure=detail.episode.enclosure_url.clone();

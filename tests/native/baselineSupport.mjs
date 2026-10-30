@@ -36,6 +36,14 @@ function visualCompatibility(compatibility) {
   const { cpu: _cpu, ...renderer } = compatibility.renderer;
   return { ...compatibility, renderer };
 }
+function identicalSceneEvidence(candidate, reference) {
+  return candidate.scenes.length > 0 && candidate.scenes.length === reference.scenes.length
+    && candidate.scenes.every((scene, index) => {
+      const previous = reference.scenes[index];
+      return scene.id === previous.id && /^[a-f0-9]{64}$/.test(scene.sha256)
+        && scene.sha256 === previous.sha256 && canonical(scene.viewport) === canonical(previous.viewport);
+    });
+}
 export function reviewDecision(candidate, reference, approval) {
   if (!approval || approval.review?.status !== 'approved') return { status: 'needs-review', reason: 'No reviewed reference; candidate capture is not visual approval.' };
   assert.equal(approval.format, 'ZoneNativeBaselineReference'); assert.equal(approval.version, 1);
@@ -45,9 +53,22 @@ export function reviewDecision(candidate, reference, approval) {
   assert.ok(Number.isFinite(approval.limits?.maxChangedPixelRatio) && approval.limits.maxChangedPixelRatio >= 0 && approval.limits.maxChangedPixelRatio <= 1);
   assert.equal(candidate.format, 'ZoneNativeBaseline'); assert.equal(reference.format, 'ZoneNativeBaseline');
   assert.equal(candidate.captureStatus, 'repeatable'); assert.equal(reference.captureStatus, 'repeatable');
-  if (canonical(visualCompatibility(candidate.compatibility)) !== canonical(visualCompatibility(reference.compatibility))) return { status: 'incompatible', reason: 'Viewport, renderer, image, fonts or fixture environment changed; review a new candidate.' };
+  const current = visualCompatibility(candidate.compatibility), previous = visualCompatibility(reference.compatibility);
+  const compatibilityNotes = [];
+  // A runner release label may change without changing these captured scenes.
+  // This exception requires identical PNG hashes AND geometry, never new pixels.
+  // compareNativeBaselines still verifies the actual PNG bytes before passing.
+  if (typeof current?.renderer?.imageVersion === 'string' && current.renderer.imageVersion
+    && typeof previous?.renderer?.imageVersion === 'string' && previous.renderer.imageVersion
+    && current.renderer.imageVersion !== previous.renderer.imageVersion && identicalSceneEvidence(candidate, reference)) {
+    compatibilityNotes.push({ field: 'renderer.imageVersion', reference: previous.renderer.imageVersion,
+      candidate: current.renderer.imageVersion,
+      reason: 'Runner image revision differs, but every scene has identical PNG hashes and viewport geometry; PNG bytes must still be verified.' });
+    delete current.renderer.imageVersion; delete previous.renderer.imageVersion;
+  }
+  if (canonical(current) !== canonical(previous)) return { status: 'incompatible', reason: 'Viewport, renderer, image, fonts or fixture environment changed; review a new candidate.' };
   assert.deepEqual(candidate.scenes.map(scene => scene.id), reference.scenes.map(scene => scene.id));
   if (canonical(candidate.scenes.map(scene => scene.nativeWindow?.dpi)) !== canonical(reference.scenes.map(scene => scene.nativeWindow?.dpi)))
     return { status: 'incompatible', reason: 'Native window DPI changed; review a new candidate.' };
-  return { status: 'comparable' };
+  return compatibilityNotes.length ? { status: 'comparable', compatibilityNotes } : { status: 'comparable' };
 }

@@ -40,6 +40,7 @@ for (const pkg of cargo.packages) {
   if (!texts.length) texts = (archived[`${pkg.name}@${pkg.version}`] ?? []).map(item => `${item.file}\n来源：${item.source}\n${readFileSync(join(root, 'packaging/licenses', item.file), 'utf8').trim()}`);
   records.push({ name: `Rust: ${pkg.name} ${pkg.version}`, license: pkg.license, url: `${pkg.repository ?? ''}\n对应版本源码：https://crates.io/crates/${pkg.name}/${pkg.version}`, texts });
 }
+records.push({ name: 'Native: whisper.cpp 1.8.2 (ggml CPU)', license: 'MIT', url: 'https://github.com/ggml-org/whisper.cpp/tree/4979e04f5dcaccb36057e059bbaed8a2f5288315', texts: [readFileSync(join(root, 'packaging/licenses/whisper-cpp-1.8.2-LICENSE.txt'), 'utf8').replace(/\r\n/g, '\n').trim()] });
 const missing = records.filter(record => !record.texts.length);
 if (missing.length) throw Error(`缺少许可证原文：\n${missing.map(record => record.name).join('\n')}`);
 const content = 'Zone 第三方软件许可\n\n以下组件的许可原文来自安装的 npm 包与 Cargo 源码。项目本身的许可不由此文件授予。\n\n' + records.sort((a, b) => a.name.localeCompare(b.name, 'en')).map(record => `${'='.repeat(72)}\n${record.name}\nSPDX: ${record.license ?? '见原文'}\n${record.url ?? ''}\n\n${record.texts.join('\n\n')}`).join('\n\n') + '\n';

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { appendFile, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, cp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 
 if (process.platform !== 'win32') throw Error('Native artifact build requires Windows x64.');
@@ -29,10 +29,16 @@ const binary = await readFile(executable);
 if (!binary.includes(Buffer.from(identifier))) throw Error('Built executable does not contain this isolated CI identity.');
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 await copyFile(executable, join(artifact, 'zone-player.exe'));
+await cp(join(root, 'src-tauri/binaries/whisper'), join(artifact, 'whisper'), {recursive: true});
 await copyFile(join(root, 'packaging/THIRD_PARTY_NOTICES.txt'), join(artifact, 'THIRD_PARTY_NOTICES.txt'));
 await copyFile(join(root, 'src-tauri/Cargo.lock'), join(artifact, 'Cargo.lock'));
 const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+const sourceDirty = Boolean(execFileSync('git', ['status', '--porcelain'], {cwd:root,encoding:'utf8'}).trim());
+const sourceFiles = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {cwd:root,encoding:'utf8'}).split('\0').filter(Boolean).sort();
+const sourceSnapshot = createHash('sha256');
+for (const path of sourceFiles) { sourceSnapshot.update(path); sourceSnapshot.update('\0'); sourceSnapshot.update(await readFile(join(root,path))); sourceSnapshot.update('\0'); }
 const manifest = { format: 'ZoneNativeCI', version: 2, identifier, sourceSha,
+  sourceDirty, sourceSnapshotSha256: sourceSnapshot.digest('hex'),
   shellIdentity: { appUserModelId: identifier, shortcut: `Zone-${identifier}.lnk`, executableAlias: false },
   applicationVersion: JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version,
   executable: 'zone-player.exe', executableSha256: sha256(binary), configurationSha256: sha256(await readFile(configuration)),

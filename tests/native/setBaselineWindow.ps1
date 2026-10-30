@@ -11,12 +11,13 @@ $process = Get-CimInstance Win32_Process -Filter "ProcessId=$RootPid"
 $executable = [IO.Path]::GetFullPath($ExpectedExecutable)
 if (-not $process -or $process.ExecutablePath -ne $executable) { throw 'Refusing a window outside the exact owned executable' }
 if (-not [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($executable)).Contains($Identifier)) { throw 'Missing embedded CI identity' }
-$handle = (Get-Process -Id $RootPid).MainWindowHandle
-if ($handle -eq [IntPtr]::Zero) { throw 'Owned native window is unavailable' }
 Add-Type @'
 using System;
+using System.Collections.Generic;
+using System.Text;
 using System.Runtime.InteropServices;
 public static class ZoneBaselineWindow {
+  public delegate bool EnumProc(IntPtr h, IntPtr p);
   [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int command);
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out Rect rect);
@@ -24,9 +25,26 @@ public static class ZoneBaselineWindow {
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern int GetSystemMetrics(int index);
   [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc callback, IntPtr parameter);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder name, int count);
   [DllImport("user32.dll", SetLastError=true)] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int height, uint flags);
+  public static IntPtr FindOwnedWindow(uint owner) {
+    var matches = new List<IntPtr>();
+    EnumWindows((h, p) => {
+      uint pid;
+      GetWindowThreadProcessId(h, out pid);
+      var name = new StringBuilder(256);
+      if (pid == owner && GetClassName(h, name, name.Capacity) != 0 && name.ToString() == "Tauri Window") matches.Add(h);
+      return true;
+    }, IntPtr.Zero);
+    // MainWindowHandle can select an input-indicator or tray auxiliary window on an isolated desktop.
+    if (matches.Count != 1) throw new InvalidOperationException("Expected exactly one owned Tauri window, found " + matches.Count);
+    return matches[0];
+  }
 }
 '@
+$handle = [ZoneBaselineWindow]::FindOwnedWindow($RootPid)
 # Change only this helper thread's coordinate interpretation, never display settings.
 $previous = [ZoneBaselineWindow]::SetThreadDpiAwarenessContext([IntPtr](-4))
 try {
@@ -48,5 +66,7 @@ try {
     if (-not [ZoneBaselineWindow]::SetWindowPos($handle, [IntPtr]::Zero, 0, 0, $outerWidth, $outerHeight, 0x414)) { throw 'Cannot preserve requested off-screen client bounds' }
     $override = $true
   }
-  @{ requestedClient = @{ width = $Width; height = $Height }; dpi = [int]($scale * 96); pid = $RootPid; desktopOverflow = $desktopOverflow; desktopTrackingOverride = $override } | ConvertTo-Json -Depth 4 -Compress
+  if (-not [ZoneBaselineWindow]::GetClientRect($handle, [ref]$client)) { throw 'Cannot confirm final owned client bounds' }
+  if (($client.Right - $client.Left) -ne [int]($Width * $scale) -or ($client.Bottom - $client.Top) -ne [int]($Height * $scale)) { throw 'Owned Tauri client size does not match the requested viewport' }
+  @{ requestedClient = @{ width = $Width; height = $Height }; actualClient = @{ width = $client.Right - $client.Left; height = $client.Bottom - $client.Top }; nativeHandle = $handle.ToInt64(); windowClass = 'Tauri Window'; dpi = [int]($scale * 96); pid = $RootPid; desktopOverflow = $desktopOverflow; desktopTrackingOverride = $override } | ConvertTo-Json -Depth 4 -Compress
 } finally { if ($previous -ne [IntPtr]::Zero) { [ZoneBaselineWindow]::SetThreadDpiAwarenessContext($previous) | Out-Null } }

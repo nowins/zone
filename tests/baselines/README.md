@@ -37,7 +37,9 @@ runner 桌面可能小于默认窗口。若桌面最大跟踪尺寸收窄了目�
 }
 ```
 
-比较前核对已审阅 JSON 与 PNG 的实际哈希；输出不得写进参考目录。OS、镜像、WebView2、字体、DPI、主题、窗口或夹具变化时报告 incompatible，不能把渲染环境漂移算成产品回归或直接接受新图；同环境下区域几何或像素变化按已批准容差比较。CPU 型号仅用于诊断，不参加视觉硬兼容性判断；原始报告与兼容性哈希仍保留 CPU，不改写历史证据。比较时只剥离 `compatibility.renderer.cpu`，其余字段（包括新增字段）、原生窗口 DPI 与像素守卫继续严格检查；CPU 引起的实际像素差异仍按批准容差失败。当前已批准参考见 [approved/README.md](approved/README.md)，其 JSON 与 PNG 保留采集时的原始字节；批准状态以 `approved/reference.json` 为准。
+比较前核对已审阅 JSON 与 PNG 的实际哈希；输出不得写进参考目录。OS、镜像类型、WebView2、字体、DPI、主题、窗口或夹具变化时报告 incompatible，不能把渲染环境漂移算成产品回归或直接接受新图；同环境下区域几何或像素变化按已批准容差比较。CPU 型号仅用于诊断，不参加视觉硬兼容性判断；原始报告与兼容性哈希仍保留 CPU，不改写历史证据。比较时剥离 `compatibility.renderer.cpu`；其他字段（包括新增字段）、原生窗口 DPI 与像素守卫继续严格检查，只有下述镜像版本例外。CPU 引起的实际像素差异仍按批准容差失败。当前已批准参考见 [approved/README.md](approved/README.md)，其 JSON 与 PNG 保留采集时的原始字节；批准状态以 `approved/reference.json` 为准。
+
+`compatibility.renderer.imageVersion` 是 runner 镜像的发布编号，不单独证明渲染结果已变化。仅当双方都有非空版本号、全部场景 ID／PNG SHA-256／完整 viewport（含裁剪几何）逐项相同，且其余兼容条件及原生 DPI 仍相同时，允许该编号不同并在比较报告记录 `compatibilityNotes`。随后仍核对实际 PNG 字节、执行正式像素比较和原批准容差；伪造相同哈希不能通过。版本号缺失、任一场景图片或几何不同仍为 incompatible，需要人工检查环境／候选，不自动换参考。此例外只证明这些稳定区域相同，不证明整个镜像、其他 UI 或硬件等价。
 
 若将正式批准参考放在 `tests/baselines/approved/reference.json`，CI 才运行比较步骤；缺少时只上传候选并在摘要写明 review pending。所有候选和报告在原生 smoke 的 `baselines/` 下，随诊断保留 7 天；结果不是完整 UI／键盘／动效验收。
 

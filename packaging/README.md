@@ -98,9 +98,43 @@ EXE 商店路线仍要求真实 `ZONE_PUBLISHER`、可信 `ZONE_CERT_THUMBPRINT`
 
 ## 依赖、图标与商店素材
 
+### 本地转写引擎
+
+Windows x64 包含原生 `whisper/zone-whisper.exe`、`engine.json` 与 MIT 原文。引擎由 `native/whisper/` 调用 whisper.cpp 1.8.2（`4979e04f5dcaccb36057e059bbaed8a2f5288315`）构建；固定官方下载地址及源码 SHA-256 在 `whisper-source.json`。脚本只使用已安装的 Visual Studio C++/CMake，不安装工具。每次使用全新解包/构建目录，关闭 GPU、AVX/AVX2/FMA/F16C/SSE4.2/BMI2 与 OpenMP，静态链接运行库；x64 基线使用 SSE2。构建环境与真实老 CPU 仍需分别验证，不以关闭编译选项冒充硬件验收。
+
+从仓库根显式准备引擎，二选一：
+
+```powershell
+./scripts/build-whisper.ps1 -DownloadSource
+./scripts/build-whisper.ps1 -Archive <已下载的官方v1.8.2源码.zip>
+node scripts/check-whisper.mjs
+```
+
+`-DownloadSource` 是显式开发构建动作；应用运行时不下载或安装引擎。源码压缩包 SHA-256 不匹配即停止，不使用其他来源替代。引擎生成于忽略的 `src-tauri/binaries/whisper/`，`engine.json` 记录版本、完整上游提交、源码和 exe 哈希。构建及原生运行均校验清单；Tauri 资源映射将目录保存为 `whisper/`，不扩大 shell/capabilities/CSP。MSIX 明确复制该目录并检查包中 exe、清单和许可；CI artifact 同样携带目录。引擎不接受前端自定义可执行路径。第三方总声明另包含固定版本 MIT 原文。
+
+模型不随包分发，由用户通过设置打开 Hugging Face 官方固定修订下载链接后自行导入。模型保存在应用用户数据目录 `podcast-models/`，临时音频位于 `podcast-local-work/`，避免写入 MSIX/NSIS 安装目录。当前仅提供经 SHA-256 校验的多语言轻量/基础模型；模型来源与精确字节数以 `local_config.rs` 为准。模型亦按上游 MIT 许可使用。安装升级/卸载语义继续服从相应包类型的用户数据规则。
+
+无安装的真实验证：先 `npm run build:ci:native` 生成新 CI 身份，准备合成中英音频、官方测试模型和已签名匹配的 Edge WebDriver，再运行：
+
+```powershell
+./tests/run-local-whisper-desktop.ps1 -Manifest <build-info.json> -Driver <msedgedriver.exe> -Report .tmp/local-whisper-client
+```
+
+该入口创建独立 Windows 桌面且不切换用户输入桌面，复用正式产物、命令、SQLite 和页面；拒绝已有 CI 资料目录。保留桌面执行记录、前后正式 Shell 入口快照、截图及本地转写结果。测试源码/资料和生产应用隔离，模型导入使用夹具复制，原生文件选择器仍需专用交互验收。结果不是商店发布批准，包生命周期继续用专用 Windows 10/11 VM。
+
+尺寸辅助程序按 CI 进程和 `Tauri Window` 窗口类定位唯一主窗口，不能使用可能指向输入指示或托盘辅助窗口的 `Process.MainWindowHandle`。它核对最终物理客户区尺寸；完整本地转写入口再核对 Rust 窗口尺寸、WebView 视口、窗口与播放控件边界，并验证 1180×760 → 920×620 → 放大 → 缩小、真实标题栏最大化及恢复、小窗口模型选项与保存动作。尺寸失败继续保留原始证据，不改显示设置或切换用户输入桌面。
+
+显式 `-BackendOnly` 仅验证原生 1180×760、取消、模型损坏、SQLite 回滚、推理中强退及重启恢复，并另采明确标记为仿真的 920×620 布局。该模式报告 `nativeSmallWindowVerified=false`，不能代替完整入口的真实原生小窗口验收。
+
 - `npm run audit:release` 检查 npm 与实际 Win32 Rust 构建图，需先 `cargo install cargo-audit --locked`。漏洞、不健全或撤回版本使检查失败，不忽略公告 ID。Tauri/Symphonia 的部分间接依赖有停止维护警告，保留并跟踪上游，不称为已消除。
 - 第三方许可用 `npm run notices:generate` 维护，正式构建核对并随包分发。
 - 图标事实源是 `app-icon.png`；`packaging/generate-icons.ps1` 更新 Tauri 图标与 MSIX 资产。
 - 商店列表准备真实截图、简短描述、关键词和分级；建议覆盖 quickplay、收藏、正在播放、歌词和播客。
 - 应用回归覆盖默认 1180×760、最小 920×620、键盘、减少动态效果、常用 DPI、音频格式、离线目录、迁移与播客下载。
 - 当前音乐、播客与补充资料共用 `zone.sqlite`，旧库仅作迁移源。MSIX/NSIS 转换前验证数据路径与迁移，不能把打包切换视为自动完成旧数据迁移。
+
+### 主页布局原生验证
+
+先运行 `npm run build:ci:native` 创建全新 CI 身份，再用 `tests/run-local-whisper-desktop.ps1 -Manifest <build-info.json> -Driver .tmp/ci-tools/msedgedriver.exe -Report .tmp/home-layout-verified -HomeLayout` 在独立桌面验证；不会切换用户输入桌面。`--home-layout` 也可直接传给 `tests/run-native-artifact.mjs`。入口保留产物哈希、空数据目录和正式 Shell 身份保护，拒绝真实媒体路径。
+
+该模式使用生成的 WAV 和明确标记的合成元数据，覆盖空库、稀疏与密集主页、混合尺寸及全部大磁贴、推荐区横向导航与列表纵向滚动、真实窗口缩放/最大化恢复、逐项 Tab 焦点和离开后返回，以及普通/减少动态效果。稀疏夹具在密集夹具导入前清空，避免旧样本混入。只观察暂停状态，不启动音频播放。报告分为 `home-layout-result.json`、`home-remaining-result.json` 和外层 `result.json`，未执行的流程不算通过；截图和 DPI 记录用于判断当前环境，不代表其他显示器组合或安装生命周期已验收。

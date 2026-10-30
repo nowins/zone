@@ -83,6 +83,9 @@ try {
   $staging = Join-Path $root ".tmp/msix-build/$runId"
   New-Item -ItemType Directory -Path $staging -Force | Out-Null
   Copy-Item -LiteralPath $exe -Destination (Join-Path $staging 'zone-player.exe')
+  node (Join-Path $root 'scripts/check-whisper.mjs')
+  if ($LASTEXITCODE -ne 0) { throw '本地 CPU 引擎未通过校验，停止打包。' }
+  Copy-Item -LiteralPath (Join-Path $root 'src-tauri/binaries/whisper') -Destination (Join-Path $staging 'whisper') -Recurse
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'THIRD_PARTY_NOTICES.txt') -Destination $staging
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Assets') -Destination $staging -Recurse
   $runtime = & (Join-Path $PSScriptRoot 'prepare-msix-runtime.ps1') -Destination (Join-Path $staging 'WebView2')
@@ -124,7 +127,7 @@ try {
   try {
     $signed = $null -ne $zip.GetEntry('AppxSignature.p7x')
     if (($ForStore -and $signed) -or (-not $ForStore -and -not $signed)) { throw 'MSIX 签名模式与构建用途不符。' }
-    foreach ($file in @('AppxManifest.xml', 'zone-player.exe', 'THIRD_PARTY_NOTICES.txt', 'WebView2/msedgewebview2.exe')) { if (-not $zip.GetEntry($file)) { throw "MSIX 缺少文件：$file" } }
+    foreach ($file in @('AppxManifest.xml', 'zone-player.exe', 'THIRD_PARTY_NOTICES.txt', 'WebView2/msedgewebview2.exe', 'whisper/zone-whisper.exe', 'whisper/engine.json', 'whisper/LICENSE-whisper.txt')) { if (-not $zip.GetEntry($file)) { throw "MSIX 缺少文件：$file" } }
   } finally { $zip.Dispose() }
   $stream = [IO.File]::OpenRead($out); $hasher = [Security.Cryptography.SHA256]::Create()
   try { $hash = [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '') }
