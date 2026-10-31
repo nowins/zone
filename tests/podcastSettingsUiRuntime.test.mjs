@@ -46,6 +46,10 @@ test("default preferences stay on the global settings page and preserve unsaved 
   try {
     await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(PodcastDefaultsSettings))));
     assert.equal(document.querySelector('[role="dialog"]'),null);
+    const content = document.querySelector('.podcast-default-settings-content');
+    assert.ok(content.contains(document.querySelector('.podcast-preference-advanced')), "advanced settings stay inside the single content scroller");
+    assert.ok(!content.contains(document.querySelector('.podcast-preference-save')), "save actions cannot cover the scrolling fields");
+    assert.equal(content.parentElement, document.querySelector('.podcast-preference-save').parentElement, "fields and actions submit the same form");
     assert.equal([...document.querySelectorAll('button')].find(b=>b.textContent==="保存修改").disabled,true);
     await act(async () => document.querySelector('[aria-label="均衡语音音量"]').click());
     await click("下载与清理");
