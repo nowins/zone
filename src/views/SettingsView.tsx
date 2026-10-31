@@ -112,7 +112,7 @@ export function SettingsView({
         <h1>设置</h1>
         <nav className="settings-categories" aria-label="设置分区">{([["music","音乐"],["podcast","播客"],["app","常规"]] as const).map(([id,label]) => <button key={id} type="button" aria-current={category===id ? "page" : undefined} onClick={() => { setCategory(id); if(id==="podcast")setPodcastVisited(true); }}>{label}</button>)}</nav>
       </header>
-      {podcastVisited && <div className="settings-content" hidden={category !== "podcast"}><PodcastDefaultsSettings /></div>}
+      {podcastVisited && <div className="settings-podcast-category" hidden={category !== "podcast"}><PodcastDefaultsSettings /></div>}
       <div className="settings-content" hidden={category !== "music"}>
         <div className="settings-layout">
           <div className="settings-main-stack">

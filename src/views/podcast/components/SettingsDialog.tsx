@@ -90,7 +90,7 @@ function PodcastPreferencesEditor({ feedId, title, onClose, embedded = false }: 
     </div> : error ? null : <p role="status"><MetroLoader />正在读取设置</p>}
     {error && <p role="alert">{error}{!value && <Button onClick={() => setRevision(value => value + 1)}>重试读取</Button>}</p>}
   </>;
-  if (embedded) return <form className="podcast-default-settings" aria-label="播客默认偏好" onSubmit={event => { event.preventDefault(); void save(); }}>{fields}
+  if (embedded) return <form className="podcast-default-settings" aria-label="播客默认偏好" onSubmit={event => { event.preventDefault(); void save(); }}><div className="settings-content podcast-default-settings-content">{fields}</div>
     {tab!=="cloud" && <div className="podcast-preference-save"><span role="status">{dirty ? "有未保存的修改" : saved ? "已保存播客偏好" : ""}</span><Button type="submit" variant="primary" disabled={!value || !dirty} busy={busy}>保存修改</Button></div>}
   </form>;
   return <Dialog titleId="podcast-settings-title" kicker="节目设置" title={title} overlayClassName="podcast-settings-overlay" className="podcast-settings-dialog" busy={busy} onCancel={() => onClose?.()}
